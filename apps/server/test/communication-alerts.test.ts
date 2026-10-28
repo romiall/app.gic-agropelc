@@ -20,7 +20,8 @@ import type { DomainEvent } from '../src/platform/events/domain-event.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { registerAlertCommands } from '../src/modules/communication/application/commands/alert-commands.js';
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
-import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { listAlertRuleItems } from '../src/modules/communication/application/public/notification-read.js';
+import { fromBin, fromBinOrNull, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid, insertTestUser } from './helpers.js';
 import { codeOf, newActor, runCommand, tx, type Actor } from './cash-transfer-fixtures.js';
 import { committed, rolledBack } from './communication-test-kit.js';
@@ -222,6 +223,91 @@ describe('P9-04 : consommateur communication.alerts', () => {
       ).toEqual([false, true]);
     }));
 
+  describe('critical_since : instant du traitement par le serveur (P9-25, NT-3 ; AV-466)', () => {
+    const variance = (
+      session: string,
+      severity: 'WARNING' | 'CRITICAL',
+      occurredAt: string,
+      amount = -15_000,
+    ) =>
+      eventOf(
+        'CashVarianceDetected',
+        session,
+        { session_id: session, variance_xaf: amount, severity, site_id: freshUuid() },
+        occurredAt,
+      );
+    const processedBy = (at: string) => ({
+      idGenerator,
+      clock: new FixedClock(new Date(at)),
+    });
+
+    it('un fait en retard : critical_since est l’instant du traitement, first_detected_at la date du fait', () =>
+      rolledBack(async (uow) => {
+        const session = freshUuid();
+        await handleAlertEvent(
+          uow,
+          variance(session, 'CRITICAL', '2026-11-01T05:00:00.000Z'),
+          processedBy('2026-11-02T10:00:00.000Z'),
+        );
+        const [alert] = await alertsOf(uow, 'CASH_VARIANCE', session);
+        expect(alert!.critical_since?.toISOString()).toBe('2026-11-02T10:00:00.000Z');
+        expect(alert!.first_detected_at.toISOString()).toBe('2026-11-01T05:00:00.000Z');
+        expect(alert!.last_detected_at.toISOString()).toBe('2026-11-01T05:00:00.000Z');
+        // L'événement AlertRaised garde la date du fait.
+        const raised = await eventsOf(uow, alert!.id, 'AlertRaised');
+        expect(raised).toHaveLength(1);
+      }));
+
+    it('relèvement en retard : critical_since est le traitement du relèvement, puis ne bouge plus', () =>
+      rolledBack(async (uow) => {
+        const session = freshUuid();
+        await handleAlertEvent(
+          uow,
+          variance(session, 'WARNING', '2026-11-02T09:00:00.000Z', -2_000),
+          processedBy('2026-11-02T10:00:00.000Z'),
+        );
+        let [alert] = await alertsOf(uow, 'CASH_VARIANCE', session);
+        expect(alert!.critical_since).toBeNull();
+        await handleAlertEvent(
+          uow,
+          variance(session, 'CRITICAL', '2026-11-02T08:00:00.000Z'),
+          processedBy('2026-11-02T12:00:00.000Z'),
+        );
+        [alert] = await alertsOf(uow, 'CASH_VARIANCE', session);
+        expect(alert!.critical_since?.toISOString()).toBe('2026-11-02T12:00:00.000Z');
+        // Une occurrence critique traitée plus tard ne déplace pas le point de départ.
+        await handleAlertEvent(
+          uow,
+          variance(session, 'CRITICAL', '2026-11-02T13:00:00.000Z'),
+          processedBy('2026-11-02T14:00:00.000Z'),
+        );
+        [alert] = await alertsOf(uow, 'CASH_VARIANCE', session);
+        expect(alert!.critical_since?.toISOString()).toBe('2026-11-02T12:00:00.000Z');
+      }));
+
+    it('un fait daté du futur (horloge d’appareil en avance) : le traitement seul fait foi', () =>
+      rolledBack(async (uow) => {
+        const session = freshUuid();
+        await handleAlertEvent(
+          uow,
+          variance(session, 'CRITICAL', '2026-11-03T10:00:00.000Z'),
+          processedBy('2026-11-02T10:00:00.000Z'),
+        );
+        const [alert] = await alertsOf(uow, 'CASH_VARIANCE', session);
+        expect(alert!.critical_since?.toISOString()).toBe('2026-11-02T10:00:00.000Z');
+      }));
+
+    it('sans horloge (essais) : repli sur la date de l’événement', () =>
+      rolledBack(async (uow) => {
+        const session = freshUuid();
+        await handleAlertEvent(uow, variance(session, 'CRITICAL', '2026-11-01T05:00:00.000Z'), {
+          idGenerator,
+        });
+        const [alert] = await alertsOf(uow, 'CASH_VARIANCE', session);
+        expect(alert!.critical_since?.toISOString()).toBe('2026-11-01T05:00:00.000Z');
+      }));
+  });
+
   it('résolution par condition disparue : l’alerte se clôt, un nouvel événement en crée une nouvelle', () =>
     rolledBack(async (uow) => {
       const session = freshUuid();
@@ -259,6 +345,81 @@ describe('P9-04 : consommateur communication.alerts', () => {
       );
       alerts = await alertsOf(uow, 'CASH_SESSION_OPEN_LONG', session);
       expect(alerts.map((a) => a.status).sort()).toEqual(['OPEN', 'RESOLVED']);
+    }));
+
+  describe('propriétaire d’une créance échue : le vendeur à défaut de commercial (P9-25, AL-3 ; AV-463)', () => {
+    it('sans commercial attribué : le vendeur est propriétaire de l’alerte', () =>
+      rolledBack(async (uow) => {
+        const sale = freshUuid();
+        const seller = freshUuid();
+        await handleAlertEvent(
+          uow,
+          overdue(sale, { commercial_user_id: null, seller_user_id: seller }),
+          options,
+        );
+        const [alert] = await alertsOf(uow, 'OVERDUE_RECEIVABLE', sale);
+        expect(fromBinOrNull(alert!.owner_user_id)).toBe(seller);
+      }));
+
+    it('avec un commercial attribué : lui seul est propriétaire, le repli ne s’ajoute pas', () =>
+      rolledBack(async (uow) => {
+        const sale = freshUuid();
+        const commercial = freshUuid();
+        await handleAlertEvent(
+          uow,
+          overdue(sale, { commercial_user_id: commercial, seller_user_id: freshUuid() }),
+          options,
+        );
+        const [alert] = await alertsOf(uow, 'OVERDUE_RECEIVABLE', sale);
+        expect(fromBinOrNull(alert!.owner_user_id)).toBe(commercial);
+      }));
+  });
+
+  it('fermeture par événement : elle ne dépend pas du mode de la règle (P9-25, AL-4 ; AV-464)', () =>
+    rolledBack(async (uow) => {
+      // La règle semée d'INVENTORY_VARIANCE est MANUAL ; l'événement `resolvedBy` ferme quand même l'alerte.
+      const rule = await uow
+        .selectFrom('communication_alert_rules')
+        .select('resolution_mode')
+        .where('alert_type', '=', 'INVENTORY_VARIANCE')
+        .executeTakeFirstOrThrow();
+      expect(rule.resolution_mode).toBe('MANUAL');
+      const count = freshUuid();
+      await handleAlertEvent(
+        uow,
+        eventOf('InventoryVarianceDetected', count, {
+          count_id: count,
+          site_id: freshUuid(),
+          location_label: 'Magasin central',
+          variance_quantity: -4,
+          variance_value_xaf: -12_000,
+        }),
+        options,
+      );
+      let [alert] = await alertsOf(uow, 'INVENTORY_VARIANCE', count);
+      expect(alert).toMatchObject({ status: 'OPEN' });
+      await handleAlertEvent(
+        uow,
+        eventOf('InventoryAdjusted', count, { count_id: count }, '2026-11-02T12:00:00.000Z'),
+        options,
+      );
+      [alert] = await alertsOf(uow, 'INVENTORY_VARIANCE', count);
+      expect(alert).toMatchObject({ status: 'RESOLVED', resolution_kind: 'CONDITION_CLEARED' });
+    }));
+
+  it('lecture des règles : le mode de résolution affiché est celui du catalogue, même si la colonne a été modifiée (AL-4)', () =>
+    rolledBack(async (uow) => {
+      await uow
+        .updateTable('communication_alert_rules')
+        .set({ resolution_mode: 'AUTO' })
+        .where('alert_type', '=', 'HIGH_LOSS')
+        .execute();
+      const items = await listAlertRuleItems(uow);
+      const highLoss = items.find((item) => item.alertType === 'HIGH_LOSS');
+      expect(highLoss).toMatchObject({
+        resolutionMode: 'MANUAL',
+        resolutionModesAdmitted: ['MANUAL'],
+      });
     }));
 
   it('résolution sans alerte ouverte : sans effet', () =>
@@ -758,6 +919,35 @@ describe('P9-04 : commandes communication.alert.*', () => {
         escalationHours: 4,
         recipientRoles: ['RESP_PRODUCTION', 'DIRECTION'],
       });
+    });
+
+    it('mode de résolution : seul le mode du catalogue est admis (P9-25, AL-4 ; AV-464)', async () => {
+      // Alerte d'événement (catalogue : MANUAL) : AUTO refusé, ligne inchangée.
+      const before = await rule('HIGH_LOSS');
+      expect(
+        codeOf(
+          await run(direction, 'communication.alert_rule.set', freshUuid(), {
+            alertType: 'HIGH_LOSS',
+            resolutionMode: 'AUTO',
+          }),
+        ),
+      ).toBe('ALERT_RESOLUTION_NOT_ADMITTED');
+      const after = await rule('HIGH_LOSS');
+      expect(after.version).toBe(before.version);
+      expect(after.resolution_mode).toBe(before.resolution_mode);
+      // Le mode du catalogue est admis (la valeur ne change pas ; la version avance).
+      const mortality = await rule('HIGH_MORTALITY');
+      expect(
+        codeOf(
+          await run(direction, 'communication.alert_rule.set', freshUuid(), {
+            alertType: 'HIGH_MORTALITY',
+            resolutionMode: 'MANUAL',
+          }),
+        ),
+      ).toBe('APPLIED');
+      const mortalityAfter = await rule('HIGH_MORTALITY');
+      expect(mortalityAfter.resolution_mode).toBe('MANUAL');
+      expect(mortalityAfter.version).toBe(mortality.version + 1);
     });
 
     it('refus : gravité non admise, résolution manuelle d’une alerte d’état, escalade sans gravité critique', async () => {

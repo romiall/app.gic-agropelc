@@ -21,7 +21,7 @@ Faits du code :
 
 1. **Destinataires explicites, fixés à la levée.** Table `communication_alert_recipients` (alerte, utilisateur, origine, rôle). À la levée d'une alerte, le résolveur calcule, dans cet ordre :
    - `RULE` : les titulaires des rôles destinataires de la règle dont une affectation active couvre le site ou la zone de l'objet (affectation `TEAM` : le propriétaire de l'objet est membre de l'équipe) ;
-   - `OWNER` : le propriétaire quand l'événement en désigne un (titulaire du client, auteur, vendeur) ;
+   - `OWNER` : le propriétaire quand l'événement en désigne un (titulaire du client, auteur, vendeur) ; à défaut, le repli de propriétaire du catalogue (`ownerFallbackFields` : le vendeur d'une vente sans commercial attribué pour `OVERDUE_RECEIVABLE`, AV-463) ;
    - `TEAM_MANAGER` : le responsable de l'équipe du propriétaire à l'instant de l'événement, par l'API publique d'`organization` ; c'est « le responsable » de D13 §7.1 pour `SYNC_STALE`, `INACTIVE_COMMERCIAL`, `CASH_HOLDING_HIGH` et `APPROVAL_PENDING_LONG` ;
    - `APPROVER` : pour `APPROVAL_PENDING_LONG`, les titulaires de la permission d'approbation de la politique dans le périmètre de la demande, le demandeur exclu ;
    - `FALLBACK` : à défaut de tout destinataire, les titulaires du rôle `DIRECTION` (D13 §14).
@@ -74,7 +74,7 @@ La mise en œuvre a précisé six points de la décision ; la revue adverse de l
 1. **Boîte (§3, §9).** Le droit de lecture de la boîte dure autant que l'alerte est ouverte (`OPEN`, `ACKNOWLEDGED`) : une alerte résolue ou écartée n'est plus lue que par la supervision. `visibility` ne porte `RECIPIENT` que pour une alerte ouverte.
 2. **Notifications (§4).** Le corps d'une notification `IN_APP` d'alerte porteuse d'une valeur au coût est **rendu à la lecture** selon le droit courant du lecteur (`inventory.valuation.read` sur le site de l'alerte), comme le message de l'alerte : la valeur reçue pendant que le droit était détenu ne reste pas lisible après sa perte (RC-05). Le texte stocké, déjà poussé ou synchronisé, ne se rappelle pas.
 3. **Résumé (§3).** Exact en portée `ALL` (comptage en base) ; sinon l'ensemble visible est balayé et jugé ligne à ligne, jusqu'à 2 000 lignes, `truncated` n'étant vrai que si une ligne reste à balayer.
-4. **Index.** Aucun index sur `last_detected_at` : l'ensemble ouvert est petit et les alertes closes sont purgées à 2 ans ; à mesurer (`EXPLAIN`, RISK-13) en P9-22, avec les tableaux.
+4. **Index.** Aucun index sur `last_detected_at` : l'ensemble ouvert est petit et les alertes closes sont purgées à 2 ans ; non mesuré à la clôture de P9 (revue, PF-8 ; ADR-068, révision du 28/10/2026).
 
 ## Révision (P9-11 (3/3), 21/10/2026)
 
@@ -87,6 +87,14 @@ Les notifications **directes** d'événements du catalogue (AV-389), promises pa
 5. **Lecture.** `GET /notifications` rend la nature (`kind`) et l'objet source (`sourceType`, `sourceId`) de chaque notification ; `link` reste vide, l'écran construit la navigation.
 6. **Activation (AV-431).** Le réglage `communication.direct_notification_disabled_types` désactive des types, sans arrêter les événements.
 7. **Charge fautive.** Un événement d'un type direct dont la charge ne tient pas son contrat fait échouer le consommateur (échec consigné, `CONSUMER_FAILED`), jamais ignoré. `PurchaseRequestApproved` et `PurchaseRequestRejected` sont portés par les événements de décision de validation ; `DeviceEnrollmentRequested` n'est pas publié (AV-432).
+
+## Révision (P9-25, revue adverse, 28/10/2026)
+
+- **Destinataires (§1, AL-3).** Le propriétaire d'une alerte de créance échue est le commercial attribué, à défaut le vendeur de la vente (repli `ownerFallbackFields` du catalogue ; AV-463).
+- **Envoi push (§5, NT-4).** L'envoi est enveloppé : une exception ou un silence de l'adaptateur vaut `FAILED` ; chaque envoi a un délai d'attente de 3 s, la passe est plafonnée à 5 s (au moins un envoi par passe), et elle s'arrête après trois délais dépassés ; au plus deux points de terminaison muets sont retenus, un statut 404 ou 410 d'une exception se lit comme `GONE`. Contrat du port : `send` ne lève pas et honore le signal d'annulation. Les candidates sont lues sans verrou, puis la ligne retenue est verrouillée par clé primaire (`SKIP LOCKED`) (AV-365).
+- **Reprise sans abonnement (§5, NT-5).** Les lignes dont le destinataire n'a plus d'abonnement vivant ne sont plus lues par la reprise ; elles sont abandonnées après la fenêtre de reprise.
+- **Point de départ de l'escalade (§7, NT-3).** `critical_since` est l'instant du traitement par le serveur (levée ou relèvement effectif en `CRITICAL`), non la date du fait ; celle-ci reste dans `first_detected_at` (AV-466, AV-407 précisé).
+- **Reprise de l'escalade (§7, NT-7).** La reprise de l'escalade avance par curseur entre passes (en mémoire, propre au processus) et émet un avertissement agrégé par passe.
 
 ## Tests
 

@@ -9,6 +9,8 @@
  *   les mêmes identifiants d'événement (aucun doublon), un autre jour publie à nouveau chaque vente (le
  *   compteur d'occurrences de l'alerte avance d'un par jour de retard constaté).
  * - Aucune déduplication « par jour » : l'unicité de l'alerte ouverte est portée par la base.
+ * - **Propriétaire de l'alerte** : le commercial attribué, à défaut le vendeur (`seller_user_id`, P9-25
+ *   AL-3, AV-463), comme la portée par personne de `GET /receivables`.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { businessDayOf, type Clock, type IdGenerator } from '@gic/domain';
@@ -58,6 +60,7 @@ export class ReceivablesOverdueJob implements OnModuleInit {
             doc_number: line.docNumber,
             customer_id: line.customerId,
             commercial_user_id: line.commercialUserId,
+            seller_user_id: line.sellerUserId,
             site_id: line.siteId,
             zone_id: line.zoneId,
             due_date: line.dueDate,

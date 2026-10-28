@@ -16,7 +16,24 @@
  *   ne dispute jamais un export que le worker termine (P9-25, EX-1, EX-6).
  * - **Instantanés** : ceux des utilisateurs inactifs sont retirés par la tâche d'instantanés elle-même
  *   (`analytics.kpi_snapshots.refresh`, dernier lot de la passe).
+ *
+ * **Étapes isolées** (P9-25, PF-5). Ces rétentions sont des durées paramétrées (ADR-068 §8 : journal 90 jours, abandon
+ * 24 h, fichiers 30 jours) : une purge qui s'arrête en silence les rend lettre morte. Les étapes s'exécutent dans la
+ * transaction de la tâche, chacune sous un point de sauvegarde : l'échec d'une étape n'annule que ses propres
+ * écritures, il est consigné dans `failedSteps` (la tâche le journalise à l'erreur et reste `DONE`), et les autres
+ * étapes sont menées ; sans cela, l'échec du stockage faisait annuler aussi les suppressions du journal, rejouées cinq
+ * fois puis abandonnées jusqu'au lendemain. Un export fautif n'empêche pas les autres d'être abandonnés, un fichier
+ * qui résiste n'empêche pas les suivants d'être supprimés.
+ *
+ * **Ordre : journal, expiration, fichiers, abandon.** L'étape d'abandon audite (`recordAudit` verrouille la ligne
+ * unique `audit_chain_head`, rang N14 « toujours la dernière », ADR-038) : elle passe en dernier pour ne tenir ce
+ * verrou global que le temps de son propre travail, jamais pendant la suppression des fichiers. `ROLLBACK TO
+ * SAVEPOINT` ne relâche pas un verrou de ligne posé après le point de sauvegarde : si l'abandon échoue après un audit,
+ * le verrou de la chaîne reste tenu jusqu'à la fin de la transaction, sans conséquence tant que l'abandon est la
+ * dernière étape — **ne pas réordonner**. Conséquence de l'ordre : l'étape des fichiers voit encore `QUEUED` l'export
+ * que l'abandon traitera ensuite et ne touche pas à son fichier partiel ; c'est l'abandon qui le supprime (EX-1).
  */
+import { sql } from 'kysely';
 import type { Clock, IdGenerator } from '@gic/domain';
 import { recordAudit } from '../../../../audit/record-audit.js';
 import type { ChunkStorage } from '../../../../platform/storage/chunk-storage.js';
@@ -48,11 +65,52 @@ const QUERY_LOG_BATCH = 5_000;
 /** Lots de journal supprimés au plus par exécution (le reste attend le lendemain). */
 const QUERY_LOG_MAX_BATCHES = 20;
 
+export type PurgeStep = 'journal' | 'expiration' | 'fichiers' | 'abandon';
+
+/** Une étape (ou, pour les fichiers et l'abandon, un élément) que la purge n'a pas pu mener : reprise à la prochaine exécution. */
+export interface PurgeStepFailure {
+  readonly step: PurgeStep;
+  readonly message: string;
+}
+
 export interface PurgeOutcome {
   readonly queryLogDeleted: number;
   readonly exportsExpired: number;
   readonly exportFilesDeleted: number;
   readonly exportsAbandoned: number;
+  readonly failedSteps: readonly PurgeStepFailure[];
+}
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/**
+ * Exécute `run` sous un point de sauvegarde. S'il lève, ses écritures sont annulées, l'échec est ajouté à `failures` et
+ * `undefined` est rendu : l'appelant n'a ni compte partiel à reprendre, ni exception à traiter. Si le retour au point
+ * de sauvegarde échoue (interblocage dont MySQL fait sa victime, connexion perdue : la transaction entière est perdue),
+ * l'erreur d'origine remonte et la reprise est celle du `JobRunner`. Pas de `RELEASE SAVEPOINT` : MySQL remplace un
+ * point du même nom. Deux points de noms distincts s'imbriquent (l'étape d'abandon isole chaque export).
+ */
+async function isolatedStep<T>(
+  uow: UnitOfWork,
+  step: PurgeStep,
+  failures: PurgeStepFailure[],
+  run: () => Promise<T>,
+  savepoint: 'purge_step' | 'purge_item' = 'purge_step',
+): Promise<T | undefined> {
+  const point = sql.raw(savepoint);
+  await sql`SAVEPOINT ${point}`.execute(uow);
+  try {
+    return await run();
+  } catch (error) {
+    try {
+      await sql`ROLLBACK TO SAVEPOINT ${point}`.execute(uow);
+    } catch {
+      throw error;
+    }
+    failures.push({ step, message: messageOf(error) });
+    return undefined;
+  }
 }
 
 async function days(uow: UnitOfWork, key: string, at: Date, fallback: number): Promise<number> {
@@ -82,84 +140,134 @@ export async function runAnalyticsPurge(
     DEFAULT_EXPORT_FILE_RETENTION_DAYS,
   );
 
-  let queryLogDeleted = 0;
+  const failures: PurgeStepFailure[] = [];
+
+  // Journal : chaque étape rend SON compte ; celui d'une étape annulée ne remonte pas (ses suppressions sont annulées).
   const logCutoff = new Date(now.getTime() - queryLogDays * DAY_MS);
-  for (let batch = 0; batch < QUERY_LOG_MAX_BATCHES; batch += 1) {
-    const result = await uow
-      .deleteFrom('analytics_query_log')
-      .where('created_at', '<', logCutoff)
-      .limit(QUERY_LOG_BATCH)
-      .executeTakeFirst();
-    const deleted = Number(result.numDeletedRows);
-    queryLogDeleted += deleted;
-    if (deleted < QUERY_LOG_BATCH) break;
-  }
+  const queryLogDeleted =
+    (await isolatedStep(uow, 'journal', failures, async () => {
+      let total = 0;
+      for (let batch = 0; batch < QUERY_LOG_MAX_BATCHES; batch += 1) {
+        const result = await uow
+          .deleteFrom('analytics_query_log')
+          .where('created_at', '<', logCutoff)
+          .limit(QUERY_LOG_BATCH)
+          .executeTakeFirst();
+        const deleted = Number(result.numDeletedRows);
+        total += deleted;
+        if (deleted < QUERY_LOG_BATCH) break;
+      }
+      return total;
+    })) ?? 0;
 
-  let exportsExpired = 0;
-  for (const job of await expiredDoneExports(uow, now, BATCH)) {
-    await markExportExpired(uow, job.id);
-    exportsExpired += 1;
-  }
-
-  const { abandonHours } = await readExportSettings(uow, now);
-  let exportsAbandoned = 0;
-  for (const job of await lockAbandonedExports(
-    uow,
-    new Date(now.getTime() - abandonHours * HOUR_MS),
-    BATCH,
-  )) {
-    await markExportFailed(uow, {
-      id: job.id,
-      errorCode: 'EXPORT_ABANDONED',
-      durationMs: 0,
-      finishedAt: now,
-    });
-    // Une fin sans calcul est tout de même auditée (INV-ANA-01) : au nom du demandeur, motif dans le code d'erreur.
-    await recordAudit(uow, deps, {
-      occurredAt: now,
-      actorUserId: job.requestedBy,
-      actorRoles: [],
-      action: 'analytics.export.abandoned',
-      entityType: 'ANALYTICS_EXPORT',
-      entityId: job.id,
-      after: {
-        dataset: job.dataset,
-        format: job.format,
-        status: 'FAILED',
-        error_code: 'EXPORT_ABANDONED',
-      },
-      result: 'FAILED',
-      errorCode: 'EXPORT_ABANDONED',
-    });
-    // Le fichier partiel part après la mise à jour de la ligne, jamais avant (EX-1).
-    await deps.storage.delete(exportStorageKey(job.id));
-    exportsAbandoned += 1;
-  }
+  const exportsExpired =
+    (await isolatedStep(uow, 'expiration', failures, async () => {
+      let total = 0;
+      for (const job of await expiredDoneExports(uow, now, BATCH)) {
+        await markExportExpired(uow, job.id);
+        total += 1;
+      }
+      return total;
+    })) ?? 0;
 
   // Fichiers : ceux que le stockage porte, jugés sur l'état de leur export (EX-2). Une clé inconnue de la base n'est
   // jamais supprimée ; un export `EXPIRED` garde son fichier `fileDays` jours après sa création, un `FAILED` n'en
-  // garde aucun.
+  // garde aucun. Les suppressions de fichiers ne sont pas transactionnelles : le compte est tenu hors de l'étape (il
+  // reflète les fichiers réellement supprimés même si l'étape échoue ensuite), et une clé qui résiste n'empêche pas les
+  // suivantes (un seul échec consigné pour l'étape, avec le nombre de fichiers restants et la première cause).
   let exportFilesDeleted = 0;
   const filesBefore = new Date(now.getTime() - fileDays * DAY_MS);
-  const keys = (await deps.storage.listKeys(EXPORT_STORAGE_PREFIX)).slice(0, FILE_SCAN_MAX);
-  for (let start = 0; start < keys.length; start += FILE_STATE_BATCH) {
-    const batch = keys.slice(start, start + FILE_STATE_BATCH);
-    const states = await exportFileStates(
-      uow,
-      batch.flatMap((key) => exportIdOfStorageKey(key) ?? []),
-    );
-    for (const key of batch) {
-      const id = exportIdOfStorageKey(key);
-      const state = id === null ? undefined : states.get(id);
-      if (state === undefined) continue;
-      const obsolete =
-        state.status === 'FAILED' ||
-        (state.status === 'EXPIRED' && state.createdAt.getTime() < filesBefore.getTime());
-      if (!obsolete) continue;
-      await deps.storage.delete(key);
-      exportFilesDeleted += 1;
+  await isolatedStep(uow, 'fichiers', failures, async () => {
+    const keys = (await deps.storage.listKeys(EXPORT_STORAGE_PREFIX)).slice(0, FILE_SCAN_MAX);
+    let unremoved = 0;
+    let firstCause: string | undefined;
+    for (let start = 0; start < keys.length; start += FILE_STATE_BATCH) {
+      const batch = keys.slice(start, start + FILE_STATE_BATCH);
+      const states = await exportFileStates(
+        uow,
+        batch.flatMap((key) => exportIdOfStorageKey(key) ?? []),
+      );
+      for (const key of batch) {
+        const id = exportIdOfStorageKey(key);
+        const state = id === null ? undefined : states.get(id);
+        if (state === undefined) continue;
+        const obsolete =
+          state.status === 'FAILED' ||
+          (state.status === 'EXPIRED' && state.createdAt.getTime() < filesBefore.getTime());
+        if (!obsolete) continue;
+        try {
+          await deps.storage.delete(key);
+          exportFilesDeleted += 1;
+        } catch (error) {
+          unremoved += 1;
+          if (firstCause === undefined) firstCause = messageOf(error);
+        }
+      }
     }
-  }
+    if (unremoved > 0) {
+      failures.push({
+        step: 'fichiers',
+        message: `${unremoved} fichier(s) non supprimé(s) (première cause : ${firstCause ?? 'inconnue'})`,
+      });
+    }
+  });
 
-  return { queryLogDeleted, exportsExpired, exportFilesDeleted, exportsAbandoned };
+  // Abandon, en dernier (verrou de la chaîne d'audit : en-tête). Un point de sauvegarde par export : un export
+  // fautif n'annule ni ne retient les autres. Ordre du corps inchangé (EX-1) : mise à jour de la ligne, audit, puis
+  // suppression du fichier partiel.
+  const exportsAbandoned =
+    (await isolatedStep(uow, 'abandon', failures, async () => {
+      const { abandonHours } = await readExportSettings(uow, now);
+      let total = 0;
+      for (const job of await lockAbandonedExports(
+        uow,
+        new Date(now.getTime() - abandonHours * HOUR_MS),
+        BATCH,
+      )) {
+        const abandoned = await isolatedStep(
+          uow,
+          'abandon',
+          failures,
+          async () => {
+            await markExportFailed(uow, {
+              id: job.id,
+              errorCode: 'EXPORT_ABANDONED',
+              durationMs: 0,
+              finishedAt: now,
+            });
+            // Une fin sans calcul est tout de même auditée (INV-ANA-01) : au nom du demandeur, motif dans le code d'erreur.
+            await recordAudit(uow, deps, {
+              occurredAt: now,
+              actorUserId: job.requestedBy,
+              actorRoles: [],
+              action: 'analytics.export.abandoned',
+              entityType: 'ANALYTICS_EXPORT',
+              entityId: job.id,
+              after: {
+                dataset: job.dataset,
+                format: job.format,
+                status: 'FAILED',
+                error_code: 'EXPORT_ABANDONED',
+              },
+              result: 'FAILED',
+              errorCode: 'EXPORT_ABANDONED',
+            });
+            // Le fichier partiel part après la mise à jour de la ligne, jamais avant (EX-1).
+            await deps.storage.delete(exportStorageKey(job.id));
+            return true;
+          },
+          'purge_item',
+        );
+        if (abandoned === true) total += 1;
+      }
+      return total;
+    })) ?? 0;
+
+  return {
+    queryLogDeleted,
+    exportsExpired,
+    exportFilesDeleted,
+    exportsAbandoned,
+    failedSteps: failures,
+  };
 }

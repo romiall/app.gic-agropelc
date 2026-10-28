@@ -25,6 +25,7 @@ import {
   businessDayOf,
   highLossAlertXafOrDefault,
   isHighLossAbsolute,
+  isValidHighLossAlertXaf,
   mortalityRequiresApproval,
   type IdGenerator,
 } from '@gic/domain';
@@ -52,11 +53,8 @@ import { hasAvailableAttachment } from '../../../attachments/application/public/
 import { recordStockMove } from './record-move.js';
 import { lotHeadcount } from './lot-headcount.js';
 import { dayLossByLocation } from './loss-summary.js';
-import {
-  locationAlertInfo,
-  publishHighLossEvent,
-  siteThenGlobalSetting,
-} from '../inventory-alert-events.js';
+import { siteThenGlobalSetting } from '../../../organization/application/public/index.js';
+import { locationAlertInfo, publishHighLossEvent } from '../inventory-alert-events.js';
 import {
   allocationWarnings,
   loadLocationSite,
@@ -340,6 +338,7 @@ async function signalHighLoss(
       'inventory.high_loss_alert_xaf',
       input.siteId,
       input.occurredAt,
+      isValidHighLossAlertXaf,
     ),
   );
   if (!isHighLossAbsolute({ valueXaf: day.valueXaf, thresholdXaf })) return;

@@ -19,8 +19,14 @@ import type { DB } from '../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
 import {
   alertDetail,
+  noteDetail,
   notificationBodies,
 } from '../modules/communication/application/public/index.js';
+import { hasPermissionAt } from '../modules/identity/application/public/index.js';
+import { IdentityNoteAudienceResolver } from '../communication-api/identity-note-audience-resolver.js';
+
+/** L'adaptateur d'audience des notes est sans état : une instance suffit au lecteur `NOTE`. */
+const noteAudience = new IdentityNoteAudienceResolver();
 
 /**
  * Signature de `EntityProjectionReader` (`entity-projections.ts`), recopiée ici : ce fichier est importé par
@@ -123,7 +129,9 @@ export const COMMUNICATION_PROJECTIONS: Readonly<Record<string, ProjectionReader
    * Une note publiée, non expirée, de l'utilisateur, avec **son** état de lecture (dictionnaire
    * `communication.note_acknowledgements` : l'accusé voyage dans la note, `read_at` et `acknowledged_at`).
    * L'audience n'est pas jointe : l'appareil n'a pas à la connaître. Servie seulement à qui la note a été
-   * notifiée ou qui l'a lue (aucune fuite par une ligne émise à tort).
+   * notifiée ou qui l'a lue (aucune fuite par une ligne émise à tort), **et** qui, à l'instant de la lecture,
+   * détient `comm.note.read` et fait encore partie de l'audience (P9-25, NT-2 : la règle de `GET /notes/{id}`,
+   * `noteDetail`) ; sinon rien n'est servi.
    */
   NOTE: async (executor, entityId, context) => {
     const userId = userOf(context);
@@ -165,6 +173,15 @@ export const COMMUNICATION_PROJECTIONS: Readonly<Record<string, ProjectionReader
         .executeTakeFirst();
       if (notified === undefined) return undefined;
     }
+    const now = new Date();
+    if (!(await hasPermissionAt(executor, toBin(userId), 'comm.note.read', now))) return undefined;
+    const visible = await noteDetail(executor, noteAudience, {
+      userId,
+      at: now,
+      id: entityId,
+      canManage: false,
+    });
+    if (visible === null) return undefined;
     return {
       id: fromBin(note.id),
       title: note.title,

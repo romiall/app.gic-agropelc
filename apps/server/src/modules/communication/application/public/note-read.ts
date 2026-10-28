@@ -17,7 +17,8 @@
  *   archivée. La gestion voit tout, sauf le brouillon d'un autre. Hors de ces cas : `null` (404 opaque).
  * - **Suivi des accusés** : l'audience résolue **maintenant** (l'auteur excepté) réunie aux utilisateurs qui ont
  *   une ligne de lecture ; « manquants » = les utilisateurs de l'audience sans accusé (note à accusé requis) ou
- *   sans lecture (note simple). Les noms sont ajoutés par la couche de transport (`identity`).
+ *   sans lecture (note simple). Les noms sont ajoutés par la couche de transport (`identity`). La liste des
+ *   manquants est plafonnée à {@link NOTE_FOLLOW_UP_MISSING_MAX} ; `missingTotal` en donne le nombre exact (NT-6).
  */
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
@@ -392,15 +393,34 @@ export interface NoteAcknowledgementFollowUp {
   readonly audienceSize: number;
   readonly read: number;
   readonly acknowledged: number;
-  /** Utilisateurs de l'audience sans accusé (note à accusé requis) ou sans lecture (note simple), triés. */
+  /** Nombre exact des utilisateurs de l'audience sans accusé (ou sans lecture), au-delà du plafond de la liste. */
+  readonly missingTotal: number;
+  /**
+   * Utilisateurs de l'audience sans accusé (note à accusé requis) ou sans lecture (note simple), triés : les
+   * premiers seulement, au plus {@link NOTE_FOLLOW_UP_MISSING_MAX} (`missingTotal` dit le nombre exact).
+   */
   readonly missingUserIds: readonly string[];
 }
 
-/** Suivi des accusés d'une note pour la gestion ; `null` si la note est inconnue ou est le brouillon d'un autre. */
+/**
+ * Personnes citées au plus par le suivi des accusés. Valeur technique, non métier (AV-429) : la coupure est
+ * rendue visible par `missingTotal` et `truncated` (NT-6).
+ */
+export const NOTE_FOLLOW_UP_MISSING_MAX = 1000;
+
+/**
+ * Suivi des accusés d'une note pour la gestion ; `null` si la note est inconnue ou est le brouillon d'un autre.
+ * `missingMax` n'existe que pour les essais (défaut : {@link NOTE_FOLLOW_UP_MISSING_MAX}).
+ */
 export async function noteAcknowledgementFollowUp(
   executor: Executor,
   resolver: NoteAudienceResolver,
-  input: { readonly userId: string; readonly at: Date; readonly id: string },
+  input: {
+    readonly userId: string;
+    readonly at: Date;
+    readonly id: string;
+    readonly missingMax?: number;
+  },
 ): Promise<NoteAcknowledgementFollowUp | null> {
   const row = await executor
     .selectFrom('communication_internal_notes')
@@ -421,6 +441,7 @@ export async function noteAcknowledgementFollowUp(
       audienceSize: 0,
       read: 0,
       acknowledged: 0,
+      missingTotal: 0,
       missingUserIds: [],
     };
   }
@@ -440,12 +461,14 @@ export async function noteAcknowledgementFollowUp(
   );
   const readBy = new Set(acks.map((ack) => fromBin(ack.user_id)));
   const done = requiresAck ? acknowledgedBy : readBy;
+  const missing = audience.filter((userId) => !done.has(userId)).sort();
   return {
     noteId,
     requiresAck,
     audienceSize: new Set([...audience, ...readBy]).size,
     read: readBy.size,
     acknowledged: acknowledgedBy.size,
-    missingUserIds: audience.filter((userId) => !done.has(userId)).sort(),
+    missingTotal: missing.length,
+    missingUserIds: missing.slice(0, input.missingMax ?? NOTE_FOLLOW_UP_MISSING_MAX),
   };
 }

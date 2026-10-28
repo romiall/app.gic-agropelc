@@ -202,7 +202,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `sync.pull_settle_seconds` | 120 | AV-198 (fenêtre de stabilisation de la numérotation du flux) |
 | `sync.pull_record_grain_seconds` | 60 | AV-319 (pas d'enregistrement du dernier pull d'un appareil ; 0 = chaque tirage écrit) |
 | `sync.backdate_max_hours` / `justification_after_hours` | 72 / 24 | AV-078 |
-| `crm.inactive_after_days` | 30 | AV-013 |
+| `crm.inactive_after_days` | 30 | AV-013 (jours > 0 ; un client sans vente depuis N jours est inactif : KPI-COM-13 et 14 des tableaux, des instantanés et de l'accueil ; entier entre 1 et 36 500, sinon 30) |
 | `crm.visit.max_distance_m` | 500 | BR-CRM-015 |
 | `crm.phone_default_country_code` | 237 | BR-CRM-006 (DÉDUIT : indicatif d'un numéro national) |
 | `procurement.receipt_over_tolerance_pct` | 0 | AV-053 (acceptation au-delà du commandé, en % du commandé) |
@@ -247,20 +247,22 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `finance.supplier_series_code` | `SIEGE` | ADR-043 §10 : série globale des factures (`FF`) et paiements (`PF`) fournisseurs (1 à 10 lettres majuscules ou chiffres) |
 | `procurement.po_approval_threshold_xaf` | 500 000 | AV-051 |
 | `inventory.count_approval_threshold_xaf` | 25 000 | AV-039 |
-| `inventory.transfer_unmatched_hours` | 48 | BR-STK-024 |
-| `inventory.blind_receipt_match_mode` | `SUBSET` | AV-177 : règle de rapprochement d'une réception sans document (`SUBSET` : produits reçus inclus dans les produits expédiés ; `EXACT` : mêmes produits et mêmes quantités) ; lue au site, puis globale |
+| `inventory.transfer_unmatched_hours` | 48 | BR-STK-024 ; une valeur de site inexploitable cède au réglage global (P9-25, AL-1) |
+| `inventory.blind_receipt_match_mode` | `SUBSET` | AV-177 : règle de rapprochement d'une réception sans document (`SUBSET` : produits reçus inclus dans les produits expédiés ; `EXACT` : mêmes produits et mêmes quantités) ; lue au site, puis globale ; une valeur de site inexploitable cède au réglage global (P9-25, AL-1) |
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |
 | `analytics.dashboard_max_period_days` | 366 | AV-207 (P5-20) : durée maximale, en jours, d'une période bornée (`from`/`to`) d'un tableau de bord ; entier > 0, sinon 366 |
 | `analytics.query_max_rows` | 10000 | AV-371 (P9-14) : lignes affichées au plus par l'explorateur (BR-ANA-006) ; au-delà, `QUERY_LIMIT_EXCEEDED` ; entier > 0, sinon 10 000 |
-| `analytics.query_max_execution_ms` | 15000 | AV-371 (P9-14) : durée d'exécution maximale d'une requête de l'explorateur, en millisecondes (`MAX_EXECUTION_TIME`) ; entier > 0, sinon 15 000 |
+| `analytics.query_max_execution_ms` | 15000 | AV-371 (P9-14) : durée d'exécution maximale d'une requête de l'explorateur, en millisecondes (`MAX_EXECUTION_TIME`) ; vaut pour l'exploration entière (lignes et total compris : le total reçoit le temps qui reste après les lignes, P9-25, EP-2) ; entier > 0, sinon 15 000 |
 | `analytics.query_max_period_days` | 1096 | AV-371 (P9-14) : période détaillée au plus, en jours (trois ans, D11 §8) ; entier > 0, sinon 1 096 |
 | `analytics.query_max_concurrent_per_user` | 2 | AV-371 (P9-14) : requêtes simultanées au plus par utilisateur (ADR-068 §1) ; entier > 0, sinon 2 |
+| `analytics.query_max_concurrent_global` | 4 | AV-461 (P9-25, EP-2, PF-4) : requêtes de l'explorateur simultanées au plus, tous utilisateurs confondus (emplacements globaux) ; au-delà, `429 QUERY_LIMIT_EXCEEDED` (détail `concurrency`) ; entier > 0, sinon 4 |
 | `analytics.scope_max_candidates` | 500 | AV-373 (P9-14) : candidats (sites, zones, utilisateurs) au plus par sorte dans l'étendue exacte des lignes ; entier > 0, sinon 500 ; au-delà, l'étendue est tronquée et signalée |
 | `analytics.pending_approvals_count_cap` | 500 | ADR-066 §4 (P9-17) : plafond du compteur de validations en attente d'un tableau (balayage borné) ; entier > 0, sinon 500 |
 | `analytics.snapshot_active_days` | 7 | AV-380, AV-448 (P9-18) : un utilisateur est actif pour les instantanés si une session ouverte sur un appareil en service a servi depuis ce nombre de jours ; entier > 0, sinon 7 |
 | `analytics.snapshot_batch_size` | 50 | AV-448 (P9-18) : utilisateurs traités au plus par exécution de la tâche d'instantanés (reprise par une tâche de suite) ; entier > 0, sinon 50 |
+| `analytics.snapshot_time_budget_seconds` | 60 | AV-448, ADR-068 §3 (P9-25, TB-8, PF-9) : durée maximale, en secondes, de la boucle sur les utilisateurs d'une exécution de la tâche d'instantanés (au moins un utilisateur est traité) ; passé ce délai, le lot s'arrête et une tâche de reprise est déposée ; à garder inférieure à `sync.pull_settle_seconds` (120), sans quoi les lignes publiées au flux forment un trou que le pull saute ; entier > 0, sinon 60 |
 | `analytics.export_max_rows` | 100000 | AV-383 (P9-20, NFR-13) : lignes d'un export au plus ; au-delà, l'export termine `FAILED` `QUERY_LIMIT_EXCEEDED`, jamais tronqué ; entier > 0, sinon 100 000 |
-| `analytics.export_max_seconds` | 120 | AV-383 (P9-20) : durée de calcul d'un export au plus, en secondes ; entier > 0, sinon 120 |
+| `analytics.export_max_seconds` | 120 | AV-383 (P9-20) : durée de calcul d'un export au plus, en secondes (lignes et total compris) ; entier > 0, sinon 120 |
 | `analytics.export_file_hours` | 24 | AV-383, AV-447 (P9-20) : validité du fichier d'un export, en heures, comptée depuis la demande (l'échéance est immuable) ; entier > 0, sinon 24 |
 | `analytics.export_max_pending_per_user` | 3 | AV-447 (P9-20) : exports en file ou en cours au plus par demandeur ; entier > 0, sinon 3 |
 | `analytics.export_abandon_hours` | 24 | AV-383 (P9-25, EX-6) : un export encore en file ou en cours plus de ce nombre d'heures après la demande est abandonné par la purge (`FAILED` `EXPORT_ABANDONED`) ; entier > 0, sinon 24 |
@@ -269,17 +271,21 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `analytics.query_log_retention_days` | 90 | AV-387 (P9-22, ADR-068 §8) : les lignes du journal des requêtes de l'explorateur de plus de ce nombre de jours sont supprimées ; entier > 0, sinon 90 |
 | `communication.push_group_minutes` | 15 | AV-366, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
 | `communication.direct_notification_disabled_types` | `[]` | AV-431 (P9-11) : types d'événements dont la notification directe est désactivée (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferRequested`, `StockTransferDispatched`) ; une valeur qui n'est pas une liste de types connus ne désactive rien |
-| `communication.consumer_lag_alert_seconds` | 300 | AV-362, AV-388 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 |
+| `communication.consumer_lag_alert_seconds` | 300 | AV-362, AV-388 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 ; sert aussi de seuil au retard en secondes de `GET /health/ready` (AV-469) |
 | `communication.consumer_failure_window_hours` | 24 | AV-362, AV-425 (P9-10) : fenêtre glissante dans laquelle un événement sauté après échecs persistants maintient `CONSUMER_FAILED` ouverte ; nombre > 0 plafonné à 87 600, sinon 24 |
-| `communication.alert_retention_days` | 730 | AV-387 (P9-03) : conservation d'une alerte résolue, en jours |
-| `communication.notification_retention_days` | 90 | AV-387 (P9-03) : conservation d'une notification lue, en jours |
+| `platform.job_lag_alert_seconds` | 600 | AV-469 (P9-25, PF-6) : âge, en secondes, de la plus ancienne tâche due non traitée au-delà duquel `GET /health/ready` répond `503 WORKER_LAG` ; nombre > 0 plafonné à dix ans, sinon 600 |
+| `platform.failed_jobs_window_hours` | 24 | AV-469 (P9-25, PF-6) : fenêtre, en heures, sur laquelle `GET /health/ready` compte les tâches passées `FAILED` (information, jamais un refus) ; nombre > 0 plafonné à 87 600, sinon 24 |
+| `communication.alert_retention_days` | 730 | AV-387 (P9-03) : conservation d'une alerte résolue, en jours ; entier ≥ 730 ; en deçà, 730 s'applique (plancher du déclencheur `trg_communication_alerts_purge_guard`) ; purge par le script `db:purge-alerts` |
+| `communication.notification_retention_days` | 90 | AV-387 (P9-03) : une notification lue (ou une ligne d'envoi `WEB_PUSH`) de plus de ce nombre de jours est supprimée par `communication.maintenance.purge_daily`, sauf notification d'une note encore publiée ; entier > 0, sinon 90 |
+| `platform.job_retention_days` | 30 | AV-472 (P9-25, PF-7 ; ADR-068 §8, 03-historisation-suppression.md §3) : une tâche terminée (`DONE` ou `FAILED`) de `platform_jobs` dont la dernière échéance (`run_at`) a plus de ce nombre de jours est supprimée par `communication.maintenance.purge_daily`, jamais une tâche `PENDING` ; entier > 0 (plafonné à 36 500), sinon 30 |
+| `platform.consumer_failure_retention_days` | 90 | AV-472, AV-425 (P9-25, PF-7 ; ADR-068 §8) : un saut de consommateur (`platform_event_consumer_failures`) de plus de ce nombre de jours est supprimé par `communication.maintenance.purge_daily`, jamais en deçà de la fenêtre `communication.consumer_failure_window_hours` (qui maintient `CONSUMER_FAILED` ouverte) ; entier > 0 (plafonné à 36 500), sinon 90 |
 | `approvals.pending_long_hours` | 24 | AV-358, AV-416 (P9-03, P9-09) : délai, en heures depuis la réception de la demande par le serveur (borne comprise), au-delà duquel une demande de validation en attente est signalée et escaladée (`escalated_at`) ; nombre > 0, sinon 24 |
 | `attachments.missing_alert_days` | 7 | AV-357, AV-399 (P9-03, P9-07) : jours sans justificatif avant l'alerte `ATTACHMENT_MISSING` ; compté depuis la réception par le serveur ; 0 désactive l'alerte et ferme celles qui sont ouvertes ; entier ≥ 0, sinon 7 |
 | `attachments.missing_alert_horizon_days` | 90 | AV-399 (P9-07) : horizon du balayage des justificatifs manquants, en jours ; au moins le délai plus un jour ; entier > 0, sinon 90 |
 | `procurement.receipt_incomplete_alert_days` | 2 | BR-APP-015, AV-360, AV-414 (P9-03, P9-09) : jours métier de retard sur la date prévue du bon au-delà desquels (strict : « plus de 2 jours ») un bon avec reliquat est signalé ; entier ≥ 0 (0 : dès le lendemain), sinon 2 ; la lecture est globale |
-| `inventory.high_loss_alert_xaf` | 50 000 | AV-356, AV-403 (P9-03, P9-08) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour métier du fait ; lu à la déclaration (site, à défaut global) ; nombre ≥ 0, sinon 50 000 ; une perte sans valeur n'alerte jamais |
-| `sales.high_loss_alert_sales_pct` | 5 | AV-356, AV-405 (P9-03, P9-08) : part du CA net du jour du site au-delà de laquelle la perte d'un emplacement est signalée, en % ; nombre > 0, sinon 5 |
-| `inventory.transfer_not_received_hours` | 48 | AV-065, AV-408 (P9-03, P9-08) : délai de l'alerte `TRANSFER_NOT_RECEIVED`, compté depuis l'expédition ; site de l'expéditeur, à défaut global ; nombre > 0, sinon 48 |
+| `inventory.high_loss_alert_xaf` | 50 000 | AV-356, AV-403 (P9-03, P9-08) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour métier du fait ; lu à la déclaration (site, à défaut global) ; nombre ≥ 0, sinon 50 000 ; une perte sans valeur n'alerte jamais ; une valeur de site inexploitable cède au réglage global (P9-25, AL-1) |
+| `sales.high_loss_alert_sales_pct` | 5 | AV-356, AV-405 (P9-03, P9-08) : part du CA net du jour du site au-delà de laquelle la perte d'un emplacement est signalée, en % ; nombre > 0, sinon 5 ; une valeur de site inexploitable cède au réglage global (P9-25, AL-1) |
+| `inventory.transfer_not_received_hours` | 48 | AV-065, AV-408 (P9-03, P9-08) : délai de l'alerte `TRANSFER_NOT_RECEIVED`, compté depuis l'expédition ; site de l'expéditeur, à défaut global ; nombre > 0, sinon 48 ; une valeur de site inexploitable cède au réglage global (P9-25, AL-1) |
 | `inventory.lot_expiring_days` | 15 | AV-065, AV-404 (P9-03, P9-08) : jours avant péremption pour l'alerte `LOT_EXPIRING` ; entier ≥ 0 (plafonné à 3 650), sinon 15 ; 0 : seulement les lots périmant aujourd'hui ou déjà périmés |
 | `inventory.replenish_alert_scope` | `BELOW_TARGET` | AV-402 (P9-08) : condition de l'alerte `POS_REPLENISH` — `BELOW_TARGET` (la suggestion « cible − disponible − transit entrant » est positive, D13 littéral) ou `BELOW_MINIMUM` (aussi sous le minimum du point de vente) ; autre valeur : `BELOW_TARGET` |
 | `sales.commercial_working_days` | `["1","2","3","4","5","6"]` | BR-TER-013, AV-359 (P9-03) : jours ouvrés ISO (1 = lundi) suivis par l'alerte `INACTIVE_COMMERCIAL` ; liste vide ou invalide : lundi à samedi |

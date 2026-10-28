@@ -19,6 +19,7 @@ export type {
 export { scopeCondition, scopeConditions } from '../scope/scope-sql.js';
 export type { ScopedDataset } from '../scope/scope-sql.js';
 export { compileExploration, escapeLike } from '../query/compile-exploration.js';
+export { zoneDescendantsOf } from '../query/zone-filters.js';
 export type {
   CompiledColumn,
   CompiledExploration,
@@ -33,7 +34,14 @@ export {
 export type { ExplorerLimits } from '../query/limits.js';
 export { recordQueryLog } from '../query/query-log.js';
 export type { QueryLogEntry, QueryOutcome } from '../query/query-log.js';
-export { acquireQuerySlot, querySlotName, releaseQuerySlot } from '../query/query-slots.js';
+export {
+  acquireGlobalQuerySlot,
+  acquireQuerySlot,
+  globalQuerySlotName,
+  querySlotName,
+  releaseGlobalQuerySlot,
+  releaseQuerySlot,
+} from '../query/query-slots.js';
 export {
   ExplorationLimitError,
   executeExploration,
@@ -59,6 +67,13 @@ export type {
   SnapshotPeriodKey,
   StoredSnapshot,
 } from '../snapshots/snapshot-store.js';
+// TB-7 : lecture revérifiée des instantanés (route et jeu hors ligne `kpi`).
+export {
+  readableSnapshotOf,
+  readableSnapshotsOf,
+  revalidatedSnapshot,
+  snapshotReadPermission,
+} from '../snapshots/snapshot-access.js';
 
 // P9-19 : vues sauvegardées (lecture avec exécutabilité) ; P9-20 : exports (lecture du demandeur, clé du fichier).
 export { VIEWS_LIST_LIMIT, listReadableViews, readReadableView } from '../views/view-read.js';

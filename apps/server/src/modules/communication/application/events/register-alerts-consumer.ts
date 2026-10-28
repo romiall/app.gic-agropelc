@@ -33,6 +33,7 @@ export class AlertsConsumerRegistrar implements OnModuleInit {
   onModuleInit(): void {
     registerAlertsConsumer(this.registry, {
       idGenerator: this.idGenerator,
+      clock: this.clock,
       afterRaise: createAlertNotifier({
         idGenerator: this.idGenerator,
         clock: this.clock,

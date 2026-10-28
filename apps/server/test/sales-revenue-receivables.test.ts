@@ -677,6 +677,13 @@ describe('créances, CA et marges (P4-09)', () => {
       expect(events.map((e) => (e.payload as { days_overdue: number }).days_overdue)).toEqual([
         15, 15,
       ]);
+      // P9-25, AL-3 (AV-463) : la charge utile porte le vendeur, repli de propriétaire de l'alerte.
+      for (const id of [first, second]) {
+        const event = events.find((e) => fromBin(e.aggregate_id) === id)!;
+        expect((event.payload as { seller_user_id: string }).seller_user_id).toBe(
+          fromBin((await saleRow(id)).seller_user_id),
+        );
+      }
     },
   );
 });

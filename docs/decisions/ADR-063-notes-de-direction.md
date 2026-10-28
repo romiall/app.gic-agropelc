@@ -39,6 +39,12 @@ Faits : la spécification de synchronisation donne au jeu `comms` la portée `US
 - **Lectures (précise les §3, §5 et §6 ; AV-429).** Le centre de notes d'un lecteur liste les notes publiées et non expirées que la règle d'audience désigne **à l'instant de la lecture** (les 500 plus récentes examinées, avec les 500 plus récentes des notes à accusé requis non accusées : une note à accuser n'en sort pas parce que d'autres l'ont dépassée), avec l'état du lecteur, le compteur des accusés attendus sur ce balayage et un indicateur `truncated` quand un plafond est atteint ; la gestion (`comm.note.publish`) liste toutes les notes avec leur audience mais les seuls brouillons du lecteur ; la fiche d'un lecteur est une note publiée qui le touche, même expirée (jamais un brouillon ni une note archivée) ; le suivi des accusés résout l'audience maintenant, l'auteur excepté. Tout refus de visibilité est un 404 opaque audité.
 - **Exécution.** Les trois commandes de rédaction et l'accusé s'exécutent en lecture validée : aucun verrou d'intervalle n'est posé sur une clé absente, la clé primaire de la note et de la ligne d'accusé arbitre deux créations simultanées.
 
+## Révision (P9-25, revue adverse, 28/10/2026)
+
+- **Retrait d'une note (NT-6).** Retirer une note marque lues ses notifications non lues (`read_at` = date du retrait) et les sort du jeu `comms` : `read_at` signifie désormais « n'attend plus l'utilisateur », même sans lecture, et la purge à 90 jours après lecture s'applique à ces lignes (AV-471).
+- **Suivi des accusés.** `GET /notes/{id}/acknowledgements` rend `missingTotal` (nombre exact) et `truncated` (coupure à 1 000 noms) ; le suivi n'est pas paginé (AV-429).
+- **Limite.** Le retrait verrouille la note puis ses notifications, alors que `communication.notification.read` verrouille par l'index `(user_id, read_at)` : un interblocage possible est converti en `RETRY_LATER`, même schéma qu'entre accusé et lecture.
+
 ## Tests
 
 Immuabilité (commande et base, y compris les lignes d'audience ; mutation sur le déclencheur), audience en ligne (tous, rôle, site, zone avec descendantes, utilisateur ; affectation postérieure), lignes de flux par utilisateur résolu (pull réel : un utilisateur hors audience ne reçoit rien), expiration, archivage, accusé idempotent et hors ligne (AT-048), accusé d'une note archivée depuis, note corrective, brouillon abandonné, aucune écriture hors `communication_*` (BR-NOT-007).

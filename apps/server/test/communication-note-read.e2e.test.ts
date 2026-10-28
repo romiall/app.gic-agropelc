@@ -474,7 +474,14 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       expect(response.statusCode, response.body).toBe(200);
       const body = noteAcknowledgementsResponseSchema.parse(response.json());
       // Note du site A à accusé requis : le vendeur du site A (a accusé) et l'affectation de zone qui le couvre.
-      expect(body).toMatchObject({ noteId: notes.a, audienceSize: 2, read: 1, acknowledged: 1 });
+      expect(body).toMatchObject({
+        noteId: notes.a,
+        audienceSize: 2,
+        read: 1,
+        acknowledged: 1,
+        missingTotal: 1,
+        truncated: false,
+      });
       const staff = await db
         .selectFrom('identity_users')
         .select('full_name')
@@ -486,7 +493,13 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       const simple = noteAcknowledgementsResponseSchema.parse(
         (await get(director, `/api/v1/notes/${notes.zone}/acknowledgements`)).json(),
       );
-      expect(simple).toMatchObject({ audienceSize: 3, read: 0, acknowledged: 0 });
+      expect(simple).toMatchObject({
+        audienceSize: 3,
+        read: 0,
+        acknowledged: 0,
+        missingTotal: 3,
+        truncated: false,
+      });
       expect(simple.missing.map((m) => m.userId).sort()).toEqual(
         [sellerA.userId, sellerB.userId, zoneStaff.userId].sort(),
       );

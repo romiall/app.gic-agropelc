@@ -9,6 +9,7 @@ import type { DatasetDefinition } from '@gic/domain';
 import { datasetOf } from '@gic/domain';
 import { sourceOf } from '../src/analytics-api/analytics-explorer.controller.js';
 import { snapshotKpisOf } from '../src/analytics-api/jobs/kpi-snapshots-refresh-job.js';
+import { ANALYTICS_PURGE_JOB_TYPE } from '../src/modules/analytics/application/jobs/analytics-jobs.js';
 import { JobHandlerRegistry } from '../src/platform/jobs/job-handler-registry.js';
 import { LONG_RUNNING_JOB_TYPES } from '../src/platform/jobs/job-lanes.js';
 import { JobRunner } from '../src/platform/jobs/job-runner.js';
@@ -113,11 +114,18 @@ describe('document source d’une ligne (P9-21)', () => {
 describe('voie longue du worker (P9-22 ; ADR-068 §3)', () => {
   const NOW = new Date('2026-09-24T12:00:00.000Z');
 
-  it('les tâches longues sont l’export et les instantanés', () => {
+  it('les tâches longues sont l’export, les instantanés et la purge', () => {
     expect([...LONG_RUNNING_JOB_TYPES].sort()).toEqual([
       'analytics.export.run',
       'analytics.kpi_snapshots.refresh',
+      'analytics.maintenance.purge_daily',
     ]);
+  });
+
+  it('la purge quotidienne est sur la voie longue, l’export reste à l’indice 0 (P9-25, PF-5)', () => {
+    expect(LONG_RUNNING_JOB_TYPES).toContain(ANALYTICS_PURGE_JOB_TYPE);
+    // La voie courte exclut la liste entière : la purge n'y est donc jamais réclamée.
+    expect(LONG_RUNNING_JOB_TYPES[0]).toBe('analytics.export.run');
   });
 
   it('la voie courte n’en réclame aucune, la voie longue les réclame seules', async () => {

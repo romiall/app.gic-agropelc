@@ -73,6 +73,8 @@ describe('paramètres des détecteurs', () => {
       'communication.alert_retention_days',
       'communication.notification_retention_days',
       'communication.direct_notification_disabled_types',
+      'platform.job_retention_days',
+      'platform.consumer_failure_retention_days',
     ]) {
       expect(SETTING_KEYS.has(key), key).toBe(true);
     }
@@ -80,6 +82,9 @@ describe('paramètres des détecteurs', () => {
     expect(value('communication.push_group_minutes')).toBe(15);
     expect(value('communication.alert_retention_days')).toBe(730);
     expect(value('communication.notification_retention_days')).toBe(90);
+    // PF-7 (AV-472) : rétention des tables techniques de la plateforme.
+    expect(value('platform.job_retention_days')).toBe(30);
+    expect(value('platform.consumer_failure_retention_days')).toBe(90);
     // Aucun type de notification directe n'est désactivé par défaut (AV-431).
     expect(value('communication.direct_notification_disabled_types')).toEqual([]);
     expect(value('approvals.pending_long_hours')).toBe(24);

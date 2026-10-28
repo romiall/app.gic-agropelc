@@ -27,7 +27,7 @@
 | API | Latence p50/p95/p99 par route et par type de commande ; taux d'erreurs 5xx ; 429 | p95 commande > 1 s pendant 10 min ; 5xx > 1 % |
 | Synchronisation | Commandes reçues par statut ; délai `received_at − client_created_at` (distribution) ; taille des lots ; conflits ouverts par type ; trous de séquence ; écart d'horloge | Conflits `STOCK_NEGATIVE` ouverts > 0 depuis plus de 24 h ; `REJECTED` > 2 % sur 1 h |
 | Appareils | Appareils actifs ; non synchronisés depuis plus de 24 h ; versions de l'application ; opérations en attente déclarées | > 10 % des appareils actifs non synchronisés depuis plus de 24 h |
-| Worker | Retard par consommateur (`max(seq) − last_seq`, et en secondes) ; tâches en échec ; durée des tâches planifiées | Retard > 60 s pendant 5 min ; tâche planifiée en échec |
+| Worker | Retard par consommateur (`max(seq) − last_seq`, et en secondes) ; tâches en échec ; durée des tâches planifiées. Livré en P9-25 (PF-6, AV-469) : retard des consommateurs en secondes, âge de la plus ancienne tâche due et nombre de tâches `FAILED` sur la fenêtre, lus par `GET /health/ready` ; chaque échec de tâche est journalisé. Reste à la supervision externe : l'alerte sur `failed_jobs` et l'absence de battement de cœur | Retard > 60 s pendant 5 min ; tâche planifiée en échec |
 | Intégration | Messages Kommo `PENDING` / `DEAD` ; âge du plus ancien | `DEAD` > 0 ; âge > 1 h |
 | Base de données | Connexions, requêtes lentes (> 1 s), taille des tables et partitions, retard de réplication (si réplique), stockage | Espace > 80 % |
 | Intégrité | Résultat des réconciliations (registre de stock vs soldes ; trésorerie vs soldes) ; chaîne d'audit | Tout écart ≠ 0 |
@@ -56,4 +56,4 @@ Elles sont distinctes des alertes métier du module `communication` (D13) :
 ## 7. Sondes
 
 - Sonde externe de disponibilité toutes les minutes sur `/health` (NFR-17).
-- `/health/ready` : base joignable, migrations à jour, retard du worker < seuil.
+- `/health/ready` : base joignable, migrations à jour, retard du worker < seuil. Mesures livrées (P9-25, PF-6, AV-469) : retard des consommateurs en secondes (seuil `communication.consumer_lag_alert_seconds`), âge de la plus ancienne tâche due (seuil `platform.job_lag_alert_seconds`, `503 WORKER_LAG` au-delà) et tâches passées `FAILED` sur `platform.failed_jobs_window_hours`, rapportées sans refus. Limite : sans battement de cœur, un worker arrêté sans événement ni tâche due reste prêt jusqu'au premier travail en attente ; l'alerte sur `failed_jobs` et le battement de cœur relèvent de la supervision externe. L'échec d'une étape de purge n'est visible que dans le journal d'erreur de la tâche (PF-5).

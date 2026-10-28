@@ -9,7 +9,8 @@
  *   identique dont les 2 310 têtes sont vendues vivantes à 4 650 — CA 10 741 500, coût des ventes
  *   5 600 000, marge du lot 5 141 500 ;
  * - AT-027 : 30 morts sur un lot de 2 000 → validation requise (paramètres AV-048 : seuils à 0,
- *   photo) ; les têtes attendent la décision, comptées à part. L'alerte `HIGH_MORTALITY` est en P9 ;
+ *   photo) ; les têtes attendent la décision, comptées à part. L'alerte `HIGH_MORTALITY` est jouée
+ *   par `production-high-mortality-alert.test.ts` (P9-09) ;
  * - AT-052 : 40 porcs sur 2 cases ; 5 têtes déplacées d'une case à l'autre ; pesée d'échantillon ;
  *   effectif par case = solde de l'emplacement, effectif du groupe inchangé, aucun identifiant
  *   individuel. Part P4 (P4-13) : 3 têtes vendues à la tête (prix par tête) et 3 au kilo vif

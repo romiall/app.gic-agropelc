@@ -346,6 +346,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-371',
   },
+  // P9-25 (EP-2, PF-4) : plafond global des requêtes de l'explorateur, pour garder des connexions aux commandes.
+  {
+    key: 'analytics.query_max_concurrent_global',
+    value: 4,
+    isClientVisible: false,
+    ref: 'AV-461',
+  },
   { key: 'analytics.scope_max_candidates', value: 500, isClientVisible: false, ref: 'AV-373' },
   // P9-17 à P9-18 (ADR-066) : plafond du compte des validations en attente d'un tableau, et
   // instantanés personnels d'indicateurs (utilisateurs actifs depuis N jours, taille d'un lot par exécution).
@@ -357,6 +364,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'analytics.snapshot_active_days', value: 7, isClientVisible: false, ref: 'ADR-066' },
   { key: 'analytics.snapshot_batch_size', value: 50, isClientVisible: false, ref: 'ADR-066' },
+  // P9-25 (TB-8, PF-9) : durée maximale de la boucle sur les utilisateurs d'une exécution de la tâche d'instantanés.
+  {
+    key: 'analytics.snapshot_time_budget_seconds',
+    value: 60,
+    isClientVisible: false,
+    ref: 'AV-448, ADR-068 §3',
+  },
   // P9-20 à P9-22 (ADR-067 §3, ADR-068 §6 ; AV-383, AV-387) : exports (lignes, durée, validité du fichier, file par
   // demandeur) et rétention des données techniques de l'analyse.
   { key: 'analytics.export_max_rows', value: 100000, isClientVisible: false, ref: 'AV-383' },
@@ -405,6 +419,9 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-362, AV-425',
   },
+  // P9-25 (PF-6, AV-469) : supervision du worker par `GET /health/ready` (retard des tâches, tâches échouées).
+  { key: 'platform.job_lag_alert_seconds', value: 600, isClientVisible: false, ref: 'AV-469' },
+  { key: 'platform.failed_jobs_window_hours', value: 24, isClientVisible: false, ref: 'AV-469' },
   // P9-11 (3/3, AV-431) : types d'événements dont la notification directe est désactivée (aucun par défaut).
   {
     key: 'communication.direct_notification_disabled_types',
@@ -418,6 +435,14 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     value: 90,
     isClientVisible: false,
     ref: 'AV-387',
+  },
+  // P9-25 (PF-7, AV-472) : rétention des tables techniques de la plateforme (tâches terminées, sauts de consommateurs).
+  { key: 'platform.job_retention_days', value: 30, isClientVisible: false, ref: 'AV-472' },
+  {
+    key: 'platform.consumer_failure_retention_days',
+    value: 90,
+    isClientVisible: false,
+    ref: 'AV-472, AV-425',
   },
   {
     key: 'approvals.pending_long_hours',

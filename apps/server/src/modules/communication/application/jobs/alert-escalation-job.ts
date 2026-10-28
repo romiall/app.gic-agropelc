@@ -23,6 +23,11 @@ export const ALERT_ESCALATION_JOB_TYPE = 'communication.alerts.escalate';
 @Injectable()
 export class AlertEscalationJob implements OnModuleInit {
   private readonly logger = new Logger(AlertEscalationJob.name);
+  /**
+   * Reprise de la passe précédente quand elle a atteint son plafond de lots, propre au processus : perdu
+   * au redémarrage (retour au début), conservé après un appel réussi seulement (NT-7).
+   */
+  private cursor: string | null = null;
 
   constructor(
     @Inject(CLOCK) private readonly clock: Clock,
@@ -34,12 +39,17 @@ export class AlertEscalationJob implements OnModuleInit {
 
   onModuleInit(): void {
     this.registry.register(ALERT_ESCALATION_JOB_TYPE, async (uow) => {
-      const result = await escalateDueAlerts(uow, {
-        idGenerator: this.idGenerator,
-        clock: this.clock,
-        resolver: this.resolver,
-        push: this.push,
-      });
+      const result = await escalateDueAlerts(
+        uow,
+        {
+          idGenerator: this.idGenerator,
+          clock: this.clock,
+          resolver: this.resolver,
+          push: this.push,
+        },
+        { after: this.cursor },
+      );
+      this.cursor = result.nextCursor;
       if (result.escalated > 0) {
         this.logger.log(`Alertes escaladées : ${result.escalated} sur ${result.examined}.`);
       }

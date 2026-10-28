@@ -1,19 +1,25 @@
 /**
  * P9-07 : publication des événements de détection (ADR-061 §3) — idempotence par (type, sujet, passe),
  * identité de passe, marqueur de passe complète, et bout en bout avec le consommateur d'alertes : ce que
- * la passe suivante ne revoit pas est résolu, ce qu'elle revoit reste ouvert.
+ * la passe suivante ne revoit pas est résolu, ce qu'elle revoit reste ouvert. P9-25 (PF-3, AV-468) :
+ * garde-fou de durée d'une passe (marqueur retenu au-delà de 100 s).
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import {
   PASS_COMPLETED_EVENT,
+  PASS_PUBLISH_MAX_SECONDS,
+  PASS_PUBLISH_WARN_SECONDS,
   compositeSubjectId,
+  passClock,
   detectionPassId,
   passSlotOf,
   publishDetectionEvent,
   publishPassCompleted,
 } from '../src/platform/events/detection-events.js';
 import { toDomainEvent, type DomainEvent } from '../src/platform/events/domain-event.js';
+import { EVENT_SETTLE_DEFAULT_SECONDS } from '../src/platform/events/event-consumer-runner.js';
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
@@ -25,6 +31,8 @@ const NOW = new Date('2026-11-02T10:00:00.000Z');
 const idGenerator = new Uuidv7Generator(new FixedClock(NOW));
 
 afterAll(closeTestDb);
+// Les espions (horloge de passe, journal) ne fuient jamais vers un autre essai.
+afterEach(() => vi.restoreAllMocks());
 
 const eventsOf = async (uow: UnitOfWork, eventType: string, aggregateId: string) =>
   (
@@ -300,5 +308,153 @@ describe('P9-07 : événements de détection', () => {
         last_pass_id: passTwo,
       });
       expect(await status(goes)).toMatchObject({ status: 'RESOLVED' });
+    }));
+});
+
+/**
+ * PF-3 (P9-25, AV-468) : une passe est une transaction ; son marqueur est retenu si plus de
+ * `PASS_PUBLISH_MAX_SECONDS` s séparent sa première insertion et lui (aucune alerte résolue à tort).
+ * L'horloge de mesure est simulée (`passClock`) : aucune date ni attente réelle.
+ */
+describe('PF-3 : garde-fou de durée de passe', () => {
+  const marker = (passId: string) => ({
+    producerModule: 'sales',
+    alertType: 'OVERDUE_RECEIVABLE' as const,
+    passId,
+    businessDay: '2026-11-02',
+    occurredAt: NOW,
+  });
+  const newPassId = () => detectionPassId('OVERDUE_RECEIVABLE', `pf3-${freshUuid()}`);
+  const markersOf = (uow: UnitOfWork, passId: string) =>
+    eventsOf(
+      uow,
+      PASS_COMPLETED_EVENT,
+      codeEntityId('ALERT_DETECTION_PASS', `OVERDUE_RECEIVABLE:${passId}`),
+    );
+  const clockAt = () => {
+    const state = { current: 0 };
+    vi.spyOn(passClock, 'now').mockImplementation(() => state.current);
+    return state;
+  };
+  const silenced = (method: 'error' | 'warn') =>
+    vi.spyOn(Logger.prototype, method).mockImplementation(() => undefined);
+  // Un autre objet de transaction sur la même connexion : la mesure est indexée par l'objet `uow`.
+  const rewrapped = (uow: UnitOfWork) =>
+    uow.withPlugin({
+      transformQuery: (args) => args.node,
+      transformResult: async (args) => args.result,
+    });
+
+  it('constantes : avertissement < retenue < fenêtre de stabilisation des consommateurs', () => {
+    expect(PASS_PUBLISH_WARN_SECONDS).toBeLessThan(PASS_PUBLISH_MAX_SECONDS);
+    expect(PASS_PUBLISH_MAX_SECONDS).toBeLessThan(EVENT_SETTLE_DEFAULT_SECONDS);
+    expect(PASS_PUBLISH_WARN_SECONDS).toBe(EVENT_SETTLE_DEFAULT_SECONDS / 4);
+    expect(PASS_PUBLISH_MAX_SECONDS).toBe(EVENT_SETTLE_DEFAULT_SECONDS - 20);
+  });
+
+  it('au-delà du maximum : marqueur retenu, erreur journalisée, aucune ligne de marqueur', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      const passId = newPassId();
+      time.current = 0;
+      expect(await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), passId))).toBe(
+        true,
+      );
+      time.current = (PASS_PUBLISH_MAX_SECONDS + 1) * 1000;
+      expect(await publishPassCompleted(uow, marker(passId))).toBe(false);
+      expect(await markersOf(uow, passId)).toHaveLength(0);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(String(error.mock.calls[0]![0])).toContain('marqueur non publié');
+    }));
+
+  it('juste au-dessus du maximum (100,4 s) : retenu, la comparaison se fait sur les millisecondes', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      silenced('error');
+      const passId = newPassId();
+      await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), passId));
+      time.current = PASS_PUBLISH_MAX_SECONDS * 1000 + 400;
+      expect(await publishPassCompleted(uow, marker(passId))).toBe(false);
+    }));
+
+  it('pile au maximum : marqueur publié, sans erreur', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      silenced('warn');
+      const passId = newPassId();
+      await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), passId));
+      time.current = PASS_PUBLISH_MAX_SECONDS * 1000;
+      expect(await publishPassCompleted(uow, marker(passId))).toBe(true);
+      expect(await markersOf(uow, passId)).toHaveLength(1);
+      expect(error).not.toHaveBeenCalled();
+    }));
+
+  it('au-delà de l’avertissement : marqueur publié et avertissement journalisé une fois', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      const warn = silenced('warn');
+      const passId = newPassId();
+      await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), passId));
+      time.current = (PASS_PUBLISH_WARN_SECONDS + 1) * 1000;
+      expect(await publishPassCompleted(uow, marker(passId))).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(error).not.toHaveBeenCalled();
+    }));
+
+  it('sans événement de passe préalable : marqueur publié sans garde, même horloge avancée', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      time.current = (PASS_PUBLISH_MAX_SECONDS + 50) * 1000;
+      expect(await publishPassCompleted(uow, marker(newPassId()))).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }));
+
+  it('rejeu entièrement reconnu : aucun départ enregistré, le marqueur n’est pas retenu', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      const passId = newPassId();
+      const input = overdue(freshUuid(), passId);
+      expect(await publishDetectionEvent(uow, idGenerator, input)).toBe(true);
+      // Nouvelle transaction (nouvel objet) qui voit déjà l'événement : le rejeu est reconnu avant
+      // l'insertion et n'enregistre aucun départ.
+      const replay = rewrapped(uow);
+      time.current = 0;
+      expect(await publishDetectionEvent(replay, idGenerator, input)).toBe(false);
+      time.current = (PASS_PUBLISH_MAX_SECONDS + 50) * 1000;
+      expect(await publishPassCompleted(replay, marker(passId))).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }));
+
+  it('deux marqueurs d’une même transaction partagent le même départ (balayage des seuils)', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      silenced('warn');
+      const first = newPassId();
+      const second = newPassId();
+      await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), first));
+      time.current = (PASS_PUBLISH_WARN_SECONDS + 1) * 1000;
+      expect(await publishPassCompleted(uow, marker(first))).toBe(true);
+      // Un événement de plus ne redate pas la passe : le second marqueur est jugé depuis le même départ.
+      await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), second));
+      time.current = (PASS_PUBLISH_MAX_SECONDS + 1) * 1000;
+      expect(await publishPassCompleted(uow, marker(second))).toBe(false);
+      expect(error).toHaveBeenCalledTimes(1);
+    }));
+
+  it('uow enveloppé entre la première insertion et le marqueur : marqueur publié (garde inopérante, jamais retenu à tort)', () =>
+    rolledBack(async (uow) => {
+      const time = clockAt();
+      const error = silenced('error');
+      const passId = newPassId();
+      await publishDetectionEvent(uow, idGenerator, overdue(freshUuid(), passId));
+      time.current = (PASS_PUBLISH_MAX_SECONDS + 50) * 1000;
+      expect(await publishPassCompleted(rewrapped(uow), marker(passId))).toBe(true);
+      expect(error).not.toHaveBeenCalled();
     }));
 });

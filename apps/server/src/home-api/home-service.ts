@@ -80,6 +80,7 @@ import { procurementOverview } from '../modules/procurement/application/public/i
 import {
   commercialEffort,
   getCustomer,
+  inactiveAfterDays,
   portfolioHealth,
 } from '../modules/crm/application/public/index.js';
 import {
@@ -116,8 +117,6 @@ type Executor = Kysely<DB> | Transaction<DB>;
 
 const VALUATION_READ = 'inventory.valuation.read';
 const DISTRIBUTION_READ = 'analytics.dashboard.distribution';
-/** Un client sans vente depuis ce nombre de jours est inactif (AV-013). */
-const INACTIVE_DAYS = 30;
 const RECENT_SALES = 6;
 
 interface Context {
@@ -563,10 +562,12 @@ async function commercialEffortBlock(
 
 async function portfolioBlock(ctx: Context, owners: readonly string[] | undefined): Promise<Built> {
   const built = empty();
+  // Un client sans vente depuis ce nombre de jours est inactif : réglage `crm.inactive_after_days` (AV-013, TB-5).
+  const inactiveDays = await inactiveAfterDays(ctx.executor, ctx.at);
   const health = await portfolioHealth(ctx.executor, {
     ...(owners !== undefined ? { ownerUserIds: owners } : {}),
     at: ctx.at,
-    inactiveDays: INACTIVE_DAYS,
+    inactiveDays,
   });
   built.kpis.push(
     kpi({
@@ -574,7 +575,7 @@ async function portfolioBlock(ctx: Context, owners: readonly string[] | undefine
       label: 'Clients inactifs',
       value: health.inactiveCustomers,
       unit: 'COUNT',
-      detail: `sur ${plural(health.customers, 'client', 'clients')} · inactif après ${INACTIVE_DAYS} jours`,
+      detail: `sur ${plural(health.customers, 'client', 'clients')} · inactif après ${inactiveDays} jours`,
       tone: health.inactiveCustomers > 0 ? 'warn' : 'good',
     }),
   );
@@ -583,7 +584,7 @@ async function portfolioBlock(ctx: Context, owners: readonly string[] | undefine
       signal({
         code: 'INACTIVE_CUSTOMERS',
         severity: 'INFO',
-        title: `${plural(health.inactiveCustomers, 'client sans achat', 'clients sans achat')} depuis ${INACTIVE_DAYS} jours`,
+        title: `${plural(health.inactiveCustomers, 'client sans achat', 'clients sans achat')} depuis ${inactiveDays} jours`,
         detail: 'Une visite ou un appel peut relancer la vente.',
         count: health.inactiveCustomers,
       }),

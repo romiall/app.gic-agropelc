@@ -30,6 +30,8 @@ import {
   highLossSalesPctOrDefault,
   isHighLossAbsolute,
   isHighLossSalesShare,
+  isValidHighLossAlertXaf,
+  isValidHighLossSalesPct,
   lossSalesSharePct,
   type Clock,
   type IdGenerator,
@@ -47,7 +49,7 @@ import {
   type JobHandlerRegistry,
 } from '../../../../platform/jobs/job-handler-registry.provider.js';
 import { dayLossByLocation } from '../../../inventory/application/public/index.js';
-import { currentSettingValue } from '../../../organization/application/public/index.js';
+import { siteThenGlobalSetting } from '../../../organization/application/public/index.js';
 import { soldByLocation } from '../public/distribution-metrics.js';
 
 export const HIGH_LOSS_SALES_SHARE_JOB_TYPE = 'sales.losses.sales_share_check';
@@ -61,8 +63,6 @@ export const HIGH_LOSS_ABSOLUTE_KEY = 'inventory.high_loss_alert_xaf';
  * examinée.
  */
 export const SALES_SHARE_LOOKBACK_DAYS = 2;
-
-type SettingReader = Parameters<typeof currentSettingValue>[0];
 
 @Injectable()
 export class HighLossSalesShareJob implements OnModuleInit {
@@ -119,10 +119,22 @@ export class HighLossSalesShareJob implements OnModuleInit {
           if (rule === undefined) {
             rule = {
               pct: highLossSalesPctOrDefault(
-                await siteThenGlobal(uow, HIGH_LOSS_SALES_PCT_KEY, loss.siteId, rulesAt),
+                await siteThenGlobalSetting(
+                  uow,
+                  HIGH_LOSS_SALES_PCT_KEY,
+                  loss.siteId,
+                  rulesAt,
+                  isValidHighLossSalesPct,
+                ),
               ),
               absoluteXaf: highLossAlertXafOrDefault(
-                await siteThenGlobal(uow, HIGH_LOSS_ABSOLUTE_KEY, loss.siteId, rulesAt),
+                await siteThenGlobalSetting(
+                  uow,
+                  HIGH_LOSS_ABSOLUTE_KEY,
+                  loss.siteId,
+                  rulesAt,
+                  isValidHighLossAlertXaf,
+                ),
               ),
             };
             rules.set(ruleKey, rule);
@@ -166,16 +178,4 @@ export class HighLossSalesShareJob implements OnModuleInit {
       );
     });
   }
-}
-
-/** Réglage du site, à défaut global, à une date (règle 8 : paramètre ; le repli est celui du domaine). */
-async function siteThenGlobal(
-  uow: SettingReader,
-  key: string,
-  siteId: string,
-  at: Date,
-): Promise<unknown> {
-  const bySite = await currentSettingValue(uow, { key, scopeType: 'SITE', scopeId: siteId, at });
-  if (bySite !== undefined) return bySite;
-  return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
 }

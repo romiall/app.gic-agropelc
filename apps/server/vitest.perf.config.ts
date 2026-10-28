@@ -3,8 +3,9 @@ import { defineConfig } from 'vitest/config';
 
 /**
  * Mesures de charge de P9 (P9-22 ; ADR-068 §5), lancées à la demande (`pnpm --filter @gic/server test:perf`) sur une
- * base jetable chargée par `pnpm --filter @gic/db load:p9`. Hors de la suite par défaut : les fichiers `*.perf.ts`
- * ne sont pas des `*.test.ts`.
+ * base dédiée (nom en `_load`, db/README.md §7 ; le test refuse toute autre base) chargée par
+ * `pnpm --filter @gic/db load:p9`. Hors de la suite par défaut : les fichiers `*.perf.ts` ne sont pas des
+ * `*.test.ts`.
  */
 export default defineConfig({
   resolve: {

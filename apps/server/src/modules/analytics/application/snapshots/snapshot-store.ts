@@ -1,6 +1,7 @@
 /**
  * Instantanés personnels d'indicateurs (P9-18 ; ADR-066 §5 à §7, dictionnaire `analytics.kpi_snapshots`) : une ligne
- * par `(utilisateur, tableau, période)`, **écrasée** à chaque passe, avec l'instant du calcul (« à jour au »). Le
+ * par `(utilisateur, tableau, période)`, écrite au changement de contenu ou à la republication horaire, avec
+ * l'instant de la dernière publication (« à jour au », jusqu'à 1 h 15 de retard sur le calcul ; TB-2, AV-381). Le
  * module `analytics` est le seul à écrire `analytics_kpi_snapshots` ; la tâche (`analytics-api/jobs/`) calcule le
  * contenu avec les mêmes fonctions que les tableaux, sous l'étendue exacte de l'utilisateur.
  *
@@ -63,8 +64,9 @@ function sortKeys(value: unknown): unknown {
 const canonicalJson = (value: unknown): string => JSON.stringify(sortKeys(value));
 
 /**
- * Écrase l'instantané ; rend `true` si une ligne du flux a été publiée (contenu changé, première écriture ou
- * date à rafraîchir). `kpis` est le contenu des indicateurs (JSON) ; `computedAt` l'instant du calcul.
+ * Écrit et publie l'instantané quand son contenu change, à la première écriture ou quand sa date a plus d'une
+ * heure ; sinon n'écrit rien. Rend `true` si une ligne du flux a été publiée. `kpis` est le contenu des
+ * indicateurs (JSON) ; `computedAt` l'instant du calcul.
  */
 export async function saveSnapshot(
   executor: Executor,
@@ -77,6 +79,16 @@ export async function saveSnapshot(
     .where('scope_key', '=', input.scopeKey)
     .where('period_key', '=', input.periodKey)
     .executeTakeFirst();
+  // Contenu identique et dernière publication de moins d'une heure : rien n'est écrit. `computed_at` est l'instant
+  // de la dernière publication (TB-2, AV-381) ; c'est lui que la republication horaire compare à l'instant du calcul.
+  if (
+    previous !== undefined &&
+    canonicalJson((previous.payload as { kpis?: unknown } | null)?.kpis ?? null) ===
+      canonicalJson(input.kpis) &&
+    input.computedAt.getTime() - previous.computed_at.getTime() < SNAPSHOT_REPUBLISH_MS
+  ) {
+    return false;
+  }
   const payload = { kpis: input.kpis };
   await executor
     .insertInto('analytics_kpi_snapshots')
@@ -92,12 +104,6 @@ export async function saveSnapshot(
       computed_at: input.computedAt,
     })
     .execute();
-  const unchanged =
-    previous !== undefined &&
-    canonicalJson((previous.payload as { kpis?: unknown } | null)?.kpis ?? null) ===
-      canonicalJson(input.kpis) &&
-    input.computedAt.getTime() - previous.computed_at.getTime() < SNAPSHOT_REPUBLISH_MS;
-  if (unchanged) return false;
   await recordChanges(executor, [
     {
       dataset: KPI_DATASET,

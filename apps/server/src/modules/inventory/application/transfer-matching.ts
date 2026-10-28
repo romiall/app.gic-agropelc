@@ -49,6 +49,8 @@ import {
   chooseDispatchForBlindReceipt,
   elapsedHours,
   isUnmatchedOverdue,
+  isValidBlindReceiptMatchMode,
+  isValidUnmatchedHours,
   planTransferReceipt,
   unmatchedHoursOrDefault,
   type BlindReceiptMatchMode,
@@ -71,7 +73,7 @@ import { publishDetectionEvent } from '../../../platform/events/detection-events
 import { recordChanges } from '../../../platform/sync/change-feed.js';
 import { recordConflict, resolveOpenConflicts } from '../../../platform/sync/conflicts.js';
 import { recordAudit } from '../../../audit/record-audit.js';
-import { currentSettingValue } from '../../organization/application/public/index.js';
+import { siteThenGlobalSetting } from '../../organization/application/public/index.js';
 import {
   decidablePolicyFor,
   requestApproval,
@@ -439,19 +441,6 @@ export async function reverseTransferMoves(
 
 // --- Paramètres ----------------------------------------------------------------------------------
 
-async function siteThenGlobalSetting(
-  uow: Uow,
-  key: string,
-  siteId: string | null,
-  at: Date,
-): Promise<unknown> {
-  if (siteId !== null) {
-    const bySite = await currentSettingValue(uow, { key, scopeType: 'SITE', scopeId: siteId, at });
-    if (bySite !== undefined) return bySite;
-  }
-  return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
-}
-
 /** `inventory.blind_receipt_match_mode` (AV-177) : réglage du site, à défaut global, `SUBSET` sinon. */
 export async function blindReceiptMatchMode(
   uow: Uow,
@@ -459,14 +448,26 @@ export async function blindReceiptMatchMode(
   at: Date,
 ): Promise<BlindReceiptMatchMode> {
   return blindReceiptMatchModeOrDefault(
-    await siteThenGlobalSetting(uow, 'inventory.blind_receipt_match_mode', siteId, at),
+    await siteThenGlobalSetting(
+      uow,
+      'inventory.blind_receipt_match_mode',
+      siteId,
+      at,
+      isValidBlindReceiptMatchMode,
+    ),
   );
 }
 
 /** `inventory.transfer_unmatched_hours` (BR-STK-024, AV-181) : site, à défaut global, 48 sinon. */
 export async function transferUnmatchedHours(uow: Uow, siteId: string, at: Date): Promise<number> {
   return unmatchedHoursOrDefault(
-    await siteThenGlobalSetting(uow, 'inventory.transfer_unmatched_hours', siteId, at),
+    await siteThenGlobalSetting(
+      uow,
+      'inventory.transfer_unmatched_hours',
+      siteId,
+      at,
+      isValidUnmatchedHours,
+    ),
   );
 }
 

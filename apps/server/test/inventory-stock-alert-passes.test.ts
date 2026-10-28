@@ -780,6 +780,25 @@ describe('tâche inventory.alerts.transfer_not_received_check (P9-08, AV-408)', 
       expect(inserts.count).toBe(0);
     }));
 
+  it('délai du site inexploitable (AL-1) : le global s’applique, pas le repli de 48 h', () =>
+    rolledBack(async (uow) => {
+      const { admin, site, store, otherStore } = await world(uow);
+      const transfer = await dispatchedTransfer(uow, {
+        admin,
+        siteId: site,
+        from: store,
+        to: otherStore,
+        hoursAgo: 30,
+      });
+      const mine = (payload: Record<string, unknown>) => payload['transfer_id'] === transfer;
+      await setSiteSetting(uow, admin, site, 'inventory.transfer_not_received_hours', 'abc');
+      await setGlobalSetting(uow, admin, 'inventory.transfer_not_received_hours', 24);
+      await notReceived()(uow, { scheduledFor: '2020-11-10T05:00:00.000Z' });
+      const events = await eventsOf(uow, 'StockTransferNotReceived', mine);
+      expect(events).toHaveLength(1);
+      expect(events[0]!.payload).toMatchObject({ threshold_hours: 24 });
+    }));
+
   it('bout en bout : levée, puis résolue par le marqueur quand le transfert est reçu', () =>
     rolledBack(async (uow) => {
       const { admin, site, store, otherStore } = await world(uow);

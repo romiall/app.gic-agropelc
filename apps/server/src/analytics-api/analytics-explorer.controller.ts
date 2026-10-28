@@ -58,6 +58,7 @@ import {
   runExploration,
   type ExactScope,
   type QueryOutcome,
+  zoneDescendantsOf,
 } from '../modules/analytics/application/public/index.js';
 import { ReadAccess, parseOrThrow } from '../read-api/read-access.js';
 import { explorerFreshness } from './explorer-freshness.js';
@@ -292,10 +293,16 @@ export class AnalyticsExplorerController {
     const scopeTruncated = scopes.some((scope) => scope.kind === 'CLAUSES' && scope.truncated);
 
     // 4. Le calcul, borné en lignes, en durée et en requêtes simultanées.
-    const compiled = compileExploration(plan, scopes, { maxExecutionMs: limits.maxExecutionMs });
+    // La fraîcheur est lue dans le même bloc : une erreur à cet instant laisse aussi sa ligne de journal (EP-6).
     let result;
+    let freshness;
     try {
+      const compiled = compileExploration(plan, scopes, {
+        maxExecutionMs: limits.maxExecutionMs,
+        zoneDescendants: await zoneDescendantsOf(this.db, plan),
+      });
       result = await runExploration(this.db, { userId: context.userId, compiled, limits });
+      freshness = await explorerFreshness(this.db, { scope: scopes[0], now: context.now });
     } catch (error) {
       if (error instanceof ExplorationLimitError) {
         await log('LIMIT', { errorCode: 'QUERY_LIMIT_EXCEEDED', plan, scopeTruncated });
@@ -310,7 +317,6 @@ export class AnalyticsExplorerController {
       throw error;
     }
 
-    const freshness = await explorerFreshness(this.db, { scope: scopes[0], now: context.now });
     await log('OK', { rowCount: result.rowCount, plan, scopeTruncated });
     return analyticsQueryResponseSchema.parse({
       dataset: plan.dataset.code,

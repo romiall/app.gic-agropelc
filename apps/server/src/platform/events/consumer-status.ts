@@ -18,8 +18,8 @@
  *   en base : un gestionnaire qui échoue sur tout événement écrit une ligne par événement.
  * - Le message d'erreur d'un saut n'est **jamais** lu ici : il peut porter des données personnelles (ADR-061 §4).
  */
-import { sql } from 'kysely';
-import type { UnitOfWork } from '../unit-of-work.js';
+import { sql, type Kysely, type Transaction } from 'kysely';
+import type { DB } from '../kysely/database.js';
 
 export interface ConsumerStatus {
   readonly consumerName: string;
@@ -38,11 +38,21 @@ interface OffsetRow {
   readonly oldest_pending_at: Date | string | null;
 }
 
-/** État de tous les consommateurs, par nom croissant. */
-export async function readConsumerStatuses(
-  uow: UnitOfWork,
-  window: { readonly failedSince: Date; readonly now: Date },
-): Promise<readonly ConsumerStatus[]> {
+/** Exécuteur de lecture : une transaction (tâche) ou le pool (sonde de disponibilité, P9-25 PF-6). */
+type ReadExecutor = Kysely<DB> | Transaction<DB>;
+
+/** Position et retard d'un consommateur, sans les événements sautés. */
+export interface ConsumerLag {
+  readonly consumerName: string;
+  readonly lastSeq: number;
+  readonly oldestPendingAt: Date | null;
+}
+
+/**
+ * Positions et retards de tous les consommateurs, par nom croissant, sans lire les événements sautés (la sonde
+ * `GET /health/ready` n'en a pas besoin : une requête d'agrégation de moins par appel public).
+ */
+export async function readConsumerLags(executor: ReadExecutor): Promise<readonly ConsumerLag[]> {
   const offsets = (
     await sql<OffsetRow>`
       SELECT o.consumer_name, o.last_seq,
@@ -50,9 +60,22 @@ export async function readConsumerStatuses(
                WHERE e.seq > o.last_seq ORDER BY e.seq ASC LIMIT 1) AS oldest_pending_at
         FROM platform_event_consumer_offsets o
        ORDER BY o.consumer_name
-    `.execute(uow)
+    `.execute(executor)
   ).rows;
-  const failures = await uow
+  return offsets.map((row) => ({
+    consumerName: row.consumer_name,
+    lastSeq: Number(row.last_seq),
+    oldestPendingAt: row.oldest_pending_at === null ? null : new Date(row.oldest_pending_at),
+  }));
+}
+
+/** État de tous les consommateurs, par nom croissant. */
+export async function readConsumerStatuses(
+  executor: ReadExecutor,
+  window: { readonly failedSince: Date; readonly now: Date },
+): Promise<readonly ConsumerStatus[]> {
+  const lags = await readConsumerLags(executor);
+  const failures = await executor
     .selectFrom('platform_event_consumer_failures')
     .select(({ fn }) => [
       'consumer_name',
@@ -64,12 +87,10 @@ export async function readConsumerStatuses(
     .groupBy('consumer_name')
     .execute();
   const failuresOf = new Map(failures.map((row) => [row.consumer_name, row]));
-  return offsets.map((row) => {
-    const failed = failuresOf.get(row.consumer_name);
+  return lags.map((lag) => {
+    const failed = failuresOf.get(lag.consumerName);
     return {
-      consumerName: row.consumer_name,
-      lastSeq: Number(row.last_seq),
-      oldestPendingAt: row.oldest_pending_at === null ? null : new Date(row.oldest_pending_at),
+      ...lag,
       failedEvents: failed === undefined ? 0 : Number(failed.failed_events),
       lastFailedAt: failed?.last_failed_at == null ? null : new Date(failed.last_failed_at),
     };

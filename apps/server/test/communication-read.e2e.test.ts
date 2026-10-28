@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import type { Clock, IdGenerator } from '@gic/domain';
+import { alertDefinitionOf, type Clock, type IdGenerator } from '@gic/domain';
 import {
   alertListResponseSchema,
   alertRuleListResponseSchema,
@@ -25,7 +25,7 @@ import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import type { DomainEvent } from '../src/platform/events/domain-event.js';
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
@@ -138,7 +138,6 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
       .select('id')
       .where('dedup_key', '=', dedupKey)
       .executeTakeFirstOrThrow();
-    const { fromBin } = await import('../src/platform/kysely/uuid-columns.js');
     return fromBin(row.id);
   };
   const raise = (event: DomainEvent) =>
@@ -591,9 +590,14 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
     expect(body.nextCursor).toBeNull();
   });
 
-  it('une notification d’alerte est rendue au droit courant du lecteur, pas à celui de sa création', async () => {
+  it('une notification d’alerte est rendue au droit courant du lecteur, pas à celui de sa création, sur chaque canal', async () => {
     const base = Date.UTC(2027, 1, 1, 8, 0, 0);
-    const insert = (userId: string, minutes: number) =>
+    const insert = (
+      userId: string,
+      minutes: number,
+      channel: 'IN_APP' | 'WEB_PUSH' = 'IN_APP',
+      suffix = '',
+    ) =>
       tx(async (trx) => {
         const id = freshUuid();
         await trx
@@ -601,14 +605,14 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
           .values({
             id: toBin(id),
             user_id: toBin(userId),
-            channel: 'IN_APP',
+            channel,
             kind: 'ALERT',
             alert_id: toBin(alerts.lossA),
             alert_type: 'HIGH_LOSS',
             source_type: 'ALERT',
             title: 'Perte anormale',
             // Texte figé à la création, valeur au coût comprise : il ne doit pas être resservi tel quel.
-            body: 'Valeur perdue : 999 XAF',
+            body: `Valeur perdue : 999 XAF${suffix}`,
             created_at: new Date(base + minutes * 60_000),
             delivered_at: new Date(base + minutes * 60_000),
           })
@@ -629,6 +633,23 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
     expect(fin.items.find((item) => item.id === forFinance)!.body).toMatch(
       /Valeur perdue : 120\s000 XAF/,
     );
+
+    // Le canal d'envoi aussi (P9-25, NT-1) : la ligne WEB_PUSH n'est pas resservie telle quelle, un push groupé
+    // garde son suffixe.
+    const grouped = ' (+2 autres alertes de ce type)';
+    const pushForSeller = await insert(sellerA.userId, 3, 'WEB_PUSH', grouped);
+    const pushForFinance = await insert(finance.userId, 4, 'WEB_PUSH');
+    const sellerPush = notificationListResponseSchema
+      .parse((await get(sellerA, '/api/v1/notifications?channel=WEB_PUSH')).json())
+      .items.find((item) => item.id === pushForSeller)!.body;
+    expect(sellerPush).not.toMatch(/XAF/);
+    expect(sellerPush).not.toContain('Valeur');
+    expect(sellerPush.endsWith(grouped)).toBe(true);
+    expect(
+      notificationListResponseSchema
+        .parse((await get(finance, '/api/v1/notifications?channel=WEB_PUSH')).json())
+        .items.find((item) => item.id === pushForFinance)!.body,
+    ).toMatch(/Valeur perdue : 120\s000 XAF/);
   });
 
   it('règles d’alerte : réservées à comm.alert_rule.manage (Direction, Administrateur)', async () => {
@@ -644,12 +665,68 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
         resolutionModesAdmitted: ['AUTO'],
       });
       const highLoss = body.items.find((item) => item.alertType === 'HIGH_LOSS')!;
-      expect(highLoss).toMatchObject({ escalationApplicable: true, escalationHours: 4 });
+      expect(highLoss).toMatchObject({
+        escalationApplicable: true,
+        escalationHours: 4,
+        resolutionMode: 'MANUAL',
+        resolutionModesAdmitted: ['MANUAL'],
+      });
       expect(highLoss.severitiesAdmitted).toContain('CRITICAL');
+      // P9-25, AL-4 (AV-464) : le mode de résolution est celui du catalogue, seul mode admis, pour chaque type.
+      for (const item of body.items) {
+        const { resolution } = alertDefinitionOf(item.alertType);
+        expect(item.resolutionMode, item.alertType).toBe(resolution);
+        expect(item.resolutionModesAdmitted, item.alertType).toEqual([resolution]);
+      }
     }
     const refused = await get(finance, '/api/v1/alert-rules');
     expect(refused.statusCode).toBe(403);
     const refusedSeller = await get(sellerA, '/api/v1/alert-rules');
     expect(refusedSeller.statusCode).toBe(403);
+  });
+
+  it('créance échue sans commercial attribué : le vendeur, à défaut, est propriétaire et la lit (P9-25, AL-3 ; AV-463)', async () => {
+    // Le rôle COMMERCIAL_TERRAIN n'admet que la portée ZONE : la zone du site C est relue sur le site.
+    const siteRow = await db
+      .selectFrom('organization_sites')
+      .select('zone_id')
+      .where('id', '=', toBin(siteC))
+      .executeTakeFirstOrThrow();
+    const seller = await newActor('COMMERCIAL_TERRAIN', root, {
+      scopeType: 'ZONE',
+      scopeZoneId: fromBin(siteRow.zone_id),
+    });
+    const jwtKeys = app.get(JWT_KEYS);
+    tokens.set(
+      seller.userId,
+      await signTestAccessToken(
+        jwtKeys.privateKey,
+        { sub: seller.userId, device_id: seller.deviceId, session_id: freshUuid() },
+        clock.now(),
+      ),
+    );
+    const sale = freshUuid();
+    await raise(
+      eventOf(
+        'ReceivableOverdue',
+        sale,
+        {
+          sale_id: sale,
+          doc_number: 'VTE-2027-AL3',
+          commercial_user_id: null,
+          seller_user_id: seller.userId,
+          site_id: siteC,
+          days_overdue: 9,
+          balance_due_xaf: 18_000,
+        },
+        detectedAt(1),
+      ),
+    );
+    const alertId = await idOfAlert(`OVERDUE_RECEIVABLE:${sale}`);
+    // Propriétaire par repli : liste et détail (portée OWN), sans aucune boîte (raise n'écrit aucun destinataire).
+    expect((await alertsOf(seller)).map((item) => item.id)).toContain(alertId);
+    expect((await get(seller, `/api/v1/alerts/${alertId}`)).statusCode).toBe(200);
+    // Un lecteur du site B (hors portée, ni propriétaire ni destinataire) : 404 opaque.
+    expect((await get(sellerB, `/api/v1/alerts/${alertId}`)).statusCode).toBe(404);
   });
 });

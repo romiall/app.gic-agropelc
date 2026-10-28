@@ -157,6 +157,10 @@ export async function lotRevenue(
   return result;
 }
 
+/**
+ * Un tableau vide (`siteIds` ou `customerIds`) ne lit rien : zéros, jamais tout ni une erreur SQL (`IN ()` n'est
+ * pas valide ; TB-9).
+ */
 export interface RevenueFilter {
   /** Début inclus, fin exclue (instants UTC des bornes de jours métier). */
   readonly fromUtc: Date;
@@ -180,6 +184,17 @@ export async function periodRevenue(
   executor: Executor,
   filter: RevenueFilter,
 ): Promise<PeriodRevenue> {
+  // Un périmètre vide ne lit rien (comme lossValueSummary) : `IN ()` n'est pas du SQL valide (TB-9).
+  if (filter.siteIds?.length === 0 || filter.customerIds?.length === 0) {
+    return {
+      grossRevenueXaf: 0,
+      cancelledXaf: 0,
+      netRevenueXaf: 0,
+      costOfSalesXaf: 0,
+      grossMarginXaf: 0,
+      saleCount: 0,
+    };
+  }
   const sales = await executor
     .selectFrom('sales_sales')
     .select([
@@ -287,6 +302,8 @@ export async function periodProductQuantity(
   executor: Executor,
   filter: RevenueFilter & { readonly productId: string },
 ): Promise<number> {
+  // Même garde que periodRevenue : une liste de sites vide ne lit rien (TB-9).
+  if (filter.siteIds?.length === 0) return 0;
   const sold = await executor
     .selectFrom('sales_sale_lines as l')
     .innerJoin('sales_sales as s', 's.id', 'l.sale_id')

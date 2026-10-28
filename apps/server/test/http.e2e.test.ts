@@ -10,6 +10,12 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { z } from 'zod';
 import type { Clock } from '@gic/domain';
 import { AppModule } from '../src/app.module.js';
+import {
+  failedJobsSince,
+  measureWorkerHealth,
+  readWorkerHealthThresholds,
+  workerHealthProblem,
+} from '../src/health/worker-health.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
 import { EVENT_CONSUMER_REGISTRY } from '../src/platform/events/event-consumer-registry.provider.js';
 import type { EventConsumerRegistry } from '../src/platform/events/event-consumer-registry.js';
@@ -110,39 +116,52 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
     expect(response.json()).toEqual({ status: 'ok' });
   });
 
-  it('GET /health/ready : 200 sous le seuil de retard du worker, 503 WORKER_LAG au-delà', async () => {
-    // La base d'essai est partagée par toute la suite et aucun worker n'y draine les consommateurs : le retard
-    // dépend des fichiers déjà joués (P9 en écrit bien plus de 1 000). On recalcule donc le retard comme la sonde
-    // (consommateurs enregistrés, position la plus basse) et l'on vérifie la réponse attendue pour ce retard.
+  it('GET /health/ready : 200 avec les quatre mesures, ou 503 WORKER_LAG si l’une dépasse son seuil (P9-25, PF-6)', async () => {
+    // La base d'essai est partagée par toute la suite, aucun worker n'y draine les consommateurs ni n'y nettoie les
+    // tâches d'essai (d'autres fichiers laissent des tâches PENDING anciennes, donc « dues » depuis longtemps) : la
+    // réponse dépend de l'état de la base, et la branche 200 peut n'être jamais prise ici. Elle est couverte de façon
+    // déterministe par les essais de `workerHealthProblem` sur mesures injectées (worker-health.test.ts). On mesure
+    // donc avant et après l'appel avec les mêmes fonctions que la sonde, et l'on vérifie la réponse attendue.
     const names = app.get<EventConsumerRegistry>(EVENT_CONSUMER_REGISTRY).names();
-    const lagNow = async (): Promise<number> => {
-      const head = await db
-        .selectFrom('platform_domain_events')
-        .select(({ fn }) => fn.max('seq').as('maxSeq'))
-        .executeTakeFirst();
-      const maxSeq = Number(head?.maxSeq ?? 0);
-      const offsets = await db
-        .selectFrom('platform_event_consumer_offsets')
-        .select(({ fn }) => fn.min('last_seq').as('minLastSeq'))
-        .where('consumer_name', 'in', names)
-        .executeTakeFirst();
-      return Math.max(0, maxSeq - Number(offsets?.minLastSeq ?? maxSeq));
-    };
     expect(names.length).toBeGreaterThan(0);
-    const before = await lagNow();
+    const measure = async () => {
+      const now = clock.now();
+      const thresholds = await readWorkerHealthThresholds(db, now);
+      const measures = await measureWorkerHealth(db, {
+        consumerNames: names,
+        now,
+        failedSince: failedJobsSince(now, thresholds),
+      });
+      return { thresholds, measures };
+    };
+    const before = await measure();
     const response = await app.inject({ method: 'GET', url: '/health/ready' });
-    const after = await lagNow();
+    const after = await measure();
     const body = response.json();
     if (response.statusCode === 200) {
       expect(body.status).toBe('ok');
       expect(body.checks.database).toBe('ok');
-      expect(typeof body.checks.worker_lag_events).toBe('number');
-      expect(body.checks.worker_lag_events).toBeLessThanOrEqual(1000);
+      for (const key of [
+        'worker_lag_events',
+        'worker_lag_seconds',
+        'oldest_due_job_seconds',
+        'failed_jobs',
+      ]) {
+        expect(typeof body.checks[key]).toBe('number');
+      }
+      expect(body.checks.worker_lag_events).toBeLessThanOrEqual(before.thresholds.lagEvents);
+      expect(body.checks.worker_lag_seconds).toBeLessThanOrEqual(before.thresholds.lagSeconds);
+      expect(body.checks.oldest_due_job_seconds).toBeLessThanOrEqual(
+        before.thresholds.jobLagSeconds,
+      );
     } else {
       expect(response.statusCode).toBe(503);
       expect(body.error.code).toBe('WORKER_LAG');
-      // Retard réel au-delà du seuil au moment de la sonde (bornes lues avant et après).
-      expect(Math.max(before, after)).toBeGreaterThan(1000);
+      // Une des mesures prises avant ou après l'appel dépasse son seuil (la sonde a mesuré entre les deux).
+      expect(
+        workerHealthProblem(before.measures, before.thresholds) !== null ||
+          workerHealthProblem(after.measures, after.thresholds) !== null,
+      ).toBe(true);
     }
   });
 

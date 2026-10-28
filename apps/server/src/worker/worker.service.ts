@@ -11,8 +11,8 @@
  * l'arrêt.
  *
  * Deux voies (P9-22, ADR-068 §3) : la voie courte (ordonnanceur, consommateurs, tâches courtes) et la voie longue
- * (`LONG_RUNNING_JOB_TYPES` : calcul d'un export, instantanés), deux boucles concurrentes de `start()` ; un export de
- * 120 s ne retarde ainsi ni une alerte ni une tâche courte. `runOnce()` (tests, passe unique) joue les deux voies.
+ * (`LONG_RUNNING_JOB_TYPES` : calcul d'un export, instantanés, purge quotidienne de l'analyse), deux boucles
+ * concurrentes de `start()` ; un export de 120 s ne retarde ainsi ni une alerte ni une tâche courte. `runOnce()` (tests, passe unique) joue les deux voies.
  *
  * Isolation des étapes (P5-16) : une étape du tour qui lève (ordonnanceur, un consommateur, la file
  * de tâches) est consignée dans le journal et le tour continue ; elle ne prive ni les autres étapes

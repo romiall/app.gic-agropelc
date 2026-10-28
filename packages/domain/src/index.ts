@@ -171,6 +171,20 @@ export {
   consumerLagAlertSecondsOrDefault,
   consumerLagSeconds,
 } from './consumer-alerts.js';
+// P9-25 (PF-1, PF-7 ; AV-470, AV-471) : durées de conservation des purges techniques.
+export {
+  ALERT_RETENTION_FLOOR_DAYS,
+  DEFAULT_ALERT_RETENTION_DAYS,
+  DEFAULT_CONSUMER_FAILURE_RETENTION_DAYS,
+  DEFAULT_NOTIFICATION_RETENTION_DAYS,
+  DEFAULT_PLATFORM_JOB_RETENTION_DAYS,
+  MAX_RETENTION_DAYS,
+  RETENTION_DAY_MS,
+  alertRetentionDaysOrDefault,
+  consumerFailurePurgeCutoff,
+  retentionCutoff,
+  retentionDaysOrDefault,
+} from './retention.js';
 
 export type {
   OrderLineProgress,
@@ -415,6 +429,9 @@ export {
   isHighLossAbsolute,
   isHighLossSalesShare,
   isTransferNotReceived,
+  isValidHighLossAlertXaf,
+  isValidHighLossSalesPct,
+  isValidTransferNotReceivedHours,
   lossSalesSharePct,
   lotDaysLeft,
   MAX_LOT_EXPIRING_DAYS,
@@ -485,6 +502,8 @@ export {
   DEFAULT_BLIND_RECEIPT_MATCH_MODE,
   unmatchedHoursOrDefault,
   isUnmatchedOverdue,
+  isValidUnmatchedHours,
+  isValidBlindReceiptMatchMode,
   blindReceiptMatchModeOrDefault,
   blindReceiptMatch,
   chooseDispatchForBlindReceipt,
@@ -707,7 +726,13 @@ export type {
   ScopeKind,
   SourceDocumentDefinition,
 } from './analytics-catalog.js';
-export { KPI_CATALOG, kpiDefinitionOf, kpiHasPreviousPeriod, kpisToCreate } from './kpi-catalog.js';
+export {
+  KPI_CATALOG,
+  kpiDefinitionOf,
+  kpiHasPreviousPeriod,
+  kpisToCreate,
+  maskProtectedKpi,
+} from './kpi-catalog.js';
 export type { KpiDefinition, KpiNature, KpiReferenceState } from './kpi-catalog.js';
 // Règles d'un nouveau mot de passe (MP-08 ; AV-008, AV-280).
 export {

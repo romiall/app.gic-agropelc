@@ -20,6 +20,7 @@ import {
   businessDayOf,
   elapsedHours,
   isTransferNotReceived,
+  isValidTransferNotReceivedHours,
   transferNotReceivedHoursOrDefault,
   type Clock,
   type IdGenerator,
@@ -37,7 +38,7 @@ import {
   JOB_HANDLER_REGISTRY,
   type JobHandlerRegistry,
 } from '../../../../platform/jobs/job-handler-registry.provider.js';
-import { siteThenGlobalSetting } from '../inventory-alert-events.js';
+import { siteThenGlobalSetting } from '../../../organization/application/public/index.js';
 
 export const TRANSFER_NOT_RECEIVED_JOB_TYPE = 'inventory.alerts.transfer_not_received_check';
 export const TRANSFER_NOT_RECEIVED_HOURS_KEY = 'inventory.transfer_not_received_hours';
@@ -90,7 +91,13 @@ export class TransferNotReceivedJob implements OnModuleInit {
         let hours = hoursBySite.get(sourceSiteId);
         if (hours === undefined) {
           hours = transferNotReceivedHoursOrDefault(
-            await siteThenGlobalSetting(uow, TRANSFER_NOT_RECEIVED_HOURS_KEY, sourceSiteId, now),
+            await siteThenGlobalSetting(
+              uow,
+              TRANSFER_NOT_RECEIVED_HOURS_KEY,
+              sourceSiteId,
+              now,
+              isValidTransferNotReceivedHours,
+            ),
           );
           hoursBySite.set(sourceSiteId, hours);
         }

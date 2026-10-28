@@ -38,7 +38,7 @@ flowchart LR
 |---|---|---|
 | API | 1 processus ; plusieurs instances dès que la haute disponibilité est exigée, si la modalité retenue (AV-090) le permet | Horizontal (sans état) si la plateforme le permet |
 | Worker | 1 processus | Plusieurs instances (`SELECT … FOR UPDATE SKIP LOCKED`) si la plateforme le permet |
-| Base MySQL | Instance managée chez Hostinger, dimensionnement à confirmer avec le plan retenu | Montée en gamme verticale ; réplique en lecture (palier analytique P3) si l'offre le permet |
+| Base MySQL | Instance managée chez Hostinger, dimensionnement à confirmer avec le plan retenu ; pool de 10 connexions par processus (API, worker), réglable par `?connectionLimit=` de `SERVER_DATABASE_URL` ; plafond global de l'explorateur bien en deçà (4) ; somme des pools sous le maximum de connexions du plan Hostinger (à confirmer) | Montée en gamme verticale ; réplique en lecture (palier analytique P3) si l'offre le permet |
 | Stockage objet | Environ 30 Go la première année (photos ≤ 400 Ko), fournisseur S3-compatible séparé (AV-091) | Cycle de vie : archivage froid des pièces de plus de 12 mois |
 | CDN | Fichiers statiques de la PWA, en cache long, avec hachage de contenu | — |
 

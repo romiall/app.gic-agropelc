@@ -12,6 +12,7 @@ import {
   type AnalyticsPeriod,
   type AnalyticsPeriodCode,
 } from './analytics-period.js';
+import { isBusinessDay } from './business-day.js';
 import { DomainError } from './errors.js';
 
 /** Version du catalogue, figée dans une vue sauvegardée et dans un export (ADR-067). */
@@ -699,7 +700,6 @@ export type ExplorationValidation =
     };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CODE_RE = /^[A-Za-z0-9_.:-]{1,60}$/;
 
 const OPS_BY_TYPE: Readonly<Record<DimensionType, readonly ExplorationFilterOp[]>> = {
@@ -728,7 +728,8 @@ function scalarValid(type: DimensionType, value: unknown): value is string | num
     case 'text':
       return typeof value === 'string' && value.length >= 1 && value.length <= 120;
     case 'date':
-      return typeof value === 'string' && DAY_RE.test(value);
+      // Un jour du calendrier : `2026-02-30` a la bonne forme mais n'existe pas (P9-25, EP-3).
+      return typeof value === 'string' && isBusinessDay(value);
     case 'boolean':
       return typeof value === 'boolean';
     case 'number':

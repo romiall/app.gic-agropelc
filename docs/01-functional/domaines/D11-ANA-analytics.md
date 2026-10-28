@@ -74,8 +74,8 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-COM-10 | Panier moyen | KPI-COM-08 ÷ KPI-COM-07, affiché seulement si les deux sont positifs | dérivé | C (CM §9) / D (ADR-041) |
 | KPI-COM-11 | Taux de conversion (cohorte) | Prospects créés dans P et convertis à ce jour ÷ prospects créés dans P | `f_prospecting` | C (CM §9) / D (formule) |
 | KPI-COM-12 | Taux visite → commande | Visites de résultat `COMMANDE_PRISE` ÷ visites | `f_prospecting` | D |
-| KPI-COM-13 | Clients actifs | Clients avec au moins une vente dans les N derniers jours à la fin de P (N = 30) | `f_sales_line` | C (CM §9) / AV-013 |
-| KPI-COM-14 | Clients inactifs | Clients sans vente depuis N jours à la fin de P | `f_sales_line` | C (CM §9) / AV-013 |
+| KPI-COM-13 | Clients actifs | Clients avec au moins une vente dans les N derniers jours à la fin de P (N = `crm.inactive_after_days`, 30 par défaut) | `f_sales_line` | C (CM §9) / AV-013 |
+| KPI-COM-14 | Clients inactifs | Clients sans vente depuis N jours à la fin de P (N = `crm.inactive_after_days`, 30 par défaut) | `f_sales_line` | C (CM §9) / AV-013 |
 | KPI-COM-15 | Taux de réachat | Clients ayant ≥ 2 ventes dans P ÷ clients ayant ≥ 1 vente dans P | `f_sales_line` | C (CM §9) / D |
 | KPI-COM-16 | Atteinte d'objectif | Valeur réalisée de la métrique ÷ valeur cible | `crm.sales_targets` + faits | C (CM §34.3) |
 | KPI-COM-17 | Jours de présence | Jours distincts avec une session de travail acceptée | `f_attendance` | C (CM §10) |
@@ -109,6 +109,8 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-APP-02 | Taux de rejet | Σ rejetées ÷ Σ livrées | `f_purchases` | C (CM §28) / D |
 | KPI-OPS-01 | Fraîcheur de synchronisation | Délai depuis le dernier contact de chaque appareil (connexion, envoi ou pull, AV-202) ; résumé de l'accueil et du tableau de distribution : nombre d'appareils en service sans contact depuis plus de `analytics.freshness_warning_hours` | `sync.device_sync_state` | C (CM §36) / D (dernier contact, résumé : AV-202, AV-208) |
 | KPI-OPS-02 | Opérations en attente et conflits ouverts | Comptage | `sync.*` | C (PM §29) |
+
+> **Indicateurs sans fonction de référence ni écran en P9** (revue de P9, EP-5, AV-462) : KPI-COM-16 (atteinte d'objectif), KPI-PRD-04 (consommation d'aliment), KPI-PRD-05 (poids moyen = dernière pesée), KPI-PRD-09 (coût par tête) et KPI-OPS-02 sont à l'état `TO_CREATE` dans le registre (`kpi-catalog.ts`) ; aucun tableau, accueil ni instantané ne les affiche.
 
 **Codes locaux de l'accueil liés à la distribution** (ADR-030 §7, P5-20, AV-208 ; DÉDUIT) : `KPI-FIN-CS-PENDING` (sessions de caisse de PDV à valider, ajustements en attente en détail), `KPI-FIN-CS-VAR` (toutes les sessions ouvertes le jour métier dont l'écart courant est non nul, manquant et excédent en détail), `KPI-FIN-TRANSFERS` (remises de fonds en transit ou en écart, tous comptes), `KPI-DIS-QUOTAS` (quotas actifs échus ou en révocation, chacun compté une fois, sur les emplacements de vente des PDV du magasinier). Chacun est calculé par la fonction que le tableau de distribution appelle (BR-ANA-009).
 
@@ -170,6 +172,6 @@ Lecture de tous les modules, via des vues de lecture publiées par chaque module
 | Explorateur | Catalogue déclaratif, compilateur sans requête libre, portée en union, mesures protégées refusées (`FORBIDDEN_MEASURE`) ([ADR-064](../../decisions/ADR-064-couche-semantique-et-explorateur.md)) |
 | Tableaux | `GET /analytics/dashboards/{code}` (`direction`, `commercial`, `stock`, `production`, `finance` ; `distribution` inchangé), blocs isolés, instantanés personnels toutes les 15 minutes ([ADR-066](../../decisions/ADR-066-tableaux-tour-de-controle-et-instantanes.md)) |
 | Vues et exports | Commandes `analytics.view.save`, `.share`, `.delete`, `.set_default` ; exports asynchrones audités, CSV et XLSX sans dépendance ([ADR-067](../../decisions/ADR-067-vues-sauvegardees-et-exports-audites.md)) |
-| Charge | Bornes, plans `EXPLAIN`, palier 1, rétention ([ADR-068](../../decisions/ADR-068-charge-paliers-analytiques-et-retention.md)) |
+| Charge | Bornes, plans `EXPLAIN` relevés à la demande, palier 1, rétention ([ADR-068](../../decisions/ADR-068-charge-paliers-analytiques-et-retention.md)) |
 | Étendue des lignes | Exacte (union site, zone avec descendantes, titulaire), jamais tirée de `listConfinementAt` ; règle fermée si non exprimable (AV-373) |
 | Questions ouvertes | AV-371 à AV-387 |

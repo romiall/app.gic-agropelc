@@ -23,7 +23,7 @@ import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { listSnapshotsOf } from '../src/modules/analytics/application/public/index.js';
 import { refreshSnapshotsOf } from '../src/analytics-api/jobs/kpi-snapshots-refresh-job.js';
-import { readScopeOf } from '../src/analytics-api/dashboards/scope-adapter.js';
+import { readScopeOf, scopeIssueOf } from '../src/analytics-api/dashboards/scope-adapter.js';
 import { ALL_SCOPE } from '../src/platform/read-scope.js';
 import { newActor, type Actor } from './cash-transfer-fixtures.js';
 import { actorWith, type CommandActor } from './analytics-command-fixtures.js';
@@ -54,6 +54,8 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
   let finance: Actor;
   let stockHolder: CommandActor & { roleCode: string };
   let financeNoValuation: CommandActor & { roleCode: string };
+  let directionPlain: CommandActor & { roleCode: string };
+  let directionValued: CommandActor & { roleCode: string };
   let nobody: CommandActor & { roleCode: string };
   const tokens = new Map<string, string>();
 
@@ -89,12 +91,19 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
     finance = await newActor('FINANCE', root);
     stockHolder = await actorWith(root, ['analytics.dashboard.stock']);
     financeNoValuation = await actorWith(root, ['analytics.dashboard.finance']);
+    directionPlain = await actorWith(root, ['analytics.dashboard.direction']);
+    directionValued = await actorWith(root, [
+      'analytics.dashboard.direction',
+      'inventory.valuation.read',
+    ]);
     nobody = await actorWith(root, ['sales.sale.read']);
     const everyone: { id: string; deviceId: string }[] = [
       { id: direction.userId, deviceId: direction.deviceId },
       { id: finance.userId, deviceId: finance.deviceId },
       stockHolder,
       financeNoValuation,
+      directionPlain,
+      directionValued,
       nobody,
     ];
     for (const actor of everyone) {
@@ -193,8 +202,11 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       for (const block of response.blocks) {
         for (const kpi of block.kpis) {
           // Les compteurs d'alertes et de validations (`KPI-OPS-*`) ne sont pas des indicateurs du registre de D11 §7.1.
-          if (!kpi.code.startsWith('KPI-OPS-'))
+          // Un indicateur à créer n'entre pas dans un tableau avant sa fonction de référence (ADR-065 §1, EP-5).
+          if (!kpi.code.startsWith('KPI-OPS-')) {
             expect(kpiDefinitionOf(kpi.code), kpi.code).toBeDefined();
+            expect(kpiDefinitionOf(kpi.code)?.state, kpi.code).toBe('EXISTING');
+          }
           const hasPrevious = kpi.previousValue !== undefined;
           expect(hasPrevious, `${kpi.code} période précédente`).toBe(
             kpiHasPreviousPeriod(kpi.code),
@@ -219,6 +231,24 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       }
       expect(protectedSeen).toBeGreaterThan(0);
     });
+
+    it('masque vers registre : tout indicateur que la perte de la valorisation fait passer de non nul à nul est protégé au registre (TB-7)', async () => {
+      // Même étendue des deux côtés : seule la valorisation diffère. La lecture revérifiée d'un instantané masque les
+      // seuls indicateurs protégés du registre : une valeur au coût absente du registre resterait lisible.
+      const valued = await dashboard(directionValued, 'direction');
+      const plain = await dashboard(directionPlain, 'direction');
+      const plainByCode = new Map(
+        plain.blocks.flatMap((block) => block.kpis).map((kpi) => [kpi.code, kpi]),
+      );
+      let maskedSeen = 0;
+      for (const kpi of valued.blocks.flatMap((block) => block.kpis)) {
+        const other = plainByCode.get(kpi.code);
+        if (other === undefined || kpi.value === null || other.value !== null) continue;
+        maskedSeen += 1;
+        expect(kpiDefinitionOf(kpi.code)?.protected, kpi.code).toBe(true);
+      }
+      expect(maskedSeen).toBeGreaterThan(0);
+    });
   });
 
   describe('AT-054 : les mêmes chiffres partout', () => {
@@ -234,6 +264,22 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
         block.kpis.map(({ explore: _explore, ...rest }) => rest),
       );
       expect(month!.kpis).toEqual(JSON.parse(JSON.stringify(liveKpis)));
+    });
+
+    it('le bloc DISTRIBUTION de la tour de contrôle égale l’instantané distribution (TB-4, AV-467)', async () => {
+      await db
+        .transaction()
+        .execute((trx) => refreshSnapshotsOf(trx, direction.userId, clock.now()));
+      const month = (await listSnapshotsOf(db, direction.userId)).find(
+        (snapshot) => snapshot.scopeKey === 'distribution' && snapshot.periodKey === 'MONTH',
+      );
+      expect(month).toBeDefined();
+      const live = await dashboard(direction, 'direction', 'period=MONTH');
+      const block = live.blocks.find((candidate) => candidate.code === 'DISTRIBUTION');
+      expect(block).toBeDefined();
+      // Sans lien d'exploration ; liste vide des deux côtés quand la base n'a aucun point de vente.
+      const blockKpis = block!.kpis.map(({ explore: _explore, ...rest }) => rest);
+      expect(month!.kpis).toEqual(JSON.parse(JSON.stringify(blockKpis)));
     });
 
     it('chaque indicateur de flux qui a une mesure d’explorateur égale cette mesure, dans la même période et la même étendue', async () => {
@@ -342,6 +388,46 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
           truncated: false,
         }),
       ).toBeNull();
+    });
+
+    it('étendue tronquée (TB-6) : non exacte donc null, même vide ; « tout site » reste tout', async () => {
+      expect(
+        await readScopeOf(db, {
+          kind: 'CLAUSES',
+          clauses: [{ type: 'SITES', ids: [siteA], viaZoneIds: [] }],
+          truncated: true,
+        }),
+      ).toBeNull();
+      // Vide mais tronquée : pas { siteIds: [] } (un chiffre plus étroit que le droit sans signal).
+      expect(await readScopeOf(db, { kind: 'CLAUSES', clauses: [], truncated: true })).toBeNull();
+      expect(
+        await readScopeOf(db, {
+          kind: 'CLAUSES',
+          clauses: [{ type: 'ANY_SITE' }],
+          truncated: true,
+        }),
+      ).toBe(ALL_SCOPE);
+    });
+
+    it('scopeIssueOf : SCOPE_TRUNCATED pour une étendue tronquée, SCOPE_UNSUPPORTED sinon (TB-6)', () => {
+      expect(
+        scopeIssueOf({
+          kind: 'CLAUSES',
+          clauses: [{ type: 'SITES', ids: [siteA], viaZoneIds: [] }],
+          truncated: true,
+        }),
+      ).toBe('SCOPE_TRUNCATED');
+      expect(
+        scopeIssueOf({
+          kind: 'CLAUSES',
+          clauses: [
+            { type: 'SITES', ids: [siteA], viaZoneIds: [] },
+            { type: 'PERSONS', ids: [user] },
+          ],
+          truncated: false,
+        }),
+      ).toBe('SCOPE_UNSUPPORTED');
+      expect(scopeIssueOf({ kind: 'ALL' })).toBe('SCOPE_UNSUPPORTED');
     });
   });
 });

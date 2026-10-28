@@ -728,6 +728,65 @@ describe('notes de direction : commandes (P9-11)', () => {
       expect(event!.occurred_at.toISOString()).toBe(NOW);
     });
 
+    it('NT-6 : le retrait marque lues les notifications non lues de la note et publie leur sortie de l’appareil', async () => {
+      const noteId = freshUuid();
+      await publish(director, noteId, noteBody([{ type: 'SITE', ref: siteChild }]));
+      const recipients = [siteStaff.id, zoneManager.id, parentZoneManager.id];
+      expect((await recipientsOf(noteId)).sort()).toEqual([...recipients].sort());
+      // Une destinataire a déjà lu : sa notification est fermée par l'accusé, à la date du fait.
+      await acknowledge(siteStaff, noteId, 'READ', { occurredAt: at(1) });
+
+      const feedOf = async (userId: string) =>
+        db
+          .selectFrom('sync_change_feed')
+          .select('entity_id')
+          .where('dataset', '=', 'comms')
+          .where('entity_type', '=', 'NOTIFICATION')
+          .where('change_type', '=', 'SCOPE_EXIT')
+          .where('scope_id', '=', toBin(userId))
+          .execute();
+      const before = new Map<string, number>();
+      for (const userId of recipients) before.set(userId, (await feedOf(userId)).length);
+
+      const result = await archive(secondPublisher, noteId, 'Prix erroné');
+      expect(result.status).toBe('APPLIED');
+      // Deux notifications restaient non lues : elles seules sont comptées comme fermées par le retrait.
+      expect(result.server_refs).toMatchObject({ changed: 'true', notificationsClosed: '2' });
+
+      const rows = await notificationsOf(noteId);
+      for (const row of rows) {
+        expect(row.read_at, fromBin(row.user_id)).not.toBeNull();
+        if (fromBin(row.user_id) === siteStaff.id) {
+          // Celle de la destinataire qui avait lu garde sa date de lecture.
+          expect(row.read_at!.toISOString()).toBe(at(1));
+        } else {
+          expect(row.read_at!.toISOString()).toBe(NOW);
+        }
+      }
+      // Une ligne de flux de plus par notification fermée par le retrait, aucune pour celle déjà lue.
+      for (const userId of recipients) {
+        const expected = before.get(userId)! + (userId === siteStaff.id ? 0 : 1);
+        expect((await feedOf(userId)).length, userId).toBe(expected);
+      }
+      // Plus aucune notification non lue pour cette note (le compteur du destinataire ne la porte plus).
+      const stillUnread = await db
+        .selectFrom('communication_notifications')
+        .select('id')
+        .where('note_id', '=', toBin(noteId))
+        .where('read_at', 'is', null)
+        .execute();
+      expect(stillUnread).toEqual([]);
+    });
+
+    it('NT-6 : un brouillon abandonné n’écrit aucune notification', async () => {
+      const draftId = freshUuid();
+      await save(director, draftId, noteBody([{ type: 'SITE', ref: siteChild }]));
+      const result = await archive(director, draftId, 'Abandonné');
+      expect(result.status).toBe('APPLIED');
+      expect(result.server_refs).toMatchObject({ status: 'ARCHIVED', changed: 'true' });
+      expect(await notificationsOf(draftId)).toEqual([]);
+    });
+
     it('abandonne un brouillon (le sien seulement) ; une note inconnue est introuvable ; en ligne seulement', async () => {
       const draftId = freshUuid();
       await save(director, draftId, noteBody([{ type: 'SITE', ref: siteChild }]));

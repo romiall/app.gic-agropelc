@@ -14,6 +14,7 @@
     "start:worker": "node dist/worker.js",
     "demo:data": "tsx --env-file=.env scripts/demo-data.ts",
     "approve-device": "tsx scripts/approve-device.ts",
+    "purge-alerts": "tsx scripts/purge-alerts.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:perf": "vitest run --config vitest.perf.config.ts",

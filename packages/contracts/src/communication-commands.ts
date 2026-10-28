@@ -45,7 +45,9 @@ export type AlertDismissPayload = z.infer<typeof alertDismissPayloadSchema>;
 /**
  * `communication.alert_rule.set` — en ligne ; au moins un champ à modifier. Les seuils ne sont pas ici :
  * ce sont des paramètres `system_settings` (AV-350). La gravité doit être l'une de celles que le type
- * admet : le serveur le contrôle (le schéma ne connaît pas le type par l'enveloppe).
+ * admet : le serveur le contrôle (le schéma ne connaît pas le type par l'enveloppe). `resolutionMode`
+ * n'est accepté que s'il égale le mode du catalogue du type (état : AUTO ; événement : MANUAL), sinon le
+ * serveur répond `ALERT_RESOLUTION_NOT_ADMITTED` (P9-25, AL-4, AV-464).
  */
 export const alertRuleSetPayloadSchema = z
   .object({

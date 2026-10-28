@@ -3,17 +3,17 @@
  * avec sa **fonction de référence** — celle que le tableau de bord, l'accueil et l'instantané appellent,
  * et que l'explorateur doit reproduire par sa vue (test d'équivalence, AT-054).
  *
- * `state` dit où en est la fonction : `EXISTING` (livrée avant P9, API publique du module),
- * `TO_CREATE` (fichier nouveau de l'API publique du module propriétaire ; plus aucun depuis P9-15) ou `TO_VERIFY`
- * (existence ou forme à confirmer au moment de la brancher). Un indicateur à créer n'entre pas dans un
- * tableau avant sa fonction de référence et son test.
+ * `state` dit où en est la fonction : `EXISTING` (la fonction est exportée par l'API publique de son module : un
+ * essai du serveur le vérifie) ou `TO_CREATE` (fonction de référence à écrire : l'indicateur est défini par D11
+ * §7.1 mais aucun tableau, accueil ni instantané ne l'affiche ; il n'y entre qu'avec sa fonction et son essai
+ * d'équivalence, AV-462).
  */
 
 import type { ExplorationFilter } from './analytics-catalog.js';
 
 /** Nature : un flux (somme sur la période), un solde ou un état à un instant, ou un ratio dérivé. */
 export type KpiNature = 'FLOW' | 'INSTANT' | 'RATIO';
-export type KpiReferenceState = 'EXISTING' | 'TO_CREATE' | 'TO_VERIFY';
+export type KpiReferenceState = 'EXISTING' | 'TO_CREATE';
 
 export interface KpiDefinition {
   readonly code: string;
@@ -176,9 +176,12 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     code: 'KPI-COM-16',
     label: "Atteinte d'objectif",
     nature: 'RATIO',
-    module: 'crm',
+    // Le réalisé d'une cible compose `crm.listTargets` et `commercialEffort` avec `sales.periodRevenue` et
+    // `periodProductQuantity` (crm-read.controller.ts) ; `crm` n'importe pas `sales` (graphe) : la fonction ne peut
+    // vivre que dans `sales`. Aucune fonction publique aujourd'hui (EP-5, AV-462).
+    module: 'sales',
     reference: 'targetAttainment',
-    state: 'TO_VERIFY',
+    state: 'TO_CREATE',
   }),
   kpi({
     code: 'KPI-COM-17',
@@ -234,6 +237,8 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     reference: 'inventoryVarianceSummary',
     state: 'EXISTING',
     // Gains moins pertes : les mouvements de l'explorateur ne sont pas signés (AV-329).
+    // Valeur nette des écarts d'inventaire : une valeur au coût (AV-372), masquée par le tableau (TB-7).
+    protected: true,
   }),
   kpi({
     code: 'KPI-STK-05',
@@ -286,11 +291,14 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
   }),
   kpi({
     code: 'KPI-DIS-05',
-    label: 'Restant (par PDV)',
+    label: 'Valeur du restant (par PDV)',
     nature: 'INSTANT',
     module: 'inventory',
     reference: 'locationFlows',
     state: 'EXISTING',
+    // Le tableau n'expose ce code que sous forme de valeur du restant (xaf), valeur au coût : masquée sans
+    // `inventory.valuation.read` (TB-7, y compris à la lecture de l'instantané).
+    protected: true,
   }),
   kpi({
     code: 'KPI-DIS-06',
@@ -353,8 +361,10 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'production',
     reference: 'feedConsumption',
-    state: 'TO_VERIFY',
-    explorer: { dataset: 'f_production_daily', measure: 'feed_consumed' },
+    state: 'TO_CREATE',
+    // Par lot et par jour : `costObjectConsumptionsByDay` (inventory), sans somme sur un périmètre. Lien
+    // d'exploration (`feed_consumed`) à confirmer par l'essai d'équivalence (D11 §7.1 cite `f_stock_moves`) ;
+    // il n'est posé qu'avec cet essai (EP-5, AV-462).
   }),
   kpi({
     code: 'KPI-PRD-05',
@@ -362,8 +372,9 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'INSTANT',
     module: 'production',
     reference: 'latestWeighing',
-    state: 'TO_VERIFY',
-    explorer: { dataset: 'f_production_daily', measure: 'average_weight' },
+    state: 'TO_CREATE',
+    // La fiche du lot liste les pesées ; la mesure `average_weight` de l'explorateur est la moyenne des pesées de
+    // la période, non la dernière (AV-329) : pas de lien d'exploration (EP-5, AV-462).
   }),
   kpi({
     code: 'KPI-PRD-06',
@@ -396,7 +407,9 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'production',
     reference: 'costPerHead',
-    state: 'TO_VERIFY',
+    state: 'TO_CREATE',
+    // Par lot : `getProductionLot().costs.costPerHeadXaf` (coût restant ÷ effectif non vendu, BR-PRD-012) ; aucune
+    // fonction publique de ce nom (EP-5, AV-462).
     protected: true,
   }),
   kpi({
@@ -457,7 +470,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'INSTANT',
     module: 'finance',
     reference: 'listCashAccounts',
-    state: 'TO_VERIFY',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-FIN-07',
@@ -537,7 +550,9 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'INSTANT',
     module: 'sync',
     reference: 'syncBacklog',
-    state: 'TO_VERIFY',
+    state: 'TO_CREATE',
+    // Conflits ouverts : `openConflictSummary` (platform/sync/conflicts.ts) ; opérations en attente : `pending_reported`
+    // par appareil (`deviceFreshness`) ; leur somme sous une étendue n'a pas de fonction (EP-5, AV-462).
   }),
 ];
 
@@ -547,7 +562,24 @@ export function kpiDefinitionOf(code: string): KpiDefinition | undefined {
   return BY_CODE.get(code);
 }
 
-/** Indicateurs dont la fonction de référence reste à écrire (vide depuis P9-15). */
+/**
+ * Un indicateur tel que le tableau le rend sans `inventory.valuation.read` (TB-7) : si le registre le marque
+ * protégé, valeur, période précédente, variation et lien d'exploration passent à `null` (les champs absents le
+ * restent) ; sinon il est rendu tel quel. Règle de `kpi()` des blocs du tableau, appliquée aussi à la lecture d'un
+ * instantané calculé quand le droit existait.
+ */
+export function maskProtectedKpi<T extends { readonly code: string }>(entry: T): T {
+  if (BY_CODE.get(entry.code)?.protected !== true) return entry;
+  return {
+    ...entry,
+    value: null,
+    ...('previousValue' in entry ? { previousValue: null } : {}),
+    ...('variationPct' in entry ? { variationPct: null } : {}),
+    ...('explore' in entry ? { explore: null } : {}),
+  } as T;
+}
+
+/** Indicateurs dont la fonction de référence reste à écrire (cinq depuis la revue de P9-25, AV-462). */
 export function kpisToCreate(): readonly KpiDefinition[] {
   return KPI_CATALOG.filter((k) => k.state === 'TO_CREATE');
 }

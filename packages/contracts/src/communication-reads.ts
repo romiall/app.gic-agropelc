@@ -171,6 +171,10 @@ export const noteAcknowledgementsResponseSchema = z.object({
   audienceSize: count,
   read: count,
   acknowledged: count,
+  /** Nombre exact de personnes attendues ; `missing` n'en cite qu'une partie au-delà du plafond (NT-6). */
+  missingTotal: count,
+  /** Vrai si `missing` est coupé au plafond technique (AV-429). */
+  truncated: z.boolean(),
   missing: z.array(z.object({ userId: uuid, fullName: z.string().min(1).max(200) })),
 });
 export type NoteAcknowledgementsResponse = z.infer<typeof noteAcknowledgementsResponseSchema>;

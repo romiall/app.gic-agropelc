@@ -179,15 +179,23 @@ describe('lectures de communication', () => {
     // L'indicateur de troncature est obligatoire et booléen (AV-429).
     expect(noteList({ truncated: undefined })).toBe(false);
     expect(noteList({ truncated: 'oui' })).toBe(false);
-    expect(
+    const followUp = (extra: Record<string, unknown>) =>
       noteAcknowledgementsResponseSchema.safeParse({
         noteId: A,
         audienceSize: 40,
         read: 30,
         acknowledged: 25,
+        missingTotal: 1,
+        truncated: false,
         missing: [{ userId: B, fullName: 'Awa N.' }],
-      }).success,
-    ).toBe(true);
+        ...extra,
+      }).success;
+    expect(followUp({})).toBe(true);
+    // Plafond atteint : le total dépasse la liste et `truncated` le dit (NT-6, AV-429).
+    expect(followUp({ missingTotal: 1500, truncated: true })).toBe(true);
+    expect(followUp({ missingTotal: undefined })).toBe(false);
+    expect(followUp({ truncated: undefined })).toBe(false);
+    expect(followUp({ truncated: 'oui' })).toBe(false);
   });
 });
 

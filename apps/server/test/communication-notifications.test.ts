@@ -4,7 +4,8 @@
  * périmètre est testée avec l'adaptateur réel dans `communication-recipients.test.ts`) ; les utilisateurs,
  * les abonnements et les alertes sont réels. Chaque test s'exécute dans une transaction annulée.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import type { DomainEvent } from '../src/platform/events/domain-event.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
@@ -27,6 +28,7 @@ import {
 import { dispatchPendingPushes } from '../src/modules/communication/application/notifications/push-dispatch.js';
 import type {
   PushMessage,
+  PushSendOptions,
   PushSendResult,
   PushTarget,
   WebPushSender,
@@ -122,13 +124,33 @@ class StubResolver implements AlertRecipientResolver {
 
 class FakeSender implements WebPushSender {
   readonly sent: { target: PushTarget; message: PushMessage }[] = [];
+  /** Points de terminaison dont l'envoi lève (adaptateur en panne, NT-4). */
+  readonly throwing = new Set<string>();
+  /** Points de terminaison dont l'envoi ne répond jamais (silence, NT-4). */
+  readonly hanging = new Set<string>();
+  /** Aucun envoi ne répond. */
+  hangAll = false;
+  /** Signal d'annulation reçu, par point de terminaison (le dernier envoi l'emporte). */
+  readonly signals = new Map<string, AbortSignal>();
+  /** Durée simulée d'un envoi qui répond (ms), pour le budget de passe. */
+  delayMs = 0;
   constructor(
     public enabled = true,
     public outcomes: Record<string, PushSendResult> = {},
   ) {}
 
-  async send(target: PushTarget, message: PushMessage): Promise<PushSendResult> {
+  async send(
+    target: PushTarget,
+    message: PushMessage,
+    options?: PushSendOptions,
+  ): Promise<PushSendResult> {
     this.sent.push({ target, message });
+    if (options?.signal) this.signals.set(target.endpoint, options.signal);
+    if (this.throwing.has(target.endpoint)) throw new Error('adaptateur en panne');
+    if (this.hangAll || this.hanging.has(target.endpoint)) {
+      return new Promise<PushSendResult>(() => {});
+    }
+    if (this.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
     return this.outcomes[target.endpoint] ?? { status: 'SENT' };
   }
 }
@@ -171,11 +193,23 @@ const cashVariance = (
     occurredAt,
   );
 
-function wire(resolver: AlertRecipientResolver, sender: WebPushSender = new FakeSender()) {
+/**
+ * `raisedAt` : instant du traitement par le consommateur (NT-3 : `critical_since`, départ du délai
+ * d'escalade) ; absent, l'horloge partagée du test. Les notifications et l'escalade gardent `deps.clock`.
+ */
+function wire(
+  resolver: AlertRecipientResolver,
+  sender: WebPushSender = new FakeSender(),
+  raisedAt?: string,
+) {
   const deps: AlertNotifierDeps = { idGenerator, clock, resolver, push: sender };
   return {
     deps,
-    options: { idGenerator, afterRaise: createAlertNotifier(deps) },
+    options: {
+      idGenerator,
+      clock: raisedAt === undefined ? clock : new FixedClock(new Date(raisedAt)),
+      afterRaise: createAlertNotifier(deps),
+    },
   };
 }
 
@@ -529,7 +563,7 @@ describe('P9-05 : escalade des alertes critiques', () => {
     occurredAt: string,
     sender: WebPushSender = new FakeSender(),
   ) => {
-    const { deps, options } = wire(resolver, sender);
+    const { deps, options } = wire(resolver, sender, occurredAt);
     const session = freshUuid();
     await handleAlertEvent(uow, cashVariance(session, 'CRITICAL', occurredAt), options);
     return { deps, session, alertId: await alertIdOf(uow, `CASH_VARIANCE:${session}`) };
@@ -587,15 +621,16 @@ describe('P9-05 : escalade des alertes critiques', () => {
       ).toHaveLength(1);
     }));
 
-  it('pas avant l’échéance ; mesurée depuis le relèvement, pas depuis la première détection', () =>
+  it('pas avant l’échéance ; mesurée depuis le traitement du relèvement, pas depuis la première détection', () =>
     rolledBack(async (uow) => {
       const finance = await newUser();
       const direction = await newUser();
       const resolver = new StubResolver({ FINANCE: [finance], DIRECTION: [direction] });
-      const { deps, options } = wire(resolver);
+      // Le consommateur traite à 09:00 (instant du serveur) : c'est de là que court le délai.
+      const { deps, options } = wire(resolver, undefined, '2026-11-02T09:00:00.000Z');
       const session = freshUuid();
       clock.setTo(NOW);
-      // Levée WARNING il y a des semaines, relevée en CRITICAL il y a une heure.
+      // Levée WARNING il y a des semaines, relevée en CRITICAL (traitée il y a une heure).
       await handleAlertEvent(uow, cashVariance(session, 'WARNING', LONG_AGO), options);
       await handleAlertEvent(
         uow,
@@ -1065,7 +1100,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const lateJoiner = await newUser();
       const resolver = new StubResolver({ FINANCE: [lateJoiner], DIRECTION: [direction] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       await subscribe(direction);
       // L'alerte est levée et escaladée pour la direction (push d'escalade) ; une alerte suivante, dont
       // la direction est destinataire, part immédiatement : l'escalade n'a pas ouvert son créneau.
@@ -1100,7 +1135,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
         RESP_PRODUCTION: [supervisor],
       });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       const session = freshUuid();
       await handleAlertEvent(uow, cashVariance(session, 'CRITICAL', LONG_AGO), options);
       const alertId = await alertIdOf(uow, `CASH_VARIANCE:${session}`);
@@ -1125,7 +1160,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const finance = await newUser();
       const resolver = new StubResolver({ FINANCE: [finance] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       const session = freshUuid();
       await handleAlertEvent(uow, cashVariance(session, 'CRITICAL', LONG_AGO), options);
       const alertId = await alertIdOf(uow, `CASH_VARIANCE:${session}`);
@@ -1148,7 +1183,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const direction = await newUser();
       const resolver = new StubResolver({ RESP_FERME: [direction], DIRECTION: [direction] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       const healthySite = freshUuid();
       const brokenSite = freshUuid();
       const healthy = freshUuid();
@@ -1175,7 +1210,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const direction = await newUser();
       const resolver = new StubResolver({ RESP_FERME: [direction] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       const location = freshUuid();
       await handleAlertEvent(uow, highLoss(location, freshUuid(), LONG_AGO), options);
       const alertId = await alertIdOf(uow, lossKey(location));
@@ -1196,7 +1231,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const finance = await newUser();
       const resolver = new StubResolver({ FINANCE: [finance] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       const raise = async () => {
         const session = freshUuid();
         await handleAlertEvent(uow, cashVariance(session, 'CRITICAL', LONG_AGO), options);
@@ -1230,7 +1265,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
         DIRECTION: [direction],
       });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       for (let i = 0; i < 3; i += 1) {
         await handleAlertEvent(uow, cashVariance(freshUuid(), 'CRITICAL', LONG_AGO), options);
       }
@@ -1253,7 +1288,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       // CASH_VARIANCE n'a pas de titulaire de son niveau supérieur (DIRECTION) ; HIGH_LOSS en a un.
       const resolver = new StubResolver({ FINANCE: [finance], RESP_FERME: [direction] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       for (let i = 0; i < 3; i += 1) {
         await handleAlertEvent(uow, cashVariance(freshUuid(), 'CRITICAL', LONG_AGO), options);
       }
@@ -1280,7 +1315,7 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const direction = await newUser();
       const resolver = new StubResolver({ RESP_FERME: [direction], DIRECTION: [direction] });
       clock.setTo(NOW);
-      const { deps, options } = wire(resolver);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
       const locations = [freshUuid(), freshUuid(), freshUuid()];
       for (const location of locations) {
         await handleAlertEvent(uow, highLoss(location, freshUuid(), LONG_AGO), options);
@@ -1288,6 +1323,160 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       await escalateDueAlerts(uow, deps, { batchSize: 1 });
       for (const location of locations) {
         expect(await escalatedAtOf(uow, await alertIdOf(uow, lossKey(location)))).not.toBeNull();
+      }
+    }));
+
+  // --- P9-25 (NT-3, NT-7) : les essais ci-dessous ne dépendent pas du contenu de la base partagée : les
+  // alertes critiques étrangères échues sont d'abord neutralisées dans la transaction annulée du test.
+  const HOUR = 3_600_000;
+  const settleForeignCandidates = (uow: UnitOfWork) =>
+    uow
+      .updateTable('communication_alerts')
+      .set({ escalated_at: NOW })
+      .where('status', '=', 'OPEN')
+      .where('severity', '=', 'CRITICAL')
+      .where('escalated_at', 'is', null)
+      .execute();
+  const alertTimes = (uow: UnitOfWork, alertId: string) =>
+    uow
+      .selectFrom('communication_alerts')
+      .select(['critical_since', 'first_detected_at'])
+      .where('id', '=', toBin(alertId))
+      .executeTakeFirstOrThrow();
+
+  it('NT-3 : un fait ancien traité maintenant n’escalade qu’après le délai complet depuis le traitement', () =>
+    rolledBack(async (uow) => {
+      await settleForeignCandidates(uow);
+      const finance = await newUser();
+      const direction = await newUser();
+      const resolver = new StubResolver({ FINANCE: [finance], DIRECTION: [direction] });
+      clock.setTo(NOW);
+      const occurredAt = new Date(NOW.getTime() - 5 * HOUR).toISOString();
+      // Écart de caisse saisi hors ligne il y a 5 h, traité par le serveur à NOW.
+      const { deps, options } = wire(resolver, undefined, NOW.toISOString());
+      const session = freshUuid();
+      await handleAlertEvent(uow, cashVariance(session, 'CRITICAL', occurredAt), options);
+      const alertId = await alertIdOf(uow, `CASH_VARIANCE:${session}`);
+      const times = await alertTimes(uow, alertId);
+      expect(times.critical_since?.toISOString()).toBe(NOW.toISOString());
+      expect(times.first_detected_at.toISOString()).toBe(occurredAt);
+
+      await escalateDueAlerts(uow, deps);
+      expect(await escalatedAtOf(uow, alertId)).toBeNull();
+      clock.setTo(new Date(NOW.getTime() + 4 * HOUR - 1));
+      await escalateDueAlerts(uow, deps);
+      expect(await escalatedAtOf(uow, alertId)).toBeNull();
+      clock.setTo(new Date(NOW.getTime() + 4 * HOUR));
+      await escalateDueAlerts(uow, deps);
+      expect((await escalatedAtOf(uow, alertId))?.toISOString()).toBe(
+        new Date(NOW.getTime() + 4 * HOUR).toISOString(),
+      );
+      expect(await escalatedEvents(uow, alertId)).toHaveLength(1);
+      clock.setTo(NOW);
+    }));
+
+  it('NT-3 : une reprise de retard (consommateur arrêté) n’escalade aucune des alertes levées à la reprise', () =>
+    rolledBack(async (uow) => {
+      await settleForeignCandidates(uow);
+      const resolver = new StubResolver({
+        FINANCE: [await newUser()],
+        DIRECTION: [await newUser()],
+      });
+      clock.setTo(NOW);
+      const { deps, options } = wire(resolver, undefined, NOW.toISOString());
+      const alertIds: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const session = freshUuid();
+        await handleAlertEvent(
+          uow,
+          cashVariance(session, 'CRITICAL', new Date(NOW.getTime() - 6 * HOUR).toISOString()),
+          options,
+        );
+        alertIds.push(await alertIdOf(uow, `CASH_VARIANCE:${session}`));
+      }
+      await escalateDueAlerts(uow, deps);
+      for (const alertId of alertIds) {
+        expect(await escalatedAtOf(uow, alertId)).toBeNull();
+      }
+    }));
+
+  it('NT-7 : la passe suivante reprend après le curseur et atteint les candidates au-delà du plafond de lots', () =>
+    rolledBack(async (uow) => {
+      await settleForeignCandidates(uow);
+      const finance = await newUser();
+      const lead = await newUser();
+      // CASH_VARIANCE n'a pas de titulaire de son niveau supérieur (DIRECTION) ; HIGH_LOSS en a un.
+      const resolver = new StubResolver({
+        FINANCE: [finance],
+        RESP_FERME: [lead],
+        RESP_PRODUCTION: [lead],
+      });
+      clock.setTo(NOW);
+      const { deps, options } = wire(resolver, undefined, LONG_AGO);
+      for (let i = 0; i < 3; i += 1) {
+        await handleAlertEvent(uow, cashVariance(freshUuid(), 'CRITICAL', LONG_AGO), options);
+      }
+      await uow
+        .updateTable('communication_alert_rules')
+        .set({ escalation_roles: JSON.stringify(['RESP_PRODUCTION']) })
+        .where('alert_type', '=', 'HIGH_LOSS')
+        .execute();
+      const location = freshUuid();
+      await handleAlertEvent(uow, highLoss(location, freshUuid(), LONG_AGO), options);
+      const lossId = await alertIdOf(uow, lossKey(location));
+
+      const first = await escalateDueAlerts(uow, deps, { batchSize: 1, maxBatches: 2 });
+      expect(first.examined).toBe(2);
+      expect(first.nextCursor).not.toBeNull();
+      let cursor = first.nextCursor;
+      for (let pass = 0; pass < 6 && (await escalatedAtOf(uow, lossId)) === null; pass += 1) {
+        const next = await escalateDueAlerts(uow, deps, {
+          batchSize: 1,
+          maxBatches: 2,
+          after: cursor,
+        });
+        // Tant que la liste n'est pas épuisée, chaque curseur est postérieur au précédent.
+        if (next.nextCursor !== null && cursor !== null) {
+          expect(next.nextCursor > cursor).toBe(true);
+        }
+        cursor = next.nextCursor;
+      }
+      expect(await escalatedAtOf(uow, lossId)).not.toBeNull();
+
+      // Une lecture jusqu'au bout rend un curseur nul.
+      const full = await escalateDueAlerts(uow, deps);
+      expect(full.nextCursor).toBeNull();
+      // Un curseur au-delà du dernier identifiant : la passe repart du début au lieu de perdre son tour
+      // (les trois alertes de caisse, toujours sans titulaire, sont relues).
+      const wrapped = await escalateDueAlerts(uow, deps, {
+        batchSize: 1,
+        maxBatches: 2,
+        after: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+      });
+      expect(wrapped.examined).toBe(1);
+      expect(wrapped.nextCursor).not.toBeNull();
+    }));
+
+  it('NT-7 : les alertes échues sans destinataire de niveau supérieur donnent un seul avertissement par passe, compté par type', () =>
+    rolledBack(async (uow) => {
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        await settleForeignCandidates(uow);
+        const resolver = new StubResolver({ FINANCE: [await newUser()] });
+        clock.setTo(NOW);
+        const { deps, options } = wire(resolver, undefined, LONG_AGO);
+        for (let i = 0; i < 3; i += 1) {
+          await handleAlertEvent(uow, cashVariance(freshUuid(), 'CRITICAL', LONG_AGO), options);
+        }
+        const result = await escalateDueAlerts(uow, deps);
+        expect(result.withoutAudience).toBe(3);
+        const calls = warn.mock.calls.filter(([message]) =>
+          String(message).includes('sans destinataire de niveau supérieur'),
+        );
+        expect(calls).toHaveLength(1);
+        expect(String(calls[0]![0])).toContain('CASH_VARIANCE ×3');
+      } finally {
+        warn.mockRestore();
       }
     }));
 
@@ -1433,4 +1622,185 @@ describe('P9-11 : insertion groupée des notifications', () => {
     rolledBack(async (uow) => {
       expect(await insertNotifications(uow, idGenerator, [])).toBe(0);
     }));
+});
+
+describe('P9-25 : envoi des push, durcissement (NT-4, NT-5)', () => {
+  // Horloge propre, très postérieure à toute autre donnée : la fenêtre `created_at >= since` exclut les
+  // lignes étrangères de la base partagée, les comptes d'envois sont donc exacts.
+  const T = new Date('2027-03-01T10:00:00.000Z');
+  const later = new FixedClock(T);
+  const minutesAgo = (minutes: number) => new Date(T.getTime() - minutes * 60_000);
+  const pushRow = (userId: string, createdAt: Date) => ({
+    userId,
+    channel: 'WEB_PUSH' as const,
+    kind: 'DIRECT' as const,
+    sourceType: 'APPROVAL_REQUEST',
+    sourceId: freshUuid(),
+    sourceEventId: freshUuid(),
+    title: 'Titre',
+    body: 'Corps',
+    link: null,
+    createdAt,
+  });
+  const deliveredAtOf = async (uow: UnitOfWork, userId: string) =>
+    (
+      await uow
+        .selectFrom('communication_notifications')
+        .select('delivered_at')
+        .where('user_id', '=', toBin(userId))
+        .where('channel', '=', 'WEB_PUSH')
+        .executeTakeFirstOrThrow()
+    ).delivered_at;
+  /** Trois utilisateurs abonnés (A, B, C), validés avant la transaction annulée du test. */
+  async function threeSubscribers() {
+    const [a, b, c] = await Promise.all([newUser(), newUser(), newUser()]);
+    const [epA, epB, epC] = await Promise.all([subscribe(a), subscribe(b), subscribe(c)]);
+    return { a, b, c, epA, epB, epC };
+  }
+  const insertRows = async (uow: UnitOfWork, rows: readonly [string, Date][]) => {
+    for (const [userId, createdAt] of rows) {
+      await insertNotification(uow, idGenerator, pushRow(userId, createdAt));
+    }
+  };
+
+  it('une exception de l’adaptateur ne fait pas échouer la passe : écritures antérieures conservées, reprise ensuite', async () => {
+    const { a, b, c, epA, epB, epC } = await threeSubscribers();
+    await rolledBack(async (uow) => {
+      await insertRows(uow, [
+        [a, minutesAgo(4)],
+        [b, minutesAgo(3)],
+        [c, minutesAgo(2)],
+      ]);
+      const sender = new FakeSender(true, { [epA]: { status: 'GONE' } });
+      sender.throwing.add(epB);
+      const result = await dispatchPendingPushes(uow, { clock: later, sender });
+      expect(result.delivered).toBeGreaterThanOrEqual(1);
+      expect(result.revoked).toBeGreaterThanOrEqual(1);
+      expect((await deliveredAtOf(uow, c))?.toISOString()).toBe(T.toISOString());
+      expect(await deliveredAtOf(uow, b)).toBeNull();
+      const subscriptionA = await uow
+        .selectFrom('communication_push_subscriptions')
+        .select('revoked_at')
+        .where('endpoint', '=', epA)
+        .executeTakeFirstOrThrow();
+      expect(subscriptionA.revoked_at).not.toBeNull();
+
+      // Reprise : B ne lève plus ; A (révoqué) et C (livré) ne sont pas renvoyés.
+      const recovered = new FakeSender(true);
+      await dispatchPendingPushes(uow, { clock: later, sender: recovered });
+      expect((await deliveredAtOf(uow, b))?.toISOString()).toBe(T.toISOString());
+      expect(
+        recovered.sent
+          .map((entry) => entry.target.endpoint)
+          .filter((endpoint) => [epA, epB, epC].includes(endpoint)),
+      ).toEqual([epB]);
+    });
+  });
+
+  it('un adaptateur muet est abandonné après le délai : signal annulé, ligne en attente, passe rendue', async () => {
+    const { a, b, c, epA, epB, epC } = await threeSubscribers();
+    await rolledBack(async (uow) => {
+      await insertRows(uow, [
+        [a, minutesAgo(4)],
+        [b, minutesAgo(3)],
+        [c, minutesAgo(2)],
+      ]);
+      const sender = new FakeSender(true);
+      sender.hanging.add(epB);
+      await dispatchPendingPushes(uow, { clock: later, sender, sendTimeoutMs: 20 });
+      expect(await deliveredAtOf(uow, b)).toBeNull();
+      expect(sender.signals.get(epB)?.aborted).toBe(true);
+      expect(sender.signals.get(epA)?.aborted).toBe(false);
+      expect(sender.signals.get(epC)?.aborted).toBe(false);
+      expect(await deliveredAtOf(uow, a)).not.toBeNull();
+      expect(await deliveredAtOf(uow, c)).not.toBeNull();
+    });
+  });
+
+  it('la passe s’interrompt après le nombre de points de terminaison muets toléré, avec un avertissement', async () => {
+    const users = await Promise.all(Array.from({ length: 5 }, () => newUser()));
+    await Promise.all(users.map((user) => subscribe(user)));
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      await rolledBack(async (uow) => {
+        await insertRows(
+          uow,
+          users.map((user, index): [string, Date] => [user, minutesAgo(10 - index)]),
+        );
+        const sender = new FakeSender(true);
+        sender.hangAll = true;
+        await dispatchPendingPushes(uow, {
+          clock: later,
+          sender,
+          sendTimeoutMs: 10,
+          maxTimeoutsPerPass: 2,
+        });
+        expect(sender.sent).toHaveLength(2);
+        for (const user of users) expect(await deliveredAtOf(uow, user)).toBeNull();
+      });
+      const interrupted = warn.mock.calls.filter(([message]) =>
+        String(message).includes('passe interrompue'),
+      );
+      expect(interrupted).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('le budget de temps de la passe borne les envois (au moins un par passe)', async () => {
+    const { a, b, c } = await threeSubscribers();
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      await rolledBack(async (uow) => {
+        await insertRows(uow, [
+          [a, minutesAgo(4)],
+          [b, minutesAgo(3)],
+          [c, minutesAgo(2)],
+        ]);
+        const sender = new FakeSender(true);
+        sender.delayMs = 5;
+        const result = await dispatchPendingPushes(uow, {
+          clock: later,
+          sender,
+          passBudgetMs: 1,
+        });
+        expect(sender.sent).toHaveLength(1);
+        expect(result.delivered).toBe(1);
+        expect(await deliveredAtOf(uow, a)).not.toBeNull();
+        expect(await deliveredAtOf(uow, b)).toBeNull();
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('NT-5 : les lignes sans abonnement vivant n’occupent pas de place du lot', async () => {
+    const [d1, d2, live] = await Promise.all([newUser(), newUser(), newUser()]);
+    const epD1 = await subscribe(d1);
+    const epD2 = await subscribe(d2, undefined, 'BLOCKED');
+    await subscribe(live);
+    // D1 : abonnement révoqué (410 à une passe précédente) ; D2 : appareil bloqué.
+    await db
+      .updateTable('communication_push_subscriptions')
+      .set({ revoked_at: new Date() })
+      .where('endpoint', '=', epD1)
+      .execute();
+    await rolledBack(async (uow) => {
+      await insertRows(uow, [
+        [d1, minutesAgo(10)],
+        [d2, minutesAgo(9)],
+        [live, minutesAgo(1)],
+      ]);
+      const sender = new FakeSender(true);
+      const result = await dispatchPendingPushes(uow, { clock: later, sender }, { batch: 2 });
+      expect(result.delivered).toBe(1);
+      expect((await deliveredAtOf(uow, live))?.toISOString()).toBe(T.toISOString());
+      // Elles restent non livrées en base, sans qu'aucun envoi ne les vise.
+      expect(await deliveredAtOf(uow, d1)).toBeNull();
+      expect(await deliveredAtOf(uow, d2)).toBeNull();
+      const endpoints = sender.sent.map((entry) => entry.target.endpoint);
+      expect(endpoints).not.toContain(epD1);
+      expect(endpoints).not.toContain(epD2);
+    });
+  });
 });

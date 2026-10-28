@@ -59,7 +59,10 @@ export function pushGroupDecision(input: {
     : { send: false, nextSlotAt: nextSlot };
 }
 
-/** Échéance d'escalade : `critical_since` + `escalation_hours` (ADR-062 §7). */
+/**
+ * Échéance d'escalade : `critical_since` + `escalation_hours` (ADR-062 §7). `critical_since` est l'instant
+ * où le serveur lève ou relève l'alerte en `CRITICAL`, non la date du fait (AV-466, NT-3).
+ */
 export function escalationDueAt(criticalSince: Date, escalationHours: number): Date {
   const hours =
     Number.isFinite(escalationHours) && escalationHours > 0
@@ -71,7 +74,10 @@ export function escalationDueAt(criticalSince: Date, escalationHours: number): D
 export interface EscalationCandidate {
   readonly status: AlertStatus;
   readonly severity: AlertSeverity;
-  /** Instant de la levée ou du relèvement en `CRITICAL`. */
+  /**
+   * Instant où le serveur lève ou relève l'alerte en `CRITICAL`, non la date du fait (ADR-062 §7,
+   * AV-466) : un fait en retard n'écoule pas d'avance le délai des destinataires.
+   */
   readonly criticalSince: Date | null;
   readonly escalatedAt: Date | null;
 }

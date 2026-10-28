@@ -11,6 +11,9 @@ import {
   isHighLossAbsolute,
   isHighLossSalesShare,
   isTransferNotReceived,
+  isValidHighLossAlertXaf,
+  isValidHighLossSalesPct,
+  isValidTransferNotReceivedHours,
   lossSalesSharePct,
   lotDaysLeft,
   MAX_LOT_EXPIRING_DAYS,
@@ -191,5 +194,58 @@ describe('HIGH_LOSS : part des ventes du jour (AV-356, AV-405)', () => {
     expect(isHighLossSalesShare({ lossValueXaf: 4_000, salesNetXaf: 100_000, pct: -1 })).toBe(
       false,
     );
+  });
+});
+
+describe('prédicats de réglage exploitable (P9-25, AL-1)', () => {
+  const samples: readonly unknown[] = [
+    24,
+    0.5,
+    0,
+    80_000,
+    -1,
+    -5,
+    2.5,
+    -3,
+    '12',
+    'x',
+    '5',
+    null,
+    undefined,
+    Number.NaN,
+    Infinity,
+  ];
+
+  it('isValidTransferNotReceivedHours : nombre fini strictement positif', () => {
+    for (const valid of [24, 0.5]) expect(isValidTransferNotReceivedHours(valid)).toBe(true);
+    for (const invalid of [0, -5, '12', null, undefined, Number.NaN, Infinity]) {
+      expect(isValidTransferNotReceivedHours(invalid)).toBe(false);
+    }
+  });
+
+  it('isValidHighLossAlertXaf : nombre fini positif ou nul', () => {
+    for (const valid of [0, 80_000]) expect(isValidHighLossAlertXaf(valid)).toBe(true);
+    for (const invalid of [-1, 'x', null, Number.NaN, Infinity]) {
+      expect(isValidHighLossAlertXaf(invalid)).toBe(false);
+    }
+  });
+
+  it('isValidHighLossSalesPct : nombre fini strictement positif', () => {
+    expect(isValidHighLossSalesPct(2.5)).toBe(true);
+    for (const invalid of [0, -3, null, '5']) expect(isValidHighLossSalesPct(invalid)).toBe(false);
+  });
+
+  it('cohérence : l’OrDefault rend la valeur quand le prédicat est vrai, sinon le repli', () => {
+    for (const sample of samples) {
+      expect(transferNotReceivedHoursOrDefault(sample)).toBe(
+        isValidTransferNotReceivedHours(sample) ? sample : DEFAULT_TRANSFER_NOT_RECEIVED_HOURS,
+      );
+      expect(highLossAlertXafOrDefault(sample)).toBe(
+        isValidHighLossAlertXaf(sample) ? sample : DEFAULT_HIGH_LOSS_ALERT_XAF,
+      );
+      expect(highLossSalesPctOrDefault(sample)).toBe(
+        isValidHighLossSalesPct(sample) ? sample : DEFAULT_HIGH_LOSS_SALES_PCT,
+      );
+    }
   });
 });

@@ -2,6 +2,7 @@
  * Écriture des notifications (P9-05 ; ADR-062 §4 à §6 ; BR-NOT-004). Une ligne par destinataire et par
  * canal ; idempotente par (utilisateur, canal, événement source) : un événement rejoué ne double rien.
  */
+import { sql } from 'kysely';
 import type { IdGenerator, NotificationKind } from '@gic/domain';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
@@ -114,6 +115,45 @@ export async function insertNotifications(
     );
   }
   return written;
+}
+
+/**
+ * Marque lues les notifications non lues d'une note (NT-6), pour un utilisateur ou pour tous ses destinataires,
+ * et publie la sortie des `IN_APP` du jeu hors ligne `comms` (SCOPE_EXIT). `read_at` veut dire ici « la
+ * notification n'attend plus l'utilisateur » : il a lu ou accusé la note, ou la note a été retirée. Qui a lu la
+ * note reste tenu par `communication_note_acknowledgements`, non touchée. Renvoie le nombre de lignes fermées.
+ */
+export async function markNoteNotificationsRead(
+  uow: UnitOfWork,
+  input: { readonly noteId: string; readonly at: Date; readonly userId?: string },
+): Promise<number> {
+  const note = toBin(input.noteId);
+  const user = input.userId === undefined ? null : toBin(input.userId);
+  const unread = await uow
+    .selectFrom('communication_notifications')
+    .select(['id', 'user_id', 'channel'])
+    .where('note_id', '=', note)
+    .where('read_at', 'is', null)
+    .$if(user !== null, (qb) => qb.where('user_id', '=', user!))
+    .forUpdate()
+    .execute();
+  if (unread.length === 0) return 0;
+  // Les lignes sont verrouillées : l'ensemble mis à jour est celui qui vient d'être lu.
+  await uow
+    .updateTable('communication_notifications')
+    .set({ read_at: sql<Date>`GREATEST(created_at, ${input.at})` })
+    .where('note_id', '=', note)
+    .where('read_at', 'is', null)
+    .$if(user !== null, (qb) => qb.where('user_id', '=', user!))
+    .execute();
+  await recordNotificationChanges(
+    uow,
+    unread
+      .filter((row) => row.channel === 'IN_APP')
+      .map((row) => ({ id: fromBin(row.id), userId: fromBin(row.user_id) })),
+    'SCOPE_EXIT',
+  );
+  return unread.length;
 }
 
 /** Parmi ces identifiants, ceux qui sont réellement des notifications (le lot en a pu ignorer). */

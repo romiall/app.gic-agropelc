@@ -347,6 +347,35 @@ describe('communication_alerts — cohérence et immuabilité', () => {
       );
       expect(notes[0]!.alert_id).toBeNull();
     }));
+
+  it('purge : la limite des 730 jours, une heure en deçà refusée, une heure au-delà admise', () =>
+    withRollback(async (conn) => {
+      // Le plancher de ALERT_RETENTION_FLOOR_DAYS (packages/domain/src/retention.ts) est le littéral du
+      // déclencheur : une dérive entre les deux serait détectée ici (PF-1, AV-470).
+      const close = async (alertId: Buffer, offset: string) =>
+        conn.query(
+          `UPDATE communication_alerts
+              SET status = 'RESOLVED', resolution_kind = 'PASS',
+                  resolved_at = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 730 DAY) ${offset}
+            WHERE id = ?`,
+          [alertId],
+        );
+      const inside = await alert(conn);
+      await close(inside, '+ INTERVAL 1 HOUR');
+      await expect(
+        conn.query('DELETE FROM communication_alerts WHERE id = ?', [inside]),
+      ).rejects.toThrow(/seules les alertes closes depuis plus de 2 ans/);
+      const outside = await alert(conn);
+      await close(outside, '- INTERVAL 1 HOUR');
+      await conn.query('DELETE FROM communication_alerts WHERE id = ?', [outside]);
+      const [rows] = await conn.query<RowDataPacket[]>(
+        'SELECT id FROM communication_alerts WHERE id IN (?, ?)',
+        [inside, outside],
+      );
+      expect(rows.map((row) => (row.id as Buffer).toString('hex'))).toEqual([
+        inside.toString('hex'),
+      ]);
+    }));
 });
 
 describe('communication_alert_recipients', () => {

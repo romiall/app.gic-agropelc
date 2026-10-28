@@ -96,11 +96,18 @@ export function needsReplenishment(input: {
 /** Repli du délai d'un transfert expédié non reçu (D13 §7.1 : « plus de 48 h »). */
 export const DEFAULT_TRANSFER_NOT_RECEIVED_HOURS = 48;
 
+/**
+ * La valeur de `inventory.transfer_not_received_hours` est exploitable : un nombre fini strictement
+ * positif. Passé à `siteThenGlobalSetting`, il fait céder une valeur de site inexploitable au global
+ * (P9-25, AL-1).
+ */
+export function isValidTransferNotReceivedHours(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 /** `inventory.transfer_not_received_hours` : un nombre fini strictement positif, sinon 48 h. */
 export function transferNotReceivedHoursOrDefault(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : DEFAULT_TRANSFER_NOT_RECEIVED_HOURS;
+  return isValidTransferNotReceivedHours(value) ? value : DEFAULT_TRANSFER_NOT_RECEIVED_HOURS;
 }
 
 /** Heures entières écoulées depuis `since` (jamais négatives). */
@@ -148,11 +155,14 @@ export function lotDaysLeft(expiryDay: string, today: string): number {
 /** Repli du seuil absolu de perte d'un emplacement sur un jour (D13 §7.1 : 50 000 XAF). */
 export const DEFAULT_HIGH_LOSS_ALERT_XAF = 50_000;
 
+/** La valeur de `inventory.high_loss_alert_xaf` est exploitable : un nombre fini positif ou nul (AL-1). */
+export function isValidHighLossAlertXaf(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 /** `inventory.high_loss_alert_xaf` : un nombre fini positif ou nul, sinon 50 000 XAF. */
 export function highLossAlertXafOrDefault(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? value
-    : DEFAULT_HIGH_LOSS_ALERT_XAF;
+  return isValidHighLossAlertXaf(value) ? value : DEFAULT_HIGH_LOSS_ALERT_XAF;
 }
 
 /** La perte cumulée du jour atteint le seuil absolu (une perte sans valeur n'alerte jamais). */
@@ -166,11 +176,14 @@ export function isHighLossAbsolute(input: {
 /** Repli de la part des ventes du jour (D13 §7.1 : 5 %). */
 export const DEFAULT_HIGH_LOSS_SALES_PCT = 5;
 
+/** La valeur de `sales.high_loss_alert_sales_pct` est exploitable : un nombre fini strictement positif (AL-1). */
+export function isValidHighLossSalesPct(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 /** `sales.high_loss_alert_sales_pct` : un nombre fini strictement positif, sinon 5. */
 export function highLossSalesPctOrDefault(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : DEFAULT_HIGH_LOSS_SALES_PCT;
+  return isValidHighLossSalesPct(value) ? value : DEFAULT_HIGH_LOSS_SALES_PCT;
 }
 
 /** Part de la perte dans le CA net du jour, en %, au dixième (`null` sans vente). */

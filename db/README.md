@@ -39,11 +39,12 @@ créée avant ce correctif garde ces horodatages en heure locale ; la vérificat
 (`audit.chain.verify_daily`) y voit une rupture sur les entrées antérieures. Recréer alors la base
 locale (migrations puis seeds) plutôt que de corriger les lignes (le journal d'audit est immuable).
 
-## 1. Deux utilisateurs MySQL
+## 1. Trois utilisateurs MySQL
 
 | Utilisateur | Rôle | Utilisé par |
 |---|---|---|
 | **admin** (ex. `root` en local/CI, un identifiant admin fourni par l'hébergeur en production) | Exécute les migrations : DDL complet **et** `GRANT`/`REVOKE` sur `gic_app` | `dbmate` uniquement |
+| **`gic_maintenance`** (optionnel, P9-25, AV-470) | Rôle de maintenance : `SELECT` et `DELETE` sur `communication_alerts`, `SELECT` sur `organization_system_settings` | Le seul script d'exploitation `db:purge-alerts` (`MAINTENANCE_DATABASE_URL`) |
 | **`gic_app`** | Utilisateur applicatif, privilèges minimaux par table (`SELECT`/`INSERT`/`UPDATE`/`DELETE` selon la politique de suppression, jamais `DELETE` sur une table `IMMUABLE`/`ANNULATION`/`DESACTIVATION`/`VERSIONNEMENT` — [`03-historisation-suppression.md`](../docs/03-data/03-historisation-suppression.md) §4, INV-GLO-05) | Le serveur (`apps/server`, à partir de P0-06) |
 
 Les migrations accordent les privilèges de `gic_app` par table (`GRANT ... TO 'gic_app'@'%'`)
@@ -58,6 +59,21 @@ CREATE USER 'gic_app'@'%' IDENTIFIED BY '<mot de passe, hors dépôt>';
 En local, un utilisateur `mysql_native_password` suffit. `gic_app@'%'` (et non `@'localhost'`)
 pour que le conteneur/processus serveur, qui ne partage pas toujours l'hôte exact de MySQL,
 puisse se connecter.
+
+Le rôle `gic_maintenance` n'est, lui non plus, jamais créé par une migration (secret hors dépôt).
+Il sert à purger les alertes closes depuis plus de 730 jours, que `gic_app` ne peut pas supprimer
+(`03-historisation-suppression.md` §3 et §4) ; sans lui, rien n'est purgé et la tâche quotidienne du
+worker ne fait que journaliser les alertes en attente :
+
+```sql
+CREATE USER 'gic_maintenance'@'%' IDENTIFIED BY '<mot de passe, hors dépôt>';
+GRANT SELECT, DELETE ON communication_alerts TO 'gic_maintenance'@'%';
+GRANT SELECT ON organization_system_settings TO 'gic_maintenance'@'%';
+```
+
+Les actions en cascade sur les destinataires et les notifications n'exigent aucun privilège sur
+ces tables. Planification : une fois par semaine suffit (hébergement, tâche planifiée), le script
+lisant `MAINTENANCE_DATABASE_URL` (`apps/server/.env.example`).
 
 ## 2. Exécuter les migrations
 
@@ -195,4 +211,29 @@ s'approuvent dans l'application (écran Appareils).
 [`tests/`](tests/)) vérifie les contraintes, colonnes générées et déclencheurs
 d'immuabilité créés par ces migrations, contre `DATABASE_URL` déjà migré. Pas de test
 unitaire pur ici : le SQL n'a de sens qu'exécuté contre un vrai moteur (`09-non-functional/
-03-plan-de-tests.md`).
+03-plan-de-tests.md`). Ne jamais lancer la suite par défaut sur une base `…_load` (§ 7) : ses ventes
+générées sont immuables et les balayages d'invariants les verraient.
+
+## 7. Jeu de charge de P9 (hors suite par défaut)
+
+Mesures de NFR-12 et NFR-13 ([ADR-068](../docs/decisions/ADR-068-charge-paliers-analytiques-et-retention.md) §5) ;
+à la demande seulement, ni la CI ni `pnpm run test` ne le lancent. **Base dédiée seulement** : les ventes
+générées sont immuables (`trg_sales_sales_no_delete`, `trg_sales_sale_lines_no_delete`) et les balayages
+d'invariants de P4 et de P8 les verraient ; le générateur et le test de charge refusent toute base dont le
+nom ne se termine pas par `_load` (ex. `gic_agropelc_p9_load`).
+
+1. **Créer** une base vide `…_load`, y jouer les migrations (`dbmate --no-dump-schema`, §2) et les seeds
+   (`pnpm run db:seed`, obligatoire, §5), puis y mettre les référentiels que le générateur lit : un site
+   actif avec un emplacement physique et une zone, des produits actifs, un canal de vente, un motif, un
+   utilisateur actif (par exemple `pnpm run demo:data` avec `SERVER_DATABASE_URL` sur cette base). Les
+   variables s'exportent en bash (`export DATABASE_URL=…`) ou se posent en PowerShell (`$env:DATABASE_URL = '…'`).
+2. **Générer** : `DATABASE_URL=… pnpm --filter @gic/db load:p9 [ventes] [jours]` (défaut 250 000 ventes sur
+   366 jours, soit 625 000 lignes ; 400000 approche le million de lignes) ; relançable : les ventes déjà
+   présentes sont écartées, toute autre violation de contrainte est une erreur, le nombre de ventes et de
+   lignes est vérifié à la fin. Après le chargement, `ANALYZE TABLE` sur `sales_sales` et `sales_sale_lines`
+   donne des statistiques à jour à l'optimiseur.
+3. **Mesurer** : `SERVER_DATABASE_URL=… pnpm --filter @gic/server test:perf` (même base, rôle `gic_app`) ; le
+   test refuse une base non dédiée, un jeu incomplet ou de moins de 500 000 lignes (`P9_PERF_MIN_LINES`
+   abaisse le plancher pour un essai à blanc) et imprime le volume mesuré (ventes, lignes, produits, sites).
+   Les dates du jeu sont relatives au jour de génération (UTC) : mesurer le jour même.
+4. **Repartir de zéro** : `DROP DATABASE` de la base `…_load`, puis recommencer en 1.

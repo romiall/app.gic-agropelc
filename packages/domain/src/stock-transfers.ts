@@ -13,14 +13,17 @@ import { settlementValueXaf } from './stock-engine.js';
 /** Repli documenté du délai de rapprochement (BR-STK-024 « après 48 h ») si le paramètre manque. */
 export const DEFAULT_TRANSFER_UNMATCHED_HOURS = 48;
 
+/** La valeur de `inventory.transfer_unmatched_hours` est exploitable : un nombre fini strictement positif (AL-1). */
+export function isValidUnmatchedHours(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 /**
  * `inventory.transfer_unmatched_hours` lu dans les paramètres : un nombre fini strictement positif,
  * sinon le repli de 48 h (paramètre absent à la date demandée, ou valeur invalide).
  */
 export function unmatchedHoursOrDefault(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : DEFAULT_TRANSFER_UNMATCHED_HOURS;
+  return isValidUnmatchedHours(value) ? value : DEFAULT_TRANSFER_UNMATCHED_HOURS;
 }
 
 /**
@@ -40,8 +43,13 @@ export function isUnmatchedOverdue(occurredAt: Date, now: Date, hours: number): 
 export type BlindReceiptMatchMode = 'SUBSET' | 'EXACT';
 export const DEFAULT_BLIND_RECEIPT_MATCH_MODE: BlindReceiptMatchMode = 'SUBSET';
 
+/** La valeur de `inventory.blind_receipt_match_mode` est exploitable : `EXACT` ou `SUBSET` (AL-1). */
+export function isValidBlindReceiptMatchMode(value: unknown): value is BlindReceiptMatchMode {
+  return value === 'EXACT' || value === 'SUBSET';
+}
+
 export function blindReceiptMatchModeOrDefault(value: unknown): BlindReceiptMatchMode {
-  return value === 'EXACT' || value === 'SUBSET' ? value : DEFAULT_BLIND_RECEIPT_MATCH_MODE;
+  return isValidBlindReceiptMatchMode(value) ? value : DEFAULT_BLIND_RECEIPT_MATCH_MODE;
 }
 
 /** Une quantité d'un produit (ligne de réception ou ligne expédiée), en millièmes. */

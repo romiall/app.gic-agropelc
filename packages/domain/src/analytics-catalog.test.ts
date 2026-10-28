@@ -343,6 +343,41 @@ describe('validateExploration (BR-ANA-006, D11 §8)', () => {
       expect(withFilter('business_day', 'BETWEEN', ['2026-10-12'])).toMatchObject({ ok: false });
     });
 
+    it('refuse un jour qui n’existe pas au calendrier (P9-25, EP-3)', () => {
+      const impossibles = ['2026-02-30', '2026-13-45', '2026-04-31', '2025-02-29', '2026-00-10'];
+      for (const jour of impossibles) {
+        for (const op of ['EQ', 'GTE', 'LTE']) {
+          expect(withFilter('business_day', op, jour)).toMatchObject({
+            ok: false,
+            code: 'ANALYTICS_DEFINITION_INVALID',
+            field: 'business_day',
+          });
+        }
+        expect(withFilter('sale_day', 'EQ', jour)).toMatchObject({
+          ok: false,
+          code: 'ANALYTICS_DEFINITION_INVALID',
+          field: 'sale_day',
+        });
+        // Bornes choisies pour que le contrôle d'inversion ne masque jamais celui du jour.
+        expect(withFilter('business_day', 'BETWEEN', ['2000-01-01', jour])).toMatchObject({
+          ok: false,
+          code: 'ANALYTICS_DEFINITION_INVALID',
+          field: 'business_day',
+        });
+        expect(withFilter('business_day', 'BETWEEN', [jour, '2099-12-31'])).toMatchObject({
+          ok: false,
+          code: 'ANALYTICS_DEFINITION_INVALID',
+          field: 'business_day',
+        });
+      }
+      expect(withFilter('business_day', 'BETWEEN', ['2026-02-28', '2026-02-30'])).toMatchObject({
+        ok: false,
+        code: 'ANALYTICS_DEFINITION_INVALID',
+      });
+      // Une année bissextile reste acceptée.
+      expect(withFilter('business_day', 'EQ', '2028-02-29').ok).toBe(true);
+    });
+
     it('limite le nombre de valeurs d’un IN', () => {
       const tooMany = Array.from({ length: EXPLORATION_LIMITS.maxInValues + 1 }, () => SITE);
       expect(withFilter('site_id', 'IN', tooMany)).toMatchObject({ ok: false });

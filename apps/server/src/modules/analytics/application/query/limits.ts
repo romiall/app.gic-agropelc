@@ -19,6 +19,8 @@ export interface ExplorerLimits {
   readonly maxDetailDays: number;
   /** Requêtes simultanées au plus par utilisateur (ADR-068 §1 : 2). */
   readonly maxConcurrentPerUser: number;
+  /** Requêtes simultanées au plus, tous utilisateurs confondus (P9-25, AV-461 : 4). */
+  readonly maxConcurrentGlobal: number;
   /** Candidats par sorte de l'étendue exacte (AV-373 : 500). */
   readonly scopeMaxCandidates: number;
 }
@@ -28,6 +30,7 @@ export const EXPLORER_SETTING_KEYS = {
   maxExecutionMs: 'analytics.query_max_execution_ms',
   maxDetailDays: 'analytics.query_max_period_days',
   maxConcurrentPerUser: 'analytics.query_max_concurrent_per_user',
+  maxConcurrentGlobal: 'analytics.query_max_concurrent_global',
   scopeMaxCandidates: 'analytics.scope_max_candidates',
 } as const;
 
@@ -36,6 +39,7 @@ export const DEFAULT_EXPLORER_LIMITS: ExplorerLimits = {
   maxExecutionMs: 15_000,
   maxDetailDays: 1_096,
   maxConcurrentPerUser: 2,
+  maxConcurrentGlobal: 4,
   scopeMaxCandidates: DEFAULT_MAX_SCOPE_CANDIDATES,
 };
 
@@ -61,6 +65,10 @@ export async function readExplorerLimits(executor: Executor, at: Date): Promise<
     maxConcurrentPerUser: positiveInteger(
       await read(EXPLORER_SETTING_KEYS.maxConcurrentPerUser),
       DEFAULT_EXPLORER_LIMITS.maxConcurrentPerUser,
+    ),
+    maxConcurrentGlobal: positiveInteger(
+      await read(EXPLORER_SETTING_KEYS.maxConcurrentGlobal),
+      DEFAULT_EXPLORER_LIMITS.maxConcurrentGlobal,
     ),
     scopeMaxCandidates: positiveInteger(
       await read(EXPLORER_SETTING_KEYS.scopeMaxCandidates),

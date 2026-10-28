@@ -143,10 +143,15 @@ const stringOrNull = (value: unknown): string | null =>
 
 function ownerIds(definition: AlertTypeDefinition, payload: AlertEventPayload): string[] {
   const owners = new Set<string>();
-  for (const field of definition.ownerFields) {
-    const value = stringOrNull(payload[field]);
-    if (value !== null) owners.add(value.toLowerCase());
-  }
+  const collect = (fields: readonly string[]): void => {
+    for (const field of fields) {
+      const value = stringOrNull(payload[field]);
+      if (value !== null) owners.add(value.toLowerCase());
+    }
+  };
+  collect(definition.ownerFields);
+  // Repli (AV-463) : seulement si aucun champ principal n'est renseigné.
+  if (owners.size === 0) collect(definition.ownerFallbackFields ?? []);
   return [...owners];
 }
 

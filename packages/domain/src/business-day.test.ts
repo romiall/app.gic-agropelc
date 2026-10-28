@@ -12,6 +12,7 @@ import {
   businessPeriodDays,
   businessPeriodOf,
   isoWeekdayOfBusinessDay,
+  isBusinessDay,
 } from './business-day.js';
 import { DomainError } from './errors.js';
 
@@ -67,6 +68,40 @@ describe('businessDayStartUtc / businessDayEndUtc', () => {
     expect(() => businessDayStartUtc('2026-02-30')).toThrow(/date inexistante/);
     expect(() => businessDayEndUtc('2026-13-01')).toThrow(/date inexistante/);
     expect(businessDayStartUtc('2028-02-29').toISOString()).toBe('2028-02-28T23:00:00.000Z');
+  });
+});
+
+describe('isBusinessDay (forme et calendrier)', () => {
+  it('vrai pour un jour réel, année bissextile comprise', () => {
+    expect(isBusinessDay('2026-10-28')).toBe(true);
+    expect(isBusinessDay('2028-02-29')).toBe(true);
+  });
+
+  it('faux pour une date inexistante', () => {
+    for (const value of [
+      '2026-02-30',
+      '2025-02-29',
+      '2026-04-31',
+      '2026-13-01',
+      '2026-00-10',
+      '2026-10-00',
+    ]) {
+      expect(isBusinessDay(value)).toBe(false);
+    }
+  });
+
+  it('faux pour une mauvaise forme', () => {
+    for (const value of ['28-10-2026', '2026-1-5', '', ' 2026-10-28', '2026-10-28T00:00']) {
+      expect(isBusinessDay(value)).toBe(false);
+    }
+  });
+
+  it('vrai pour tout jour métier produit par businessDayOf', () => {
+    fc.assert(
+      fc.property(fc.date({ min: new Date('2020-01-01'), max: new Date('2035-12-31') }), (d) => {
+        expect(isBusinessDay(businessDayOf(d))).toBe(true);
+      }),
+    );
   });
 });
 

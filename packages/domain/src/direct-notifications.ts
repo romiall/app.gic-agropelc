@@ -199,6 +199,8 @@ const EXPORT_FAILURE_REASONS: Readonly<Record<string, string>> = {
   FORBIDDEN_MEASURE: 'la valeur au coût n’est plus accessible à votre compte',
   CATALOG_OUTDATED: 'le catalogue a changé : refaites l’export',
   SCOPE_TRUNCATED: 'votre périmètre est trop étendu pour un export complet',
+  // P9-25 (PF-6, AV-469) : la tâche a épuisé ses essais sur une erreur technique.
+  EXPORT_JOB_FAILED: 'incident technique, refaites l’export',
 };
 
 /**

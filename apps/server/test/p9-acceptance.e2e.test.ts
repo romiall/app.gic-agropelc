@@ -10,10 +10,12 @@
  * - AT-046 « Export de ventes par un responsable commercial » : limité à son équipe, audité (demande, fin, téléchargement) ;
  * - AT-054 « Ventes de la semaine lues partout » : tableau commercial = explorateur = documents pour un vendeur à
  *   portée `OWN`, qui ne voit que ses lignes et n'obtient ni coût ni marge.
- * Les autres acceptations de la phase sont démontrées par leurs fichiers : AT-027 (mortalité) `communication-production-alerts`,
- * AT-032 (créance échue) `communication-sales-alerts`, AT-047 (stock sous le seuil) `communication-inventory-alerts`,
- * AT-048 (note à accusé) `communication-note-commands` et `communication-comms-sync`, AT-038 (disponible par zone)
- * `inventory-read.e2e` — voir la démonstration de clôture.
+ * Les autres acceptations de la phase sont démontrées par leurs fichiers : AT-027 (mortalité) `production-acceptance`
+ * (validation requise) et `production-high-mortality-alert` (alerte), AT-032 (créance échue) `sales-acceptance`
+ * (événement, règlement) et `communication-alerts` (alerte `OVERDUE_RECEIVABLE`), AT-047 (stock sous le seuil)
+ * `inventory-stock-alert-passes` et `inventory-stock-alert-transitions`, AT-048 (note à accusé)
+ * `communication-note-commands` et `communication-comms-sync`, AT-038 (disponible par zone) `inventory-read.e2e` —
+ * voir la démonstration de clôture.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';

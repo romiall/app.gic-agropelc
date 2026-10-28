@@ -9,7 +9,7 @@
  * partagée et d'autres essais y écrivent pendant la lecture. Les exclusions et les dates sont éprouvées sur des
  * **copies** de lignes réelles (`analytics-view-seeds.ts`), jamais validées.
  */
-import { afterAll, describe, expect, it, type TestContext } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { sql, type Transaction } from 'kysely';
 import { businessDayEndUtc, businessDayOf, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../src/platform/kysely/database.js';
@@ -23,6 +23,7 @@ import {
 } from '../src/modules/sales/application/public/index.js';
 import { closeTestDb } from './helpers.js';
 import {
+  enough,
   snapshot,
   cloneCancelledPayment,
   cloneDiscountedCancellation,
@@ -45,15 +46,6 @@ async function rows<T extends Record<string, unknown>>(
   query: ReturnType<typeof sql<T>>,
 ): Promise<readonly T[]> {
   return (await query.execute(trx)).rows;
-}
-
-/**
- * La base d'essai est partagée : ces rapprochements portent sur les lignes que les autres essais y ont
- * laissées. Une base trop pauvre pour que le contrôle ait un sens **saute** l'essai (visible au rapport),
- * elle ne le fait ni échouer ni passer à vide. Toujours appelée **avant** la première assertion.
- */
-function enough(ctx: TestContext, actual: number, minimum: number, what: string): void {
-  if (actual < minimum) ctx.skip(`${what} : ${actual} en base, ${minimum} au moins nécessaires`);
 }
 
 const dayText = (value: unknown): string =>

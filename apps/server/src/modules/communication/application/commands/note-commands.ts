@@ -39,7 +39,6 @@ import {
   type NoteDraftSavePayload,
   type NotePublishPayload,
 } from '@gic/contracts';
-import { sql } from 'kysely';
 import type { z } from 'zod';
 import type {
   CommandHandler,
@@ -47,9 +46,12 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
-import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
-import { insertNotifications } from '../notifications/notification-store.js';
-import { noteHolderIds, recordNoteChanges, recordNotificationChanges } from '../sync-changes.js';
+import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  insertNotifications,
+  markNoteNotificationsRead,
+} from '../notifications/notification-store.js';
+import { noteHolderIds, recordNoteChanges } from '../sync-changes.js';
 import type { NoteAudienceResolver } from '../notes/note-audience-resolver.js';
 import { publishNoteEvent } from '../notes/note-events.js';
 import {
@@ -389,6 +391,13 @@ function archive(deps: NoteCommandDeps): CommandHandler<NoteArchivePayload> {
     });
     // Jeu hors ligne `comms` : la note sort de l'appareil de ceux qui la détiennent.
     await recordNoteChanges(uow, noteId, await noteHolderIds(uow, noteId), 'SCOPE_EXIT');
+    // NT-6 : une note retirée n'attend plus personne ; ses notifications non lues sont marquées lues (même
+    // sens que pour l'accusé : « n'attend plus l'utilisateur ») et sortent de l'appareil. Un brouillon
+    // abandonné n'a jamais été notifié.
+    const notificationsClosed =
+      note.status === 'PUBLISHED'
+        ? await markNoteNotificationsRead(uow, { noteId, at: archivedAt })
+        : 0;
     await publishNoteEvent(uow, deps, {
       eventType: 'InternalNoteArchived',
       noteId,
@@ -403,7 +412,12 @@ function archive(deps: NoteCommandDeps): CommandHandler<NoteArchivePayload> {
     });
     return {
       status: 'APPLIED',
-      serverRefs: { noteId, status: 'ARCHIVED', changed: 'true' },
+      serverRefs: {
+        noteId,
+        status: 'ARCHIVED',
+        changed: 'true',
+        notificationsClosed: String(notificationsClosed),
+      },
       audit: {
         before: { status: note.status, version: note.version },
         after: { status: 'ARCHIVED', reason: envelope.payload.reason },
@@ -488,35 +502,10 @@ function acknowledge(deps: NoteCommandDeps): CommandHandler<NoteAcknowledgePaylo
 
     if (changed) {
       // La note lue (ou accusée) n'attend plus l'utilisateur dans son centre de notifications.
-      const unread = await uow
-        .selectFrom('communication_notifications')
-        .select(['id', 'channel'])
-        .where('user_id', '=', toBin(author))
-        .where('note_id', '=', toBin(noteId))
-        .where('read_at', 'is', null)
-        .forUpdate()
-        .execute();
-      if (unread.length > 0) {
-        await uow
-          .updateTable('communication_notifications')
-          .set({ read_at: sql<Date>`GREATEST(created_at, ${factAt})` })
-          .where(
-            'id',
-            'in',
-            unread.map((notification) => notification.id),
-          )
-          .where('read_at', 'is', null)
-          .execute();
-      }
-      // Jeu hors ligne `comms` : ses notifications de la note sortent des non lues, et la note revient
-      // avec l'état de lecture que le serveur vient d'enregistrer.
-      await recordNotificationChanges(
-        uow,
-        unread
-          .filter((notification) => notification.channel === 'IN_APP')
-          .map((notification) => ({ id: fromBin(notification.id), userId: author })),
-        'SCOPE_EXIT',
-      );
+      // Jeu hors ligne `comms` : ses notifications de la note sortent des non lues (SCOPE_EXIT, publié par le
+      // geste partagé avec le retrait, NT-6), et la note revient avec l'état de lecture que le serveur vient
+      // d'enregistrer.
+      await markNoteNotificationsRead(uow, { noteId, userId: author, at: factAt });
       await recordNoteChanges(uow, noteId, [author], 'UPSERT');
       await publishNoteEvent(uow, deps, {
         eventType: 'InternalNoteAcknowledged',

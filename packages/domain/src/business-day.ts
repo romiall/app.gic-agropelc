@@ -49,6 +49,16 @@ function parseBusinessDay(businessDay: string): { year: number; month: number; d
   return { year, month, day };
 }
 
+/** Vrai si `value` est un jour métier réel `AAAA-MM-JJ` (forme et calendrier : `2026-02-30` n'existe pas). */
+export function isBusinessDay(value: string): boolean {
+  try {
+    parseBusinessDay(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Instant UTC du tout début (00:00:00.000, heure de Douala) d'un jour métier. */
 export function businessDayStartUtc(businessDay: string): Date {
   const { year, month, day } = parseBusinessDay(businessDay);

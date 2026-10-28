@@ -8,7 +8,7 @@
  * Les lectures de données se font dans un instantané toujours annulé (`snapshot`), sur la base d'essai partagée :
  * un contrôle sans donnée pour s'exercer **saute** (`enough`, avant toute assertion), il ne passe pas à vide.
  */
-import { afterAll, describe, expect, it, type TestContext } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { sql, type RawBuilder } from 'kysely';
 import {
   ANALYTICS_DATASETS,
@@ -19,32 +19,40 @@ import {
 } from '@gic/domain';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
+  acquireGlobalQuerySlot,
   acquireQuerySlot,
   compileExploration,
   DEFAULT_EXPLORER_LIMITS,
   executeExploration,
   ExplorationLimitError,
+  globalQuerySlotName,
   readExplorerLimits,
   recordQueryLog,
+  releaseGlobalQuerySlot,
   releaseQuerySlot,
   runExploration,
   type CompiledExploration,
   type ExactScope,
   type ExplorationResult,
+  zoneDescendantsOf,
 } from '../src/modules/analytics/application/public/index.js';
 import { exploredTotals } from '../src/modules/analytics/application/query/compile-exploration.js';
-import { closeTestDb, db, freshUuid, insertTestUser, withTestUow } from './helpers.js';
-import { snapshot, type Trx } from './analytics-view-seeds.js';
+import {
+  closeTestDb,
+  db,
+  freshUuid,
+  insertTestUser,
+  insertTestZone,
+  withTestUow,
+} from './helpers.js';
+import { enough, snapshot, type Trx } from './analytics-view-seeds.js';
 
 afterAll(closeTestDb);
-
-function enough(ctx: TestContext, actual: number, minimum: number, what: string): void {
-  if (actual < minimum) ctx.skip(`${what} : ${actual} en base, ${minimum} au moins nécessaires`);
-}
 
 const PERIOD = { code: 'CUSTOM', fromDay: '2020-01-01', toDay: '2099-12-31' } as const;
 const WINDOW = sql`BETWEEN '2020-01-01' AND '2099-12-31'`;
 const ALL_SCOPE: readonly ExactScope[] = [{ kind: 'ALL' }];
+const NO_ZONES: ReadonlyMap<string, readonly string[]> = new Map();
 const LIMITS = { maxRows: 10_000, maxExecutionMs: 15_000 } as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -89,7 +97,10 @@ async function explore(
   scopes: readonly ExactScope[] = ALL_SCOPE,
   limits: { readonly maxRows: number; readonly maxExecutionMs: number } = LIMITS,
 ): Promise<ExplorationResult> {
-  const compiled = compileExploration(plan, scopes, { maxExecutionMs: limits.maxExecutionMs });
+  const compiled = compileExploration(plan, scopes, {
+    maxExecutionMs: limits.maxExecutionMs,
+    zoneDescendants: await zoneDescendantsOf(trx, plan),
+  });
   return executeExploration(trx, compiled, limits);
 }
 
@@ -525,7 +536,10 @@ describe('filtres', () => {
           }),
           { datasets: [synthetic] },
         );
-        const compiled = compileExploration(plan, ALL_SCOPE, { maxExecutionMs: 15_000 });
+        const compiled = compileExploration(plan, ALL_SCOPE, {
+          maxExecutionMs: 15_000,
+          zoneDescendants: NO_ZONES,
+        });
         const text = compiled.rows.compile(db);
         expect(text.sql, op).not.toContain('DROP');
         expect(text.sql, op).not.toContain(hostile);
@@ -639,6 +653,45 @@ describe('étendue, tri et total', () => {
       expect((await explore(trx, plan, [only(first), { kind: 'ALL' }])).rows[0]!.revenue).toBe(
         scoped,
       );
+    });
+  });
+
+  it('un filtre de zone couvre la zone et ses sous-zones, en égalité, en liste et en exclusion (AV-375, EP-1)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const zones = (
+        await sql<{ zone: Buffer }>`SELECT zone_id AS zone FROM analytics_f_sales_line
+          WHERE business_day ${WINDOW} AND zone_id IS NOT NULL
+          GROUP BY zone_id ORDER BY COUNT(*) DESC, zone_id LIMIT 1`.execute(trx)
+      ).rows.map((row) => fromBin(row.zone));
+      enough(ctx, zones.length, 1, 'zones ayant des ventes');
+      const child = zones[0]!;
+      // Une zone parente neuve, sans vente directe : la zone des ventes devient sa descendante (fermeture transitive).
+      const parent = await insertTestZone(trx, await insertTestUser(trx));
+      await sql`INSERT INTO organization_zone_ancestors (zone_id, ancestor_id, depth)
+        VALUES (${toBin(child)}, ${toBin(parent)}, 1)`.execute(trx);
+      const revenueOf = async (filters: ExplorationDefinition['filters']) =>
+        (await explore(trx, planOf(definitionOf(sales, { measures: ['revenue'], filters }))))
+          .rows[0]!.revenue as number;
+      const direct = await revenueOf([{ field: 'zone_id', op: 'EQ', value: child }]);
+      const all = await revenueOf([]);
+      expect(direct).toBeGreaterThan(0);
+      expect(await revenueOf([{ field: 'zone_id', op: 'EQ', value: parent }])).toBe(direct);
+      expect(await revenueOf([{ field: 'zone_id', op: 'IN', value: [parent, freshUuid()] }])).toBe(
+        direct,
+      );
+      expect(await revenueOf([{ field: 'zone_id', op: 'NE', value: parent }])).toBe(all - direct);
+      // Le compilateur seul, sans descendantes lues : la zone ne couvre qu'elle-même.
+      const alone = compileExploration(
+        planOf(
+          definitionOf(sales, {
+            measures: ['revenue'],
+            filters: [{ field: 'zone_id', op: 'EQ', value: parent }],
+          }),
+        ),
+        ALL_SCOPE,
+        { maxExecutionMs: 15_000, zoneDescendants: NO_ZONES },
+      );
+      expect((await executeExploration(trx, alone, LIMITS)).rows[0]!.revenue).toBe(0);
     });
   });
 
@@ -871,16 +924,111 @@ describe('limites en erreur', () => {
 
   it('la durée maximale est un indice d’optimiseur du SQL compilé, entier et positif', () => {
     const plan = planOf(definitionOf(sales, { measures: ['revenue'] }));
-    const text = compileExploration(plan, ALL_SCOPE, { maxExecutionMs: 12_345 }).rows.compile(
-      db,
-    ).sql;
+    const text = compileExploration(plan, ALL_SCOPE, {
+      maxExecutionMs: 12_345,
+      zoneDescendants: NO_ZONES,
+    }).rows.compile(db).sql;
     expect(text).toContain('MAX_EXECUTION_TIME(12345)');
     expect(text).toMatch(/LIMIT 10001\s*$/);
     for (const invalid of [0, -1, 1.5, Number.NaN]) {
-      expect(() => compileExploration(plan, ALL_SCOPE, { maxExecutionMs: invalid })).toThrow(
-        RangeError,
-      );
+      expect(() =>
+        compileExploration(plan, ALL_SCOPE, { maxExecutionMs: invalid, zoneDescendants: NO_ZONES }),
+      ).toThrow(RangeError);
     }
+  });
+
+  it('le total est compilé pour le temps qui reste ; sans dimension ou avec une mesure non additive, il n’existe pas (EP-2)', () => {
+    const grouped = planOf(
+      definitionOf(sales, { measures: ['revenue'], dimensions: ['business_day'] }),
+    );
+    const compiled = compileExploration(grouped, ALL_SCOPE, {
+      maxExecutionMs: 12_345,
+      zoneDescendants: NO_ZONES,
+    });
+    expect(typeof compiled.totals).toBe('function');
+    const totals = compiled.totals!;
+    const totalSql = totals(7_000).compile(db).sql;
+    expect(totalSql).toContain('MAX_EXECUTION_TIME(7000)');
+    expect(totalSql).not.toContain('MAX_EXECUTION_TIME(12345)');
+    expect(compiled.rows.compile(db).sql).toContain('MAX_EXECUTION_TIME(12345)');
+    for (const invalid of [0, 1.5, Number.NaN]) {
+      expect(() => totals(invalid)).toThrow(RangeError);
+    }
+    const flat = compileExploration(
+      planOf(definitionOf(sales, { measures: ['revenue'] })),
+      ALL_SCOPE,
+      { maxExecutionMs: 12_345, zoneDescendants: NO_ZONES },
+    );
+    expect(flat.totals).toBeNull();
+    const nonAdditive = compileExploration(
+      planOf(
+        definitionOf(dataset('f_production_daily'), {
+          measures: ['average_weight'],
+          dimensions: ['business_day'],
+        }),
+      ),
+      ALL_SCOPE,
+      { maxExecutionMs: 12_345, zoneDescendants: NO_ZONES },
+    );
+    expect(nonAdditive.totals).toBeNull();
+  });
+
+  describe('durée de l’exploration entière : le total reçoit le temps qui reste (EP-2)', () => {
+    const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    const fake = (
+      rows: Record<string, unknown>[],
+      delayMs: number,
+    ): RawBuilder<Record<string, unknown>> =>
+      ({
+        execute: async () => {
+          await sleep(delayMs);
+          return { rows };
+        },
+      }) as unknown as RawBuilder<Record<string, unknown>>;
+    const columns: CompiledExploration['columns'] = [
+      { name: 'n', label: 'n', kind: 'measure', alias: 'm0', unit: 'count' },
+    ];
+
+    it('le total est lancé avec un temps restant strictement inférieur à la durée maximale', async () => {
+      const remaining: number[] = [];
+      const compiled: CompiledExploration = {
+        columns,
+        rows: fake([{ m0: 1 }], 60),
+        totals: (maxExecutionMs) => {
+          remaining.push(maxExecutionMs);
+          return fake([{ m0: 1 }], 0);
+        },
+        totalsFromRow: false,
+        rowLimit: 10,
+      };
+      const result = await executeExploration(db, compiled, {
+        maxRows: 10,
+        maxExecutionMs: 10_000,
+      });
+      expect(remaining).toHaveLength(1);
+      expect(Number.isInteger(remaining[0])).toBe(true);
+      expect(remaining[0]).toBeLessThan(10_000);
+      expect(remaining[0]).toBeGreaterThan(9_000);
+      expect(result.totals).toEqual({ n: 1 });
+    });
+
+    it('budget épuisé par les lignes : erreur de durée, le total n’est jamais lancé', async () => {
+      let calls = 0;
+      const compiled: CompiledExploration = {
+        columns,
+        rows: fake([{ m0: 1 }], 80),
+        totals: () => {
+          calls += 1;
+          return fake([{ m0: 1 }], 0);
+        },
+        totalsFromRow: false,
+        rowLimit: 10,
+      };
+      const outcome = executeExploration(db, compiled, { maxRows: 10, maxExecutionMs: 50 });
+      await expect(outcome).rejects.toBeInstanceOf(ExplorationLimitError);
+      await expect(outcome).rejects.toMatchObject({ limit: 'time' });
+      expect(calls).toBe(0);
+    });
   });
 });
 
@@ -906,10 +1054,16 @@ describe('requêtes simultanées par utilisateur', () => {
     });
   });
 
-  const limits = { maxRows: 100, maxExecutionMs: 15_000, maxConcurrentPerUser: 1 } as const;
+  const limits = {
+    maxRows: 100,
+    maxExecutionMs: 15_000,
+    maxConcurrentPerUser: 1,
+    maxConcurrentGlobal: 4,
+  } as const;
   const simple = (): CompiledExploration =>
     compileExploration(planOf(definitionOf(sales, { measures: ['revenue'] })), ALL_SCOPE, {
       maxExecutionMs: 15_000,
+      zoneDescendants: NO_ZONES,
     });
 
   /**
@@ -939,6 +1093,62 @@ describe('requêtes simultanées par utilisateur', () => {
     const result = await runExploration(db, { userId, compiled: simple(), limits });
     expect(result.rowCount).toBe(1);
     await expectSlotFree(userId);
+  });
+
+  it('plafond global : tous les emplacements globaux tenus, la requête est refusée et rend celui de l’utilisateur (AV-461)', async () => {
+    const userId = freshUuid();
+    const capped = { ...limits, maxConcurrentGlobal: 1 };
+    await db.connection().execute(async (holder) => {
+      expect(await acquireGlobalQuerySlot(holder, 1)).toBe(1);
+      const refused = runExploration(db, { userId, compiled: simple(), limits: capped });
+      await expect(refused).rejects.toMatchObject({ limit: 'concurrency' });
+      await expectSlotFree(userId);
+      await releaseGlobalQuerySlot(holder, 1);
+    });
+    expect(
+      (await runExploration(db, { userId, compiled: simple(), limits: capped })).rowCount,
+    ).toBe(1);
+    await db.connection().execute(async (probe) => {
+      // Rendu après la requête : un autre utilisateur le reprend.
+      expect(await acquireGlobalQuerySlot(probe, 1)).toBe(1);
+      await releaseGlobalQuerySlot(probe, 1);
+    });
+  });
+
+  it('une requête en cours tient l’emplacement global : une autre est refusée, puis passe une fois la première terminée (EP-2)', async () => {
+    // L'emplacement global est un verrou nommé, partagé par tout le serveur MySQL : l'essai échoue si un autre
+    // processus de la même instance (serveur de développement, autre suite) tient l'emplacement 1.
+    const userA = freshUuid();
+    const userB = freshUuid();
+    const capped = { ...limits, maxConcurrentGlobal: 1 };
+    const slow = runExploration(db, {
+      userId: userA,
+      compiled: { ...simple(), rows: sql<Record<string, unknown>>`SELECT SLEEP(0.5) AS m0` },
+      limits: capped,
+    });
+    try {
+      let held = false;
+      const deadline = Date.now() + 5_000;
+      while (!held && Date.now() < deadline) {
+        const { rows } = await sql<{ holder: string | number | null }>`
+          SELECT IS_USED_LOCK(${globalQuerySlotName(1)}) AS holder`.execute(db);
+        held = rows[0]?.holder !== null && rows[0]?.holder !== undefined;
+        if (!held) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(held).toBe(true);
+      const refused = runExploration(db, { userId: userB, compiled: simple(), limits: capped });
+      await expect(refused).rejects.toMatchObject({ limit: 'concurrency' });
+      await expectSlotFree(userB);
+    } finally {
+      await slow;
+    }
+    expect(
+      (await runExploration(db, { userId: userB, compiled: simple(), limits: capped })).rowCount,
+    ).toBe(1);
+    await db.connection().execute(async (probe) => {
+      expect(await acquireGlobalQuerySlot(probe, 1)).toBe(1);
+      await releaseGlobalQuerySlot(probe, 1);
+    });
   });
 
   it('l’emplacement est rendu après une erreur de lecture ; la lecture est en lecture seule', async () => {
@@ -982,6 +1192,7 @@ describe('limites paramétrées et journal', () => {
         ['analytics.query_max_rows', 250],
         ['analytics.query_max_execution_ms', 'beaucoup'],
         ['analytics.query_max_concurrent_per_user', 0],
+        ['analytics.query_max_concurrent_global', 0],
         ['analytics.query_max_period_days', 90.5],
       ] as const) {
         await trx

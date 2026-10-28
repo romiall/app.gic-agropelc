@@ -157,6 +157,36 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
     expect(await jobsOf(type)).toHaveLength(2);
   });
 
+  it('tâche précédente purgée (PF-7) : le dépôt suivant n’est pas bloqué, aucun empilement fantôme', async () => {
+    const clock = new FixedClock(T0);
+    const type = testType('purged');
+    const scheduler = schedulerFor(
+      [{ jobType: type, schedule: { kind: 'INTERVAL', intervalSeconds: 3600 } }],
+      clock,
+    );
+    const [firstId] = await scheduler.enqueueDue({ jobTypes: [type] });
+    expect(firstId).toBeDefined();
+
+    // La tâche se termine puis la purge technique la supprime (par identifiant : jamais les tâches terminées des
+    // autres fichiers d'essai de la base partagée).
+    await db
+      .updateTable('platform_jobs')
+      .set({ status: 'DONE' })
+      .where('id', '=', toBin(firstId!))
+      .execute();
+    await db.deleteFrom('platform_jobs').where('id', '=', toBin(firstId!)).execute();
+    expect(await jobsOf(type)).toHaveLength(0);
+
+    // `last_job_id` pointe une ligne disparue : la précédente est introuvable, donc pas « en attente ».
+    clock.setTo(new Date('2026-10-09T11:05:00.000Z'));
+    const next = await scheduler.enqueueDue({ jobTypes: [type] });
+    expect(next).toHaveLength(1);
+    expect(next[0]).not.toBe(firstId);
+    expect(await jobsOf(type)).toHaveLength(1);
+    expect(await scheduler.lastJobId(type)).toBe(next[0]);
+    expect((await scheduleRow(type))!.next_run_at.toISOString()).toBe('2026-10-09T12:00:00.000Z');
+  });
+
   it('forme changée dans le code : ligne mise à jour sans réinitialiser le créneau', async () => {
     const clock = new FixedClock(T0);
     const type = testType('changed');

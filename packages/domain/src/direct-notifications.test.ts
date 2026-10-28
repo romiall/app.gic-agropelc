@@ -316,6 +316,7 @@ describe('fin d’un export (P9-20 ; ADR-067 §7)', () => {
     expect(reason('FORBIDDEN')).toContain('droit');
     expect(reason('CATALOG_OUTDATED')).toContain('catalogue');
     expect(reason('SCOPE_TRUNCATED')).toContain('périmètre');
+    expect(reason('EXPORT_JOB_FAILED')).toContain('incident technique');
     expect(reason('AUTRE_CODE')).toContain('erreur de production');
     expect(reason(null)).toBe('Votre export n’a pas pu être produit.');
     expect(

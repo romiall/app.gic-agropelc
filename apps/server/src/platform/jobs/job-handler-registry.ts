@@ -4,10 +4,25 @@
  * command-handler-registry.ts) : chaque module s'enregistre au démarrage, le worker ne
  * connaît aucun module métier. Un gestionnaire résout normalement (succès) ou lève
  * (échec — `job-runner.ts` gère la reprise/l'échec définitif, pas le gestionnaire lui-même).
+ *
+ * Un gestionnaire lève pour une erreur technique à rejouer. Celui dont l'objet métier doit refléter l'échec
+ * définitif (l'export : sans cela sa ligne resterait `QUEUED` et compterait parmi les exports en cours) lit
+ * `context` pour savoir qu'il tient le dernier essai (P9-25, PF-6, AV-469).
  */
 import type { UnitOfWork } from '../unit-of-work.js';
 
-export type JobHandler<P = unknown> = (uow: UnitOfWork, payload: P) => Promise<void>;
+/** Essai en cours d'une tâche : `attempt` vaut 1 au premier essai ; le dernier est `attempt >= maxAttempts`. */
+export interface JobAttemptContext {
+  readonly attempt: number;
+  readonly maxAttempts: number;
+}
+
+/** Le troisième paramètre est optionnel : des essais appellent directement `resolve(type)!(uow, charge)`. */
+export type JobHandler<P = unknown> = (
+  uow: UnitOfWork,
+  payload: P,
+  context?: JobAttemptContext,
+) => Promise<void>;
 
 export class JobHandlerRegistry {
   private readonly handlers = new Map<string, JobHandler>();

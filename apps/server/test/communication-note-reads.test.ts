@@ -534,6 +534,17 @@ describe('notes de direction : lectures (P9-11 (2/3))', () => {
         acknowledged: 0,
       });
       expect([...initial!.missingUserIds].sort()).toEqual([staffX.id, manager.id].sort());
+      // Sans plafond d'essai, le total exact est la longueur de la liste (NT-6).
+      expect(initial!.missingTotal).toBe(initial!.missingUserIds.length);
+      // Suivi plafonné : la liste est coupée aux plus petits identifiants, le total reste exact.
+      const capped = await noteAcknowledgementFollowUp(db, resolver, {
+        userId: publisher.id,
+        at: at(1),
+        id: needsAck,
+        missingMax: 1,
+      });
+      expect(capped!.missingTotal).toBe(2);
+      expect(capped!.missingUserIds).toEqual([[staffX.id, manager.id].sort()[0]]);
 
       // Lire sans accuser : la note exige un accusé, la personne reste manquante.
       await run(
@@ -624,6 +635,7 @@ describe('notes de direction : lectures (P9-11 (2/3))', () => {
         audienceSize: 0,
         read: 0,
         acknowledged: 0,
+        missingTotal: 0,
         missingUserIds: [],
       });
     });

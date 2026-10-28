@@ -11,6 +11,7 @@ import type { Kysely, Transaction } from 'kysely';
 import {
   alertCarriesProtectedValue,
   alertDefinitionOf,
+  groupedPushBody,
   renderAlertMessage,
   ALERT_TYPES,
   type AlertSeverity,
@@ -155,20 +156,24 @@ export async function notificationPage(
   };
 }
 
+/** Suffixe d'un push groupé (`groupedPushBody`) : gardé, avec son compte, quand le message est rendu à nouveau. */
+const GROUPED_PUSH_SUFFIX = / \(\+(\d+) autres? alertes? de ce type\)$/;
+
 /**
- * Corps courant des notifications `IN_APP` d'alerte dont le message porte une valeur au coût : rendu à
- * nouveau selon le droit du lecteur **à la lecture** (RC-05) — une valeur reçue pendant que le droit
- * `inventory.valuation.read` était détenu ne reste pas lisible après sa perte. Les autres notifications
- * gardent leur texte d'origine. Servi aussi par le jeu hors ligne `comms` (P9-12).
+ * Corps courant des notifications d'alerte dont le message porte une valeur au coût, **sur tous les canaux**
+ * (P9-25, NT-1) : rendu à nouveau selon le droit du lecteur **à la lecture** (RC-05) — une valeur reçue pendant
+ * que le droit `inventory.valuation.read` était détenu ne reste pas lisible après sa perte. Un push groupé garde
+ * son suffixe. Les autres notifications gardent leur texte d'origine. Servi aussi par le jeu hors ligne `comms`
+ * (P9-12).
  */
 export async function notificationBodies(
   executor: Executor,
   userId: string,
-  rows: readonly { id: Buffer; channel: string; alert_id: Buffer | null }[],
+  rows: readonly { id: Buffer; channel: string; body: string; alert_id: Buffer | null }[],
   at: Date,
 ): Promise<Map<string, string>> {
   const bodies = new Map<string, string>();
-  const candidates = rows.filter((row) => row.channel === 'IN_APP' && row.alert_id !== null);
+  const candidates = rows.filter((row) => row.alert_id !== null);
   if (candidates.length === 0) return bodies;
   const alerts = await executor
     .selectFrom('communication_alerts')
@@ -205,9 +210,11 @@ export async function notificationBodies(
       ).allowed;
       valuation.set(key, allowed);
     }
+    const message = renderAlertMessage(type, payload, { showProtected: allowed }).message;
+    const grouped = row.channel === 'WEB_PUSH' ? GROUPED_PUSH_SUFFIX.exec(row.body) : null;
     bodies.set(
       fromBin(row.id),
-      renderAlertMessage(type, payload, { showProtected: allowed }).message,
+      grouped === null ? message : groupedPushBody(message, Number(grouped[1])),
     );
   }
   return bodies;
@@ -254,8 +261,10 @@ export async function listAlertRuleItems(executor: Executor): Promise<AlertRuleR
       severity: row.severity as AlertSeverity,
       severitiesAdmitted: definition.severities,
       recipientRoles: stringArray(row.recipient_roles),
-      resolutionMode: row.resolution_mode as 'AUTO' | 'MANUAL',
-      resolutionModesAdmitted: definition.nature === 'STATE' ? ['AUTO'] : ['AUTO', 'MANUAL'],
+      // AV-464 : le mode de résolution est celui du catalogue, affiché et non réglable ; la colonne n'est
+      // lue par aucun traitement (une ligne modifiée avant ce correctif s'affiche au mode du catalogue).
+      resolutionMode: definition.resolution,
+      resolutionModesAdmitted: [definition.resolution],
       escalationHours: row.escalation_hours,
       escalationApplicable: definition.severities.includes('CRITICAL'),
       escalationRoles: stringArray(row.escalation_roles),

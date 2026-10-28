@@ -519,6 +519,17 @@ describe('P9-14 (3/4) : l’explorateur', { timeout: 180_000 }, () => {
         400,
         'ANALYTICS_DEFINITION_INVALID',
       ],
+      // Un jour qui n'existe pas au calendrier n'atteint pas le SQL (P9-25, EP-3).
+      [
+        {
+          dataset: 'f_sales_line',
+          period: PERIOD,
+          measures: ['revenue'],
+          filters: [{ field: 'business_day', op: 'EQ', value: '2026-02-30' }],
+        },
+        400,
+        'ANALYTICS_DEFINITION_INVALID',
+      ],
     ];
     for (const [definition, status, code] of cases) {
       const response = await query(finance, definition);

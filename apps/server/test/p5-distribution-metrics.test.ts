@@ -20,6 +20,7 @@ import {
   businessDayOf,
   distributionResidual,
   FixedClock,
+  resolveAnalyticsPeriod,
   type Clock,
   type IdGenerator,
 } from '@gic/domain';
@@ -55,6 +56,8 @@ import {
   toDeliverByLocation,
 } from '../src/modules/sales/application/public/index.js';
 import { buildHome } from '../src/home-api/home-service.js';
+import { listSnapshotsOf } from '../src/modules/analytics/application/public/index.js';
+import { refreshSnapshotsOf } from '../src/analytics-api/jobs/kpi-snapshots-refresh-job.js';
 import {
   cashSessionThresholdsAt,
   cashSessionsOverview,
@@ -1466,6 +1469,30 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
         expect(line.sentQty, day).toBe(sent);
         expect(line.reconciliation?.reconciled, day).toBe(true);
       }
+    });
+
+    it('AT-054 : l’instantané distribution du vendeur égale les totaux du tableau de distribution (TB-4, AV-467)', async () => {
+      // Jour de calcul dans la période des fixtures (septembre 2026) : les ventes et encaissements ne sont pas nuls.
+      const snapshotAt = new Date('2026-09-17T12:00:00.000Z');
+      await db.transaction().execute((trx) => refreshSnapshotsOf(trx, venP.userId, snapshotAt));
+      const rows = (await listSnapshotsOf(db, venP.userId)).filter(
+        (snapshot) => snapshot.scopeKey === 'distribution',
+      );
+      expect(rows.map((snapshot) => snapshot.periodKey).sort()).toEqual(['MONTH', 'TODAY', 'WEEK']);
+      const month = rows.find((snapshot) => snapshot.periodKey === 'MONTH')!;
+      const indicators = month.kpis as { code: string; value: number | null }[];
+      expect(indicators.map((kpi) => kpi.code).sort()).toEqual(
+        ['KPI-DIS-03', 'KPI-DIS-05', 'KPI-DIS-06', 'KPI-FIN-CS-PENDING'].sort(),
+      );
+      const valueOf = (code: string) => indicators.find((kpi) => kpi.code === code)?.value;
+      const window = resolveAnalyticsPeriod({ code: 'MONTH', today: businessDayOf(snapshotAt) });
+      const live = await okDashboard(venP, `from=${window.fromDay}&to=${window.toDay}`);
+      expect(valueOf('KPI-DIS-03')).toBe(live.totals.soldNetXaf);
+      expect(valueOf('KPI-DIS-06')).toBe(live.totals.cashedXaf);
+      expect(valueOf('KPI-FIN-CS-PENDING')).toBe(live.totals.cashSessionsToValidate);
+      // Le vendeur n'a pas `inventory.valuation.read` : la valeur du restant est masquée des deux côtés.
+      expect(live.totals.remainingValueXaf).toBeNull();
+      expect(valueOf('KPI-DIS-05')).toBeNull();
     });
 
     it('masque par droit : valeurs, détail de caisse, receveurs, auteurs (AV-205, AV-206)', async () => {

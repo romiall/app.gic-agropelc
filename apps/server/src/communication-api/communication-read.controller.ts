@@ -92,9 +92,6 @@ const notesQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(MAX_LIMIT).optional(),
 });
 
-/** Nombre maximal de personnes citées par le suivi des accusés (la liste complète reste dans la base). */
-const MISSING_LISTED_MAX = 1000;
-
 const notificationsQuerySchema = z.object({
   unread: z.enum(['true', 'false']).optional(),
   channel: z.enum(['IN_APP', 'WEB_PUSH']).optional(),
@@ -354,7 +351,9 @@ export class CommunicationReadController {
     if (followUp === null) {
       return this.notePublishAccess.deny(request, now, { type: 'NOTE', id }, 'OUT_OF_SCOPE');
     }
-    const listed = followUp.missingUserIds.slice(0, MISSING_LISTED_MAX);
+    // Le plafond de la liste est appliqué par le suivi lui-même (NOTE_FOLLOW_UP_MISSING_MAX) ; la coupure se lit
+    // dans `missingTotal` et `truncated` (NT-6).
+    const listed = followUp.missingUserIds;
     const names =
       listed.length === 0
         ? []
@@ -369,6 +368,8 @@ export class CommunicationReadController {
       audienceSize: followUp.audienceSize,
       read: followUp.read,
       acknowledged: followUp.acknowledged,
+      missingTotal: followUp.missingTotal,
+      truncated: followUp.missingTotal > listed.length,
       missing: listed.map((userId) => ({ userId, fullName: nameOf.get(userId) ?? userId })),
     };
   }

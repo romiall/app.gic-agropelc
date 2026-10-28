@@ -6,6 +6,7 @@
  * note 1), sans détour par ce module pour de simples jointures.
  */
 export { listSettingHistory, currentSettingValue } from './setting-query.js';
+export { siteThenGlobalSetting } from './site-setting.js';
 export type { SettingScopeType, SettingVersion, SettingFilter } from './setting-query.js';
 export { listSiteIdsInZones, listZoneIdsWithDescendants } from './site-query.js';
 // P5-17 : lectures de la structure pour la couche de transport (`GET /sites`, `/locations`, `/points-of-sale`).

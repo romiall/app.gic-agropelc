@@ -133,6 +133,18 @@ describe('catalogue des alertes (D13 §7.1, AV-352)', () => {
   });
 });
 
+describe('propriétaire d’alerte : repli (AL-3, AV-463)', () => {
+  it('seul OVERDUE_RECEIVABLE déclare un repli de propriétaire : le vendeur à défaut de commercial', () => {
+    const overdue = alertDefinitionOf('OVERDUE_RECEIVABLE');
+    expect(overdue.ownerFields).toEqual(['commercial_user_id']);
+    expect(overdue.ownerFallbackFields).toEqual(['seller_user_id']);
+    const withFallback = ALERT_TYPES.filter(
+      (type) => (alertDefinitionOf(type).ownerFallbackFields ?? []).length > 0,
+    );
+    expect(withFallback).toEqual(['OVERDUE_RECEIVABLE']);
+  });
+});
+
 describe('gravité et clés', () => {
   it('ordonne INFO < WARNING < CRITICAL', () => {
     expect(compareAlertSeverity('INFO', 'WARNING')).toBeLessThan(0);

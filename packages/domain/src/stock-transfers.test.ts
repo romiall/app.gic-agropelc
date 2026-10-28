@@ -7,6 +7,8 @@ import {
   chooseDispatchForBlindReceipt,
   allocateReceivedToLines,
   isUnmatchedOverdue,
+  isValidBlindReceiptMatchMode,
+  isValidUnmatchedHours,
   planTransferReceipt,
   unmatchedHoursOrDefault,
   type MatchCandidate,
@@ -364,5 +366,21 @@ describe('répartition par ligne d’une réception déclarée par produit (AV-1
     expect(() =>
       allocateReceivedToLines([q(P1, 1)], [{ lineId: 'a', productId: P1, dispatchedMilli: -1 }]),
     ).toThrow(/millièmes/);
+  });
+});
+
+describe('prédicats de réglage exploitable (P9-25, AL-1)', () => {
+  it('isValidUnmatchedHours : nombre fini strictement positif', () => {
+    for (const valid of [24, 0.5]) expect(isValidUnmatchedHours(valid)).toBe(true);
+    for (const invalid of [undefined, null, 0, -3, Number.NaN, Infinity, '48', true]) {
+      expect(isValidUnmatchedHours(invalid)).toBe(false);
+    }
+  });
+
+  it('isValidBlindReceiptMatchMode : EXACT ou SUBSET seulement', () => {
+    for (const valid of ['EXACT', 'SUBSET']) expect(isValidBlindReceiptMatchMode(valid)).toBe(true);
+    for (const invalid of ['exact', '', null, undefined, 1]) {
+      expect(isValidBlindReceiptMatchMode(invalid)).toBe(false);
+    }
   });
 });

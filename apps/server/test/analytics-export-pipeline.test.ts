@@ -5,6 +5,7 @@
  * tâche déjà terminée sans second effet), puis la purge quotidienne. Acteurs à rôle d'essai sur la base partagée.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { enough } from './analytics-view-seeds.js';
 import { sql } from 'kysely';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,12 +13,17 @@ import { join } from 'node:path';
 import { ANALYTICS_CATALOG_VERSION, businessPeriodOf } from '@gic/domain';
 import { LocalFsChunkStorage } from '../src/platform/storage/local-fs-chunk-storage.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { recordAudit } from '../src/audit/record-audit.js';
 import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
-import { runExport } from '../src/modules/analytics/application/exports/run-export.js';
+import {
+  concludeExport,
+  runExport,
+  runExportJob,
+} from '../src/modules/analytics/application/exports/run-export.js';
 import {
   exportStorageKey,
   lockExport,
-  markExportDone,
+  pendingExportCount,
 } from '../src/modules/analytics/application/exports/export-store.js';
 import { runAnalyticsPurge } from '../src/modules/analytics/application/maintenance/purge.js';
 import {
@@ -141,7 +147,8 @@ describe('P9-20 : exports audités', () => {
       await grantTestPermission(trx, exporter, 'analytics.export', admin);
       await assignTestRole(trx, id, exporter, admin);
       const reader = await insertTestRole(trx, admin, { allowedScopeTypes: ['GLOBAL', 'SITE'] });
-      await grantTestPermission(trx, reader, 'sales.sale.read', admin);
+      // Portée maximale SITE : avec `ALL` (défaut du helper) l'étendue serait « tout » et jamais tronquée.
+      await grantTestPermission(trx, reader, 'sales.sale.read', admin, { maxScope: 'SITE' });
       const zone = await insertTestZone(trx, admin);
       for (let index = 0; index < siteCount; index += 1) {
         const site = await insertTestSite(trx, admin, zone);
@@ -431,7 +438,7 @@ describe('P9-20 : exports audités', () => {
     });
 
     it('plus de lignes que le plafond : FAILED QUERY_LIMIT_EXCEEDED, sans fichier, audité, jamais tronqué (EX-5)', async (ctx) => {
-      if ((await expectedRows()) < 2) ctx.skip();
+      enough(ctx, await expectedRows(), 2, 'lignes de vente dans la période');
       const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
       const exportId = freshUuid();
       await request(actor, exportId, { definition: definition({ limit: undefined }) });
@@ -489,6 +496,129 @@ describe('P9-20 : exports audités', () => {
         ).toEqual([{ result: 'FAILED', error_code: 'SCOPE_TRUNCATED' }]);
       });
       expect(await storage.uploadedBytes(exportStorageKey(exportId))).toBe(0);
+    });
+  });
+
+  describe('tâche perdue : dernier essai (PF-6, AV-469)', () => {
+    const jobRun = (
+      store: LocalFsChunkStorage,
+      exportId: string,
+      attempt?: { attempt: number; maxAttempts: number },
+      logger?: { error: (message: unknown) => void },
+    ) =>
+      db
+        .transaction()
+        .execute((trx) =>
+          runExportJob(
+            trx,
+            { clock: harness.clock, idGenerator: harness.idGenerator, storage: store },
+            exportId,
+            attempt,
+            logger,
+          ),
+        );
+    const completedEvents = (exportId: string) =>
+      db
+        .selectFrom('platform_domain_events')
+        .select('payload')
+        .where('event_type', '=', 'AnalyticsExportCompleted')
+        .where('aggregate_id', '=', toBin(exportId))
+        .execute();
+
+    it('au dernier essai, une erreur technique ne remonte plus : FAILED EXPORT_JOB_FAILED, audité, demandeur prévenu, le compte des exports en cours retombe', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId);
+      expect(await pendingExportCount(db, actor.id)).toBe(1);
+      const messages: string[] = [];
+      const outcome = await jobRun(
+        new FailingAppendStorage(directory),
+        exportId,
+        { attempt: 5, maxAttempts: 5 },
+        {
+          error: (message) => {
+            messages.push(String(message));
+          },
+        },
+      );
+      expect(outcome).toEqual({ status: 'FAILED', errorCode: 'EXPORT_JOB_FAILED' });
+      expect(await rowOf(exportId)).toMatchObject({
+        status: 'FAILED',
+        error_code: 'EXPORT_JOB_FAILED',
+        storage_key: null,
+        row_count: null,
+      });
+      expect(await auditOf(exportId, 'analytics.export.completed')).toEqual([
+        expect.objectContaining({ result: 'FAILED', error_code: 'EXPORT_JOB_FAILED' }),
+      ]);
+      const events = await completedEvents(exportId);
+      expect(events).toHaveLength(1);
+      expect(events[0]!.payload).toMatchObject({
+        status: 'FAILED',
+        error_code: 'EXPORT_JOB_FAILED',
+        requested_by: actor.id,
+      });
+      expect(await storage.uploadedBytes(exportStorageKey(exportId))).toBe(0);
+      expect(await pendingExportCount(db, actor.id)).toBe(0);
+      // Le journal dit l'export et la nature de l'erreur, jamais son message (il peut citer des valeurs).
+      expect(messages.join('\n')).toContain(exportId);
+      expect(messages.join('\n')).not.toContain('stockage en panne');
+    });
+
+    it('stockage en panne en écriture ET en suppression : l’export est tout de même conclu (base d’abord, fichier au mieux)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId);
+      const messages: string[] = [];
+      const outcome = await jobRun(
+        new BrokenStorage(directory),
+        exportId,
+        { attempt: 5, maxAttempts: 5 },
+        {
+          error: (message) => {
+            messages.push(String(message));
+          },
+        },
+      );
+      expect(outcome).toEqual({ status: 'FAILED', errorCode: 'EXPORT_JOB_FAILED' });
+      expect(await rowOf(exportId)).toMatchObject({
+        status: 'FAILED',
+        error_code: 'EXPORT_JOB_FAILED',
+      });
+      expect(await auditOf(exportId, 'analytics.export.completed')).toHaveLength(1);
+      expect(await completedEvents(exportId)).toHaveLength(1);
+      expect(await pendingExportCount(db, actor.id)).toBe(0);
+      // La suppression tardive en échec est journalisée (la purge supprimera le fichier d'un export FAILED).
+      expect(messages.some((message) => message.includes('non supprimé'))).toBe(true);
+    });
+
+    it('avant le dernier essai, comme sans contexte, la même erreur remonte : la ligne reste en file, rien n’est conclu', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId);
+      await expect(
+        jobRun(new FailingAppendStorage(directory), exportId, { attempt: 4, maxAttempts: 5 }),
+      ).rejects.toThrow('stockage en panne');
+      await expect(jobRun(new FailingAppendStorage(directory), exportId)).rejects.toThrow(
+        'stockage en panne',
+      );
+      expect((await rowOf(exportId))!.status).toBe('QUEUED');
+      expect(await auditOf(exportId, 'analytics.export.completed')).toEqual([]);
+      expect(await completedEvents(exportId)).toEqual([]);
+      expect(await pendingExportCount(db, actor.id)).toBe(1);
+    });
+
+    it('au dernier essai, un export déjà terminé rend SKIPPED (rendu par runExport) et n’est pas modifié', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId);
+      expect((await run(exportId)).status).toBe('DONE');
+      const before = await rowOf(exportId);
+      expect(await jobRun(storage, exportId, { attempt: 5, maxAttempts: 5 })).toEqual({
+        status: 'SKIPPED',
+      });
+      expect(await rowOf(exportId)).toEqual(before);
+      expect(await auditOf(exportId, 'analytics.export.completed')).toHaveLength(1);
     });
   });
 
@@ -591,15 +721,19 @@ describe('P9-20 : exports audités', () => {
       harness.clock.setTo(new Date(Date.now() + 2 * 86_400_000));
       await db.transaction().execute(async (worker) => {
         // Le worker tient sa ligne (début de runExport) ; la purge passe en même temps, dans sa propre transaction.
-        await lockExport(worker, exportId);
+        const job = await lockExport(worker, exportId);
         await purge();
-        await markExportDone(worker, {
-          id: exportId,
-          rowCount: 0,
-          durationMs: 1,
-          storageKey: key,
-          finishedAt: new Date(),
-        });
+        // La fin passe par la conclusion réelle (ligne, audit de fin, événement) : un export DONE sans ligne d'audit
+        // de fin violerait INV-ANA-01 pour tous les essais de la base partagée. L'horloge revient à l'instant réel :
+        // la fin n'est pas datée du futur.
+        harness.clock.setTo(new Date());
+        await concludeExport(
+          worker,
+          { clock: harness.clock, idGenerator: harness.idGenerator, storage },
+          job!,
+          { status: 'DONE', rowCount: 0 },
+          1,
+        );
       });
       expect((await rowOf(exportId))!.status).toBe('DONE');
       expect(await storage.uploadedBytes(key)).toBeGreaterThan(0);
@@ -633,14 +767,21 @@ describe('P9-20 : exports audités', () => {
       const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
       const exportId = freshUuid();
       await request(actor, exportId);
-      await db.transaction().execute(async (trx) => {
-        await sql`UPDATE analytics_export_jobs SET status = 'FAILED', error_code = 'TEST', finished_at = NOW(6)
-                   WHERE id = ${toBin(exportId)}`.execute(trx);
-      });
       const key = exportStorageKey(exportId);
       await storage.appendChunk(key, 0, Buffer.from('RESTE', 'utf8'));
       harness.clock.setTo(new Date(Date.now() + 60_000));
-      expect((await purge()).exportFilesDeleted).toBeGreaterThanOrEqual(1);
+      // L'échec et la purge sont joués dans une transaction annulée : un export FAILED sans ligne d'audit de fin
+      // violerait INV-ANA-01 pour tous les essais de la base partagée.
+      await withTestUow(async (trx) => {
+        await sql`UPDATE analytics_export_jobs SET status = 'FAILED', error_code = 'TEST', finished_at = NOW(6)
+                   WHERE id = ${toBin(exportId)}`.execute(trx);
+        const outcome = await runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage,
+        });
+        expect(outcome.exportFilesDeleted).toBeGreaterThanOrEqual(1);
+      });
       expect(await storage.uploadedBytes(key)).toBe(0);
     });
 
@@ -673,5 +814,140 @@ describe('P9-20 : exports audités', () => {
         error_code: 'EXPORT_ABANDONED',
       });
     });
+
+    /** Une ligne de journal vieille de 400 jours (insertion explicite : le déclencheur n'interdit que l'UPDATE). */
+    const insertOldLogRow = async (): Promise<string> => {
+      const user = await db.transaction().execute((trx) => insertTestUser(trx));
+      const logId = freshUuid();
+      await db
+        .insertInto('analytics_query_log')
+        .values({
+          id: toBin(logId),
+          user_id: toBin(user),
+          dataset: 'f_sales_line',
+          definition: JSON.stringify({ definition: {}, catalogVersion: 1 }),
+          outcome: 'OK',
+          created_at: new Date(Date.now() - 400 * 86_400_000),
+        })
+        .execute();
+      return logId;
+    };
+    const logRowOf = (logId: string) =>
+      db
+        .selectFrom('analytics_query_log')
+        .select('id')
+        .where('id', '=', toBin(logId))
+        .executeTakeFirst();
+
+    it('une étape en échec n’annule pas les autres : le journal est purgé malgré un stockage qui ne répond pas (PF-5)', async () => {
+      const logId = await insertOldLogRow();
+      // L'horloge de l'essai est ramenée à l'instant réel (les essais voisins la déplacent) : aucune date future.
+      harness.clock.setTo(new Date());
+      const outcome = await db.transaction().execute((trx) =>
+        runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage: new UnlistableStorage(directory),
+        }),
+      );
+      // La fonction ne lève pas ; seule l'étape des fichiers (qui liste le stockage) est en échec.
+      expect(outcome.failedSteps.map((failure) => failure.step)).toEqual(['fichiers']);
+      expect(outcome.failedSteps[0]!.message).toBe('stockage indisponible');
+      expect(outcome.queryLogDeleted).toBeGreaterThanOrEqual(1);
+      // Avant le correctif, l'échec annulait aussi la suppression du journal (une seule transaction).
+      expect(await logRowOf(logId)).toBeUndefined();
+    });
+
+    it('l’étape d’abandon en échec : l’export reste en file, le journal est purgé, la reprise suivante l’abandonne (PF-5)', async () => {
+      const logId = await insertOldLogRow();
+      // Un export en file depuis trois jours, inséré avec sa date (elle est immuable : on ne peut pas la reculer
+      // ensuite) et sa ligne d'audit de demande, que INV-ANA-01 exige de tout export de la base partagée.
+      const exportId = freshUuid();
+      const created = new Date(Date.now() - 3 * 86_400_000);
+      await db.transaction().execute(async (trx) => {
+        await trx
+          .insertInto('analytics_export_jobs')
+          .values({
+            id: toBin(exportId),
+            requested_by: toBin(admin),
+            dataset: 'f_sales_line',
+            definition: JSON.stringify({}),
+            format: 'CSV',
+            catalog_version: 1,
+            expires_at: new Date(created.getTime() + 86_400_000),
+            created_at: created,
+          })
+          .execute();
+        await recordAudit(
+          trx,
+          { clock: harness.clock, idGenerator: harness.idGenerator },
+          {
+            occurredAt: created,
+            actorUserId: admin,
+            actorRoles: [],
+            action: 'analytics.export.request',
+            entityType: 'ANALYTICS_EXPORT',
+            entityId: exportId,
+            after: { dataset: 'f_sales_line', format: 'CSV' },
+            result: 'SUCCESS',
+          },
+        );
+      });
+      harness.clock.setTo(new Date());
+
+      const outcome = await db.transaction().execute((trx) =>
+        runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage: new UndeletableStorage(directory),
+        }),
+      );
+      // Un export étranger de la base partagée peut échouer de même : l'essai ne compte pas les échecs.
+      expect(outcome.failedSteps.map((failure) => failure.step)).toContain('abandon');
+      expect(outcome.queryLogDeleted).toBeGreaterThanOrEqual(1);
+      expect(await logRowOf(logId)).toBeUndefined();
+      // L'abandon de l'export est annulé avec son audit (point de sauvegarde) : rien de partiel n'est validé.
+      expect((await rowOf(exportId))!.status).toBe('QUEUED');
+      expect(await auditOf(exportId, 'analytics.export.abandoned')).toEqual([]);
+
+      // Stockage rétabli : la prochaine exécution reprend l'export.
+      await purge();
+      expect(await rowOf(exportId)).toMatchObject({
+        status: 'FAILED',
+        error_code: 'EXPORT_ABANDONED',
+      });
+      expect(await auditOf(exportId, 'analytics.export.abandoned')).toHaveLength(1);
+    });
   });
 });
+
+/** Stockage dont le listage échoue : l'étape des fichiers de la purge est en échec, les autres n'y touchent pas. */
+class UnlistableStorage extends LocalFsChunkStorage {
+  override listKeys(): Promise<readonly string[]> {
+    return Promise.reject(new Error('stockage indisponible'));
+  }
+}
+
+/** Stockage dont la suppression échoue : l'abandon d'un export (qui supprime son fichier partiel) est en échec. */
+class UndeletableStorage extends LocalFsChunkStorage {
+  override delete(): Promise<void> {
+    return Promise.reject(new Error('suppression impossible'));
+  }
+}
+
+/** Stockage dont l'écriture échoue (message technique reconnaissable : il ne doit jamais atteindre le journal). */
+class FailingAppendStorage extends LocalFsChunkStorage {
+  override appendChunk(): Promise<number> {
+    return Promise.reject(new Error('stockage en panne : /chemin/secret'));
+  }
+}
+
+/** Stockage en lecture seule ou indisponible : écriture et suppression échouent (PF-6, repli du dernier essai). */
+class BrokenStorage extends LocalFsChunkStorage {
+  override appendChunk(): Promise<number> {
+    return Promise.reject(new Error('stockage en panne : /chemin/secret'));
+  }
+  override delete(): Promise<void> {
+    return Promise.reject(new Error('stockage en panne : suppression impossible'));
+  }
+}

@@ -8,14 +8,17 @@
  * - **Période** sur la seule colonne de date commune aux mesures (`plan.periodDimension`) ; **étendue** des lignes
  *   en `AND` par permission (`scope-sql.ts`) ; **filtres** en `AND`. `NE` garde les lignes à dimension vide
  *   (`IS NULL OR`) : la logique à trois valeurs les perdrait. `CONTAINS` échappe `%`, `_` et le caractère
- *   d'échappement.
+ *   d'échappement. Un filtre sur une **dimension de zone** (colonne de portée `ZONE` du jeu) couvre la zone et ses
+ *   descendantes (AV-375) : les descendantes sont lues avant la compilation (`zone-filters.ts`), qui reste sans
+ *   entrée-sortie.
  * - **Mesures** : `SUM` vaut 0 sur un groupe sans fait (`COALESCE`), `COUNT` aussi ; une moyenne ou un maximum
  *   vide reste `NULL`. Les jours sortent en `AAAA-MM-JJ` (`DATE_FORMAT`), jamais en `Date` JavaScript.
  * - **Ordre déterministe** : le tri demandé, puis les dimensions dans l'ordre (le dépassement par `LIMIT + 1` ne
  *   dépend pas de l'ordre d'arrivée des lignes).
  * - **Total** : requête séparée, sans `GROUP BY`, seulement si toutes les mesures sont additives ; sans dimension,
  *   l'unique ligne est le total.
- * - **Durée** : indice d'optimiseur `MAX_EXECUTION_TIME`.
+ * - **Durée** : indice d'optimiseur `MAX_EXECUTION_TIME` pour l'exploration entière : le total reçoit le temps
+ *   qui reste après les lignes (P9-25, EP-2).
  */
 import { sql, type RawBuilder, type SqlBool } from 'kysely';
 import type {
@@ -43,16 +46,30 @@ export interface CompiledExploration {
   readonly columns: readonly CompiledColumn[];
   /** Les lignes, `rowLimit + 1` au plus. */
   readonly rows: RawBuilder<Record<string, unknown>>;
-  /** Le total, par une requête séparée ; `null` s'il se lit dans la ligne unique ou n'existe pas. */
-  readonly totals: RawBuilder<Record<string, unknown>> | null;
+  /**
+   * Le total, par une requête séparée, compilée pour la durée donnée (le temps qui reste après les lignes) ;
+   * `null` s'il se lit dans la ligne unique ou n'existe pas.
+   */
+  readonly totals: ((maxExecutionMs: number) => RawBuilder<Record<string, unknown>>) | null;
   /** Sans dimension, la ligne unique est le total (si toutes les mesures sont additives). */
   readonly totalsFromRow: boolean;
   readonly rowLimit: number;
 }
 
 export interface CompileOptions {
-  /** Durée d'exécution maximale, en millisecondes (entier positif). */
+  /** Durée d'exécution maximale de la requête des lignes, en millisecondes (entier positif). */
   readonly maxExecutionMs: number;
+  /** Zone filtrée → la zone et ses descendantes (`zoneDescendantsOf`) ; une zone absente ne couvre qu'elle-même. */
+  readonly zoneDescendants: ReadonlyMap<string, readonly string[]>;
+}
+
+/** Filtre sur une dimension de zone : une colonne de portée `ZONE` du jeu (AV-375). */
+export function isZoneFilter(plan: ExplorationPlan, filter: ResolvedFilter): boolean {
+  return (
+    filter.dimension.type === 'id' &&
+    (plan.dataset.scope.ZONE ?? []).includes(filter.dimension.name) &&
+    (filter.op === 'EQ' || filter.op === 'NE' || filter.op === 'IN')
+  );
 }
 
 /** Caractère d'échappement de `LIKE` : ni la barre oblique inverse (échappée par MySQL), ni un caractère courant. */
@@ -92,11 +109,30 @@ function parameter(type: DimensionType, value: string | number | boolean): unkno
   return value;
 }
 
-function filterCondition(filter: ResolvedFilter): RawBuilder<SqlBool> {
+/** Zones couvertes par les valeurs d'un filtre de zone : chacune et ses descendantes, sans doublon. */
+function coveredZones(
+  filter: ResolvedFilter,
+  zoneDescendants: ReadonlyMap<string, readonly string[]>,
+): readonly string[] {
+  const values = filter.op === 'IN' ? (filter.value as readonly string[]) : [String(filter.value)];
+  return [...new Set(values.flatMap((value) => zoneDescendants.get(value) ?? [value]))];
+}
+
+function filterCondition(
+  plan: ExplorationPlan,
+  filter: ResolvedFilter,
+  zoneDescendants: ReadonlyMap<string, readonly string[]>,
+): RawBuilder<SqlBool> {
   const column = sql.ref(columnOf(filter.dimension));
   const type = filter.dimension.type;
   const scalar = (value: unknown) =>
     parameter(type, value as string | number | boolean) as string | number;
+  if (isZoneFilter(plan, filter)) {
+    const zones = sql.join(coveredZones(filter, zoneDescendants).map((zone) => toBin(zone)));
+    return filter.op === 'NE'
+      ? sql<SqlBool>`(${column} IS NULL OR ${column} NOT IN (${zones}))`
+      : sql<SqlBool>`${column} IN (${zones})`;
+  }
   switch (filter.op) {
     case 'EQ':
       return sql<SqlBool>`${column} = ${scalar(filter.value)}`;
@@ -119,16 +155,28 @@ function filterCondition(filter: ResolvedFilter): RawBuilder<SqlBool> {
   }
 }
 
-function whereClause(plan: ExplorationPlan, scopes: readonly ExactScope[]): RawBuilder<unknown> {
+function whereClause(
+  plan: ExplorationPlan,
+  scopes: readonly ExactScope[],
+  zoneDescendants: ReadonlyMap<string, readonly string[]>,
+): RawBuilder<unknown> {
   const parts: RawBuilder<SqlBool>[] = [sql<SqlBool>`1 = 1`];
   if (plan.period !== null && plan.periodDimension !== null) {
     const dimension = plan.dataset.dimensions.find((d) => d.name === plan.periodDimension);
     const column = sql.ref(dimension === undefined ? plan.periodDimension : columnOf(dimension));
     parts.push(sql<SqlBool>`${column} BETWEEN ${plan.period.fromDay} AND ${plan.period.toDay}`);
   }
-  for (const filter of plan.filters) parts.push(filterCondition(filter));
+  for (const filter of plan.filters) parts.push(filterCondition(plan, filter, zoneDescendants));
   parts.push(...scopeConditions(plan.dataset, scopes));
   return sql`WHERE ${sql.join(parts, sql` AND `)}`;
+}
+
+/** Indice de durée : le seul endroit où un nombre entre dans le SQL (0 supprimerait la limite : refusé). */
+function executionHint(maxExecutionMs: number): RawBuilder<unknown> {
+  if (!Number.isInteger(maxExecutionMs) || maxExecutionMs < 1) {
+    throw new RangeError('La durée maximale d’exécution est un entier positif.');
+  }
+  return sql.raw(`/*+ MAX_EXECUTION_TIME(${maxExecutionMs}) */`);
 }
 
 export function compileExploration(
@@ -136,10 +184,7 @@ export function compileExploration(
   scopes: readonly ExactScope[],
   options: CompileOptions,
 ): CompiledExploration {
-  if (!Number.isInteger(options.maxExecutionMs) || options.maxExecutionMs < 1) {
-    throw new RangeError('La durée maximale d’exécution est un entier positif.');
-  }
-  const hint = sql.raw(`/*+ MAX_EXECUTION_TIME(${options.maxExecutionMs}) */`);
+  const hint = executionHint(options.maxExecutionMs);
   const columns: CompiledColumn[] = [
     ...plan.dimensions.map((dimension, index): CompiledColumn => ({
       name: dimension.name,
@@ -164,7 +209,7 @@ export function compileExploration(
   const selectMeasures = plan.measures.map(
     (measure, index) => sql`${measureExpression(measure)} AS ${sql.id(`m${index}`)}`,
   );
-  const where = whereClause(plan, scopes);
+  const where = whereClause(plan, scopes, options.zoneDescendants);
   const view = sql.table(plan.dataset.view);
 
   const groupBy =
@@ -201,8 +246,9 @@ export function compileExploration(
   const totalsFromRow = plan.totalsAllowed && plan.dimensions.length === 0;
   const totals =
     plan.totalsAllowed && plan.dimensions.length > 0
-      ? sql<Record<string, unknown>>`
-          SELECT ${hint} ${sql.join(selectMeasures)}
+      ? (maxExecutionMs: number) =>
+          sql<Record<string, unknown>>`
+          SELECT ${executionHint(maxExecutionMs)} ${sql.join(selectMeasures)}
             FROM ${view} ${where}`
       : null;
 

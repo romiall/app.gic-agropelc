@@ -3,6 +3,11 @@
  * n'est installée : l'adaptateur par défaut est **désactivé** et le dit (`enabled = false`). Les
  * notifications restent alors `IN_APP`, comme D13 §14 le prévoit « sans clé ou sans abonnement valide » ;
  * jamais une notification n'est marquée « envoyée » sans l'avoir été.
+ *
+ * **Contrat d'un adaptateur réel (NT-4, AV-365)** : `send` ne lève pas (404 et 410 → `GONE`, tout autre
+ * échec → `FAILED` avec un motif sans point de terminaison) et abandonne sa requête quand
+ * `options.signal` est annulé. Le répartiteur ne s'y fie pas : il enveloppe chaque envoi (exception,
+ * silence au-delà du délai) ; un disjoncteur par hôte de service de push relève de l'adaptateur.
  */
 
 /** Jeton d'injection ; remplacé par un adaptateur réel quand le porteur a tranché AV-365. */
@@ -30,10 +35,23 @@ export type PushSendResult =
   | { readonly status: 'GONE' }
   | { readonly status: 'FAILED'; readonly reason: string };
 
+/** Options d'un envoi : le signal est annulé quand le répartiteur n'attend plus la réponse. */
+export interface PushSendOptions {
+  readonly signal: AbortSignal;
+}
+
 export interface WebPushSender {
   /** Faux : aucune notification `WEB_PUSH` n'est créée (le canal in-app suffit). */
   readonly enabled: boolean;
-  send(target: PushTarget, message: PushMessage): Promise<PushSendResult>;
+  /**
+   * Envoie un push. Contrat : ne lève pas, rend `GONE` pour 404 et 410, `FAILED` pour tout autre échec, et
+   * abandonne la requête quand `options.signal` est annulé (NT-4).
+   */
+  send(
+    target: PushTarget,
+    message: PushMessage,
+    options?: PushSendOptions,
+  ): Promise<PushSendResult>;
 }
 
 /** Adaptateur par défaut : aucun envoi réel n'est possible sans clé ni bibliothèque. */

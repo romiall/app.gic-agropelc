@@ -113,7 +113,7 @@
 | `enabled` | boolean | Non | true | |
 | `severity` | enum(`INFO`,`WARNING`,`CRITICAL`) | Non | — | |
 | `recipient_roles` | text[] | Non | — | Codes de rôles destinataires |
-| `resolution_mode` | enum(`AUTO`,`MANUAL`) | Non | — | |
+| `resolution_mode` | enum(`AUTO`,`MANUAL`) | Non | — | Mode du catalogue (BR-NOT-003), affiché ; non modifiable par `alert_rule.set` (AV-464) |
 | `escalation_hours` | smallint | Oui | 4 | Alertes `CRITICAL` (BR-NOT-005) |
 | `escalation_roles` | text[] | Non | `{DIRECTION}` | Rôles du niveau supérieur (AV-367) |
 | `updated_at`, `updated_by` | | | | |
@@ -147,11 +147,11 @@
 | `resolution_kind` | enum(`CONDITION_CLEARED`,`PASS`,`MANUAL`,`DISMISSED`) | Oui | — | Comment l'alerte s'est close ; renseigné ⇔ `RESOLVED` ou `DISMISSED` |
 | `resolution_comment` | varchar(500) | Oui | — | Obligatoire pour une résolution manuelle ou un écart |
 | `escalated_at` | ts | Oui | — | |
-| `critical_since` | ts | Oui | — | Instant de la levée ou du relèvement en `CRITICAL` : point de départ de l'échéance d'escalade (ADR-062 §7) |
+| `critical_since` | ts | Oui | — | Instant (horloge du serveur) où l'alerte est levée ou relevée en `CRITICAL`, non la date du fait (`first_detected_at`) : point de départ de l'échéance d'escalade (ADR-062 §7, AV-466) |
 | `last_pass_id` | varchar(64) | Oui | — | Identité de la dernière passe de détection qui a revu l'alerte d'état ; sert à la résolution par marqueur (ADR-061 §3) |
 
 - **PK** `id`. **UQ** `open_dedup_key` (INV-NOT-01 : au plus une alerte ouverte par type et objet ; les valeurs `NULL` ne se heurtent pas). **IX** `(status, severity, first_detected_at)`, `(site_id, status)`, `(owner_user_id, status)`.
-- **Suppr.** `IMMUABLE` après résolution ; purge après 2 ans. **Offline** DL (la boîte de l'utilisateur : alertes ouvertes dont il est destinataire, jeu `comms`, entité `ALERT` ; la supervision par la portée reste en ligne — P9-12, AV-433).
+- **Suppr.** `IMMUABLE` après résolution ; purge après 2 ans (plancher 730 jours) par le script d'exploitation `db:purge-alerts` sous le rôle `gic_maintenance`, jamais par l'application (AV-470). **Offline** DL (la boîte de l'utilisateur : alertes ouvertes dont il est destinataire, jeu `comms`, entité `ALERT` ; la supervision par la portée reste en ligne — P9-12, AV-433).
 
 ## communication.alert_recipients
 
@@ -165,7 +165,7 @@
 | `role_code` | code | Oui | — | Rôle par lequel l'utilisateur est destinataire |
 | `added_at` | ts | Non | `now()` | |
 
-- **PK** `(alert_id, user_id)`. **IX** `(user_id, alert_id)`. **Suppr.** Suit l'alerte (purge à 2 ans). **Offline** DL (via les alertes ouvertes de la boîte : une ligne de flux à l'ajout d'un destinataire).
+- **PK** `(alert_id, user_id)`. **IX** `(user_id, alert_id)`. **Suppr.** Suit l'alerte (purge à 2 ans, script `db:purge-alerts`, AV-470). **Offline** DL (via les alertes ouvertes de la boîte : une ligne de flux à l'ajout d'un destinataire).
 
 ## communication.notifications
 
@@ -185,9 +185,9 @@
 | `source_type`, `source_id` | code, uuid | Oui | — | Objet source. Pour `kind = ALERT` : `source_type` vaut `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` (escalade, jamais regroupée) et `source_id` l'alerte ; sinon la notification directe ou l'export. Pour `kind = NOTE` : `source_type` vaut `NOTE` et `source_id` la note. Pour `kind = DIRECT` (P9-11, AV-430) : `source_type` vaut `APPROVAL_REQUEST` (demande de validation ou sa décision) ou `STOCK_TRANSFER` (transfert demandé ou expédié) et `source_id` l'objet |
 | `source_event_id` | uuid | Oui | — | Événement qui l'a produite ; unique avec (utilisateur, canal) : un consommateur rejoué ne la double pas |
 | `created_at` | ts | Non | `now()` | |
-| `delivered_at`, `read_at` | ts | Oui | — | Seuls champs qui évoluent, chacun une fois. `delivered_at` : posé à la création pour `IN_APP` ; pour `WEB_PUSH`, à l'envoi accepté par au moins un abonnement (tâche `communication.push.dispatch`) ; une ligne jamais livrée est abandonnée après la fenêtre de reprise |
+| `delivered_at`, `read_at` | ts | Oui | — | Seuls champs qui évoluent, chacun une fois. `delivered_at` : posé à la création pour `IN_APP` ; pour `WEB_PUSH`, à l'envoi accepté par au moins un abonnement (tâche `communication.push.dispatch`) ; une ligne jamais livrée est abandonnée après la fenêtre de reprise ; une ligne dont le destinataire n'a plus d'abonnement vivant n'est plus reprise ; elle est abandonnée après la fenêtre de reprise (P9-25, NT-5) |
 
-- **PK** `id`. **UQ** `(user_id, channel, source_event_id)`. **IX** `(user_id, read_at, created_at)`, `(alert_id)`, `(user_id, alert_type, channel, created_at)`. **Suppr.** `PURGE_TECHNIQUE` 90 jours après lecture. **Offline** DL (non lues `IN_APP`, jeu `comms`, entité `NOTIFICATION` ; sortie à la lecture, jamais l'envoi `WEB_PUSH` — P9-12, AV-434).
+- **PK** `id`. **UQ** `(user_id, channel, source_event_id)`. **IX** `(user_id, read_at, created_at)`, `(alert_id)`, `(user_id, alert_type, channel, created_at)`. **Suppr.** `PURGE_TECHNIQUE` : 90 jours après lecture ; les lignes d'envoi `WEB_PUSH` de plus de 90 jours, lues ou non ; jamais la notification d'une note encore publiée ni une `IN_APP` non lue (tâche `communication.maintenance.purge_daily`, AV-471). **Offline** DL (non lues `IN_APP`, jeu `comms`, entité `NOTIFICATION` ; sortie à la lecture ou au retrait de la note (P9-25, NT-6), jamais l'envoi `WEB_PUSH` — P9-12, AV-434).
 
 ## communication.push_subscriptions
 
@@ -203,7 +203,7 @@
 | `created_at` | ts | Non | `now()` | |
 | `revoked_at` | ts | Oui | — | |
 
-- **PK** `id`. **UQ** `endpoint`. **Suppr.** `PURGE_TECHNIQUE` des abonnements révoqués ou invalides (réponse 410).
+- **PK** `id`. **UQ** `endpoint`. **Suppr.** `PURGE_TECHNIQUE` des abonnements révoqués ou invalides (réponse 410), au passage quotidien de `communication.maintenance.purge_daily`, soit au plus 24 h après la révocation.
 
 ## communication.internal_notes
 

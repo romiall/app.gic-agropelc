@@ -8,6 +8,7 @@
  * - **Règle** : une règle absente ou désactivée n'empêche pas l'événement d'être publié, elle empêche
  *   l'alerte (ADR-061 §8). Une résolution, elle, s'applique toujours (condition disparue).
  * - **Marqueur de passe** : n'est traité que complet et par identité de passe (ADR-061 §3).
+ * - **`critical_since`** : instant du traitement par le serveur, non la date du fait (NT-3, AV-466).
  * - Aucune lecture des tables d'un autre module : tout ce qu'il faut est dans l'événement.
  */
 import { Logger } from '@nestjs/common';
@@ -16,6 +17,7 @@ import {
   isAlertTriggerEvent,
   type AlertAction,
   type AlertEventPayload,
+  type Clock,
   type IdGenerator,
 } from '@gic/domain';
 import type { DomainEvent } from '../../../../platform/events/domain-event.js';
@@ -51,6 +53,13 @@ export type AfterRaise = (
 
 export interface AlertsConsumerOptions {
   readonly idGenerator: IdGenerator;
+  /**
+   * Horloge du serveur : fournit l'instant du traitement, point de départ du délai d'escalade
+   * (`critical_since`, NT-3, AV-466). Absente (essais), `critical_since` retombe sur la date de
+   * l'événement. Ne pas la fournir dans les essais qui valident des alertes critiques dans la base
+   * partagée (pollution de l'escalade, suivi P9 §4) : elles deviendraient échues 4 h plus tard.
+   */
+  readonly clock?: Clock;
   readonly afterRaise?: AfterRaise;
 }
 
@@ -90,12 +99,14 @@ export async function handleAlertEvent(
     );
   }
   const deps = { idGenerator: options.idGenerator };
+  // Instant du traitement (horloge du serveur) : `critical_since` n'est pas la date du fait.
+  const processedAt = options.clock?.now() ?? event.occurredAt;
   for (const action of actions) {
     switch (action.kind) {
       case 'RAISE': {
         const rule = await loadAlertRule(uow, action.alertType);
         if (rule === undefined || !rule.enabled) break;
-        const outcome = await raiseAlert(uow, deps, action, rule, event.eventId);
+        const outcome = await raiseAlert(uow, deps, action, rule, event.eventId, processedAt);
         if (options.afterRaise !== undefined) {
           await options.afterRaise(uow, { outcome, action, event, rule });
         }
@@ -113,7 +124,7 @@ export async function handleAlertEvent(
 
 export function registerAlertsConsumer(
   registry: EventConsumerRegistry,
-  options: AlertsConsumerOptions,
+  options: AlertsConsumerOptions & { readonly clock: Clock },
 ): void {
   registry.register(ALERTS_CONSUMER_NAME, (uow, event: DomainEvent) =>
     handleAlertEvent(uow, event, options),

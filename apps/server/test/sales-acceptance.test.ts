@@ -12,8 +12,9 @@
  *   solde mobile nul ;
  * - AT-030 : même référence mobile money saisie deux fois — second encaissement mis de côté, sans
  *   effet de trésorerie ;
- * - AT-032 : créance échue — événement `ReceivableOverdue` (l'alerte `OVERDUE_RECEIVABLE` est en P9)
- *   et règlement affecté aux plus anciennes.
+ * - AT-032 : créance échue — événement `ReceivableOverdue` (l'alerte `OVERDUE_RECEIVABLE` qui en
+ *   découle est jouée par `detection-events.test.ts` et `communication-alerts.test.ts`) et règlement
+ *   affecté aux plus anciennes.
  * AT-001, AT-002, AT-005, AT-007 : sales-sale-commands.test.ts ; AT-033 (part P4) :
  * sales-read.e2e.test.ts ; AT-026 et AT-052 (parts P4) : production-acceptance.test.ts.
  */

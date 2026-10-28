@@ -17,7 +17,23 @@
  *   réception) ont chacun leur portée ; le marqueur d'une portée ne résout que les alertes de sa portée.
  * - **Marqueur** : publié en dernier, par une passe **complète** seulement (une passe interrompue ou
  *   partielle ne résout rien).
+ * - **Garde-fou de durée** (P9-25, PF-3, AV-468) : une passe est une seule transaction de la voie courte (la
+ *   pagination de l'ADR-068 §3 est différée au déclencheur mesuré). Le numéro d'ordre d'un événement est
+ *   attribué à l'insertion et les consommateurs sautent un trou plus ancien que leur fenêtre de
+ *   stabilisation (120 s) : une passe plus longue laisse ses premiers événements derrière leur position,
+ *   et son marqueur résoudrait à tort les alertes correspondantes. La durée court de la première
+ *   insertion réelle de la transaction (un rejeu entièrement reconnu n'enregistre rien) jusqu'à chaque
+ *   marqueur : avertissement au-delà de `PASS_PUBLISH_WARN_SECONDS`, marqueur **retenu** au-delà de
+ *   `PASS_PUBLISH_MAX_SECONDS` (journal d'erreur, aucune alerte résolue à tort). Limites : la garde
+ *   protège le marqueur, pas les événements déjà insérés ; une passe toujours trop longue ne ferme plus
+ *   les alertes d'état de son type (visible au seul journal) ; la clé de mesure est l'objet `uow`, de
+ *   sorte qu'un enveloppement (`withPlugin`) entre la première insertion et le marqueur la rend
+ *   inopérante (le marqueur est alors publié sans mesure, jamais retenu à tort). Les seuils de 30 s et
+ *   de 100 s sont des constantes techniques dérivées de la fenêtre par défaut (règle 8 : ce ne sont pas
+ *   des seuils métier) ; si la fenêtre d'un consommateur est raccourcie (ADR-068 §7), les rabaisser.
  */
+import { performance } from 'node:perf_hooks';
+import { Logger } from '@nestjs/common';
 import {
   ALERT_CATALOG,
   alertPassId,
@@ -32,6 +48,31 @@ import type { UnitOfWork } from '../unit-of-work.js';
 
 /** Nom de l'événement de fin de passe (identique à `ALERT_PASS_COMPLETED_EVENT` du domaine). */
 export const PASS_COMPLETED_EVENT = 'AlertDetectionPassCompleted';
+
+/**
+ * Fenêtre de stabilisation par défaut des consommateurs d'événements, en secondes : même valeur que
+ * `EVENT_SETTLE_DEFAULT_SECONDS` de `event-consumer-runner.ts` (un essai vérifie l'égalité). Reprise ici
+ * plutôt qu'importée : le runner tire le fournisseur de base de données et lit l'environnement au
+ * chargement, ce que ce fichier, chargé par une trentaine de tâches et d'essais, n'a pas à subir.
+ */
+const PASS_SETTLE_WINDOW_SECONDS = 120;
+
+/** Durée d'une passe au-delà de laquelle un avertissement est journalisé (un quart de la fenêtre). */
+export const PASS_PUBLISH_WARN_SECONDS = PASS_SETTLE_WINDOW_SECONDS / 4;
+
+/** Durée au-delà de laquelle le marqueur est retenu : la fenêtre moins 20 s pour le marqueur et la validation. */
+export const PASS_PUBLISH_MAX_SECONDS = PASS_SETTLE_WINDOW_SECONDS - 20;
+
+/**
+ * Horloge monotone de la mesure de durée, remplaçable en essai (l'horloge d'application ne mesure pas une
+ * durée réelle et ne bouge pas en essai).
+ */
+export const passClock = { now: (): number => performance.now() };
+
+/** Première insertion réelle d'une passe, par transaction (clé : l'objet `uow`, voir l'en-tête). */
+const firstPublication = new WeakMap<UnitOfWork, number>();
+
+const logger = new Logger('DetectionEvents');
 
 /**
  * Identité d'une passe : le type d'alerte, la portée éventuelle et le créneau (`scheduledFor` de la tâche
@@ -116,6 +157,8 @@ export async function publishDetectionEvent(
     ? codeEntityId('ALERT_PASS_EVENT', `${input.eventType}:${input.aggregateId}:${input.passId}`)
     : idGenerator.newId();
   if (derived && (await alreadyPublished(uow, eventId))) return false;
+  // L'exposition au trou commence à la première insertion réelle de la transaction (PF-3, AV-468).
+  if (derived && !firstPublication.has(uow)) firstPublication.set(uow, passClock.now());
   const insert = uow.insertInto('platform_domain_events').values({
     event_id: toBin(eventId),
     event_type: input.eventType,
@@ -155,6 +198,27 @@ export async function publishPassCompleted(
 ): Promise<boolean> {
   const eventId = codeEntityId('ALERT_PASS_COMPLETED', `${input.alertType}:${input.passId}`);
   if (await alreadyPublished(uow, eventId)) return false;
+  const started = firstPublication.get(uow);
+  if (started !== undefined) {
+    const elapsedMs = passClock.now() - started;
+    const seconds = Math.round(elapsedMs / 1000);
+    if (elapsedMs > PASS_PUBLISH_MAX_SECONDS * 1000) {
+      logger.error(
+        `Passe « ${input.alertType} » (${input.passId}) : ${seconds} s entre sa première publication et son marqueur, ` +
+          `au-delà de ${PASS_PUBLISH_MAX_SECONDS} s (fenêtre de stabilisation des consommateurs : ` +
+          `${PASS_SETTLE_WINDOW_SECONDS} s) ; marqueur non publié pour ne résoudre aucune alerte à tort ; ` +
+          `paginer la passe (ADR-068 §3, AV-468).`,
+      );
+      return false;
+    }
+    if (elapsedMs > PASS_PUBLISH_WARN_SECONDS * 1000) {
+      logger.warn(
+        `Passe « ${input.alertType} » (${input.passId}) : ${seconds} s entre sa première publication et son marqueur ` +
+          `(avertissement à ${PASS_PUBLISH_WARN_SECONDS} s, marqueur retenu au-delà de ` +
+          `${PASS_PUBLISH_MAX_SECONDS} s ; AV-468).`,
+      );
+    }
+  }
   const result = await uow
     .insertInto('platform_domain_events')
     .values({

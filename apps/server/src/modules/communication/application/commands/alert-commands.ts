@@ -157,12 +157,15 @@ const setRule: CommandHandler<AlertRuleSetPayload> = async (uow, envelope) => {
       `${payload.alertType} n'admet pas la gravité ${payload.severity}.`,
     );
   }
-  const resolution = payload.resolutionMode ?? (row.resolution_mode as 'AUTO' | 'MANUAL');
-  // Une alerte d'état se résout seule (BR-NOT-003) : sa résolution ne devient pas manuelle.
-  if (definition.nature === 'STATE' && resolution === 'MANUAL') {
+  // AV-464 (P9-25, AL-4) : le mode de résolution est celui du catalogue (état : automatique, BR-NOT-003 ;
+  // événement : manuel, fermé aussi par les événements `resolvedBy`). Aucun traitement ne lit un autre mode :
+  // le réglage serait accepté sans effet. Écrire le mode du catalogue remet d'équerre une ligne modifiée avant.
+  if (payload.resolutionMode !== undefined && payload.resolutionMode !== definition.resolution) {
     return rejected(
       'ALERT_RESOLUTION_NOT_ADMITTED',
-      `${payload.alertType} est une alerte d'état : sa résolution est automatique.`,
+      definition.nature === 'STATE'
+        ? `${payload.alertType} est une alerte d'état : sa résolution est automatique.`
+        : `${payload.alertType} : le mode de résolution (${definition.resolution}) n'est pas réglable.`,
     );
   }
   if (payload.escalationHours !== undefined && payload.escalationHours !== null) {

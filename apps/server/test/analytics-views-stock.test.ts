@@ -8,7 +8,7 @@
  * TypeScript sur les lignes sources. Tout se lit dans un seul instantané (`REPEATABLE READ`), sur la base
  * d'essai partagée : une base trop pauvre pour qu'un contrôle ait un sens le **saute** (visible au rapport).
  */
-import { afterAll, describe, expect, it, type TestContext } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { sql, type Transaction } from 'kysely';
 import { businessDayEndUtc, businessDayOf, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../src/platform/kysely/database.js';
@@ -22,7 +22,7 @@ import {
   lotMortalitySummary,
 } from '../src/modules/inventory/application/public/index.js';
 import { closeTestDb } from './helpers.js';
-import { snapshot } from './analytics-view-seeds.js';
+import { enough, snapshot } from './analytics-view-seeds.js';
 import {
   cloneConsumptions,
   cloneEggCollections,
@@ -45,10 +45,6 @@ async function rows<T extends Record<string, unknown>>(
   query: ReturnType<typeof sql<T>>,
 ): Promise<readonly T[]> {
   return (await query.execute(trx)).rows;
-}
-
-function enough(ctx: TestContext, actual: number, minimum: number, what: string): void {
-  if (actual < minimum) ctx.skip(`${what} : ${actual} en base, ${minimum} au moins nécessaires`);
 }
 
 const near = (actual: number, expected: number, label: string) =>

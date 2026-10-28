@@ -6,13 +6,15 @@
  *
  * Fichier propre à P9, inscrit dans `ENTITY_PROJECTIONS` (`entity-projections.ts`) par une seule ligne. Une
  * ligne `GLOBAL` (repli générique du pipeline) ou d'un autre utilisateur ne sert jamais rien ; un instantané
- * supprimé (droit perdu, appareil inactif) n'est plus servi et sa sortie est une ligne `DELETE` du flux.
+ * supprimé (droit perdu, appareil inactif) n'est plus servi et sa sortie est une ligne `DELETE` du flux. Le droit est
+ * aussi revérifié à la lecture (TB-7) : une ligne dont le tableau n'est plus permis n'est pas servie.
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
 import {
   KPI_ENTITY_TYPE,
   listSnapshotsOf,
+  revalidatedSnapshot,
   snapshotEntityId,
 } from '../modules/analytics/application/public/index.js';
 
@@ -35,7 +37,11 @@ export const KPI_PROJECTIONS: Readonly<Record<string, ProjectionReader>> = {
     if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
     const userId = context.scopeId;
     const snapshots = await listSnapshotsOf(executor, userId);
-    const found = snapshots.find((snapshot) => snapshotEntityId(snapshot) === entityId);
+    const stored = snapshots.find((snapshot) => snapshotEntityId(snapshot) === entityId);
+    if (stored === undefined) return undefined;
+    // Droit revérifié à la lecture (TB-7) : une ligne dont le tableau n'est plus permis n'est pas servie et les
+    // indicateurs protégés sont masqués sans valorisation, sans attendre la passe suivante.
+    const found = await revalidatedSnapshot(executor, stored, new Date());
     if (found === undefined) return undefined;
     return {
       id: entityId,

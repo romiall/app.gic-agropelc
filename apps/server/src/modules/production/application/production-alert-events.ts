@@ -41,7 +41,7 @@ import {
   lotHeadcount,
   productionLotMortalityByDay,
 } from '../../inventory/application/public/index.js';
-import { currentSettingValue } from '../../organization/application/public/index.js';
+import { siteThenGlobalSetting } from '../../organization/application/public/index.js';
 
 const PRODUCER = 'production';
 
@@ -49,24 +49,6 @@ const PRODUCER = 'production';
 export interface ProductionAlertDeps {
   readonly idGenerator: IdGenerator;
   readonly clock?: Clock | undefined;
-}
-
-/**
- * Réglage du site, à défaut global (règle 8 : aucun seuil codé en dur ; repli au domaine). Une valeur de
- * site inexploitable (`isValid` faux : chaîne, `null`, négatif) ne masque pas un réglage global valide.
- */
-export async function siteThenGlobalSetting(
-  uow: UnitOfWork,
-  key: string,
-  siteId: string | null,
-  at: Date,
-  isValid: (value: unknown) => boolean = () => true,
-): Promise<unknown> {
-  if (siteId !== null) {
-    const bySite = await currentSettingValue(uow, { key, scopeType: 'SITE', scopeId: siteId, at });
-    if (bySite !== undefined && isValid(bySite)) return bySite;
-  }
-  return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
 }
 
 export interface HighMortalityInput {

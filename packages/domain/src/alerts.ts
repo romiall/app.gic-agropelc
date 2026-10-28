@@ -130,6 +130,14 @@ export interface AlertTypeDefinition {
   readonly recipientRoles: readonly string[];
   /** Champs de la charge utile désignant le ou les propriétaires (origine `OWNER`). */
   readonly ownerFields: readonly string[];
+  /**
+   * Champs désignant le propriétaire à défaut de tout champ de `ownerFields` renseigné (P9-25, AL-3,
+   * AV-463) : ex. le vendeur d'une vente sans commercial attribué, comme la portée par personne d'une
+   * vente (« le commercial, à défaut le vendeur »). Ordre : `ownerFields` d'abord ; le repli ne sert que si
+   * aucun de ces champs n'est renseigné. La valeur est comparée après `stringOrNull` (une chaîne vide
+   * vaut absente). Toujours un tableau (`exactOptionalPropertyTypes`), jamais `undefined`.
+   */
+  readonly ownerFallbackFields?: readonly string[];
   /** Le responsable de l'équipe du propriétaire est destinataire (origine `TEAM_MANAGER`). */
   readonly teamManager: boolean;
   /** Les approbateurs de la politique sont destinataires (origine `APPROVER`). */
@@ -462,6 +470,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     actionScreen: 'ECR-FIN-01',
     recipientRoles: ['RESP_COMMERCIAL', 'FINANCE'],
     ownerFields: ['commercial_user_id'],
+    // AV-463 : une vente de PDV sans commercial attribué (BR-VEN-020) a pour propriétaire son vendeur.
+    ownerFallbackFields: ['seller_user_id'],
     teamManager: false,
     approvers: false,
     escalationHours: null,

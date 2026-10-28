@@ -119,6 +119,33 @@ async function world(uow: UnitOfWork) {
   return { admin, site, store, loss };
 }
 
+/**
+ * Pose une version de réglage (transaction annulée). Les cas à réglage GLOBAL sont datés de 2020 avec une
+ * horloge de 2020 : aucune ligne semée (datée du jour du semis) n'est alors en vigueur (AL-1).
+ */
+async function putSetting(
+  uow: UnitOfWork,
+  admin: string,
+  key: string,
+  value: unknown,
+  scope: { readonly type: 'GLOBAL' } | { readonly type: 'SITE'; readonly siteId: string },
+) {
+  await uow
+    .insertInto('organization_system_settings')
+    .values({
+      id: toBin(freshUuid()),
+      key,
+      value: jsonValue(value),
+      scope_type: scope.type,
+      scope_id: scope.type === 'SITE' ? toBin(scope.siteId) : null,
+      valid_from: new Date('2020-11-01T00:00:00.000Z'),
+      is_client_visible: 0,
+      reason: 'Réglage de test AL-1',
+      created_by: toBin(admin),
+    })
+    .execute();
+}
+
 async function shareEvents(uow: UnitOfWork, store: string) {
   const rows = await uow
     .selectFrom('platform_domain_events')
@@ -243,6 +270,39 @@ describe('sales.losses.sales_share_check (P9-08)', () => {
       await runner()(uow, {});
       const [event] = await shareEvents(uow, store);
       expect(event!.payload).toMatchObject({ threshold_pct: 2, share_pct: 2.5 });
+    }));
+
+  it('pourcentage du site inexploitable (chaîne) : le global, pas le repli du domaine (AL-1)', () =>
+    rolledBack(async (uow) => {
+      const { admin, site, store, loss } = await world(uow);
+      await putSetting(uow, admin, 'sales.high_loss_alert_sales_pct', 'abc', {
+        type: 'SITE',
+        siteId: site,
+      });
+      await putSetting(uow, admin, 'sales.high_loss_alert_sales_pct', 2, { type: 'GLOBAL' });
+      await loss(2_500, { day: '2020-11-11' }); // 2,5 % : au-dessus du global (2), sous le repli (5)
+      salesBySiteAndDay({ [site]: { '2020-11-11': [100_000] } });
+      await runner(new FixedClock(new Date('2020-11-12T05:45:00.000Z')))(uow, {});
+      const [event] = await shareEvents(uow, store);
+      expect(event!.payload).toMatchObject({ threshold_pct: 2, share_pct: 2.5 });
+    }));
+
+  it('seuil absolu du site inexploitable (null) : le global décide si la perte est déjà signalée (AL-1)', () =>
+    rolledBack(async (uow) => {
+      const { admin, site, store, loss } = await world(uow);
+      await putSetting(uow, admin, 'inventory.high_loss_alert_xaf', null, {
+        type: 'SITE',
+        siteId: site,
+      });
+      await putSetting(uow, admin, 'inventory.high_loss_alert_xaf', 100_000, { type: 'GLOBAL' });
+      // 60 000 : sous le seuil absolu global (non signalée à la déclaration), au-dessus du repli de
+      // 50 000 (qui la ferait juger « déjà signalée »), et 12 % du CA net.
+      await loss(60_000, { day: '2020-11-11' });
+      salesBySiteAndDay({ [site]: { '2020-11-11': [500_000] } });
+      await runner(new FixedClock(new Date('2020-11-12T05:45:00.000Z')))(uow, {});
+      const events = await shareEvents(uow, store);
+      expect(events).toHaveLength(1);
+      expect(events[0]!.payload).toMatchObject({ loss_value_xaf: 60_000, share_pct: 12 });
     }));
 
   it('CA du site = somme de ses lignes ; chaque site et chaque jour avec son propre CA', () =>

@@ -5,6 +5,7 @@
  * contient aucune ligne de cet état — sans reconstruire un monde entier.
  */
 import { sql, type Transaction } from 'kysely';
+import type { TestContext } from 'vitest';
 import type { DB } from '../src/platform/kysely/database.js';
 import { fromBin } from '../src/platform/kysely/uuid-columns.js';
 import { db, freshUuid } from './helpers.js';
@@ -13,6 +14,20 @@ export type Trx = Transaction<DB>;
 export type Row = Record<string, unknown>;
 
 const ROLLBACK = Symbol('rollback');
+
+/**
+ * La base d'essai est partagée : les rapprochements portent sur les lignes que les autres essais y ont laissées.
+ * Une base trop pauvre pour que le contrôle ait un sens **saute** l'essai (visible au rapport) ; avec
+ * `ANALYTICS_STRICT=1` (seconde passe de clôture, EP-4), elle le fait **échouer** : aucune équivalence ne peut
+ * passer à vide. Toujours appelée **avant** la première assertion.
+ */
+export function enough(ctx: TestContext, actual: number, minimum: number, what: string): void {
+  if (actual >= minimum) return;
+  const reason = `${what} : ${actual} en base, ${minimum} au moins nécessaires`;
+  if (process.env.ANALYTICS_STRICT === '1')
+    throw new Error(`Saut refusé (ANALYTICS_STRICT) — ${reason}`);
+  ctx.skip(reason);
+}
 
 /**
  * Un instantané unique (`REPEATABLE READ`) **toujours annulé** : les copies que les essais y insèrent ne sont

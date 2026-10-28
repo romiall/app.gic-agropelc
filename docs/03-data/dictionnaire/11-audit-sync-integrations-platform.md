@@ -280,7 +280,7 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 
 **Responsabilité** : file de tâches maison (P0-08 ; ADR-011, ADR-023 « pg-boss abandonné,
 table de tâches maison, `SELECT … FOR UPDATE SKIP LOCKED` ») — travaux différés/planifiés du
-worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de messages.
+worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de messages. La réclamation lit les candidats sans verrou puis verrouille la ligne retenue par clé primaire, si bien qu'une voie ne retient jamais les lignes qu'elle ne traite pas (P9-25, PF-2).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -296,8 +296,8 @@ worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de mess
 | `completed_at` | ts | Oui | — | |
 
 - **PK** `id`. **IX** `(status, run_at)` (lecture du worker).
-- **Suppr.** PURGE_TECHNIQUE : table opérationnelle, pas un registre métier ni un journal —
-  contrairement à `domain_events` (outbox, ajout seul), une tâche terminée peut être purgée.
+- **Suppr.** PURGE_TECHNIQUE exécutée (P9-25, PF-7, AV-472) : table opérationnelle, pas un registre métier ni un journal —
+  contrairement à `domain_events` (outbox, ajout seul), une tâche terminée peut être purgée. Les tâches `DONE` et `FAILED` dont la dernière échéance (`run_at`) a plus de 30 jours (`platform.job_retention_days`) sont supprimées par `communication.maintenance.purge_daily`, jamais une tâche `PENDING`.
 - Pas de `[STD-AUDIT]` (créée par du code système, pas par une commande utilisateur ; aucune
   concurrence optimiste — le verrou de ligne/`SKIP LOCKED` la remplace) ni `[STD-ORIGIN]`
   (aucun lien à un appareil), à la différence des tables des modules métier.
@@ -363,5 +363,5 @@ AV-362 ; catalogue d'événements §3 « Échecs »). Le runner saute l'événem
 | `failed_at` | ts | Non | `now()` | |
 
 - **PK** `id`. **UQ** `(consumer_name, event_seq)` : un saut n'est consigné qu'une fois. **IX** `(failed_at)`.
-- **Suppr.** Ajout seul (`SELECT` et `INSERT` seulement pour l'application).
-- **Implémentation** : migration `20261201090200_create_platform_event_consumer_failures.sql`.
+- **Suppr.** Ajout seul à l'écriture ; PURGE_TECHNIQUE au-delà de `platform.consumer_failure_retention_days` (90 j), jamais dans la fenêtre de `CONSUMER_FAILED` (`communication.consumer_failure_window_hours`) (AV-472, AV-425). Droits `SELECT`, `INSERT` et `DELETE` pour l'application.
+- **Implémentation** : migration `20261201090200_create_platform_event_consumer_failures.sql` ; privilège `DELETE` accordé par la migration `20261201090700`.

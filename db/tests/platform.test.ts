@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { RowDataPacket } from 'mysql2/promise';
 import { randomId, withRollback } from './helpers.js';
 
 describe('platform_domain_events', () => {
@@ -39,6 +40,20 @@ describe('platform_event_consumer_offsets / platform_document_sequences', () => 
         "SELECT last_seq FROM platform_event_consumer_offsets WHERE consumer_name = 'test.consumer'",
       );
       expect((rows as Array<{ last_seq: number }>)[0]?.last_seq).toBe(42);
+    });
+  });
+});
+
+describe('platform_event_consumer_failures : privilèges de l’application (PF-7, AV-472)', () => {
+  it('SELECT, INSERT et DELETE (purge technique bornée), jamais UPDATE : la ligne d’un saut ne se modifie pas', async () => {
+    await withRollback(async (conn) => {
+      const [rows] = await conn.query<RowDataPacket[]>(
+        `SELECT GROUP_CONCAT(PRIVILEGE_TYPE ORDER BY PRIVILEGE_TYPE) AS privileges
+           FROM information_schema.TABLE_PRIVILEGES
+          WHERE GRANTEE = "'gic_app'@'%'" AND TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'platform_event_consumer_failures'`,
+      );
+      expect(rows[0]?.privileges).toBe('DELETE,INSERT,SELECT');
     });
   });
 });

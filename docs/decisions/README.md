@@ -61,6 +61,6 @@
 | [ADR-065](ADR-065-une-seule-definition-par-indicateur-et-periodes.md) | Une seule définition par indicateur : registre avec fonction de référence (existante ou à créer), extension de `businessPeriodOf`, équivalence testée tableaux = explorateur = documents, remontée aux sources | ACCEPTÉ | — |
 | [ADR-066](ADR-066-tableaux-tour-de-controle-et-instantanes.md) | Tableaux par rôle, tour de contrôle, extraction de la logique du tableau de distribution, instantanés personnels toutes les 15 minutes et jeu hors ligne `kpi` | ACCEPTÉ | — |
 | [ADR-067](ADR-067-vues-sauvegardees-et-exports-audites.md) | Vues sauvegardées sans droit supplémentaire, exports asynchrones audités réservés au demandeur, CSV et XLSX sans dépendance, port de stockage étendu | ACCEPTÉ | — |
-| [ADR-068](ADR-068-charge-paliers-analytiques-et-retention.md) | Charge (RISK-13) : bornes, plans `EXPLAIN`, tâches longues isolées, délai et retard du consommateur, paliers analytiques, rétention des données de P9 | ACCEPTÉ | — |
+| [ADR-068](ADR-068-charge-paliers-analytiques-et-retention.md) | Charge (RISK-13) : bornes, plans `EXPLAIN` relevés à la demande (non mesurés à la clôture de P9), tâches longues isolées, retard du consommateur (délai événement → alerte non mesuré), paliers analytiques, rétention des données de P9 | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

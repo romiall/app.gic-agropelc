@@ -6,6 +6,8 @@
  *
  * - **Levée** : une alerte ouverte par (type, sujet) ; une nouvelle occurrence met à jour l'alerte
  *   ouverte (compteur, dernière occurrence, charge utile, gravité relevée), jamais n'en crée une autre.
+ *   `critical_since` (départ du délai d'escalade) est l'instant où le serveur lève ou relève l'alerte en
+ *   CRITICAL, non la date du fait (NT-3).
  * - **Résolution** : par condition disparue (événement), par passe complète (marqueur) ou à la main.
  * - Les événements `AlertRaised` et `AlertResolved` sont publiés dans la même transaction.
  */
@@ -61,7 +63,8 @@ export async function loadAlertRule(
     enabled: Boolean(row.enabled),
     severity: row.severity as AlertSeverity,
     recipientRoles: stringArray(row.recipient_roles),
-    resolutionMode: row.resolution_mode as 'AUTO' | 'MANUAL',
+    // Le mode effectif est celui du catalogue : la colonne n'est qu'affichée, elle n'est pas réglable (AV-464).
+    resolutionMode: alertDefinitionOf(alertType).resolution,
     escalationHours: row.escalation_hours,
     escalationRoles: stringArray(row.escalation_roles),
   };
@@ -154,6 +157,11 @@ async function publishAlertEvent(
 /**
  * Levée (ou nouvelle occurrence) d'une alerte. La règle désactivée ou absente n'est pas appelée ici : le
  * consommateur ne lève rien (ADR-061 §8).
+ *
+ * `processedAt` : instant du traitement par le serveur, point de départ du délai d'escalade
+ * (`critical_since`, BR-NOT-005). Un fait en retard (saisi hors ligne, consommateur arrêté puis relancé)
+ * n'écoule pas d'avance un délai que les destinataires, notifiés maintenant, n'ont pas eu (P9-25, NT-3 ;
+ * AV-407, AV-466). `first_detected_at`, `last_detected_at` et les événements gardent la date du fait.
  */
 export async function raiseAlert(
   uow: UnitOfWork,
@@ -161,6 +169,7 @@ export async function raiseAlert(
   action: AlertRaiseAction,
   rule: AlertRule,
   causationEventId: string | null,
+  processedAt: Date,
 ): Promise<RaiseOutcome> {
   const definition = alertDefinitionOf(action.alertType);
   // Gravité : celle de l'événement si le type l'admet, sinon celle de la règle (AV-351).
@@ -182,7 +191,7 @@ export async function raiseAlert(
         occurrences: row.occurrences + 1,
         last_detected_at: lastDetected,
         severity: next,
-        critical_since: row.critical_since ?? (next === 'CRITICAL' ? action.occurredAt : null),
+        critical_since: row.critical_since ?? (next === 'CRITICAL' ? processedAt : null),
         title: rendered.title,
         message: rendered.message,
         payload: jsonValue(action.payload),
@@ -249,7 +258,7 @@ export async function raiseAlert(
         business_day:
           action.businessDay === null ? null : sql<Date>`CAST(${action.businessDay} AS DATE)`,
         last_pass_id: action.passId,
-        critical_since: incoming === 'CRITICAL' ? action.occurredAt : null,
+        critical_since: incoming === 'CRITICAL' ? processedAt : null,
       })
       .execute();
   } catch (error) {

@@ -120,6 +120,7 @@ describe('jeu hors ligne comms (P9-12)', () => {
   let valuer: Actor; // site A, avec la valeur au coût
   let outsider: Actor; // aucune affectation
   let reader: Actor; // lit ses notifications (comm.alert.read), sans affectation de site
+  let staffRole: string; // lecture des notes et des alertes, affectable à un site
 
   async function newActor(trx: Parameters<typeof insertTestDevice>[0]): Promise<Actor> {
     const id = await insertTestUser(trx);
@@ -155,7 +156,7 @@ describe('jeu hors ligne comms (P9-12)', () => {
       director = await newActor(trx);
       await assignTestRole(trx, director.id, directorRole, admin);
 
-      const staffRole = await insertTestRole(trx, admin, { allowedScopeTypes: ['SITE'] });
+      staffRole = await insertTestRole(trx, admin, { allowedScopeTypes: ['SITE'] });
       for (const code of ['comm.note.read', 'comm.alert.read', 'comm.alert.manage']) {
         await grantTestPermission(trx, staffRole, code, admin);
       }
@@ -747,6 +748,39 @@ describe('jeu hors ligne comms (P9-12)', () => {
       await forge('NOTE', noteId, staffA.id);
       expect(last(await pull(staffA), 'NOTE', noteId)).toBeUndefined();
     });
+
+    it('une note n’est plus servie à qui a quitté son audience, même avec comm.note.read (P9-25, NT-2)', async () => {
+      let leaver!: Actor;
+      let atSiteA!: string;
+      await db.transaction().execute(async (trx) => {
+        leaver = await newActor(trx);
+        atSiteA = await assignTestRole(trx, leaver.id, staffRole, director.id, {
+          scopeType: 'SITE',
+          scopeSiteId: siteA,
+        });
+        // Le droit de lire les notes reste détenu, par le site B : seule l'audience change.
+        await assignTestRole(trx, leaver.id, staffRole, director.id, {
+          scopeType: 'SITE',
+          scopeSiteId: siteB,
+        });
+      });
+      const noteId = freshUuid();
+      await command(director, 'communication.note.publish', 'INTERNAL_NOTE', noteId, {
+        title: 'Au site A',
+        body: 'Corps',
+        category: 'INFORMATION',
+        requiresAck: false,
+        audience: [{ type: 'SITE', ref: siteA }],
+      });
+      expect(last(await pull(leaver), 'NOTE', noteId)).toMatchObject({ change_type: 'UPSERT' });
+      await db
+        .updateTable('identity_user_role_assignments')
+        .set({ revoked_at: new Date(Date.now() - 1000) })
+        .where('id', '=', toBin(atSiteA))
+        .execute();
+      await forge('NOTE', noteId, leaver.id);
+      expect(last(await pull(leaver), 'NOTE', noteId)).toBeUndefined();
+    });
   });
 
   // ---- Notes (AT-048) -----------------------------------------------------------------------------------------
@@ -760,7 +794,12 @@ describe('jeu hors ligne comms (P9-12)', () => {
       audience: [{ type: 'SITE', ref: site }],
       ...extra,
     });
-    const publish = async (title: string, site: string, extra: Record<string, unknown> = {}) => {
+    const publish = async (
+      title: string,
+      site: string,
+      extra: Record<string, unknown> = {},
+      options: { readonly at?: Date } = {},
+    ) => {
       const noteId = freshUuid();
       await command(
         director,
@@ -768,6 +807,7 @@ describe('jeu hors ligne comms (P9-12)', () => {
         'INTERNAL_NOTE',
         noteId,
         noteBody(title, site, extra),
+        options,
       );
       return noteId;
     };
@@ -872,7 +912,9 @@ describe('jeu hors ligne comms (P9-12)', () => {
     });
 
     it('un utilisateur affecté après la publication reçoit la note quand il la lit, et son retrait', async () => {
-      const noteId = await publish('Consigne de zone', siteB);
+      // Tout dans le passé : le lecteur du jeu juge l'audience à l'heure réelle (NT-2), une affectation datée de
+      // `minutes(1)` serait encore dans le futur au moment de la lecture.
+      const noteId = await publish('Consigne de zone', siteB, {}, { at: minutes(-30) });
       const late = await db.transaction().execute(async (trx) => {
         const admin = await insertTestUser(trx);
         const actor = await newActor(trx);
@@ -883,7 +925,7 @@ describe('jeu hors ligne comms (P9-12)', () => {
         await assignTestRole(trx, actor.id, siteRole, admin, {
           scopeType: 'SITE',
           scopeSiteId: siteB,
-          validFrom: minutes(1),
+          validFrom: minutes(-20),
         });
         return actor;
       });
@@ -895,11 +937,11 @@ describe('jeu hors ligne comms (P9-12)', () => {
         'INTERNAL_NOTE',
         noteId,
         { kind: 'READ' },
-        { at: minutes(2) },
+        { at: minutes(-10) },
       );
       expect(last(await pull(late), 'NOTE', noteId)!.data).toMatchObject({
         id: noteId,
-        read_at: minutes(2),
+        read_at: minutes(-10),
       });
       await command(director, 'communication.note.archive', 'INTERNAL_NOTE', noteId, {
         reason: 'Obsolète',

@@ -30,7 +30,12 @@ export {
   lockCustomerAccount,
   ownerOfCustomerAt,
 } from './customer-attribution.js';
-export { portfolioHealth } from './home-metrics.js';
+export {
+  DEFAULT_INACTIVE_AFTER_DAYS,
+  INACTIVE_AFTER_DAYS_KEY,
+  inactiveAfterDays,
+  portfolioHealth,
+} from './home-metrics.js';
 export type { PortfolioHealth } from './home-metrics.js';
 export { commercialEffort, listInteractions, listTargets, listVisits } from './activity-query.js';
 export type {

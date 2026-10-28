@@ -674,3 +674,59 @@ describe('alertFromEvent — alertes de stock (P9-08)', () => {
     });
   });
 });
+
+describe('alertFromEvent — propriétaire d’une créance échue : le vendeur à défaut de commercial (AL-3, AV-463)', () => {
+  const COMMERCIAL = 'AAAAAAAA-0000-7000-8000-000000000001';
+  const SELLER = 'BBBBBBBB-0000-7000-8000-000000000002';
+  const overdue = (extra: Record<string, unknown>): AlertRaiseAction =>
+    raise(
+      event('ReceivableOverdue', SALE, {
+        sale_id: SALE,
+        doc_number: 'VTE-2026-000123',
+        site_id: SITE,
+        days_overdue: 13,
+        balance_due_xaf: 45_000,
+        business_day: '2026-10-14',
+        pass_id: 'pass-1',
+        ...extra,
+      }),
+    );
+
+  it('sans commercial attribué, le vendeur est propriétaire (en minuscules)', () => {
+    expect(overdue({ commercial_user_id: null, seller_user_id: SELLER }).ownerUserIds).toEqual([
+      SELLER.toLowerCase(),
+    ]);
+  });
+
+  it('une chaîne vide vaut absente : le repli s’applique', () => {
+    expect(overdue({ commercial_user_id: '', seller_user_id: SELLER }).ownerUserIds).toEqual([
+      SELLER.toLowerCase(),
+    ]);
+  });
+
+  it('avec un commercial attribué, le repli ne s’ajoute pas', () => {
+    expect(
+      overdue({ commercial_user_id: COMMERCIAL, seller_user_id: SELLER }).ownerUserIds,
+    ).toEqual([COMMERCIAL.toLowerCase()]);
+  });
+
+  it('ni commercial ni vendeur : aucun propriétaire', () => {
+    expect(overdue({ commercial_user_id: null }).ownerUserIds).toEqual([]);
+  });
+
+  it('SaleUndeliveredDetected garde ses deux propriétaires, commercial puis vendeur', () => {
+    const action = raise(
+      event('SaleUndeliveredDetected', SALE, {
+        sale_id: SALE,
+        doc_number: 'VTE-2026-000124',
+        commercial_user_id: COMMERCIAL,
+        seller_user_id: SELLER,
+        site_id: SITE,
+        business_day: '2026-10-14',
+        pass_id: 'pass-1',
+      }),
+    );
+    expect(action.alertType).toBe('SALE_UNDELIVERED');
+    expect(action.ownerUserIds).toEqual([COMMERCIAL.toLowerCase(), SELLER.toLowerCase()]);
+  });
+});

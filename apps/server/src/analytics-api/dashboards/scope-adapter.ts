@@ -4,6 +4,7 @@
  * de clauses. L'adaptateur ne traduit que ce qui se dit **exactement** en `ReadScope` ; le reste est `null`, jamais
  * une approximation plus large :
  * - étendue totale ou « tout site / toute zone » : tout (`ALL_SCOPE`) ;
+ * - étendue tronquée (plus de `analytics.scope_max_candidates` candidats, TB-6) : `null` (`SCOPE_TRUNCATED`) ;
  * - étendue vide : un périmètre vide (rien à lire) ;
  * - sites et zones (les zones se développent en leurs sites) : `{ siteIds }` ;
  * - personnes seules : `{ userIds }` ;
@@ -19,15 +20,28 @@ import { listSiteIdsInZones } from '../../modules/organization/application/publi
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
+/** Cause de l'indisponibilité d'un bloc dont l'étendue n'est pas exprimable en `ReadScope`. */
+export type ScopeIssue = 'SCOPE_TRUNCATED' | 'SCOPE_UNSUPPORTED';
+
+/** Pourquoi `readScopeOf` a rendu `null` pour cette étendue (TB-6). */
+export function scopeIssueOf(scope: ExactScope): ScopeIssue {
+  return scope.kind === 'CLAUSES' && scope.truncated ? 'SCOPE_TRUNCATED' : 'SCOPE_UNSUPPORTED';
+}
+
 export async function readScopeOf(
   executor: Executor,
   scope: ExactScope,
 ): Promise<ReadScope | null> {
   if (scope.kind === 'ALL') return ALL_SCOPE;
-  if (scope.clauses.length === 0) return { siteIds: [] };
+  // « Tout site » et « toute zone » gardent ALL_SCOPE, même tronqués : la troncature ne retire que des candidats
+  // déjà couverts par « tout » (approximation admise : plus large que « toute ligne portant un site »).
   if (scope.clauses.some((clause) => clause.type === 'ANY_SITE' || clause.type === 'ANY_ZONE')) {
     return ALL_SCOPE;
   }
+  // TB-6 : des candidats ont été écartés au-delà de `analytics.scope_max_candidates` ; l'étendue est plus étroite
+  // que le droit, donc non exacte, même vide : le bloc est indisponible (SCOPE_TRUNCATED), comme l'export (AV-445).
+  if (scope.truncated) return null;
+  if (scope.clauses.length === 0) return { siteIds: [] };
   const sites = new Set<string>();
   const zones = new Set<string>();
   const persons = new Set<string>();

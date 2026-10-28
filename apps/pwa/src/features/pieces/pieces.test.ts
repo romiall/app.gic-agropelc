@@ -52,7 +52,12 @@ const DEMANDES: readonly DemandePiece[] = [
 
 describe('fidélité aux fichiers du porteur (REQ-303)', () => {
   it('la charte est la copie exacte de pieces-papier/charte/pieces.css', () => {
-    expect(charte).toBe(readFileSync(racine('pieces-papier/charte/pieces.css'), 'utf8'));
+    // Les fins de ligne ne comptent pas : sous Windows (core.autocrlf), une copie extraite par git est en CRLF
+    // quand le fichier du porteur reste en LF.
+    const sansCr = (texte: string): string => texte.replace(/\r\n/g, '\n');
+    expect(sansCr(charte)).toBe(
+      sansCr(readFileSync(racine('pieces-papier/charte/pieces.css'), 'utf8')),
+    );
   });
 
   it("l'identité est celle de pieces-papier/charte/identite.json", () => {

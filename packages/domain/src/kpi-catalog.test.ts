@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { datasetOf } from './analytics-catalog.js';
-import { KPI_CATALOG, kpiDefinitionOf, kpiHasPreviousPeriod, kpisToCreate } from './kpi-catalog.js';
+import {
+  KPI_CATALOG,
+  kpiDefinitionOf,
+  kpiHasPreviousPeriod,
+  kpisToCreate,
+  maskProtectedKpi,
+} from './kpi-catalog.js';
 
 /** Codes de D11 §7.1 (hors codes locaux de l'accueil, testés à part). */
 const D11_CODES = [
@@ -51,18 +57,71 @@ describe('registre des indicateurs (BR-ANA-009, ADR-065 §1)', () => {
   });
 
   it('un indicateur valorisé au coût est marqué protégé (RC-05)', () => {
-    for (const code of ['KPI-STK-02', 'KPI-FIN-07', 'KPI-FIN-08', 'KPI-PRD-09', 'KPI-PRD-10']) {
-      expect(kpiDefinitionOf(code)?.protected).toBe(true);
+    for (const code of [
+      'KPI-STK-02',
+      'KPI-STK-04',
+      'KPI-DIS-05',
+      'KPI-FIN-07',
+      'KPI-FIN-08',
+      'KPI-PRD-09',
+      'KPI-PRD-10',
+    ]) {
+      expect(kpiDefinitionOf(code)?.protected, code).toBe(true);
     }
   });
 
-  it('toutes les fonctions de référence créées en P9-15 existent : plus aucun indicateur à créer', () => {
-    expect(kpisToCreate()).toEqual([]);
-    for (const code of ['KPI-STK-05', 'KPI-COM-12', 'KPI-COM-15', 'KPI-PRD-02', 'KPI-PRD-03']) {
-      expect(kpiDefinitionOf(code)?.state).toBe('EXISTING');
+  it('les fonctions de référence créées en P9-15 et celle de la trésorerie existent ; cinq indicateurs restent à créer (EP-5, AV-462)', () => {
+    for (const code of [
+      'KPI-FIN-06',
+      'KPI-STK-05',
+      'KPI-COM-12',
+      'KPI-COM-15',
+      'KPI-PRD-02',
+      'KPI-PRD-03',
+    ]) {
+      expect(kpiDefinitionOf(code)?.state, code).toBe('EXISTING');
     }
     // La mortalité d'un périmètre lit les déclarations de pertes : fonction d'`inventory`.
     expect(kpiDefinitionOf('KPI-PRD-02')?.module).toBe('inventory');
+    expect(
+      kpisToCreate()
+        .map((k) => k.code)
+        .sort(),
+    ).toEqual(['KPI-COM-16', 'KPI-OPS-02', 'KPI-PRD-04', 'KPI-PRD-05', 'KPI-PRD-09']);
+    // Pas de lien d'exploration pour un indicateur sans fonction de référence ni écran.
+    for (const kpi of kpisToCreate()) expect(kpi.explorer, kpi.code).toBeUndefined();
+    // Le réalisé d'une cible se compose avec les ventes : la fonction ne peut vivre que dans `sales` (graphe).
+    expect(kpiDefinitionOf('KPI-COM-16')?.module).toBe('sales');
+    expect(kpiDefinitionOf('KPI-PRD-09')?.protected).toBe(true);
+    for (const kpi of KPI_CATALOG) expect(['EXISTING', 'TO_CREATE'], kpi.code).toContain(kpi.state);
+  });
+
+  it('maskProtectedKpi : un indicateur protégé perd valeur, période précédente, variation et lien ; les autres sont inchangés (TB-7)', () => {
+    const flow = {
+      code: 'KPI-FIN-08',
+      value: 1200,
+      previousValue: 900,
+      variationPct: 33.3,
+      explore: { definition: {} },
+    };
+    expect(maskProtectedKpi(flow)).toEqual({
+      code: 'KPI-FIN-08',
+      value: null,
+      previousValue: null,
+      variationPct: null,
+      explore: null,
+    });
+    // Un solde n'a ni période précédente ni variation : les champs absents le restent.
+    const instant = maskProtectedKpi({ code: 'KPI-STK-02', value: 5000 });
+    expect(instant).toEqual({ code: 'KPI-STK-02', value: null });
+    expect(instant).not.toHaveProperty('previousValue');
+    // Non protégé ou inconnu : rendu tel quel (même objet).
+    const open = { code: 'KPI-STK-06', value: 3, previousValue: null };
+    expect(maskProtectedKpi(open)).toBe(open);
+    const unknown = { code: 'KPI-INCONNU', value: 1 };
+    expect(maskProtectedKpi(unknown)).toBe(unknown);
+    // L'entrée n'est pas modifiée.
+    expect(flow.value).toBe(1200);
   });
 
   it('la période précédente ne vaut que pour un flux (ADR-066 §2)', () => {

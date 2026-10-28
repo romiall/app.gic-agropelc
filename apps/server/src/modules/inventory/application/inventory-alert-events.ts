@@ -31,7 +31,6 @@ import {
 import { fromBin, fromBinOrNull, toBin } from '../../../platform/kysely/uuid-columns.js';
 import type { UnitOfWork } from '../../../platform/unit-of-work.js';
 import { findProduct } from '../../catalog/application/public/index.js';
-import { currentSettingValue } from '../../organization/application/public/index.js';
 import { quantityToMilli, stockOnHandMilli } from './allocation-ledger.js';
 
 const PRODUCER = 'inventory';
@@ -100,20 +99,6 @@ export async function locationAlertInfos(
 /** Libellé d'un produit pour un message d'alerte ; son identifiant s'il est introuvable. */
 export async function productAlertLabel(uow: UnitOfWork, productId: string): Promise<string> {
   return (await findProduct(uow, productId))?.name ?? productId;
-}
-
-/** Réglage du site, à défaut global (règle 8 : aucun seuil codé en dur ; repli au domaine). */
-export async function siteThenGlobalSetting(
-  uow: UnitOfWork,
-  key: string,
-  siteId: string | null,
-  at: Date,
-): Promise<unknown> {
-  if (siteId !== null) {
-    const bySite = await currentSettingValue(uow, { key, scopeType: 'SITE', scopeId: siteId, at });
-    if (bySite !== undefined) return bySite;
-  }
-  return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
 }
 
 // --- STOCK_LOW, STOCK_OUT : franchissement d'un seuil ------------------------------------------------

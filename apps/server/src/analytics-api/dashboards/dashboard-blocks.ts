@@ -6,7 +6,9 @@
  * l'explorateur (BR-ANA-010, niveau 1).
  *
  * Un bloc est isolé (`guarded`) : un périmètre que les fonctions de référence ne savent pas exprimer
- * (`SCOPE_UNSUPPORTED`) ou une erreur technique le rend `unavailable`, sans faire échouer les autres blocs.
+ * (`SCOPE_UNSUPPORTED`), une étendue tronquée au-delà de `analytics.scope_max_candidates` (`SCOPE_TRUNCATED`, TB-6),
+ * un bloc dont la forme viole le contrat (`BLOCK_INVALID`, TB-12) ou une erreur technique le rend `unavailable`,
+ * sans faire échouer les autres blocs.
  */
 import type { Kysely, Transaction } from 'kysely';
 import {
@@ -14,13 +16,16 @@ import {
   type AnalyticsPeriod,
   type AnalyticsPeriodWindow,
 } from '@gic/domain';
-import type { DashboardBlock, DashboardKpi } from '@gic/contracts';
+import { dashboardBlockSchema, type DashboardBlock, type DashboardKpi } from '@gic/contracts';
 import type { DB } from '../../platform/kysely/database.js';
+import { logStructured } from '../../platform/observability/logger.js';
 import type { ReadScope } from '../../platform/read-scope.js';
+import type { ScopeIssue } from './scope-adapter.js';
 import { alertSummary } from '../../modules/communication/application/public/index.js';
 import { listProducts } from '../../modules/catalog/application/public/index.js';
 import {
   conversionCohort,
+  inactiveAfterDays,
   portfolioActivity,
   portfolioHealth,
   visitToOrderRate,
@@ -62,8 +67,12 @@ import {
 type Executor = Kysely<DB> | Transaction<DB>;
 type BlockCode = DashboardBlock['code'];
 
-/** Un client sans vente depuis ce nombre de jours est inactif (AV-013, comme l'accueil). */
-const INACTIVE_DAYS = 30;
+/** Borne du libellé d'une ligne de détail du contrat (`details[].label`) : une borne de forme, pas un seuil métier. */
+const DETAIL_LABEL_MAX = 200;
+
+/** Libellé ramené à `max` caractères au plus, terminé par « … » s'il a été coupé. */
+export const fitLabel = (label: string, max: number): string =>
+  label.length <= max ? label : `${label.slice(0, max - 1)}…`;
 
 export interface DashboardContext {
   readonly executor: Executor;
@@ -71,8 +80,13 @@ export interface DashboardContext {
   readonly at: Date;
   readonly today: string;
   readonly period: AnalyticsPeriod;
-  /** `null` : l'étendue exacte n'est pas exprimable en `ReadScope` (`SCOPE_UNSUPPORTED`). */
+  /**
+   * `null` : l'étendue exacte n'est pas exprimable en `ReadScope` (`SCOPE_UNSUPPORTED`) ou a été tronquée au-delà
+   * de `analytics.scope_max_candidates` (`SCOPE_TRUNCATED`, TB-6).
+   */
   readonly scope: ReadScope | null;
+  /** Cause d'un `scope` nul (défaut `SCOPE_UNSUPPORTED`). */
+  readonly scopeIssue?: ScopeIssue;
   readonly canReadValuation: boolean;
   /** Plafond du compteur de validations en attente (`analytics.pending_approvals_count_cap`). */
   readonly pendingApprovalsCap: number;
@@ -91,7 +105,9 @@ const isAllScope = (scope: ReadScope): boolean =>
   scope.siteIds === undefined && scope.userIds === undefined;
 
 function scopeOf(context: DashboardContext): ReadScope {
-  if (context.scope === null) throw new BlockUnavailable('ERROR', 'SCOPE_UNSUPPORTED');
+  if (context.scope === null) {
+    throw new BlockUnavailable('ERROR', context.scopeIssue ?? 'SCOPE_UNSUPPORTED');
+  }
   return context.scope;
 }
 
@@ -183,15 +199,43 @@ function block(
   return { code, title, kpis, details, unavailable: null };
 }
 
-/** Un bloc isolé : un échec le rend indisponible sans faire échouer les autres. */
+/**
+ * Un bloc isolé : un échec le rend indisponible sans faire échouer les autres. TB-12 : la forme du bloc est
+ * validée par le contrat (`dashboardBlockSchema`) ; un bloc invalide devient indisponible (`BLOCK_INVALID`) au lieu
+ * de faire échouer, par la validation de la réponse entière, tout le tableau en 500.
+ */
 export async function guarded(
   code: BlockCode,
   title: string,
   build: () => Promise<DashboardBlock>,
 ): Promise<DashboardBlock> {
   try {
-    return await build();
+    const built = await build();
+    const checked = dashboardBlockSchema.safeParse(built);
+    // Le bloc d'origine est rendu tel quel, pas la copie validée (AT-054).
+    if (checked.success) return built;
+    // Les chemins fautifs seulement, jamais les valeurs.
+    logStructured(
+      'warn',
+      { module: 'analytics', code: 'BLOCK_INVALID' },
+      `Bloc ${code} invalide (${checked.error.issues.map((issue) => issue.path.join('.')).join(', ')}).`,
+    );
+    return {
+      code,
+      title,
+      kpis: [],
+      details: [],
+      unavailable: { reason: 'ERROR' as const, code: 'BLOCK_INVALID' },
+    };
   } catch (error) {
+    if (!(error instanceof BlockUnavailable)) {
+      // Échec technique : visible côté serveur, sans le message d'erreur (jamais dans la réponse).
+      logStructured(
+        'warn',
+        { module: 'analytics', code: 'BLOCK_FAILED' },
+        `Bloc ${code} en échec.`,
+      );
+    }
     const unavailable =
       error instanceof BlockUnavailable
         ? { reason: error.reason, code: error.errorCode }
@@ -370,7 +414,10 @@ export async function stockBlock(context: DashboardContext): Promise<DashboardBl
     .filter((line) => line.coverageDays !== null)
     .slice(0, 10)
     .map((line) => ({
-      label: `Couverture (jours) — ${nameOf.get(line.productId) ?? line.productId}`,
+      label: fitLabel(
+        `Couverture (jours) — ${nameOf.get(line.productId) ?? line.productId}`,
+        DETAIL_LABEL_MAX,
+      ),
       value: line.coverageDays,
       unit: 'ratio' as const,
     }));
@@ -583,11 +630,20 @@ export async function teamsBlock(context: DashboardContext): Promise<DashboardBl
 export async function commercialBlock(context: DashboardContext): Promise<DashboardBlock> {
   const scope = scopeOf(context);
   const can = context.canReadValuation;
+  // Seuil d'inactivité : réglage `crm.inactive_after_days` (AV-013, TB-5).
+  const inactiveDays = await inactiveAfterDays(context.executor, context.at);
   const [health, repurchase] = await Promise.all([
+    // TB-1 : un compte se lit par son titulaire ; des personnes (avec ou sans sites) = le titulaire seul, car le
+    // site de rattachement d'un compte de commercial est le plus souvent vide (un ET le viderait, AV-465) ; des
+    // sites seuls = le site de rattachement (liste vide : zéros, jamais tout le portefeuille) ; ALL = tout.
     portfolioHealth(context.executor, {
-      ...(scope.userIds !== undefined ? { ownerUserIds: scope.userIds } : {}),
+      ...(scope.userIds !== undefined
+        ? { ownerUserIds: scope.userIds }
+        : scope.siteIds !== undefined
+          ? { siteIds: scope.siteIds }
+          : {}),
       at: context.at,
-      inactiveDays: INACTIVE_DAYS,
+      inactiveDays,
     }),
     repurchaseRate(context.executor, scope, dayWindow(context.period)),
   ]);
@@ -722,8 +778,9 @@ export async function coordinationBlock(context: DashboardContext): Promise<Dash
       at: context.at,
       cap: context.pendingApprovalsCap,
     }),
-    isAllScope(scopeOf(context))
-      ? supplierServiceRate(context.executor, scopeOf(context), dayWindow(context.period))
+    // Une étendue nulle ne coûte que le taux de service, pas le compteur de validations (TB-6).
+    context.scope !== null && isAllScope(context.scope)
+      ? supplierServiceRate(context.executor, context.scope, dayWindow(context.period))
       : null,
   ]);
   const can = context.canReadValuation;

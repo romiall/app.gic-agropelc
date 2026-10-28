@@ -8,6 +8,7 @@
  * - **Limites en erreur, jamais en troncature silencieuse** : au-delà de `maxRows` lignes, de `maxExecutionMs`
  *   millisecondes ou du nombre de requêtes simultanées, `ExplorationLimitError`. Une limite de lignes demandée
  *   par l'utilisateur, plus petite que le plafond, est un « premier N » voulu : les N premières lignes sont rendues.
+ *   Une seule durée pour les lignes et le total : le total reçoit le temps qui reste (EP-2).
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -18,7 +19,12 @@ import {
   type CompiledExploration,
   type ExplorationValue,
 } from './compile-exploration.js';
-import { acquireQuerySlot, releaseQuerySlot } from './query-slots.js';
+import {
+  acquireGlobalQuerySlot,
+  acquireQuerySlot,
+  releaseGlobalQuerySlot,
+  releaseQuerySlot,
+} from './query-slots.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -52,12 +58,20 @@ const isQueryTimeout = (error: unknown): boolean =>
   ((error as { errno?: unknown }).errno === QUERY_TIMEOUT_ERRNO ||
     (error as { code?: unknown }).code === 'ER_QUERY_TIMEOUT');
 
+const timeLimitError = (maxExecutionMs: number): ExplorationLimitError =>
+  new ExplorationLimitError(
+    'time',
+    `La requête dépasse ${Math.round(maxExecutionMs / 1000)} s : affinez la requête (période, filtres, regroupements).`,
+  );
+
 /** Lit les lignes et le total d'une exploration compilée sur l'exécuteur donné. */
 export async function executeExploration(
   executor: Executor,
   compiled: CompiledExploration,
   limits: { readonly maxRows: number; readonly maxExecutionMs: number },
 ): Promise<ExplorationResult> {
+  // Une seule durée pour l'exploration entière (EP-2) : le total reçoit le temps qui reste après les lignes.
+  const startedAt = process.hrtime.bigint();
   try {
     const { rows: raw } = await compiled.rows.execute(executor);
     if (raw.length > compiled.rowLimit && compiled.rowLimit >= limits.maxRows) {
@@ -71,7 +85,12 @@ export async function executeExploration(
     if (compiled.totalsFromRow && kept[0] !== undefined) {
       totals = exploredTotals(compiled.columns, kept[0]);
     } else if (compiled.totals !== null) {
-      const { rows: totalRows } = await compiled.totals.execute(executor);
+      const remainingMs = Math.floor(
+        limits.maxExecutionMs - Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
+      );
+      // `MAX_EXECUTION_TIME(0)` supprimerait la limite : sans temps restant, le total n'est pas lancé.
+      if (remainingMs < 1) throw timeLimitError(limits.maxExecutionMs);
+      const { rows: totalRows } = await compiled.totals(remainingMs).execute(executor);
       totals = exploredTotals(compiled.columns, totalRows[0] ?? {});
     }
     return {
@@ -82,18 +101,15 @@ export async function executeExploration(
     };
   } catch (error) {
     if (isQueryTimeout(error)) {
-      throw new ExplorationLimitError(
-        'time',
-        `La requête dépasse ${Math.round(limits.maxExecutionMs / 1000)} s : affinez la requête (période, filtres, regroupements).`,
-      );
+      throw timeLimitError(limits.maxExecutionMs);
     }
     throw error;
   }
 }
 
 /**
- * Exécute l'exploration sous un emplacement de concurrence de l'utilisateur, dans un instantané en lecture
- * seule. `db` est la base entière : la connexion est épinglée ici.
+ * Exécute l'exploration sous un emplacement de concurrence de l'utilisateur **et** un emplacement global (AV-461),
+ * dans un instantané en lecture seule. `db` est la base entière : la connexion est épinglée ici.
  */
 export async function runExploration(
   db: Kysely<DB>,
@@ -104,6 +120,7 @@ export async function runExploration(
       readonly maxRows: number;
       readonly maxExecutionMs: number;
       readonly maxConcurrentPerUser: number;
+      readonly maxConcurrentGlobal: number;
     };
   },
 ): Promise<ExplorationResult> {
@@ -119,17 +136,31 @@ export async function runExploration(
         `Au plus ${input.limits.maxConcurrentPerUser} requêtes simultanées : attendez la fin d’une requête en cours.`,
       );
     }
+    let globalSlot: number | null = null;
     try {
+      globalSlot = await acquireGlobalQuerySlot(connection, input.limits.maxConcurrentGlobal);
+      if (globalSlot === null) {
+        throw new ExplorationLimitError(
+          'concurrency',
+          'Le serveur traite déjà le nombre maximal de requêtes d’analyse : réessayez dans un instant.',
+        );
+      }
       return await connection
         .transaction()
         .setIsolationLevel('repeatable read')
         .setAccessMode('read only')
         .execute((trx) => executeExploration(trx, input.compiled, input.limits));
     } finally {
+      // Deux libérations séparées : l'échec de la première ne doit pas laisser l'emplacement de l'utilisateur tenu.
+      try {
+        if (globalSlot !== null) await releaseGlobalQuerySlot(connection, globalSlot);
+      } catch {
+        // Connexion perdue : MySQL libère les verrous avec elle.
+      }
       try {
         await releaseQuerySlot(connection, input.userId, slot);
       } catch {
-        // Connexion perdue : MySQL libère le verrou avec elle.
+        // Connexion perdue : MySQL libère les verrous avec elle.
       }
     }
   });
