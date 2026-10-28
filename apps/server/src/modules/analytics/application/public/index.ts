@@ -65,4 +65,7 @@ export { VIEWS_LIST_LIMIT, listReadableViews, readReadableView } from '../views/
 export type { ReadableView, ViewExecutability } from '../views/view-read.js';
 export { exportStorageKey, exportsPage, readExport } from '../exports/export-store.js';
 export type { ExportFormat, ExportStatus, StoredExport } from '../exports/export-store.js';
+// P9-25 (EX-3) : réglages des exports et droits revérifiés au téléchargement.
+export { readExportSettings } from '../exports/export-settings.js';
+export { missingDownloadPermission } from '../exports/export-download-rights.js';
 export { explorationDefinitionFrom } from '../query/exploration-definition.js';

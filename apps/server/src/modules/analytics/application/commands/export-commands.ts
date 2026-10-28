@@ -9,7 +9,11 @@
  *   `inventory.valuation.read` (un export financier exige donc les deux droits, AV-384), plafond de lignes de
  *   l'export (`analytics.export_max_rows`) ; version du catalogue égale à la version courante.
  * - **Garde-fou** : au plus `analytics.export_max_pending_per_user` exports en file ou en cours par demandeur
- *   (`EXPORT_BACKLOG`), pour qu'un utilisateur n'occupe pas la file.
+ *   (`EXPORT_BACKLOG`), pour qu'un utilisateur n'occupe pas la file. Le compte se lit **après le verrou** de la ligne
+ *   du demandeur : deux demandes simultanées ne passent plus toutes deux sous le plafond (P9-25, EX-8).
+ * - **Période figée à la demande** (P9-25, EX-7) : une période nommée (« ce mois ») est résolue au jour de la demande
+ *   et remplacée par sa plage dans la définition conservée ; l'export calculé plus tard (file d'attente, rejeu) porte
+ *   donc sur les jours que le demandeur a vus. L'audit garde la période demandée et la plage résolue.
  * - **Idempotente** : un identifiant d'export déjà connu du même demandeur est rendu appliqué sans second effet ; celui
  *   d'un autre est introuvable (existence opaque).
  */
@@ -26,6 +30,7 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { JobsService } from '../../../../platform/jobs/jobs.service.js';
+import { lockUserById } from '../../../identity/application/public/index.js';
 import { explorationDefinitionFrom } from '../query/exploration-definition.js';
 import { validateExplorationForUser } from '../query/validate-for-user.js';
 import { publishExportEvent } from '../exports/export-events.js';
@@ -46,6 +51,22 @@ const rejected = (errorCode: string, messageFr: string): CommandHandlerOutcome =
   errorCode,
   messageFr,
 });
+
+type RequestedDefinition = AnalyticsExportRequestPayload['definition'];
+
+/** La définition dont une période nommée est remplacée par la plage que `period` a résolue (EX-7). */
+function frozenDefinition(
+  definition: RequestedDefinition,
+  period: { readonly fromDay: string; readonly toDay: string } | null,
+): RequestedDefinition {
+  if (period === null || definition.period === undefined || definition.period.code === 'CUSTOM') {
+    return definition;
+  }
+  return {
+    ...definition,
+    period: { code: 'CUSTOM', fromDay: period.fromDay, toDay: period.toDay },
+  };
+}
 
 function request(deps: ExportCommandDeps): CommandHandler<AnalyticsExportRequestPayload> {
   return async (uow, envelope) => {
@@ -78,18 +99,21 @@ function request(deps: ExportCommandDeps): CommandHandler<AnalyticsExportRequest
       maxRows: settings.maxRows,
     });
     if (!validation.ok) return rejected(validation.code, validation.messageFr);
+    // Le plafond se lit après le verrou du demandeur : une seconde demande simultanée attend la première (EX-8).
+    await lockUserById(uow, author);
     if ((await pendingExportCount(uow, author)) >= settings.maxPendingPerUser) {
       return rejected(
         'EXPORT_BACKLOG',
         `Vous avez déjà ${settings.maxPendingPerUser} exports en cours : attendez la fin de l’un d’eux.`,
       );
     }
+    const frozen = frozenDefinition(payload.definition, validation.plan.period);
 
     await insertExport(uow, {
       id: exportId,
       requestedBy: author,
       dataset: definition.dataset,
-      definition: payload.definition,
+      definition: frozen,
       format: payload.format,
       catalogVersion: payload.catalogVersion,
       commandId: envelope.command_id,
@@ -118,7 +142,8 @@ function request(deps: ExportCommandDeps): CommandHandler<AnalyticsExportRequest
           dataset: definition.dataset,
           format: payload.format,
           catalog_version: payload.catalogVersion,
-          definition: payload.definition,
+          definition: frozen,
+          requested_period: payload.definition.period ?? null,
           status: 'QUEUED',
         },
       },

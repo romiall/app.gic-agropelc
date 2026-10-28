@@ -24,6 +24,12 @@ export interface ChunkStorage {
   delete(key: string): Promise<void>;
   /** Lit le fichier de `key` par morceaux d'au plus `chunkSize` octets, sans le charger en entier (P9-20). */
   readChunks(key: string, chunkSize: number): AsyncIterable<Buffer>;
+  /**
+   * Les clés des fichiers directement sous le « dossier » `prefix` (`exports` rend `exports/<id>`), dans un ordre
+   * quelconque ; vide si le dossier n'existe pas. Ajout de P9-25 (EX-2) : la purge des exports part des fichiers
+   * réellement présents, pas d'une fenêtre de dates qui laissait des fichiers pour toujours.
+   */
+  listKeys(prefix: string): Promise<readonly string[]>;
 }
 
 export class ChunkOffsetMismatchError extends Error {

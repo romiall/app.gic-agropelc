@@ -6,8 +6,10 @@
  * d'un autre est introuvable (refus audité). Permission : `analytics.export`, revérifiée à chaque appel.
  *
  * Téléchargement : l'export doit être `DONE` et non échu (`409 EXPORT_NOT_READY` en file ou en cours, `409
- * EXPORT_FAILED` en échec, `410 EXPORT_EXPIRED` après l'échéance ou fichier purgé) ; le fichier est lu par morceaux ;
- * chaque téléchargement écrit une ligne d'audit (`AnalyticsExportDownloaded`, acteur, appareil).
+ * EXPORT_FAILED` en échec, `410 EXPORT_EXPIRED` après l'échéance ou fichier purgé) ; le demandeur doit encore avoir
+ * les droits que la définition exige (lecture du jeu, valorisation si une mesure est au coût) : `403` audité sinon
+ * (`analytics.export_download_revalidate_rights`, AV-460) ; le fichier est lu par morceaux ; chaque téléchargement
+ * écrit une ligne d'audit (`AnalyticsExportDownloaded`, acteur, appareil).
  */
 import {
   Controller,
@@ -33,11 +35,14 @@ import { RequiresPermission } from '../platform/http/authorization.decorators.js
 import { CHUNK_STORAGE } from '../platform/storage/chunk-storage.provider.js';
 import type { ChunkStorage } from '../platform/storage/chunk-storage.js';
 import { recordAudit } from '../audit/record-audit.js';
+import { recordDenied } from '../audit/record-denied.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
 import {
   exportStorageKey,
   exportsPage,
+  missingDownloadPermission,
   readExport,
+  readExportSettings,
   type StoredExport,
 } from '../modules/analytics/application/public/index.js';
 import { ReadAccess, idParamSchema, parseOrThrow } from '../read-api/read-access.js';
@@ -136,6 +141,26 @@ export class AnalyticsExportsController {
     }
     if (status === 'EXPIRED') {
       throw new ApiError(410, 'EXPORT_EXPIRED', 'L’export a expiré : refaites-le.');
+    }
+    // Droits revérifiés au téléchargement (EX-3, AV-460) : un droit de jeu ou de valorisation retiré depuis le calcul
+    // ferme le fichier ; le refus est audité avec la permission manquante.
+    const settings = await readExportSettings(this.db, now);
+    const missing = settings.downloadRevalidate
+      ? await missingDownloadPermission(this.db, { job, at: now })
+      : null;
+    if (missing !== null) {
+      await recordDenied(this.db, this.deps, {
+        occurredAt: now,
+        actorUserId: request.auth!.sub,
+        actorRoles: [],
+        deviceId: request.auth!.device_id,
+        action: 'access.denied',
+        entityType: 'ANALYTICS_EXPORT',
+        entityId: job.id,
+        reason: `Téléchargement refusé : permission manquante ${missing}.`,
+        errorCode: 'FORBIDDEN',
+      });
+      throw new ApiError(403, 'FORBIDDEN', 'Droit insuffisant pour télécharger cet export.');
     }
     const key = exportStorageKey(job.id);
     const size = await this.storage.uploadedBytes(key);

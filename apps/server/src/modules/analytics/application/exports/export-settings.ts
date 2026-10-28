@@ -16,6 +16,10 @@ export interface ExportSettings {
   readonly fileHours: number;
   /** Exports en file ou en cours au plus par demandeur. */
   readonly maxPendingPerUser: number;
+  /** Heures après la demande au-delà desquelles un export resté en file ou en cours est abandonné (P9-25, EX-6). */
+  readonly abandonHours: number;
+  /** Revérifier au téléchargement les droits du jeu et de valorisation du demandeur (P9-25, EX-3, AV-460). */
+  readonly downloadRevalidate: boolean;
 }
 
 export const EXPORT_SETTING_KEYS = {
@@ -23,6 +27,8 @@ export const EXPORT_SETTING_KEYS = {
   maxSeconds: 'analytics.export_max_seconds',
   fileHours: 'analytics.export_file_hours',
   maxPendingPerUser: 'analytics.export_max_pending_per_user',
+  abandonHours: 'analytics.export_abandon_hours',
+  downloadRevalidate: 'analytics.export_download_revalidate_rights',
 } as const;
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -30,10 +36,15 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   maxSeconds: 120,
   fileHours: 24,
   maxPendingPerUser: 3,
+  abandonHours: 24,
+  downloadRevalidate: true,
 };
 
 const positiveInteger = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+
+const flag = (value: unknown, fallback: boolean): boolean =>
+  typeof value === 'boolean' ? value : fallback;
 
 export async function readExportSettings(
   executor: Kysely<DB> | Transaction<DB>,
@@ -57,6 +68,14 @@ export async function readExportSettings(
     maxPendingPerUser: positiveInteger(
       await read(EXPORT_SETTING_KEYS.maxPendingPerUser),
       DEFAULT_EXPORT_SETTINGS.maxPendingPerUser,
+    ),
+    abandonHours: positiveInteger(
+      await read(EXPORT_SETTING_KEYS.abandonHours),
+      DEFAULT_EXPORT_SETTINGS.abandonHours,
+    ),
+    downloadRevalidate: flag(
+      await read(EXPORT_SETTING_KEYS.downloadRevalidate),
+      DEFAULT_EXPORT_SETTINGS.downloadRevalidate,
     ),
   };
 }

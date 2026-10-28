@@ -229,9 +229,8 @@ export async function runExport(
   if (job.format === 'CSV') {
     await writeInChunks(deps.storage, key, csvParts(result.columns, result.rows));
   } else {
-    await writeInChunks(deps.storage, key, [
-      buildXlsx(result.columns, result.rows, `Export ${job.dataset}`),
-    ]);
+    const workbook = await buildXlsx(result.columns, result.rows, `Export ${job.dataset}`);
+    await writeInChunks(deps.storage, key, [workbook]);
   }
   return conclude({ status: 'DONE', rowCount: result.rowCount });
 }

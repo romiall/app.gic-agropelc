@@ -263,6 +263,8 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `analytics.export_max_seconds` | 120 | AV-383 (P9-20) : durée de calcul d'un export au plus, en secondes ; entier > 0, sinon 120 |
 | `analytics.export_file_hours` | 24 | AV-383, AV-447 (P9-20) : validité du fichier d'un export, en heures, comptée depuis la demande (l'échéance est immuable) ; entier > 0, sinon 24 |
 | `analytics.export_max_pending_per_user` | 3 | AV-447 (P9-20) : exports en file ou en cours au plus par demandeur ; entier > 0, sinon 3 |
+| `analytics.export_abandon_hours` | 24 | AV-383 (P9-25, EX-6) : un export encore en file ou en cours plus de ce nombre d'heures après la demande est abandonné par la purge (`FAILED` `EXPORT_ABANDONED`) ; entier > 0, sinon 24 |
+| `analytics.export_download_revalidate_rights` | true | AV-460 (P9-25, EX-3) : revérifier au téléchargement les droits de lecture du jeu et de valorisation du demandeur (refus `403` audité) ; booléen, sinon `true` |
 | `analytics.export_file_retention_days` | 30 | AV-387 (P9-22, ADR-068 §8) : le fichier d'un export est supprimé du stockage ce nombre de jours après la demande (la ligne est conservée) ; entier > 0, sinon 30 |
 | `analytics.query_log_retention_days` | 90 | AV-387 (P9-22, ADR-068 §8) : les lignes du journal des requêtes de l'explorateur de plus de ce nombre de jours sont supprimées ; entier > 0, sinon 90 |
 | `communication.push_group_minutes` | 15 | AV-366, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |

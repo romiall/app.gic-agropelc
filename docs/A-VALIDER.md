@@ -448,6 +448,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-449 | Document source d'une ligne : dimensions de document et routes | SECONDAIRE | P9 | Chaque jeu de lignes détaillées gagne une dimension de document (vente, commande, encaissement, mouvement, perte, visite, session, coût, dépense, trésorerie, bon) ; la ligne porte son identifiant et la route de lecture du document, ou de sa liste quand aucune lecture par identifiant n'existe | OUVERT |
 | AV-450 | Charge : index non ajoutés avant mesure, jeu de ventes seul | SECONDAIRE | P9 | Aucun index de jour métier n'est ajouté tant que le jeu de charge (ventes) ne le justifie pas ; le jeu ne génère ni encaissements ni mouvements : il mesure le chemin le plus lourd, les lignes de vente ; les jeux dont la vue date par une expression (commandes, visites, sessions, coûts, achats) restent à mesurer avant tout index | OUVERT |
 | AV-451 | Facture imprimée : régime de TVA et mention d'exonération | IMPORTANTE | PP | Rien de coché, rubriques laissées à remplir à la main ; TVA à 0 (AV-041) | OUVERT |
+| AV-460 | Droits du demandeur au téléchargement d'un export | SECONDAIRE | P9 | Revérifiés au téléchargement (lecture du jeu, valorisation si une mesure est au coût), refus `403` audité ; réglable (`analytics.export_download_revalidate_rights`) ; **implémenté** (P9-25, EX-3) | OUVERT |
 
 ---
 
@@ -3375,6 +3376,13 @@ Politique par défaut, paramétrable :
 - **Impact** : `apps/pwa/src/features/pieces/adaptateurs-ventes.ts` (`demandeFacture`), identité de la société (AV-324). Aucune migration. Défaut implémenté (ADR-048, 26/10/2026) : (a).
 
 ---
+
+### AV-460 — Droits du demandeur au téléchargement d'un export — SECONDAIRE
+- **Question** : un demandeur qui a perdu, depuis le calcul de son export, le droit de lire le jeu ou le droit de valorisation (`inventory.valuation.read`) peut-il encore télécharger le fichier pendant ses 24 heures de validité ?
+- **Pourquoi** : AV-384 ne revérifiait à chaque appel que `analytics.export`. Un droit retiré après le calcul laissait donc télécharger des valeurs au coût que l'écran ne montre plus (revue de P9, EX-3, **CONFIRMÉ** par lecture du code).
+- **Choix** : (a) revérifier au téléchargement les droits que la définition conservée exige (lecture du jeu ; valorisation si une mesure est au coût), refus `403` audité avec la permission manquante ; (b) ne revérifier que `analytics.export` (comportement d'avant) ; (c) révoquer les exports `DONE` du demandeur dès qu'un droit est retiré.
+- **Recommandation** : (a) ; (c) demande un consommateur d'événements de droits et ne se justifie pas pour 24 heures de validité.
+- **Impact** : `exports/export-download-rights.ts`, `analytics-exports.controller.ts`, réglage `analytics.export_download_revalidate_rights` (booléen, défaut `true`), ADR-067 §6, test de `analytics-views-exports.e2e.test.ts`. Une personne qui perd un droit perd l'accès à ses exports déjà calculés (la ligne reste ; l'export se refait si le droit revient). Défaut implémenté (P9-25, 28/10/2026) : (a), paramétrable ; **à confirmer par le porteur**.
 
 ## 3. Journal des décisions
 

@@ -20,6 +20,7 @@ import { CHUNK_STORAGE } from '../src/platform/storage/chunk-storage.provider.js
 import type { ChunkStorage } from '../src/platform/storage/chunk-storage.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
+import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { runExport } from '../src/modules/analytics/application/exports/run-export.js';
 import {
   AnalyticsCommandHarness,
@@ -28,7 +29,17 @@ import {
   salesDefinition,
   type CommandActor,
 } from './analytics-command-fixtures.js';
-import { closeTestDb, db, freshUuid, insertTestUser, signTestAccessToken } from './helpers.js';
+import {
+  assignTestRole,
+  closeTestDb,
+  db,
+  freshUuid,
+  grantTestPermission,
+  insertTestDevice,
+  insertTestRole,
+  insertTestUser,
+  signTestAccessToken,
+} from './helpers.js';
 
 /** Identifiant d'une colonne binaire d'audit (`entity_id`), en UUID. */
 const idOf = (value: Buffer | null): string | null => (value === null ? null : fromBin(value));
@@ -269,6 +280,52 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
       expect(
         (list.json() as { exports: { id: string }[] }).exports.some((job) => job.id === exportId),
       ).toBe(false);
+    });
+
+    it('un droit de lecture retiré après le calcul ferme le téléchargement : 403 audité (EX-3, AV-460)', async () => {
+      // Deux rôles : l'un porte l'export, l'autre la lecture des ventes, seul retiré ensuite.
+      const actor = await db.transaction().execute(async (trx) => {
+        const id = await insertTestUser(trx);
+        const deviceId = await insertTestDevice(trx, id, { status: 'ACTIVE' });
+        const exporter = await insertTestRole(trx, admin);
+        for (const permission of ['analytics.explore', 'analytics.export']) {
+          await grantTestPermission(trx, exporter, permission, admin);
+        }
+        await assignTestRole(trx, id, exporter, admin);
+        const sales = await insertTestRole(trx, admin);
+        await grantTestPermission(trx, sales, 'sales.sale.read', admin);
+        const assignment = await assignTestRole(trx, id, sales, admin);
+        return { id, deviceId, assignment };
+      });
+      tokens.set(
+        actor.id,
+        await signTestAccessToken(
+          app.get(JWT_KEYS).privateKey,
+          { sub: actor.id, device_id: actor.deviceId, session_id: freshUuid() },
+          clock.now(),
+        ),
+      );
+      const exportId = await finishedExport(actor);
+      const url = `/api/v1/analytics/exports/${exportId}/download`;
+      expect((await get(actor, url)).statusCode).toBe(200);
+
+      await db
+        .updateTable('identity_user_role_assignments')
+        .set({ revoked_at: new Date(Date.now() - 1000) })
+        .where('id', '=', toBin(actor.assignment))
+        .execute();
+      // Les octrois sont mis en cache par processus : une révocation écrite en base se déclare au cache.
+      invalidateUser(actor.id);
+      const refused = await get(actor, url);
+      expect(refused.statusCode, refused.body).toBe(403);
+      expect((refused.json() as { error: { code: string } }).error.code).toBe('FORBIDDEN');
+      expect(
+        (await deniedOf(actor, 'ANALYTICS_EXPORT')).some(
+          (row) => idOf(row.entity_id) === exportId && row.error_code === 'FORBIDDEN',
+        ),
+      ).toBe(true);
+      // Le droit d'exporter reste entier : l'état de l'export se lit toujours.
+      expect((await get(actor, `/api/v1/analytics/exports/${exportId}`)).statusCode).toBe(200);
     });
 
     it('un export échu (24 h) est refusé 410 et listé EXPIRED, un export en file 409', async () => {

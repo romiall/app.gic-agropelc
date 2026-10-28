@@ -5,7 +5,7 @@
  * actuelle, jamais d'écriture positionnée.
  */
 import { createReadStream } from 'node:fs';
-import { mkdir, appendFile, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, appendFile, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { dirname, join, normalize, relative } from 'node:path';
 import { ChunkOffsetMismatchError, type ChunkStorage } from './chunk-storage.js';
 
@@ -44,6 +44,16 @@ export class LocalFsChunkStorage implements ChunkStorage {
   async *readChunks(key: string, chunkSize: number): AsyncIterable<Buffer> {
     const stream = createReadStream(this.pathFor(key), { highWaterMark: chunkSize });
     for await (const chunk of stream) yield chunk as Buffer;
+  }
+
+  async listKeys(prefix: string): Promise<readonly string[]> {
+    try {
+      const entries = await readdir(this.pathFor(prefix), { withFileTypes: true });
+      return entries.filter((entry) => entry.isFile()).map((entry) => `${prefix}/${entry.name}`);
+    } catch (error) {
+      if (isNotFound(error)) return [];
+      throw error;
+    }
   }
 
   private pathFor(key: string): string {

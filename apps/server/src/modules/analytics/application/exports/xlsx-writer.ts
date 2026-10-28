@@ -6,7 +6,7 @@
  */
 import type { CompiledColumn, ExplorationValue } from '../query/compile-exploration.js';
 import { guardFormula } from './csv-writer.js';
-import { zipArchive } from './zip-writer.js';
+import { yieldToEventLoop, zipArchive } from './zip-writer.js';
 
 const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 const MAIN_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -68,34 +68,66 @@ function dataCell(ref: string, column: CompiledColumn, value: ExplorationValue):
   return stringCell(ref, guardFormula(value));
 }
 
-/** Le contenu XML de la feuille : l'entête puis les lignes. */
-export function sheetXml(
+/** Lignes mises en forme d'un coup, entre deux retours à la boucle d'événements (EX-4). */
+const SHEET_BATCH_ROWS = 2_000;
+
+/** Le XML de la feuille par morceaux : l'entête, puis les lignes par lots de {@link SHEET_BATCH_ROWS}, puis la fin. */
+function* sheetXmlParts(
   columns: readonly CompiledColumn[],
   rows: readonly Record<string, ExplorationValue>[],
-): string {
+): Generator<string> {
   const header = columns
     .map((column, index) => stringCell(`${columnLetters(index)}1`, column.label, 2))
     .join('');
-  const body = rows
-    .map((row, rowIndex) => {
+  yield `${XML_HEAD}<worksheet xmlns="${MAIN_NS}"><sheetData><row r="1">${header}</row>`;
+  for (let start = 0; start < rows.length; start += SHEET_BATCH_ROWS) {
+    let batch = '';
+    const end = Math.min(start + SHEET_BATCH_ROWS, rows.length);
+    for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
       const number = rowIndex + 2;
+      const row = rows[rowIndex] as Record<string, ExplorationValue>;
       const cells = columns
         .map((column, index) =>
           dataCell(`${columnLetters(index)}${number}`, column, row[column.name] ?? null),
         )
         .join('');
-      return `<row r="${number}">${cells}</row>`;
-    })
-    .join('');
-  return `${XML_HEAD}<worksheet xmlns="${MAIN_NS}"><sheetData><row r="1">${header}</row>${body}</sheetData></worksheet>`;
+      batch += `<row r="${number}">${cells}</row>`;
+    }
+    yield batch;
+  }
+  yield '</sheetData></worksheet>';
 }
 
-/** Le classeur complet (une feuille nommée `sheetName`, 31 caractères au plus, sans `[]:*?/\`). */
-export function buildXlsx(
+/** Le contenu XML de la feuille d'un coup (petites feuilles, essais) : l'entête puis les lignes. */
+export function sheetXml(
+  columns: readonly CompiledColumn[],
+  rows: readonly Record<string, ExplorationValue>[],
+): string {
+  return [...sheetXmlParts(columns, rows)].join('');
+}
+
+/** La feuille en octets, la boucle d'événements reprenant la main entre deux lots de lignes (EX-4). */
+async function sheetBuffer(
+  columns: readonly CompiledColumn[],
+  rows: readonly Record<string, ExplorationValue>[],
+): Promise<Buffer> {
+  const buffers: Buffer[] = [];
+  for (const part of sheetXmlParts(columns, rows)) {
+    buffers.push(Buffer.from(part, 'utf8'));
+    await yieldToEventLoop();
+  }
+  return Buffer.concat(buffers);
+}
+
+/**
+ * Le classeur complet (une feuille nommée `sheetName`, 31 caractères au plus, sans `[]:*?/\`). Asynchrone : mise en
+ * forme par lots, compression et CRC sans tenir la boucle d'événements du worker (EX-4).
+ */
+export async function buildXlsx(
   columns: readonly CompiledColumn[],
   rows: readonly Record<string, ExplorationValue>[],
   sheetName: string,
-): Buffer {
+): Promise<Buffer> {
   const name = xmlText(sheetName.replace(/[[\]:*?/\\]/g, ' ').slice(0, 31)) || 'Export';
   const entries = [
     {
@@ -127,7 +159,7 @@ export function buildXlsx(
       ),
     },
     { name: 'xl/styles.xml', data: Buffer.from(STYLES, 'utf8') },
-    { name: 'xl/worksheets/sheet1.xml', data: Buffer.from(sheetXml(columns, rows), 'utf8') },
+    { name: 'xl/worksheets/sheet1.xml', data: await sheetBuffer(columns, rows) },
   ];
   return zipArchive(entries);
 }

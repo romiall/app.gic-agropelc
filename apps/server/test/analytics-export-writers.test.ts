@@ -19,7 +19,11 @@ import {
   excelSerialOfDay,
   sheetXml,
 } from '../src/modules/analytics/application/exports/xlsx-writer.js';
-import { crc32, zipArchive } from '../src/modules/analytics/application/exports/zip-writer.js';
+import {
+  crc32,
+  crc32Async,
+  zipArchive,
+} from '../src/modules/analytics/application/exports/zip-writer.js';
 
 const COLUMNS: readonly CompiledColumn[] = [
   { name: 'business_day', label: 'Jour', kind: 'dimension', alias: 'd0', dimensionType: 'date' },
@@ -99,11 +103,11 @@ describe('archive ZIP', () => {
     expect(crc32(Buffer.alloc(0))).toBe(0);
   });
 
-  it('une archive relue rend les entrées, compressées ou stockées, avec leur CRC', () => {
+  it('une archive relue rend les entrées, compressées ou stockées, avec leur CRC', async () => {
     const big = Buffer.from('abcdefghij'.repeat(500), 'utf8');
     const small = Buffer.from('ok', 'utf8');
     const entries = readZip(
-      zipArchive([
+      await zipArchive([
         { name: 'dossier/grand.txt', data: big },
         { name: 'petit.txt', data: small },
         { name: 'é.txt', data: Buffer.from('accent', 'utf8') },
@@ -151,9 +155,9 @@ describe('classeur XLSX', () => {
     expect(xml).not.toContain('r="C3"');
   });
 
-  it('le classeur est une archive complète : types de contenu, relations, classeur, styles, feuille', () => {
+  it('le classeur est une archive complète : types de contenu, relations, classeur, styles, feuille', async () => {
     const entries = readZip(
-      buildXlsx(
+      await buildXlsx(
         COLUMNS,
         [{ business_day: '2026-10-22', customer: 'Dupont', revenue: 1 }],
         'Export f_sales_line',
@@ -172,9 +176,56 @@ describe('classeur XLSX', () => {
     );
     expect(entries.get('xl/worksheets/sheet1.xml')!.toString('utf8')).toContain('Dupont');
     // Nom de feuille : caractères interdits remplacés, 31 caractères au plus.
-    const long = readZip(buildXlsx(COLUMNS, [], 'a/b:c*d?e[f]g'.padEnd(60, 'x')));
+    const long = readZip(await buildXlsx(COLUMNS, [], 'a/b:c*d?e[f]g'.padEnd(60, 'x')));
     const name = /name="([^"]*)"/.exec(long.get('xl/workbook.xml')!.toString('utf8'))![1]!;
     expect(name.length).toBeLessThanOrEqual(31);
     expect(name).not.toMatch(/[[\]:*?/\\]/);
+  });
+});
+
+describe('XLSX volumineux (P9-25, EX-4)', () => {
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      business_day: '2026-10-22',
+      customer: `Client ${index}`,
+      revenue: index,
+    }));
+
+  it('la feuille est écrite par lots : numérotation continue au-delà d’un lot, fin de feuille présente', () => {
+    const xml = sheetXml(COLUMNS, rows(4_500));
+    expect(xml).toContain('<row r="2">');
+    // Un lot compte 2 000 lignes (2 à 2001) : les frontières ne perdent ni ne doublent aucune ligne.
+    expect(xml).toContain('<row r="2001">');
+    expect(xml).toContain('<row r="2002">');
+    expect(xml).toContain('<row r="4501">');
+    expect(xml).not.toContain('<row r="4502">');
+    expect(xml.endsWith('</sheetData></worksheet>')).toBe(true);
+    expect(xml.match(/<row /g)).toHaveLength(4_501);
+  });
+
+  it('le CRC par tranches égale le CRC d’un coup, au-delà d’une tranche d’un Mio', async () => {
+    const data = Buffer.alloc(3 * 1024 * 1024 + 123);
+    for (let index = 0; index < data.length; index += 1) data[index] = (index * 31 + 7) & 0xff;
+    expect(await crc32Async(data)).toBe(crc32(data));
+    expect(await crc32Async(Buffer.alloc(0))).toBe(0);
+  });
+
+  it('la construction rend la main à la boucle d’événements entre les lots (aucun gel du worker)', async () => {
+    let ticks = 0;
+    let running = true;
+    const ticker = (async () => {
+      while (running) {
+        await new Promise((resolve) => setImmediate(resolve));
+        ticks += 1;
+      }
+    })();
+    const archive = await buildXlsx(COLUMNS, rows(12_000), 'Gros export');
+    running = false;
+    await ticker;
+    // Douze lots de 2 000 lignes au moins : la boucle reprend la main à chacun (une construction d'un seul tenant
+    // n'en laisse aucune).
+    expect(ticks).toBeGreaterThanOrEqual(6);
+    const entries = readZip(archive);
+    expect(entries.get('xl/worksheets/sheet1.xml')!.toString('utf8')).toContain('Client 11999');
   });
 });

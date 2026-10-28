@@ -9,12 +9,16 @@ import { sql } from 'kysely';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ANALYTICS_CATALOG_VERSION } from '@gic/domain';
+import { ANALYTICS_CATALOG_VERSION, businessPeriodOf } from '@gic/domain';
 import { LocalFsChunkStorage } from '../src/platform/storage/local-fs-chunk-storage.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { runExport } from '../src/modules/analytics/application/exports/run-export.js';
-import { exportStorageKey } from '../src/modules/analytics/application/exports/export-store.js';
+import {
+  exportStorageKey,
+  lockExport,
+  markExportDone,
+} from '../src/modules/analytics/application/exports/export-store.js';
 import { runAnalyticsPurge } from '../src/modules/analytics/application/maintenance/purge.js';
 import {
   AnalyticsCommandHarness,
@@ -23,7 +27,19 @@ import {
   salesDefinition,
   type CommandActor,
 } from './analytics-command-fixtures.js';
-import { closeTestDb, db, freshUuid, insertTestUser } from './helpers.js';
+import {
+  assignTestRole,
+  closeTestDb,
+  db,
+  freshUuid,
+  grantTestPermission,
+  insertTestDevice,
+  insertTestRole,
+  insertTestSite,
+  insertTestUser,
+  insertTestZone,
+  withTestUow,
+} from './helpers.js';
 
 const REQUEST = 'analytics.export.request';
 const WINDOW_START = '2024-01-01';
@@ -91,6 +107,48 @@ describe('P9-20 : exports audités', () => {
     );
     return Number(rows[0]!.n);
   };
+  const purge = () =>
+    db.transaction().execute((trx) =>
+      runAnalyticsPurge(trx, {
+        clock: harness.clock,
+        idGenerator: harness.idGenerator,
+        storage,
+      }),
+    );
+  /** Un réglage global valable une seconde avant l'instant du serveur, dans la transaction (annulée) de l'essai. */
+  const setting = (
+    trx: Parameters<Parameters<typeof withTestUow>[0]>[0],
+    key: string,
+    value: unknown,
+  ) =>
+    trx
+      .insertInto('organization_system_settings')
+      .values({
+        id: toBin(freshUuid()),
+        key,
+        value: JSON.stringify(value),
+        scope_type: 'GLOBAL',
+        valid_from: new Date(harness.clock.now().getTime() - 1000),
+        created_by: toBin(admin),
+      })
+      .execute();
+  /** Droit d'exporter en global, lecture des ventes sur `siteCount` sites : l'étendue exacte porte autant de candidats. */
+  const siteScopedActor = (siteCount: number): Promise<CommandActor> =>
+    db.transaction().execute(async (trx) => {
+      const id = await insertTestUser(trx);
+      const deviceId = await insertTestDevice(trx, id, { status: 'ACTIVE' });
+      const exporter = await insertTestRole(trx, admin);
+      await grantTestPermission(trx, exporter, 'analytics.export', admin);
+      await assignTestRole(trx, id, exporter, admin);
+      const reader = await insertTestRole(trx, admin, { allowedScopeTypes: ['GLOBAL', 'SITE'] });
+      await grantTestPermission(trx, reader, 'sales.sale.read', admin);
+      const zone = await insertTestZone(trx, admin);
+      for (let index = 0; index < siteCount; index += 1) {
+        const site = await insertTestSite(trx, admin, zone);
+        await assignTestRole(trx, id, reader, admin, { scopeType: 'SITE', scopeSiteId: site });
+      }
+      return { id, deviceId };
+    });
   const auditOf = (exportId: string, action: string) =>
     db
       .selectFrom('audit_audit_log')
@@ -223,6 +281,52 @@ describe('P9-20 : exports audités', () => {
         error: { code: 'EXPORT_BACKLOG' },
       });
     });
+
+    it('une période nommée est figée à la demande : plage résolue conservée, période demandée gardée dans l’audit (EX-7)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      const result = await request(actor, exportId, {
+        definition: definition({ period: { code: 'MONTH' } }),
+      });
+      expect(result.status).toBe('APPLIED');
+      const month = businessPeriodOf('MONTH', TODAY);
+      expect((await rowOf(exportId))!.definition).toMatchObject({
+        period: { code: 'CUSTOM', fromDay: month.fromDay, toDay: month.toDay },
+      });
+      const audit = await auditOf(exportId, REQUEST);
+      expect(audit[0]!.after).toMatchObject({
+        definition: { period: { code: 'CUSTOM', fromDay: month.fromDay, toDay: month.toDay } },
+        requested_period: { code: 'MONTH' },
+      });
+      // Une plage personnalisée reste telle quelle, et l'audit n'invente pas de période demandée.
+      const custom = freshUuid();
+      await request(actor, custom);
+      expect((await rowOf(custom))!.definition).toMatchObject({
+        period: { code: 'CUSTOM', fromDay: WINDOW_START, toDay: TODAY },
+      });
+      expect((await auditOf(custom, REQUEST))[0]!.after).toMatchObject({
+        requested_period: { code: 'CUSTOM', fromDay: WINDOW_START, toDay: TODAY },
+      });
+    });
+
+    it('deux demandes simultanées d’un même demandeur, depuis deux appareils, au seuil du plafond : une seule passe (EX-8)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const second = await db.transaction().execute(async (trx) => ({
+        id: actor.id,
+        deviceId: await insertTestDevice(trx, actor.id, { status: 'ACTIVE' }),
+      }));
+      for (let index = 0; index < 2; index += 1) {
+        expect((await request(actor, freshUuid())).status).toBe('APPLIED');
+      }
+      const results = await Promise.all([
+        request(actor, freshUuid()),
+        request(second, freshUuid()),
+      ]);
+      expect(results.map((result) => result.status).sort()).toEqual(['APPLIED', 'REJECTED']);
+      expect(results.find((result) => result.status === 'REJECTED')).toMatchObject({
+        error: { code: 'EXPORT_BACKLOG' },
+      });
+    });
   });
 
   describe('le calcul', () => {
@@ -325,6 +429,67 @@ describe('P9-20 : exports audités', () => {
       expect(file.startsWith('﻿')).toBe(true);
       expect(file).not.toContain('PARTIEL');
     });
+
+    it('plus de lignes que le plafond : FAILED QUERY_LIMIT_EXCEEDED, sans fichier, audité, jamais tronqué (EX-5)', async (ctx) => {
+      if ((await expectedRows()) < 2) ctx.skip();
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId, { definition: definition({ limit: undefined }) });
+      await withTestUow(async (trx) => {
+        await setting(trx, 'analytics.export_max_rows', 1);
+        const outcome = await runExport(
+          trx,
+          { clock: harness.clock, idGenerator: harness.idGenerator, storage },
+          exportId,
+        );
+        expect(outcome).toEqual({ status: 'FAILED', errorCode: 'QUERY_LIMIT_EXCEEDED' });
+        expect(
+          await trx
+            .selectFrom('analytics_export_jobs')
+            .select(['status', 'error_code', 'storage_key', 'row_count'])
+            .where('id', '=', toBin(exportId))
+            .executeTakeFirst(),
+        ).toEqual({
+          status: 'FAILED',
+          error_code: 'QUERY_LIMIT_EXCEEDED',
+          storage_key: null,
+          row_count: null,
+        });
+        expect(
+          await trx
+            .selectFrom('audit_audit_log')
+            .select(['result', 'error_code'])
+            .where('entity_id', '=', toBin(exportId))
+            .where('action', '=', 'analytics.export.completed')
+            .execute(),
+        ).toEqual([{ result: 'FAILED', error_code: 'QUERY_LIMIT_EXCEEDED' }]);
+      });
+      expect(await storage.uploadedBytes(exportStorageKey(exportId))).toBe(0);
+    });
+
+    it('étendue tronquée faute de place : FAILED SCOPE_TRUNCATED, sans fichier, audité, jamais un export partiel (EX-5)', async () => {
+      const actor = await siteScopedActor(2);
+      const exportId = freshUuid();
+      expect((await request(actor, exportId)).status).toBe('APPLIED');
+      await withTestUow(async (trx) => {
+        await setting(trx, 'analytics.scope_max_candidates', 1);
+        const outcome = await runExport(
+          trx,
+          { clock: harness.clock, idGenerator: harness.idGenerator, storage },
+          exportId,
+        );
+        expect(outcome).toEqual({ status: 'FAILED', errorCode: 'SCOPE_TRUNCATED' });
+        expect(
+          await trx
+            .selectFrom('audit_audit_log')
+            .select(['result', 'error_code'])
+            .where('entity_id', '=', toBin(exportId))
+            .where('action', '=', 'analytics.export.completed')
+            .execute(),
+        ).toEqual([{ result: 'FAILED', error_code: 'SCOPE_TRUNCATED' }]);
+      });
+      expect(await storage.uploadedBytes(exportStorageKey(exportId))).toBe(0);
+    });
   });
 
   describe('la purge quotidienne (P9-22)', () => {
@@ -414,6 +579,99 @@ describe('P9-20 : exports audités', () => {
           .where('id', '=', toBin(logId))
           .executeTakeFirst(),
       ).toBeUndefined();
+    });
+
+    it('la purge saute l’export que le calcul tient verrouillé : il se termine DONE avec son fichier (EX-1)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId);
+      const key = exportStorageKey(exportId);
+      await storage.appendChunk(key, 0, Buffer.from('EN-COURS', 'utf8'));
+      // Plus de 24 h après la demande : l'export est candidat à l'abandon.
+      harness.clock.setTo(new Date(Date.now() + 2 * 86_400_000));
+      await db.transaction().execute(async (worker) => {
+        // Le worker tient sa ligne (début de runExport) ; la purge passe en même temps, dans sa propre transaction.
+        await lockExport(worker, exportId);
+        await purge();
+        await markExportDone(worker, {
+          id: exportId,
+          rowCount: 0,
+          durationMs: 1,
+          storageKey: key,
+          finishedAt: new Date(),
+        });
+      });
+      expect((await rowOf(exportId))!.status).toBe('DONE');
+      expect(await storage.uploadedBytes(key)).toBeGreaterThan(0);
+      expect(await auditOf(exportId, 'analytics.export.abandoned')).toEqual([]);
+    });
+
+    it('un fichier manqué pendant plus de 30 jours est repris, le compte ne compte que les fichiers supprimés, une clé inconnue n’est jamais touchée (EX-2)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const done = freshUuid();
+      await request(actor, done);
+      await run(done);
+      const key = exportStorageKey(done);
+      const stranger = exportStorageKey(freshUuid());
+      await storage.appendChunk('exports/pas-un-export.txt', 0, Buffer.from('x', 'utf8'));
+      await storage.appendChunk(stranger, 0, Buffer.from('x', 'utf8'));
+      expect(await storage.uploadedBytes(key)).toBeGreaterThan(0);
+
+      // Cent jours plus tard : la fenêtre glissante d'avant aurait laissé ce fichier pour toujours.
+      harness.clock.setTo(new Date(Date.now() + 100 * 86_400_000));
+      const first = await purge();
+      expect(first.exportFilesDeleted).toBeGreaterThanOrEqual(1);
+      expect(await storage.uploadedBytes(key)).toBe(0);
+      expect((await rowOf(done))!.status).toBe('EXPIRED');
+      expect(await storage.uploadedBytes('exports/pas-un-export.txt')).toBe(1);
+      expect(await storage.uploadedBytes(stranger)).toBe(1);
+      // Rien ne reste à supprimer : le second passage ne compte aucun fichier.
+      expect((await purge()).exportFilesDeleted).toBe(0);
+    });
+
+    it('le fichier d’un export FAILED est supprimé sans attendre la rétention (EX-2)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const exportId = freshUuid();
+      await request(actor, exportId);
+      await db.transaction().execute(async (trx) => {
+        await sql`UPDATE analytics_export_jobs SET status = 'FAILED', error_code = 'TEST', finished_at = NOW(6)
+                   WHERE id = ${toBin(exportId)}`.execute(trx);
+      });
+      const key = exportStorageKey(exportId);
+      await storage.appendChunk(key, 0, Buffer.from('RESTE', 'utf8'));
+      harness.clock.setTo(new Date(Date.now() + 60_000));
+      expect((await purge()).exportFilesDeleted).toBeGreaterThanOrEqual(1);
+      expect(await storage.uploadedBytes(key)).toBe(0);
+    });
+
+    it('le seuil d’abandon est un réglage : plus ancien que 24 h, un export reste en file sous un seuil plus long (EX-6)', async () => {
+      const actor = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
+      const queued = freshUuid();
+      await request(actor, queued);
+      harness.clock.setTo(new Date(Date.now() + 3 * 86_400_000));
+      await withTestUow(async (trx) => {
+        await setting(trx, 'analytics.export_abandon_hours', 1000);
+        await runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage,
+        });
+        expect(
+          (
+            await trx
+              .selectFrom('analytics_export_jobs')
+              .select('status')
+              .where('id', '=', toBin(queued))
+              .executeTakeFirst()
+          )?.status,
+        ).toBe('QUEUED');
+      });
+      // Sans le réglage, le seuil par défaut (24 h) s'applique : le même export est abandonné.
+      await purge();
+      expect(await rowOf(queued)).toMatchObject({
+        status: 'FAILED',
+        error_code: 'EXPORT_ABANDONED',
+      });
     });
   });
 });

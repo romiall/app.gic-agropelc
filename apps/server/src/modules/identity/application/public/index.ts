@@ -69,3 +69,5 @@ export type { PendingDeviceApprovals } from './pending-device-approvals.js';
 
 // P9-19 : rôles actifs désignés par le partage d'une vue sauvegardée.
 export { lockRoleByCode, unknownRoleCodes } from './role-codes.js';
+// P9-25 (EX-8) : verrou de la ligne d'un utilisateur, pour les plafonds par demandeur.
+export { lockUserById } from './user-lock.js';

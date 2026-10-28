@@ -375,6 +375,15 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     ref: 'AV-387',
   },
   { key: 'analytics.query_log_retention_days', value: 90, isClientVisible: false, ref: 'AV-387' },
+  // P9-25 (revue de clôture) : seuil d'abandon d'un export, jusque-là codé en dur (EX-6), et revérification des
+  // droits du demandeur au téléchargement (EX-3, AV-460).
+  { key: 'analytics.export_abandon_hours', value: 24, isClientVisible: false, ref: 'AV-383' },
+  {
+    key: 'analytics.export_download_revalidate_rights',
+    value: true,
+    isClientVisible: false,
+    ref: 'AV-460',
+  },
   // P9-03 (ADR-061, ADR-062, ADR-068 ; AV-350 à AV-392) : seuils, délais et durées des alertes. Un seul
   // lieu des seuils (AV-350) : lus par le détecteur, dans le module qui porte la donnée.
   {

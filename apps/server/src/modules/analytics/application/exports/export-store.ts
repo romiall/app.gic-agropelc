@@ -90,8 +90,18 @@ const exportOf = (row: ExportRow): StoredExport => ({
   finishedAt: row.finished_at,
 });
 
+/** « Dossier » des fichiers d'export dans le stockage. */
+export const EXPORT_STORAGE_PREFIX = 'exports';
+
 /** Clé du fichier d'un export dans le stockage. */
-export const exportStorageKey = (exportId: string): string => `exports/${exportId}`;
+export const exportStorageKey = (exportId: string): string =>
+  `${EXPORT_STORAGE_PREFIX}/${exportId}`;
+
+const EXPORT_KEY = /^exports\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+/** L'identifiant d'export d'une clé de fichier ; `null` pour une clé qui n'est pas de la forme du serveur. */
+export const exportIdOfStorageKey = (key: string): string | null =>
+  EXPORT_KEY.exec(key)?.[1] ?? null;
 
 export async function readExport(
   executor: Executor,
@@ -232,40 +242,56 @@ export async function markExportExpired(uow: Transaction<DB>, id: string): Promi
     .execute();
 }
 
-/** Les exports encore en file ou en cours créés avant `before` : leur tâche est perdue (rejeux épuisés). */
-export async function abandonedExports(
-  executor: Executor,
+/**
+ * Les exports encore en file ou en cours créés avant `before` : leur tâche est perdue (rejeux épuisés). Les lignes sont
+ * **verrouillées** et celles qu'un calcul en cours tient déjà sont **sautées** (`SKIP LOCKED`) : la purge ne passe
+ * jamais `FAILED` un export que le worker est en train de terminer (P9-25, EX-1). Le calcul tient sa ligne verrouillée
+ * pendant toute sa transaction ; un export qu'il termine entre-temps n'est plus `QUEUED` ni `RUNNING` à la relecture.
+ */
+export async function lockAbandonedExports(
+  uow: Transaction<DB>,
   before: Date,
   limit: number,
 ): Promise<readonly StoredExport[]> {
-  const rows = await executor
+  const rows = await uow
     .selectFrom('analytics_export_jobs')
     .select(COLUMNS)
     .where('status', 'in', ['QUEUED', 'RUNNING'])
     .where('created_at', '<', before)
     .orderBy('created_at')
     .limit(limit)
+    .forUpdate()
+    .skipLocked()
     .execute();
   return rows.map((row) => exportOf(row as ExportRow));
 }
 
-/** Les exports expirés créés dans `[from, to[` : leur fichier est à supprimer (purge des fichiers). */
-export async function expiredExportsCreatedBetween(
+export interface ExportFileState {
+  readonly status: ExportStatus;
+  readonly createdAt: Date;
+}
+
+/** L'état des exports dont on connaît l'identifiant (purge des fichiers) ; un identifiant inconnu est absent. */
+export async function exportFileStates(
   executor: Executor,
-  from: Date,
-  to: Date,
-  limit: number,
-): Promise<readonly StoredExport[]> {
+  ids: readonly string[],
+): Promise<ReadonlyMap<string, ExportFileState>> {
+  if (ids.length === 0) return new Map();
   const rows = await executor
     .selectFrom('analytics_export_jobs')
-    .select(COLUMNS)
-    .where('status', '=', 'EXPIRED')
-    .where('created_at', '>=', from)
-    .where('created_at', '<', to)
-    .orderBy('created_at')
-    .limit(limit)
+    .select(['id', 'status', 'created_at'])
+    .where(
+      'id',
+      'in',
+      ids.map((id) => toBin(id)),
+    )
     .execute();
-  return rows.map((row) => exportOf(row as ExportRow));
+  return new Map(
+    rows.map((row) => [
+      fromBin(row.id),
+      { status: row.status as ExportStatus, createdAt: row.created_at },
+    ]),
+  );
 }
 
 /** Les exports du demandeur, du plus récent au plus ancien (jamais ceux d'un autre). */
