@@ -69,3 +69,12 @@ Variables du `.env` du serveur (valeurs jamais versionnées) : `NODE_ENV`, `PORT
 - Les mots de passe de base de données et de messagerie qui ont circulé dans les journaux d'Anti-Gravity (`~/.gemini/antigravity/brain/*/.system_generated/`) sont à **changer** ; aucun script de ce dossier n'en contient.
 - La base de l'hébergement ne semble pas dédiée à GIC (l'historique montre des tables d'un site WordPress dans la même base, à confirmer) : préférer une base propre à GIC dès que l'hébergement le permet.
 - Le premier démarrage après une mise à jour peut lever l'alerte `JOB_FAILED` si des tâches du serveur sont déjà passées `FAILED` dans les dernières 24 heures : c'est le comportement voulu (AV-469).
+
+## Journal des mises en ligne
+
+| Date | Livraison | Commit | Contenu | Résultat |
+|---|---|---|---|---|
+| 26 et 27/10/2026 | à la main (Anti-Gravity) | état du 26/10 | installation initiale | en ligne |
+| 30/10/2026 | `20261030-134330` | `ec29ea7` | clôture de P9 (P9-25, P9-26), P9-27 ; migrations `20261201090700` et `20261202090000` ; 8 nouveaux réglages et règle d'alerte `JOB_FAILED` semés | en ligne ; `GET /health/ready` répond 200 avec la sonde en secondes ; sauvegarde `~/backups_db/gic-20261030-134330.sql.gz`, ancienne version dans `releases/20261030-134330/previous` |
+
+Première utilisation du kit : le script distant a tout réussi, mais `deploy.ps1` a affiché un échec à la fin (code 127, dû à un retour chariot ajouté par PowerShell à la fin du texte envoyé) ; corrigé depuis (`tr -d '\r'` côté serveur).

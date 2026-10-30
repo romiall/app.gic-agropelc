@@ -41,7 +41,9 @@ Write-Host '== Mise a jour sur le serveur'
 $script = ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'remote-update.sh'))) -replace "`r`n", "`n"
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $noBackup = if ($NoDbBackup) { '1' } else { '0' }
-$command = "APP_DIR=$remoteHome/$AppDir NO_DB_BACKUP=$noBackup bash -s -- '$remoteBundle' '$release'"
+# PowerShell ajoute un retour chariot a la fin du texte envoye : tr le retire (sinon bash l'executerait comme une commande
+# et renverrait 127 meme si la mise a jour a reussi), sed retire l'eventuel BOM de la premiere ligne.
+$command = "tr -d '\r' | sed '1s/^\xEF\xBB\xBF//' | APP_DIR=$remoteHome/$AppDir NO_DB_BACKUP=$noBackup bash -s -- '$remoteBundle' '$release'"
 $script | & ssh @sshOptions -p $Port $target $command
-if ($LASTEXITCODE -ne 0) { throw 'La mise a jour a echoue (voir ci-dessus) : l''ancienne version a ete remise en place.' }
+if ($LASTEXITCODE -ne 0) { throw 'La mise a jour a signale une erreur (voir ci-dessus ; en cas d''echec du script distant, l''ancienne version est remise en place par lui).' }
 Write-Host 'Termine.'
