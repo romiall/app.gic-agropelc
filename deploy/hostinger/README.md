@@ -66,7 +66,7 @@ Variables du `.env` du serveur (valeurs jamais versionnées) : `NODE_ENV`, `PORT
 
 ## Points d'attention
 
-- Les mots de passe de base de données et de messagerie qui ont circulé dans les journaux d'Anti-Gravity (`~/.gemini/antigravity/brain/*/.system_generated/`) sont à **changer** ; aucun script de ce dossier n'en contient.
+- Les mots de passe de base de données et de messagerie qui ont circulé dans les journaux d'Anti-Gravity (`~/.gemini/antigravity/brain/*/.system_generated/`) sont à changer **par le porteur lui-même** (le site n'est pas encore utilisé) ; aucun agent n'y touche, et aucun script de ce dossier n'en contient.
 - La base de l'hébergement ne semble pas dédiée à GIC (l'historique montre des tables d'un site WordPress dans la même base, à confirmer) : préférer une base propre à GIC dès que l'hébergement le permet.
 - Le premier démarrage après une mise à jour peut lever l'alerte `JOB_FAILED` si des tâches du serveur sont déjà passées `FAILED` dans les dernières 24 heures : c'est le comportement voulu (AV-469).
 
