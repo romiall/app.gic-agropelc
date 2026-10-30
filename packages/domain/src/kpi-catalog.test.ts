@@ -31,6 +31,7 @@ describe('registre des indicateurs (BR-ANA-009, ADR-065 §1)', () => {
       'KPI-FIN-CS-VAR',
       'KPI-FIN-TRANSFERS',
       'KPI-DIS-QUOTAS',
+      'KPI-OPS-02-CONFLICTS',
     ]) {
       expect(codes).toContain(local);
     }
@@ -70,7 +71,7 @@ describe('registre des indicateurs (BR-ANA-009, ADR-065 §1)', () => {
     }
   });
 
-  it('les fonctions de référence créées en P9-15 et celle de la trésorerie existent ; cinq indicateurs restent à créer (EP-5, AV-462)', () => {
+  it('les fonctions de référence créées en P9-15 et celle de la trésorerie existent ; plus aucun indicateur à créer (AV-462 livré en P9-27)', () => {
     for (const code of [
       'KPI-FIN-06',
       'KPI-STK-05',
@@ -83,16 +84,41 @@ describe('registre des indicateurs (BR-ANA-009, ADR-065 §1)', () => {
     }
     // La mortalité d'un périmètre lit les déclarations de pertes : fonction d'`inventory`.
     expect(kpiDefinitionOf('KPI-PRD-02')?.module).toBe('inventory');
-    expect(
-      kpisToCreate()
-        .map((k) => k.code)
-        .sort(),
-    ).toEqual(['KPI-COM-16', 'KPI-OPS-02', 'KPI-PRD-04', 'KPI-PRD-05', 'KPI-PRD-09']);
-    // Pas de lien d'exploration pour un indicateur sans fonction de référence ni écran.
-    for (const kpi of kpisToCreate()) expect(kpi.explorer, kpi.code).toBeUndefined();
-    // Le réalisé d'une cible se compose avec les ventes : la fonction ne peut vivre que dans `sales` (graphe).
-    expect(kpiDefinitionOf('KPI-COM-16')?.module).toBe('sales');
+    // AV-462 choix (b) : les cinq indicateurs sans fonction de référence sont livrés en P9-27.
+    expect(kpisToCreate()).toEqual([]);
+    const delivered: Record<string, string> = {
+      'KPI-COM-16': 'sales',
+      'KPI-PRD-04': 'production',
+      'KPI-PRD-05': 'production',
+      'KPI-PRD-09': 'production',
+      'KPI-OPS-02': 'sync',
+      'KPI-OPS-02-CONFLICTS': 'sync',
+    };
+    for (const [code, module] of Object.entries(delivered)) {
+      expect(kpiDefinitionOf(code)?.state, code).toBe('EXISTING');
+      // Le réalisé d'une cible se compose avec les ventes : la fonction ne vit que dans `sales` (graphe).
+      expect(kpiDefinitionOf(code)?.module, code).toBe(module);
+    }
+    // Seul l'aliment consommé a une mesure d'explorateur égale (la troisième assertion vérifie jeu et mesure).
+    expect(kpiDefinitionOf('KPI-PRD-04')?.explorer).toEqual({
+      dataset: 'f_production_daily',
+      measure: 'feed_consumed',
+    });
+    for (const code of [
+      'KPI-COM-16',
+      'KPI-PRD-05',
+      'KPI-PRD-09',
+      'KPI-OPS-02',
+      'KPI-OPS-02-CONFLICTS',
+    ]) {
+      expect(kpiDefinitionOf(code)?.explorer, code).toBeUndefined();
+    }
     expect(kpiDefinitionOf('KPI-PRD-09')?.protected).toBe(true);
+    expect(kpiDefinitionOf('KPI-OPS-02-CONFLICTS')).toMatchObject({
+      nature: 'INSTANT',
+      module: 'sync',
+      reference: 'syncBacklog',
+    });
     for (const kpi of KPI_CATALOG) expect(['EXISTING', 'TO_CREATE'], kpi.code).toContain(kpi.state);
   });
 
@@ -131,5 +157,16 @@ describe('registre des indicateurs (BR-ANA-009, ADR-065 §1)', () => {
     expect(kpiHasPreviousPeriod('KPI-FIN-02')).toBe(false);
     expect(kpiHasPreviousPeriod('KPI-COM-11')).toBe(false);
     expect(kpiHasPreviousPeriod('KPI-INCONNU')).toBe(false);
+    // Les cinq indicateurs de P9-27 : seul l'aliment consommé est un flux.
+    expect(kpiHasPreviousPeriod('KPI-PRD-04')).toBe(true);
+    for (const code of [
+      'KPI-COM-16',
+      'KPI-PRD-05',
+      'KPI-PRD-09',
+      'KPI-OPS-02',
+      'KPI-OPS-02-CONFLICTS',
+    ]) {
+      expect(kpiHasPreviousPeriod(code), code).toBe(false);
+    }
   });
 });

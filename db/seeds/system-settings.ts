@@ -346,10 +346,11 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-371',
   },
-  // P9-25 (EP-2, PF-4) : plafond global des requêtes de l'explorateur, pour garder des connexions aux commandes.
+  // P9-25 (EP-2, PF-4) : plafond global des requêtes de l'explorateur. AV-461, décision du porteur du
+  // 29/10/2026 (P9-27) : 0 = aucun plafond global (seul le pool de connexions limite) ; un entier > 0 l'active.
   {
     key: 'analytics.query_max_concurrent_global',
-    value: 4,
+    value: 0,
     isClientVisible: false,
     ref: 'AV-461',
   },
@@ -581,5 +582,13 @@ export const SYSTEM_SETTING_REVISIONS: readonly SystemSettingRevision[] = [
     key: 'finance.cash_sessions_per_day_max',
     value: 0,
     isClientVisible: true,
+  },
+  {
+    // AV-461 tranché le 29/10/2026 (P9-27) : aucun plafond global d'explorations simultanées par défaut
+    // (0 = désactivé) ; une base déjà semée avec le défaut 4 de P9-25 reçoit une version datée à 0.
+    revision: 'AV-461 (29/10/2026)',
+    key: 'analytics.query_max_concurrent_global',
+    value: 0,
+    isClientVisible: false,
   },
 ];

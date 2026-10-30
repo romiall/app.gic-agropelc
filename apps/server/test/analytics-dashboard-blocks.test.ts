@@ -6,25 +6,42 @@
  * - TB-6 : une étendue tronquée au-delà de `analytics.scope_max_candidates` rend les blocs concernés indisponibles
  *   (`SCOPE_TRUNCATED`), pas un chiffre plus étroit que le droit ;
  * - TB-9 : `periodRevenue` et `periodProductQuantity` rendent des zéros pour un périmètre vide (`IN ()` invalide) ;
- * - TB-12 : un bloc dont la forme viole le contrat devient `BLOCK_INVALID`, il ne fait plus échouer tout le tableau.
+ * - TB-12 : un bloc dont la forme viole le contrat devient `BLOCK_INVALID`, il ne fait plus échouer tout le tableau ;
+ * - AV-462 (P9-27) : KPI-COM-16 (bloc EQUIPES) et KPI-PRD-04, 05 et 09 (bloc PRODUCTION) rendent la valeur de leur
+ *   fonction de référence, aux bonnes bornes et avec les bons droits (KPI-OPS-02 : `p5-distribution-metrics.test.ts`).
+ *   Le monde de production est validé (commandes réelles, ferme neuve, faits du 09/10/2026) : lu sans transaction annulée.
  *
  * Les blocs sont appelés avec un `DashboardContext` construit à la main, dans une transaction annulée sur la base
  * partagée : identifiants neufs, assertions relatives au monde créé, aucun décalage d'horloge (instant fixe passé).
  */
-import { afterAll, describe, expect, it } from 'vitest';
-import { FixedClock, businessDayOf, resolveAnalyticsPeriod } from '@gic/domain';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  FixedClock,
+  Uuidv7Generator,
+  businessDayOf,
+  resolveAnalyticsPeriod,
+  type IdGenerator,
+} from '@gic/domain';
 import { dashboardBlockSchema, type DashboardBlock } from '@gic/contracts';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../../../db/seeds/rbac-data.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import type { ReadScope } from '../src/platform/read-scope.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { buildHome } from '../src/home-api/home-service.js';
+import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
+import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
+import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
+import { registerConsumptionCommands } from '../src/modules/inventory/application/commands/consumption-commands.js';
+import { registerLotCommands } from '../src/modules/production/application/commands/lot-commands.js';
+import { registerDailyCommands } from '../src/modules/production/application/commands/daily-commands.js';
 import { buildDashboard } from '../src/analytics-api/dashboards/dashboard-builder.js';
 import {
   commercialBlock,
   financeBlock,
   fitLabel,
   guarded,
+  productionBlock,
+  teamsBlock,
   type DashboardContext,
 } from '../src/analytics-api/dashboards/dashboard-blocks.js';
 import {
@@ -36,7 +53,19 @@ import {
 import {
   periodProductQuantity,
   periodRevenue,
+  targetAttainment,
 } from '../src/modules/sales/application/public/index.js';
+import {
+  ensureSupplierLot,
+  recordStockMove,
+  virtualLocationId,
+} from '../src/modules/inventory/application/public/index.js';
+import {
+  costPerHead,
+  feedConsumption,
+  latestWeighing,
+  referenceLotType,
+} from '../src/modules/production/application/public/index.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -44,6 +73,8 @@ import {
   freshPhone,
   freshUuid,
   grantTestPermission,
+  insertTestDevice,
+  insertTestLocation,
   insertTestRole,
   insertTestSite,
   insertTestUser,
@@ -558,6 +589,553 @@ describe('P9-25 : bornes des blocs de tableau de bord', { timeout: 120_000 }, ()
       );
       expect(grantsOfPermission.length).toBeGreaterThan(0);
       for (const grant of grantsOfPermission) expect(grant.maxScope, grant.roleCode).toBe('ALL');
+    });
+  });
+
+  describe('AV-462 (P9-27) : cinq indicateurs dans les blocs', () => {
+    /** Atteinte en pourcentage telle que le bloc l'arrondit (`round1(ratio × 100)`). */
+    const pctOf = (ratio: number): number => Math.round(ratio * 100 * 10) / 10;
+
+    describe('KPI-COM-16 : teamsBlock (atteinte d’objectif)', () => {
+      /**
+       * Monde neuf annulé : lecteur R (crm.target.read), commerciaux U et V, un site S. Objectifs `USER` actifs au
+       * jour de lecture (09/10) : U chiffre d'affaires 1 000 000, prospects créés 4, visites 10 mais dès le 20/10
+       * (pas encore actif) ; V prospects créés 10 et chiffre d'affaires 500 000. U a créé deux comptes les 06 et 07/10.
+       */
+      async function targetWorld(trx: UnitOfWork) {
+        const admin = await insertTestUser(trx);
+        const zone = await insertTestZone(trx, admin);
+        const site = await insertTestSite(trx, admin, zone);
+        const u = await insertTestUser(trx);
+        const v = await insertTestUser(trx);
+        const reader = await insertTestUser(trx);
+        const outsider = await insertTestUser(trx);
+        const role = await insertTestRole(trx, admin);
+        await grantTestPermission(trx, role, 'crm.target.read', admin);
+        await assignTestRole(trx, reader, role, admin);
+        const target = async (
+          userId: string,
+          metric: string,
+          value: number,
+          start = '2026-10-01',
+          end = '2026-10-31',
+        ): Promise<void> => {
+          await trx
+            .insertInto('crm_sales_targets')
+            .values({
+              id: toBin(freshUuid()),
+              target_type: 'USER',
+              user_id: toBin(userId),
+              metric,
+              period_start: new Date(`${start}T00:00:00.000Z`),
+              period_end: new Date(`${end}T00:00:00.000Z`),
+              target_value: value,
+              status: 'ACTIVE',
+              created_by: toBin(admin),
+            })
+            .execute();
+        };
+        await target(u, 'CA', 1_000_000);
+        await target(u, 'PROSPECTS_CREES', 4);
+        await target(u, 'VISITES', 10, '2026-10-20', '2026-10-31');
+        await target(v, 'PROSPECTS_CREES', 10);
+        await target(v, 'CA', 500_000);
+        const sourceCode = `SRC_${freshUuid().slice(-8)}`;
+        await trx
+          .insertInto('crm_lead_sources')
+          .values({
+            id: toBin(freshUuid()),
+            code: sourceCode,
+            label: 'Source de test',
+            created_by: toBin(admin),
+          })
+          .execute();
+        for (const days of [3, 2]) {
+          await trx
+            .insertInto('crm_customers')
+            .values({
+              id: toBin(freshUuid()),
+              stage: 'CUSTOMER',
+              display_name: 'Client de test',
+              phone_primary: await freshPhone({ executor: trx }),
+              zone_id: toBin(zone),
+              source_code: sourceCode,
+              acquired_by_user_id: toBin(u),
+              acquired_at: daysBefore(days),
+              occurred_at: daysBefore(days),
+              owner_user_id: toBin(u),
+              first_sale_id: toBin(freshUuid()),
+              last_sale_at: null,
+              created_by: toBin(admin),
+            })
+            .execute();
+        }
+        return { site, u, v, reader, outsider };
+      }
+
+      const attainmentLabel = 'Atteinte d’objectif';
+      const attainmentDetails = (block: DashboardBlock) =>
+        block.details.filter((detail) => detail.label.startsWith(attainmentLabel));
+
+      it('la valeur du bloc égale celle de targetAttainment (groupe CA), sans période précédente ni carte par métrique', async () => {
+        await withTestUow(async (trx) => {
+          const w = await targetWorld(trx);
+          const scope: ReadScope = { userIds: [w.u] };
+          const block = await teamsBlock(contextOf(trx, scope, { userId: w.reader }));
+          expect(block.unavailable).toBeNull();
+          const attainment = await targetAttainment(trx, scope, { day: TODAY });
+          const revenue = attainment.groups.find((group) => group.metric === 'CA')!;
+          expect(revenue.attainment).not.toBeNull();
+          const card = kpiOf(block, 'KPI-COM-16')!;
+          expect(card.value).toBe(pctOf(revenue.attainment!));
+          expect(card.unit).toBe('pct');
+          // Un ratio n'a ni période précédente ni variation ni lien d'exploration.
+          expect(card.previousValue).toBeUndefined();
+          expect(card.variationPct).toBeUndefined();
+          expect(card.explore ?? null).toBeNull();
+          // Les autres métriques sont des lignes de détail en pourcentage, jamais des cartes.
+          expect(block.kpis.filter((kpi) => kpi.label.startsWith(attainmentLabel))).toHaveLength(1);
+          expect(attainmentDetails(block)).toEqual([
+            { label: `${attainmentLabel} — prospects créés`, value: 50, unit: 'pct' },
+          ]);
+          expect(dashboardBlockSchema.safeParse(block).success).toBe(true);
+        });
+      });
+
+      it('sans crm.target.read : l’indicateur et ses lignes sont absents (jamais 0)', async () => {
+        await withTestUow(async (trx) => {
+          const w = await targetWorld(trx);
+          const block = await teamsBlock(
+            contextOf(trx, { userIds: [w.u] }, { userId: w.outsider }),
+          );
+          expect(block.unavailable).toBeNull();
+          expect(kpiOf(block, 'KPI-COM-16')).toBeUndefined();
+          expect(attainmentDetails(block)).toEqual([]);
+        });
+      });
+
+      it('étendue de sites seuls : non résolue, l’indicateur est absent', async () => {
+        await withTestUow(async (trx) => {
+          const w = await targetWorld(trx);
+          const block = await teamsBlock(
+            contextOf(trx, { siteIds: [w.site] }, { userId: w.reader }),
+          );
+          expect(kpiOf(block, 'KPI-COM-16')).toBeUndefined();
+          expect(attainmentDetails(block)).toEqual([]);
+        });
+      });
+
+      it('des personnes : seuls leurs objectifs sont lus (ceux de V changent le résultat dès qu’elle est dans l’étendue)', async () => {
+        await withTestUow(async (trx) => {
+          const w = await targetWorld(trx);
+          const detailOf = async (userIds: string[]) =>
+            attainmentDetails(
+              await teamsBlock(contextOf(trx, { userIds }, { userId: w.reader })),
+            )[0]?.value;
+          // U seule : 2 comptes créés sur 4 visés ; U et V : 2 sur 14.
+          expect(await detailOf([w.u])).toBe(50);
+          expect(await detailOf([w.u, w.v])).toBe(pctOf(2 / 14));
+          // V seule : aucun compte créé sur 10 visés.
+          expect(await detailOf([w.v])).toBe(0);
+        });
+      });
+
+      it('étendue vide : pas d’erreur, valeur nulle ; le jour de lecture est plafonné à aujourd’hui (objectif futur ignoré)', async () => {
+        await withTestUow(async (trx) => {
+          const w = await targetWorld(trx);
+          const empty = await teamsBlock(contextOf(trx, { siteIds: [] }, { userId: w.reader }));
+          expect(empty.unavailable).toBeNull();
+          expect(kpiOf(empty, 'KPI-COM-16')?.value ?? null).toBeNull();
+          expect(attainmentDetails(empty)).toEqual([]);
+          // Période MONTH en cours : le jour de lecture est le 09/10, pas le 31/10 ; l'objectif de visites de U ne
+          // commence que le 20/10 et n'apparaît donc pas.
+          const block = await teamsBlock(contextOf(trx, { userIds: [w.u] }, { userId: w.reader }));
+          expect(attainmentDetails(block).map((detail) => detail.label)).not.toContain(
+            `${attainmentLabel} — visites`,
+          );
+          // Lu un autre jour, le même objectif apparaît (preuve que c'est bien la borne du jour qui l'écarte).
+          const later = await targetAttainment(trx, { userIds: [w.u] }, { day: '2026-10-25' });
+          expect(later.groups.map((group) => group.metric)).toContain('VISITES');
+        });
+      });
+    });
+
+    describe('KPI-PRD-04, 05 et 09 : productionBlock', () => {
+      const FEED_DAY = '2026-10-09';
+      const feedAt = (hhmmss: string) => `${FEED_DAY}T${hhmmss}.000Z`;
+      const win = (period: { readonly startUtc: Date; readonly endUtc: Date }) => ({
+        fromUtc: period.startUtc,
+        toUtc: period.endUtc,
+      });
+      let seq = 0;
+      let siteA: string;
+      let pipeline: CommandPipelineService;
+      let manager: { userId: string; deviceId: string };
+      let farm: { userId: string; deviceId: string };
+      const scopeA = (): ReadScope => ({ siteIds: [siteA] });
+
+      type Result = Awaited<ReturnType<CommandPipelineService['handle']>>;
+      async function run(
+        actor: { userId: string; deviceId: string },
+        commandType: string,
+        aggregateType: string,
+        aggregateId: string,
+        occurredAt: string,
+        payload: unknown,
+      ): Promise<void> {
+        const outcome: Result = await pipeline.handle(
+          {
+            command_id: freshUuid(),
+            device_seq: ++seq,
+            command_version: 1,
+            command_type: commandType,
+            aggregate_type: aggregateType,
+            aggregate_id: aggregateId,
+            author_user_id: actor.userId,
+            base_version: null,
+            depends_on: [],
+            occurred_at: occurredAt,
+            client_created_at: occurredAt,
+            captured_offline: false,
+            backdated_reason: null,
+            attachment_ids: [],
+            payload,
+          },
+          {
+            authenticatedUserId: actor.userId,
+            authenticatedDeviceId: actor.deviceId,
+            transport: 'ONLINE_API',
+          },
+        );
+        expect(outcome.status, JSON.stringify(outcome)).toBe('APPLIED');
+      }
+
+      beforeAll(async () => {
+        const clock = new FixedClock(AT);
+        const idGenerator: IdGenerator = new Uuidv7Generator(clock);
+        const registry = new CommandHandlerRegistry();
+        const sequences = new DocumentSequenceService();
+        registerLotCommands(registry, idGenerator, sequences);
+        registerDailyCommands(registry, idGenerator, sequences);
+        registerConsumptionCommands(registry, idGenerator);
+        pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
+        const roleId = async (code: string): Promise<string> => {
+          const row = await db
+            .selectFrom('identity_roles')
+            .select('id')
+            .where('code', '=', code)
+            .executeTakeFirstOrThrow();
+          return fromBin(row.id);
+        };
+        const roles = { rfe: await roleId('RESP_FERME'), rpr: await roleId('RESP_PRODUCTION') };
+
+        // Monde validé et neuf : une ferme, des produits neufs, du stock d'ouverture (documents complets).
+        let buildingId = '';
+        let storeId = '';
+        let chickId = '';
+        let pigletId = '';
+        let broilerId = '';
+        let hogId = '';
+        let feedId = '';
+        let chickLotId = '';
+        let pigletLotId = '';
+        await db.transaction().execute(async (trx) => {
+          const admin = await insertTestUser(trx);
+          const zone = await insertTestZone(trx, admin);
+          siteA = await insertTestSite(trx, admin, zone, { siteType: 'FERME' });
+          buildingId = await insertTestLocation(trx, admin, siteA, { locationType: 'BUILDING' });
+          storeId = await insertTestLocation(trx, admin, siteA);
+          const actor = async (
+            role: string,
+            options: Parameters<typeof assignTestRole>[4] = {},
+          ) => {
+            const userId = await insertTestUser(trx);
+            const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
+            await assignTestRole(trx, userId, role, admin, options);
+            return { userId, deviceId };
+          };
+          manager = await actor(roles.rpr);
+          farm = await actor(roles.rfe, { scopeType: 'SITE', scopeSiteId: siteA });
+          for (const [unit, name, isCount] of [
+            ['TETE', 'Tête', 1],
+            ['KG', 'Kilogramme', 0],
+          ] as const) {
+            if (
+              !(await trx
+                .selectFrom('catalog_units')
+                .select('code')
+                .where('code', '=', unit)
+                .executeTakeFirst())
+            ) {
+              await trx
+                .insertInto('catalog_units')
+                .values({ code: unit, name, is_count: isCount })
+                .execute();
+            }
+          }
+          const categoryId = freshUuid();
+          await trx
+            .insertInto('catalog_product_categories')
+            .values({
+              id: toBin(categoryId),
+              code: `CAT-${categoryId.slice(-8)}`,
+              name: 'Élevage',
+              created_by: toBin(admin),
+            })
+            .execute();
+          chickId = freshUuid();
+          pigletId = freshUuid();
+          broilerId = freshUuid();
+          hogId = freshUuid();
+          feedId = freshUuid();
+          const base = { category_id: toBin(categoryId), created_by: toBin(admin) };
+          const animal = (id: string, name: string, species: 'POULET_CHAIR' | 'PORC') => ({
+            ...base,
+            id: toBin(id),
+            code: `PRD-${id.slice(-8)}`,
+            name,
+            stock_family: 'BIOLOGIQUE',
+            species,
+            base_unit_code: 'TETE',
+            lot_tracking: 'REQUIRED',
+          });
+          await trx
+            .insertInto('catalog_products')
+            .values([
+              animal(chickId, 'Poussin d’un jour (chair)', 'POULET_CHAIR'),
+              animal(broilerId, 'Poulet de chair vif', 'POULET_CHAIR'),
+              animal(pigletId, 'Porcelet sevré', 'PORC'),
+              animal(hogId, 'Porc charcutier vif', 'PORC'),
+              {
+                ...base,
+                id: toBin(feedId),
+                code: `PRD-${feedId.slice(-8)}`,
+                name: 'Aliment croissance',
+                stock_family: 'INTRANT',
+                base_unit_code: 'KG',
+                lot_tracking: 'NONE',
+                is_consumable: 1,
+              },
+            ])
+            .execute();
+          const supplierId = freshUuid();
+          await trx
+            .insertInto('procurement_suppliers')
+            .values({
+              id: toBin(supplierId),
+              code: `F-${supplierId.slice(-10)}`,
+              name: 'Couvoir',
+              supplied_categories: JSON.stringify([]),
+              status: 'ACTIVE',
+              created_by: toBin(admin),
+            })
+            .execute();
+          const supplierLot = (productId: string, ref: string) =>
+            ensureSupplierLot(
+              trx,
+              { idGenerator },
+              {
+                productId,
+                supplierId,
+                supplierLotRef: `${ref}-${supplierId.slice(-6)}`,
+                fallbackCode: `F:${ref}-${supplierId.slice(-6)}`,
+                expiryDate: null,
+                originId: freshUuid(),
+                fifoRankAt: new Date(feedAt('05:00:00')),
+                createdBy: admin,
+              },
+            );
+          chickLotId = await supplierLot(chickId, 'PC');
+          pigletLotId = await supplierLot(pigletId, 'PP');
+          const opening = await virtualLocationId(trx, 'V_OPENING');
+          for (const [productId, lot, quantity, cost] of [
+            [chickId, chickLotId, 1000, 500],
+            [pigletId, pigletLotId, 100, 2000],
+            [feedId, undefined, 1000, 300],
+          ] as const) {
+            await recordStockMove(
+              trx,
+              { idGenerator },
+              {
+                productId,
+                ...(lot !== undefined ? { lotId: lot } : {}),
+                quantityBase: quantity,
+                fromLocationId: opening,
+                toLocationId: storeId,
+                moveType: 'OPENING_BALANCE',
+                declaredUnitCostXaf: cost,
+                occurredAt: new Date(feedAt('05:00:00')),
+                sourceDocType: 'INVENTORY_COUNT',
+                sourceDocId: freshUuid(),
+                createdBy: admin,
+                allowNegative: false,
+              },
+            );
+          }
+        });
+
+        const place = async (
+          lotType: string,
+          productId: string,
+          source: { productId: string; stockLotId: string },
+          quantity: number,
+        ): Promise<string> => {
+          const id = freshUuid();
+          await run(manager, 'production.lot.create', 'PRODUCTION_LOT', id, feedAt('06:00:00'), {
+            lotType,
+            productId,
+            mainLocationId: buildingId,
+          });
+          await run(
+            farm,
+            'production.lot.record_entry',
+            'LOT_ENTRY',
+            freshUuid(),
+            feedAt('06:00:00'),
+            {
+              productionLotId: id,
+              sourceKind: 'INTERNAL_STOCK',
+              sourceProductId: source.productId,
+              sourceLocationId: storeId,
+              sourceStockLotId: source.stockLotId,
+              quantity,
+            },
+          );
+          return id;
+        };
+        const chicks = { productId: chickId, stockLotId: chickLotId };
+        const piglets = { productId: pigletId, stockLotId: pigletLotId };
+        // Deux lots de poulets (100 et 40 têtes) et un lot de porcs (10 têtes) : le type de référence est le poulet.
+        const l1 = await place('POULET_CHAIR', broilerId, chicks, 100);
+        const l2 = await place('POULET_CHAIR', broilerId, chicks, 40);
+        const l3 = await place('PORC_ENGRAISSEMENT', hogId, piglets, 10);
+        const feedLot = (lotId: string, time: string, quantity: number) =>
+          run(farm, 'production.input.record', 'CONSUMPTION', freshUuid(), time, {
+            productionLotId: lotId,
+            locationId: storeId,
+            productId: feedId,
+            quantityBase: quantity,
+            unitCode: 'KG',
+            quantity,
+            costType: 'ALIMENT',
+          });
+        // Aliment du mois : 40 kg sur L1, 6 kg sur L3 (46 kg au total).
+        await feedLot(l1, feedAt('07:00:00'), 40);
+        await feedLot(l3, feedAt('08:30:00'), 6);
+        const weigh = (lotId: string, time: string, avgWeightG: number) =>
+          run(farm, 'production.weighing.record', 'LOT_WEIGHING', freshUuid(), time, {
+            productionLotId: lotId,
+            sampleSize: 10,
+            avgWeightG,
+          });
+        // Poids : L1 600 g, L2 900 g (poulets : (600 × 100 + 900 × 40) ÷ 140 = 685,7 g), L3 30 kg.
+        await weigh(l1, feedAt('10:00:00'), 600);
+        await weigh(l2, feedAt('09:00:00'), 900);
+        await weigh(l3, feedAt('11:00:00'), 30_000);
+      }, 180_000);
+
+      const block = (overrides: Partial<DashboardContext> = {}) =>
+        productionBlock(contextOf(db, scopeA(), overrides));
+
+      it('KPI-PRD-04 : l’aliment du bloc égale feedConsumption et les documents ; période précédente et lien d’exploration', async () => {
+        const result = await block();
+        expect(result.unavailable).toBeNull();
+        const current = await feedConsumption(db, scopeA(), win(PERIOD));
+        const previous = await feedConsumption(db, scopeA(), win(PERIOD.previous));
+        const card = kpiOf(result, 'KPI-PRD-04')!;
+        expect(card.value).toBe(current.quantity);
+        expect(card.previousValue).toBe(previous.quantity);
+        // Documents : 40 kg sur L1 et 6 kg sur L3 ce mois-ci, rien le mois précédent pour cette ferme neuve.
+        expect(card.value).toBe(46);
+        expect(card.previousValue).toBe(0);
+        expect(card.unit).toBe('quantity');
+        expect(card.explore?.definition).toMatchObject({
+          dataset: 'f_production_daily',
+          measures: ['feed_consumed'],
+          period: { code: 'CUSTOM', fromDay: PERIOD.fromDay, toDay: PERIOD.toDay },
+        });
+      });
+
+      it('KPI-PRD-05 : poids du type de référence en kg, libellé qui nomme le type, détail de l’autre type, sans période précédente', async () => {
+        const result = await block();
+        const weighing = await latestWeighing(db, scopeA(), { at: AT });
+        const reference = referenceLotType(weighing.byLotType);
+        expect(reference).toBe('POULET_CHAIR');
+        const grams = weighing.byLotType.find((type) => type.lotType === reference)!.avgWeightG!;
+        const card = kpiOf(result, 'KPI-PRD-05')!;
+        expect(card.value).toBe(Math.round(grams) / 1000);
+        expect(card.value).toBe(0.686);
+        expect(card.label).toContain('Poulets de chair');
+        expect(card.unit).toBe('quantity');
+        expect(card.previousValue).toBeUndefined();
+        expect(card.explore ?? null).toBeNull();
+        expect(result.details).toContainEqual({
+          label: 'Poids moyen (kg) — Porcs d’engraissement',
+          value: 30,
+          unit: 'quantity',
+        });
+      });
+
+      it('KPI-PRD-09 : coût par tête du type de référence ; sans droit de valorisation, valeur nulle, sans lien ni ligne de coût', async () => {
+        const weighing = await latestWeighing(db, scopeA(), { at: AT });
+        const cost = await costPerHead(db, scopeA());
+        const reference = referenceLotType(weighing.byLotType);
+        const expected = cost.byLotType.find((type) => type.lotType === reference)!.costPerHeadXaf;
+        expect(expected).not.toBeNull();
+        const valued = await block();
+        const card = kpiOf(valued, 'KPI-PRD-09')!;
+        expect(card.value).toBe(expected);
+        expect(card.unit).toBe('xaf');
+        expect(card.label).toContain('Poulets de chair');
+        expect(card.previousValue).toBeUndefined();
+        // L'autre type apparaît en détail, au coût.
+        const pigs = cost.byLotType.find((type) => type.lotType === 'PORC_ENGRAISSEMENT')!;
+        expect(valued.details).toContainEqual({
+          label: 'Coût par tête — Porcs d’engraissement',
+          value: pigs.costPerHeadXaf,
+          unit: 'xaf',
+        });
+
+        const masked = await block({ canReadValuation: false });
+        expect(masked.unavailable).toBeNull();
+        const maskedCard = kpiOf(masked, 'KPI-PRD-09')!;
+        expect(maskedCard.value).toBeNull();
+        expect(maskedCard.explore ?? null).toBeNull();
+        // Aucun montant au coût nulle part dans le bloc : cartes en francs nulles, aucune ligne de détail en francs.
+        for (const kpi of masked.kpis.filter((entry) => entry.unit === 'xaf')) {
+          expect(kpi.value, kpi.code).toBeNull();
+        }
+        expect(masked.details.filter((detail) => detail.unit === 'xaf')).toEqual([]);
+        // Les indicateurs qui ne sont pas au coût restent lisibles.
+        expect(kpiOf(masked, 'KPI-PRD-04')!.value).toBe(46);
+      });
+
+      it('ordre des indicateurs, bloc valide au regard du contrat, au plus 50 lignes de détail', async () => {
+        const result = await block();
+        expect(result.kpis.map((kpi) => kpi.code)).toEqual([
+          'KPI-PRD-01',
+          'KPI-PRD-02',
+          'KPI-PRD-03',
+          'KPI-PRD-04',
+          'KPI-PRD-05',
+          'KPI-PRD-06',
+          'KPI-PRD-07',
+          'KPI-PRD-08',
+          'KPI-PRD-09',
+        ]);
+        expect(result.details.length).toBeLessThanOrEqual(50);
+        expect(dashboardBlockSchema.safeParse(result).success).toBe(true);
+      });
+
+      it('périmètre vide : aliment 0, poids et coût nuls, sans erreur (jamais « tout »)', async () => {
+        const result = await productionBlock(contextOf(db, { siteIds: [] }));
+        expect(result.unavailable).toBeNull();
+        expect(kpiOf(result, 'KPI-PRD-04')!.value).toBe(0);
+        expect(kpiOf(result, 'KPI-PRD-05')!.value).toBeNull();
+        expect(kpiOf(result, 'KPI-PRD-09')!.value).toBeNull();
+        expect(kpiOf(result, 'KPI-PRD-05')!.label).toBe('Poids moyen (kg)');
+        expect(dashboardBlockSchema.safeParse(result).success).toBe(true);
+      });
     });
   });
 });

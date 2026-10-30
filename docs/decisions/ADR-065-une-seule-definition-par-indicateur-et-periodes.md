@@ -3,7 +3,7 @@
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; applique BR-ANA-002, 003, 009, 010 et AT-039, AT-054 ; les choix métier sont AV-376 à AV-378, défauts paramétrables)
 - **Date** : 14/10/2026 (numéro provisoire 075 de la plage 070 à 079, renuméroté ADR-065 à l'intégration du 26/10/2026 ; révisé le même jour après la revue adverse de la conception)
 - **Précise** : [ADR-041](ADR-041-activite-par-periode-accueil-et-tableau.md), [ADR-035](ADR-035-tableaux-d-analyse-avant-p9.md), [ADR-064](ADR-064-couche-semantique-et-explorateur.md)
-- **Questions liées** : AV-200, AV-207, AV-209, AV-244, AV-245, AV-376 à AV-378
+- **Questions liées** : AV-200, AV-207, AV-209, AV-244, AV-245, AV-376 à AV-378, AV-462, AV-473 à AV-480
 
 ## Contexte
 
@@ -46,6 +46,13 @@ BR-ANA-009 : tableaux de bord, explorateur et instantanés utilisent les mêmes 
 ## Révision du 28/10/2026 (P9-25, EP-5)
 
 - **Registre des indicateurs (§1).** Le registre ne compte plus de `TO_VERIFY` ; KPI-FIN-06 est `EXISTING` ; cinq indicateurs sont `TO_CREATE` (KPI-COM-16, KPI-PRD-04, KPI-PRD-05, KPI-PRD-09 et KPI-OPS-02), sans fonction de référence ni écran en P9 (AV-462). Cette précision corrige la phrase de la révision du 22/10 « le registre ne compte plus d'indicateur à créer (`kpisToCreate` est vide, testé) ». Un essai vérifie que chaque fonction de référence citée existe dans l'API publique de son module ; KPI-COM-16 a pour module propriétaire `sales`.
+
+## Révision du 29/10/2026 (P9-27, AV-462, AV-473 à AV-480)
+
+- **Registre des indicateurs (§1).** Décision du porteur du 29/10/2026 (AV-462, choix (b)) : les cinq indicateurs `TO_CREATE` sont livrés, le registre n'en compte plus aucun à l'état `TO_CREATE`. KPI-COM-16 : `sales.targetAttainment` (`sales/application/public/target-attainment.ts`, module propriétaire `sales` : `crm` n'importe pas `sales`), objectifs `USER`, réalisé cumulé jusqu'au jour de lecture (AV-473, AV-474). KPI-PRD-04 : `production.feedConsumption` (`production/application/public/lot-indicators.ts`) sur `inventory.feedConsumedByCostObjects` (consommations `ALIMENT` imputées aux lots, AV-476), seul des cinq à porter un lien d'exploration (`f_production_daily` / `feed_consumed`). KPI-PRD-05 : `production.latestWeighing` (AV-477). KPI-PRD-09 : `production.costPerHead`, `protected: true` (AV-478). KPI-OPS-02 : `sync.syncBacklog` (`apps/server/src/sync/sync-backlog.ts`), avec le code local `KPI-OPS-02-CONFLICTS` (AV-479). Poids moyen et coût par tête portent un type de lot de référence (`referenceLotType`, AV-475).
+- **Instants.** KPI-PRD-05 et KPI-PRD-09 se lisent à l'instant de lecture, comme KPI-PRD-01 et KPI-STK-02 : le coût restant d'un lot n'a pas de lecture à une date passée dans `inventory`.
+- **Droits d'affichage.** KPI-COM-16 n'est rendu qu'avec `crm.target.read`, `KPI-OPS-02-CONFLICTS` qu'avec `sync.conflict.resolve`, KPI-PRD-09 est masqué sans `inventory.valuation.read` ; un indicateur dont le droit manque est absent du bloc, jamais `0`. La portée de ces permissions n'est pas rejouée : l'étendue lue est celle du tableau (même règle que `distributionBlock`).
+- **Essais.** Un essai d'équivalence (AT-054) par fonction : `kpi-target-attainment.test.ts`, `kpi-production-lot-indicators.test.ts`, `kpi-sync-backlog.test.ts` (fonction, documents, et mesure de l'explorateur ou lecture HTTP existante quand elle existe) ; `kpi-registry-references.test.ts` vérifie l'existence de chaque fonction citée. Cette révision remplace la précision du 28/10 (cinq indicateurs `TO_CREATE`).
 
 ## Tests
 

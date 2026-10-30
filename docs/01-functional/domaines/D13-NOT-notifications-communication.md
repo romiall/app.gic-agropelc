@@ -60,6 +60,8 @@ Alertes routées, notifications in-app et push, notes ciblées, accusés de lect
 
 Toutes les valeurs de seuil sont des défauts paramétrables (AV-065). Les seuils sont des paramètres `organization.system_settings`, lus par le détecteur dans le module propriétaire ; la règle d'alerte porte l'activation, la gravité, les rôles et affiche le mode de résolution du catalogue, non réglable (AV-350, AV-464, [ADR-061](../../decisions/ADR-061-alertes-detection-correlation-et-cycle-de-vie.md)).
 
+Le catalogue compte **37 types** : les trente d'origine, les six ajoutés par AV-352 et `JOB_FAILED` (alerte technique de l'Admin, AV-469 choix (b), P9-27).
+
 | Code | Déclencheur | Détection | Gravité | Destinataires | Résolution |
 |---|---|---|---|---|---|
 | `STOCK_LOW` | Disponible physique < minimum du seuil actif (BR-STK-051) : événement `StockThresholdBreached` `LOW`, publié par `recordStockMove` aux extrémités physiques d'un mouvement, par `inventory.threshold.set` et par le filet horaire (P9-08, AV-355) | Sur mouvement (+ passe horaire) | WARNING | Magasinier du site, vendeurs du PDV | Auto (niveau terminé ou marqueur de passe) |
@@ -98,6 +100,7 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065). Les seuil
 | `CONSUMER_FAILED` | Événement sauté après échec persistant (table des échecs du runner) dans les `communication.consumer_failure_window_hours` dernières heures (24), ou consommateur dont le plus ancien événement non traité date de plus de `communication.consumer_lag_alert_seconds` (300) ; un par consommateur (`ConsumerFailureDetected`, AV-362, AV-425) | Planifiée (5 minutes) | WARNING | ADMIN | Auto (retard résorbé et sauts sortis de la fenêtre) |
 | `LEDGER_MISMATCH` | Écart de la réconciliation quotidienne du registre de stock (INV-STK-01, AT-047) : `LedgerMismatchDetected`, un par site et par jour métier (`GLOBAL` pour une anomalie sans site ; une alerte par jour tant que l'anomalie dure, AV-409), publié par `inventory.ledger.reconcile_daily` avant de se terminer en succès (AV-352) | Planifiée (02:00) | CRITICAL | Responsable du site, DIRECTION, ADMIN | Manuelle (après régularisation) |
 | `CASH_MISMATCH` | Écart de la réconciliation quotidienne de la trésorerie (D09) : événement `CashMismatchDetected`, publié par `finance.cash.reconcile_daily` avant de se terminer en succès (AV-352) ; un événement par compte et par jour métier, les écarts sans compte sous la clé `NONE` (AV-398) | Planifiée (02:30) | CRITICAL | FINANCE, DIRECTION | Manuelle (après régularisation) |
+| `JOB_FAILED` | Tâche de fond passée `FAILED` (essais épuisés) dans les `platform.failed_jobs_window_hours` dernières heures (24) : une alerte par type de tâche (`JobFailureDetected`, AV-469 choix (b), AV-484) ; ni le message d'erreur ni la charge de la tâche ne sont publiés ; aucun écran d'action (AV-482) | Planifiée (5 minutes, AV-483) | WARNING | ADMIN | Auto (plus aucune tâche du type échouée dans la fenêtre, AV-481) |
 
 ## 8. Validations
 

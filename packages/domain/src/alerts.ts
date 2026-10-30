@@ -47,7 +47,7 @@ export const ALERT_DETECTOR_MODULES = [
 ] as const;
 export type AlertDetectorModule = (typeof ALERT_DETECTOR_MODULES)[number];
 
-/** Types d'alerte : les 30 de D13 §7.1 puis les 6 ajoutés par AV-352. */
+/** Types d'alerte : les 30 de D13 §7.1, les 6 ajoutés par AV-352, puis `JOB_FAILED` (AV-469, P9-27). */
 export const ALERT_TYPES = [
   'STOCK_LOW',
   'STOCK_OUT',
@@ -86,6 +86,8 @@ export const ALERT_TYPES = [
   'CONSUMER_FAILED',
   'LEDGER_MISMATCH',
   'CASH_MISMATCH',
+  // AV-469 (P9-27) : tâche de fond passée FAILED (alerte technique de l'Admin).
+  'JOB_FAILED',
 ] as const;
 export type AlertType = (typeof ALERT_TYPES)[number];
 
@@ -1170,6 +1172,35 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { key: 'sections_label', label: 'Rubriques' },
       { key: 'breaches', label: 'Écarts', kind: 'integer' },
       { key: 'difference_xaf', label: 'Différence', kind: 'xaf' },
+    ],
+    sourceAvailable: true,
+  }),
+  JOB_FAILED: def({
+    code: 'JOB_FAILED',
+    nature: 'STATE',
+    detectorModule: 'communication',
+    defaultSeverity: 'WARNING',
+    severities: ['WARNING'],
+    resolution: 'AUTO',
+    // AV-469 : une alerte ouverte par type de tâche (`analytics.export.run`, …) ayant au moins une tâche passée
+    // `FAILED` dans la fenêtre `platform.failed_jobs_window_hours` ; elle se ferme à la passe où plus aucune
+    // tâche de ce type n'est échouée dans la fenêtre. Le message d'erreur de la tâche n'est jamais publié.
+    subjectType: 'JOB_TYPE',
+    subjectParts: ['job_type'],
+    // Aucun écran de supervision des tâches : une alerte sans lien plutôt qu'un lien trompeur.
+    actionScreen: null,
+    recipientRoles: ['ADMIN'],
+    ownerFields: [],
+    teamManager: false,
+    approvers: false,
+    escalationHours: null,
+    raisedBy: [{ eventType: 'JobFailureDetected' }],
+    resolvedBy: [],
+    settings: ['platform.failed_jobs_window_hours'],
+    messageTitle: 'Tâche de fond en échec',
+    messageFields: [
+      { key: 'job_type', label: 'Tâche' },
+      { key: 'failed_jobs', label: 'Échecs', kind: 'integer' },
     ],
     sourceAvailable: true,
   }),

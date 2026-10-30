@@ -46,3 +46,20 @@ export {
   hatchRate,
 } from './production-indicators.js';
 export type { CumulativeMortality, EggSummary, HatchRate } from './production-indicators.js';
+
+// P9-27 (AV-462 choix (b), AV-475 à AV-478 ; KPI-PRD-04, 05 et 09) : aliment consommé, poids moyen, coût par tête.
+export {
+  costPerHead,
+  feedConsumption,
+  latestWeighing,
+  referenceLotType,
+} from './lot-indicators.js';
+export type {
+  CostPerHead,
+  CostPerHeadLot,
+  CostPerHeadType,
+  FeedConsumption,
+  LatestWeighing,
+  LatestWeighingLot,
+  LatestWeighingType,
+} from './lot-indicators.js';

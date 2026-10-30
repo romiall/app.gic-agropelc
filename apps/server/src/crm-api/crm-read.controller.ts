@@ -53,9 +53,8 @@ import {
   listOrders,
   listReceivables,
   listSales,
-  periodProductQuantity,
-  periodRevenue,
   summarizeReceivables,
+  targetRealized,
 } from '../modules/sales/application/public/index.js';
 import {
   CRM_LIST_DEFAULT_LIMIT,
@@ -126,13 +125,6 @@ function parseOrThrow<T>(schema: z.ZodType<T>, raw: unknown): T {
   }
   return parsed.data;
 }
-
-/** Métriques d'objectif d'effort (P3) ; `CA` et `QTE_PRODUIT` viennent des ventes (P4-09). */
-const REALIZED_METRICS = {
-  VISITES: 'visits',
-  PROSPECTS_CREES: 'prospectsCreated',
-  NOUVEAUX_CLIENTS: 'newCustomers',
-} as const;
 
 const NOT_FOUND_MESSAGE = 'Ressource introuvable.';
 
@@ -568,23 +560,18 @@ export class CrmReadController {
     const targets = (await listTargets(this.db, { userId })).filter(
       (t) => t.periodStart <= query.to && t.periodEnd >= query.from,
     );
-    const period = {
-      fromUtc: businessDayStartUtc(query.from),
-      toUtc: businessDayEndUtc(query.to),
-      commercialUserId: userId,
-    };
-    // Ventes attribuées au commercial (BR-VEN-020), nettes des annulations de la période (BR-FIN-042).
-    const revenue = targets.some((t) => t.metric === 'CA')
-      ? (await periodRevenue(this.db, period)).netRevenueXaf
-      : null;
-    const realizedOf = async (t: (typeof targets)[number]): Promise<number | null> => {
-      if (t.metric === 'CA') return revenue;
-      if (t.metric === 'QTE_PRODUIT' && t.productId !== null) {
-        return periodProductQuantity(this.db, { ...period, productId: t.productId });
-      }
-      const key = REALIZED_METRICS[t.metric as keyof typeof REALIZED_METRICS];
-      return key !== undefined ? effort[key] : null;
-    };
+    // P9-27 : le réalisé d'un objectif est défini une seule fois (`sales.targetRealized`, ADR-065 §2) ; ici, sur la
+    // fenêtre demandée. CA : ventes attribuées au commercial (BR-VEN-020), nettes des annulations (BR-FIN-042).
+    const fromUtc = businessDayStartUtc(query.from);
+    const toUtc = businessDayEndUtc(query.to);
+    const realizedOf = (t: (typeof targets)[number]): Promise<number | null> =>
+      targetRealized(this.db, {
+        userId,
+        metric: t.metric,
+        productId: t.productId,
+        fromUtc,
+        toUtc,
+      });
     return {
       user_id: userId,
       from: query.from,

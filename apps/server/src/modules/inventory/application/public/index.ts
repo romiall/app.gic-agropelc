@@ -245,3 +245,6 @@ export type {
   MortalitySummary,
   StockCoverageLine,
 } from './stock-indicators.js';
+
+// P9-27 (AV-462 choix (b), AV-476 ; KPI-PRD-04) : aliment consommé par objet de coût sur une période.
+export { feedConsumedByCostObjects } from './feed-consumption.js';

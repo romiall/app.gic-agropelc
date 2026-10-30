@@ -2,7 +2,7 @@
 
 > Plan §4 (P9 — Analytics et direction). Objectif métier : tour de contrôle, analyse flexible, alertes actionnables (CM §34, §35, §53, §54). Critères d'acceptation : AT-038, AT-039, AT-043, AT-045, AT-046, AT-048, AT-054, auxquels s'ajoutent les alertes AT-027, AT-032 et AT-047. DoD : « la Direction répond seule aux questions du CM §62 ».
 >
-> État arrêté le 28/10/2026, à la clôture du **serveur** de P9 (P9-01 à P9-26). La phase a été menée en parallèle de la session principale sur la branche `claude/p9-analytics`, puis intégrée le 26/10/2026 sur `claude/p9-integration` (AV provisoires 400 à 500 devenus AV-350 à AV-450, ADR provisoires 070 à 078 devenus ADR-060 à ADR-068). Suivi détaillé : [`21-suivi-p9.md`](21-suivi-p9.md). Revue adverse du code : [`23-revue-p9-constats.md`](23-revue-p9-constats.md).
+> État arrêté le 28/10/2026, à la clôture du **serveur** de P9 (P9-01 à P9-26), complété le 29/10/2026 par P9-27 (décisions du porteur sur AV-461, AV-462 et AV-469 : **écrit, jamais compilé ni exécuté**, voir §4 et §8). La phase a été menée en parallèle de la session principale sur la branche `claude/p9-analytics`, puis intégrée le 26/10/2026 sur `claude/p9-integration` (AV provisoires 400 à 500 devenus AV-350 à AV-450, ADR provisoires 070 à 078 devenus ADR-060 à ADR-068). Suivi détaillé : [`21-suivi-p9.md`](21-suivi-p9.md). Revue adverse du code : [`23-revue-p9-constats.md`](23-revue-p9-constats.md).
 >
 > **Ce que ce document ne dit pas.** Les écrans de P9 (ECR-ANA-01 à 06, ECR-NOT-01 à 03) ne sont pas livrés : la DoD n'est donc pas démontrée (§4). Les correctifs de la revue adverse du 28/10/2026 sont couverts par la suite complète (§8) mais **n'ont eu aucune seconde revue adverse** (§6). Aucune mesure de charge n'a tourné (§5).
 >
@@ -30,7 +30,7 @@ La conception est arrêtée par neuf ADR (CONFIRMÉ, `docs/decisions/`) :
 
 La conception a été éprouvée par une revue adverse (60 constats retenus, tous traités ; suivi §7) et plusieurs ADR ont été révisés au fil des incréments.
 
-Aucun AV n'est bloquant (CONFIRMÉ : aucun titre `BLOQUANTE` entre AV-350 et AV-472 dans [`A-VALIDER.md`](../A-VALIDER.md)). P9 a ouvert **114 points**, tous à l'état `OUVERT` : AV-350 à AV-450 (101) et AV-460 à AV-472 (13). AV-451 appartient à l'impression des pièces (ADR-048), non à P9. Leur valeur par défaut est implémentée, paramétrable quand la règle s'y prête. Vingt-trois sont classés IMPORTANTE (DÉDUIT du tableau de synthèse du registre) :
+Aucun AV n'est bloquant (CONFIRMÉ : aucun titre `BLOQUANTE` entre AV-350 et AV-484 dans [`A-VALIDER.md`](../A-VALIDER.md)). P9 a ouvert **126 points** : AV-350 à AV-450 (101), AV-460 à AV-472 (13, tous tranchés par le porteur le 29/10/2026) et AV-473 à AV-484 (12, nés de P9-27, `OUVERT`). AV-451 appartient à l'impression des pièces (ADR-048), non à P9. Leur valeur par défaut est implémentée, paramétrable quand la règle s'y prête. Vingt-trois sont classés IMPORTANTE (DÉDUIT du tableau de synthèse du registre) :
 
 - alertes et notifications : AV-355 (alertes de stock sur mouvement), AV-357 (pièce requise jamais reçue), AV-358 (demande d'approbation en attente), AV-363 (destinataires), AV-365 (Web Push : bibliothèque, clés, repli), AV-388 (délai événement → alerte), AV-390 (valeurs au coût dans les alertes), AV-397 (encaisse élevée), AV-403 (perte anormale), AV-409 (écart du registre), AV-411 (mortalité élevée), AV-412 (saisie du jour manquante), AV-414 (réception incomplète), AV-416 (validation en attente), AV-420 (chaîne d'audit rompue), AV-423 (trou de séquence d'un appareil) ;
 - notes : AV-426 (audience), AV-428 (accusé hors audience) ;
@@ -69,6 +69,7 @@ Les décisions attendues du porteur avant le pilote sont au §7.
 | P9-24 | Acceptation de bout en bout sur l'application complète | `6ae8365` | Vérifié par la suite du 28/10/2026 (§8) |
 | P9-25 | Revue adverse du code (47 constats) et correctifs | `c313065` (wip), puis commits du 28/10/2026 | Correctifs écrits et **vérifiés par la suite complète du 28/10/2026** (§8) ; pas de seconde revue adverse (§6) |
 | P9-26 | Clôture : cette démonstration, matrice §17.11, plan | ce commit | Ce document |
+| P9-27 | Décisions du porteur du 29/10/2026 : AV-461 (plafond global désactivé par défaut), AV-462 (cinq indicateurs livrés), AV-469 (alerte `JOB_FAILED`) | non commité | Écrit, non compilé, non exécuté |
 
 Les empreintes sont celles que cite le suivi (§2) ; la fusion de la branche dans l'intégration du 26/10/2026 a pu les réécrire. L'état « vérifié » de P9-01 à P9-14 est celui du suivi, constaté incrément par incrément avec mutations sur base jetable ; le suivi marque encore P9-15 à P9-24 « non vérifié » ou « non exécuté » (état du 22/10/2026), alors que le document 23 mentionne une suite serveur complète verte du 26/10/2026 (2 020 tests, base neuve) avant la revue. Ce document ne tranche pas entre les deux : seul le §8 fait foi pour le 28/10/2026.
 
@@ -85,7 +86,7 @@ Les empreintes sont celles que cite le suivi (§2) ; la fusion de la branche dan
 
 - Lectures : `GET /alerts`, `/alerts/summary`, `/alerts/{id}`, `/notifications`, `/alert-rules`, `/notes`, `/notes/{id}`, `/notes/{id}/acknowledgements`, `POST /analytics/query`, `GET /analytics/catalog`, `GET /analytics/dashboards/{direction, commercial, stock, production, finance}` (le tableau de distribution date de P5), `GET /analytics/snapshots/me`, `GET /analytics/views` et `/views/{id}`, `GET /analytics/exports`, `/exports/{id}` et `/exports/{id}/download`, `GET /health/ready` enrichie.
 - Commandes : `communication.alert.acknowledge`, `.resolve`, `.dismiss`, `communication.alert_rule.set`, `communication.note.save_draft`, `.publish`, `.archive`, `.acknowledge`, `communication.notification.read` et les abonnements Web Push, `analytics.view.save`, `.share`, `.set_default`, `.delete`, `analytics.export.request`.
-- Alertes : 36 types au catalogue, dont 35 ont un détecteur testé ; cinq notifications directes d'événements (approbations, transferts) ; passes et récurrences par module.
+- Alertes : 37 types au catalogue (dont `JOB_FAILED`, P9-27), 35 des 36 premiers ont un détecteur testé ; cinq notifications directes d'événements (approbations, transferts) ; passes et récurrences par module.
 - Jeux hors ligne publiés par le serveur : `comms` (alertes, notifications, notes, portée `USER`) et `kpi` (instantanés, portée `USER`).
 
 ---
@@ -131,10 +132,10 @@ Acquis antérieurs que la phase reprend sans les rejouer : AT-040 à AT-042 (P5 
 - **Web Push désactivé** : seul le port existe, l'adaptateur par défaut est `DisabledWebPushSender` ; seul le canal in-app est en service. Bibliothèque, clés VAPID et abonnements valides dépendent d'AV-365 (IMPORTANTE, à trancher). Le correctif de robustesse de l'envoi (NT-4) est écrit et non exécuté.
 - **`KOMMO_SYNC_FAILED`** : sans détecteur, règle semée désactivée. Le 36e type du catalogue relève de la phase P10, reportée et hors du périmètre depuis le 26/10/2026 (CLAUDE.md, § 1). Aucun code Kommo.
 - **`DeviceEnrollmentRequested`** : l'événement d'enrôlement d'appareil n'est pas publié, donc aucune notification directe aux approbateurs d'un appareil en attente (AV-432).
-- **Indicateurs de D11 §7.1 non livrés** : cinq indicateurs sont à l'état `TO_CREATE`, sans fonction de référence, sans lien d'exploration ni écran, par décision par défaut d'AV-462 : KPI-COM-16 (atteinte d'objectif, toujours servie par `GET /performance/commercial`), KPI-PRD-04 (consommation d'aliment), KPI-PRD-05 (poids moyen = dernière pesée), KPI-PRD-09 (coût par tête), KPI-OPS-02 (opérations en attente et conflits ouverts). KPI-FIN-06 est à l'état `EXISTING` d'après AV-462, mais le bloc FINANCES des tableaux ne porte pas la trésorerie.
+- **Indicateurs de D11 §7.1 : livrés en P9-27** (décision du porteur du 29/10/2026, AV-462 choix (b)). KPI-COM-16, KPI-PRD-04, KPI-PRD-05, KPI-PRD-09 et KPI-OPS-02 (avec le code local `KPI-OPS-02-CONFLICTS`) sont à l'état `EXISTING` : fonctions `sales.targetAttainment`, `production.feedConsumption`, `production.latestWeighing`, `production.costPerHead`, `sync.syncBacklog`, essais d'équivalence (AT-054), blocs ÉQUIPES, PRODUCTION et DISTRIBUTION des tableaux ; seul KPI-PRD-04 a un lien d'exploration. Restent **non vérifiés** : le code et les essais de P9-27 n'ont ni été compilés ni exécutés. KPI-FIN-06 est à l'état `EXISTING` d'après AV-462, mais le bloc FINANCES des tableaux ne porte pas la trésorerie.
 - **Écarts connus à D11 §7.2** (matrice §17.11) : le bloc STOCK ne porte pas le disponible par zone (KPI-STK-01) ; le bloc VENTES n'a ni détail par canal ni classement des commerciaux. Aucun essai ne rapproche les chiffres par canal d'une source (REQ-022).
 - **Passes de détection paginées** : l'ADR-068 §3 prévoyait des pages de 500 sujets ; une passe reste une seule transaction de la voie courte, avec durée consignée et marqueur retenu au-delà de 100 s (AV-468, pagination reportée à la mesure).
-- **Alerte technique `JOB_FAILED`** : non livrée, la supervision passe par la sonde `/health/ready` (AV-469, choix (a)).
+- **Alerte technique `JOB_FAILED`** : livrée en P9-27 (décision du porteur du 29/10/2026, AV-469 choix (b)) : 37e type du catalogue, migration `20261202090000_add_job_failed_alert_type.sql`, passe `communication.jobs.failure_check` (cinq minutes) ; comme le reste de P9-27, écrite et non exécutée. La sonde `/health/ready` reste en place.
 - **Aucun index de jour métier ajouté** (AV-450) : décision d'attendre la mesure.
 - **Restes de la revue après les correctifs du 28/10/2026** : NT-4 (`PushSendOptions` n'est pas exporté par l'API publique de `communication` : aucun consommateur externe, non fait), PF-1 (le script `db:purge-alerts` est lancé par `tsx`, comme `approve-device` ; le point d'entrée compilé `src/purge-alerts.ts`, pour une exploitation sans `tsx`, n'est pas écrit), PF-10 (cas XLSX d'EX-4 et fenêtre de sept jours de PF-8 dans l'essai de charge ; le générateur n'a jamais tourné). AL-4 (le champ `resolutionMode` de la règle est renseigné depuis le catalogue) et EP-2 (l'export s'exécute avec `totals: null`) ont été terminés à la main après le lot, avant la suite.
 
@@ -160,9 +161,9 @@ Liste déposée au suivi §4 (revue de P9, PF-8, 28/10/2026) et reprise ici sans
   - lot d'instantanés (budget de 60 s à confirmer par la mesure) ;
   - facteur 10 de H-06 (NFR-33, test de charge à 10 fois avant R4) ;
   - test utilisateur de NFR-12 (impossible sans écrans) ;
-  - plafond global de 4 explorations simultanées (AV-461, hypothèse).
+  - plafond global des explorations simultanées : désactivé par défaut depuis P9-27 (AV-461, décision du porteur), la saturation du pool par quelques calculs lents n'est pas mesurée;
 
-Conséquence (DÉDUIT) : RISK-13 (analytics trop coûteux) est traité par des bornes (limites en erreur, plafonds par utilisateur et global, voie longue du worker, vues en lecture seule), pas par une mesure.
+Conséquence (DÉDUIT) : RISK-13 (analytics trop coûteux) est traité par des bornes (limites en erreur, plafond par utilisateur et plafond global optionnel, voie longue du worker, vues en lecture seule), pas par une mesure.
 
 ---
 
@@ -184,9 +185,9 @@ Traitement des 47 constats (document 23, § 7) :
 Précisions :
 
 - **Consignés avec raison.** AL-2 (un événement de passe sauté après cinq essais n'empêche pas le marqueur de résoudre) : déclencheur lointain, effet borné à une période de passe, et le garde proposé figerait durablement des alertes d'état réglées ; écrit comme limite connue dans ADR-061 §3 et §12. TB-10 (un bloc indisponible disparaît de l'instantané) : reporter d'anciennes valeurs sous une nouvelle date serait trompeur ; marqueur par bloc à décider avec l'écran hors ligne.
-- **PF-3** est « corrigé » par un report : pagination différée (AV-468), garde-fou de durée ; la durée de passe n'a jamais été mesurée. **PF-4** est corrigé par EP-2 (plafond global, AV-461).
+- **PF-3** est « corrigé » par un report : pagination différée (AV-468), garde-fou de durée ; la durée de passe n'a jamais été mesurée. **PF-4** était corrigé par EP-2 (plafond global, AV-461), plafond désactivé par défaut le 29/10/2026 (P9-27).
 - **Constats réfutés.** Le scénario de TB-1 pour la Direction et la Finance affectées à une zone est réfuté (latent : leur permission est en portée totale) ; le sous-constat « p95 de l'explorateur à 7 jours » de PF-8 est réfuté (non exigé par l'ADR ni par NFR-13).
-- **Choix métier nés de la revue** : AV-460 à AV-472 (13 points).
+- **Choix métier nés de la revue** : AV-460 à AV-472 (13 points), tranchés le 29/10/2026 ; AV-461, AV-462 et AV-469 mis en œuvre en P9-27 (écrit, non exécuté), qui ouvre AV-473 à AV-484.
 - **Mutations.** Les incréments de P9-02 à P9-14 ont chacun été éprouvés par mutation sur base jetable (comptes de mutants détectés, survivants et équivalents au suivi §2 et §8 à §16). Les correctifs du 28/10/2026 n'ont pas été éprouvés par mutation ; ils sont couverts par les essais de la suite complète (§8) et n'ont eu **aucune seconde revue adverse** : le diff (environ 140 fichiers) n'a été relu que par le typage, le lint, les frontières de modules et ces essais.
 - **Revues adverses antérieures** (suivi) : conception, 60 constats retenus (4 graves, 22 moyens, 34 mineurs) ; P9-05, 31 constats retenus dont neuf corrigés ; P9-08, 39 constats bruts dont 33 confirmés, aucun bloquant ; P9-10, 31 constats ; P9-11, 15 constats dont deux majeurs ; P9-13, deux revues dont une de 23 constats.
 
@@ -196,23 +197,35 @@ Fait à la vérification groupée du 28/10/2026 (§8) : `packages/domain/dist` e
 
 ## 7. Points laissés au porteur
 
-À trancher, en priorité avant le pilote :
+**Décisions du porteur du 29/10/2026** : AV-460 à AV-472 sont tranchés (journal des décisions de [`A-VALIDER.md`](../A-VALIDER.md) §3) ; les trois qui s'écartaient du défaut implémenté sont mis en œuvre en P9-27 (AV-461 : plafond global désactivé par défaut ; AV-462 : cinq indicateurs livrés ; AV-469 : alerte `JOB_FAILED`). Le tableau ci-dessous garde la décision de chacun ; il reste à trancher, en priorité avant le pilote, AV-473 à AV-484 (tous SECONDAIRE, défauts paramétrables ou sans effet irréversible).
 
 | AV | Question | Classe | Défaut implémenté |
 |---|---|---|---|
 | AV-460 | Un demandeur qui a perdu un droit depuis le calcul peut-il encore télécharger son export ? | SECONDAIRE | Droits revérifiés au téléchargement (réglage `analytics.export_download_revalidate_rights`, vrai) ; **à confirmer** |
-| AV-461 | Plafond global des explorations simultanées | SECONDAIRE | 4 (`analytics.query_max_concurrent_global`) ; hypothèse à confirmer par la mesure |
-| AV-462 | Livrer ou non les cinq indicateurs sans fonction ni écran | SECONDAIRE | Non livrés (§4) |
+| AV-461 | Plafond global des explorations simultanées | SECONDAIRE | **Tranché (29/10)** : aucun plafond global par défaut (`analytics.query_max_concurrent_global` = 0, activable) ; mis en œuvre en P9-27 |
+| AV-462 | Livrer ou non les cinq indicateurs sans fonction ni écran | SECONDAIRE | **Tranché (29/10)** : livrés ; mis en œuvre en P9-27 (§4) |
 | AV-463 | Propriétaire de l'alerte de créance échue sans commercial | SECONDAIRE | Le vendeur à défaut |
 | AV-464 | Mode de résolution d'une règle d'alerte | SECONDAIRE | Celui du catalogue, affiché, non réglable |
 | AV-465 | Clients actifs et inactifs d'un commercial terrain borné par une zone | SECONDAIRE | Titulaire seul ; site de rattachement quand la portée ne porte que des sites |
 | AV-466 | Point de départ du délai d'escalade d'une alerte arrivée en retard | SECONDAIRE | Instant du traitement par le serveur |
-| AV-467 | Contenu de l'instantané `distribution` | SECONDAIRE | Les quatre indicateurs du bloc DISTRIBUTION |
+| AV-467 | Contenu de l'instantané `distribution` | SECONDAIRE | Les quatre indicateurs du bloc DISTRIBUTION, plus KPI-OPS-02 depuis P9-27 (AV-480) |
 | AV-468 | Passes de détection : transaction unique ou pages | SECONDAIRE | Transaction unique ; pagination reportée à la mesure |
-| AV-469 | Supervision du worker et export dont la tâche est perdue | SECONDAIRE | Sonde en secondes, tâches `FAILED` rapportées, export `FAILED` à l'épuisement |
+| AV-469 | Supervision du worker et export dont la tâche est perdue | SECONDAIRE | Sonde en secondes, tâches `FAILED` rapportées, export `FAILED` à l'épuisement ; **tranché (29/10)** : plus l'alerte `JOB_FAILED` à l'Admin, mise en œuvre en P9-27 |
 | AV-470 | Purge des alertes closes : script sous un rôle de maintenance | IMPORTANTE | Script d'exploitation, plancher de 730 jours ; **l'exploitation doit le planifier avant le pilote** |
 | AV-471 | Notifications purgées (lues, lignes Web Push, notes publiées) | SECONDAIRE | Lues depuis plus de 90 jours et lignes d'envoi, jamais celles d'une note publiée |
 | AV-472 | Rétention des tâches terminées et des sauts de consommateurs | SECONDAIRE | 30 et 90 jours, jamais dans la fenêtre de `CONSUMER_FAILED` |
+| AV-473 | Atteinte d'objectif (KPI-COM-16) : objectifs `USER`, agrégation, lecteur | SECONDAIRE | Valeur du tableau = CA réalisé ÷ visé, autres métriques en détail ; indicateur absent pour une étendue de sites seuls ; rendu avec `crm.target.read` |
+| AV-474 | Atteinte d'objectif : fenêtre du réalisé | SECONDAIRE | Réalisé cumulé du début de l'objectif au jour de lecture (plafonné à aujourd'hui) |
+| AV-475 | Poids moyen et coût par tête : type de lot de référence | SECONDAIRE | Type comptant le plus de têtes en élevage, autres types en détail |
+| AV-476 | Consommation d'aliment (KPI-PRD-04) : source et unité | SECONDAIRE | Consommations `ALIMENT` imputées aux lots (`inventory_consumptions`), en kg |
+| AV-477 | Poids moyen (KPI-PRD-05) : pesée de référence et pondération | SECONDAIRE | Dernière pesée de chaque lot en élevage, sans plafond d'ancienneté, pondérée par l'effectif |
+| AV-478 | Coût par tête (KPI-PRD-09) : agrégation | SECONDAIRE | Σ coûts restants ÷ Σ effectifs non vendus, à l'instant de lecture |
+| AV-479 | Opérations en attente et conflits ouverts (KPI-OPS-02) : définition et périmètre | SECONDAIRE | Deux indicateurs ; appareils en service des points de vente ouverts ; conflits avec `sync.conflict.resolve` |
+| AV-480 | Place des cinq indicateurs dans les blocs ; instantané `distribution` | SECONDAIRE | ÉQUIPES, PRODUCTION, DISTRIBUTION ; instantané à cinq indicateurs (six avec les conflits) |
+| AV-481 | `JOB_FAILED` : durée de l'alerte après un échec corrigé | SECONDAIRE | Fenêtre de 24 h, résolution automatique seulement |
+| AV-482 | `JOB_FAILED` : écran d'action | SECONDAIRE | Aucun lien (pas d'écran de supervision des tâches) |
+| AV-483 | `JOB_FAILED` : cadence de la passe | SECONDAIRE | 5 minutes, non réglable |
+| AV-484 | `JOB_FAILED` : regroupement et seuil | SECONDAIRE | Un type de tâche, un échec suffit |
 
 Les 101 autres points de P9 (AV-350 à AV-450, dont les 22 IMPORTANTE du §1.1) restent `OUVERT` avec leur défaut implémenté ; AV-365 (Web Push) conditionne la mise en service de ce canal ; AV-013 (client inactif, 30 jours) est maintenant lu par les tableaux (TB-5, réglage `crm.inactive_after_days`).
 
@@ -259,6 +272,8 @@ Défauts trouvés par cette vérification, tous dans des essais écrits avant ou
 - **Deux restes de code**, écrits à la main après le lot : l'export s'exécute avec `totals: null` (EP-2) ; le mode de résolution d'une règle d'alerte est lu depuis le catalogue (AL-4).
 
 **Ce que ces résultats ne démontrent pas** : aucune seconde revue adverse des correctifs (le diff n'a été relu que par le typage, le lint, les frontières et ces essais) ; la mesure de charge, les plans `EXPLAIN` et NFR-15 (§5) ; aucun essai dans un navigateur ni sur un téléphone ; les écrans de P9 (§4). Le format de la suite (`final_suite.sh`, étape `format`) a échoué sur un fichier `.sql` que Prettier ne sait pas lire et sur une ligne de commande trop longue : le formatage a été vérifié à part, sur les 134 fichiers de code modifiés (« All matched files use Prettier code style »).
+
+**P9-27 (29/10/2026) n'est pas dans ces résultats** : les compteurs ci-dessus (774 essais du domaine, 2 180 du serveur, 246 de la base…) sont ceux du 28/10/2026, avant P9-27. Le code et les essais de P9-27 (plafond global à 0, cinq indicateurs, alerte `JOB_FAILED`, migration `20261202090000`) sont **écrits et jamais compilés ni exécutés** : types, lint, frontières, essais `kpi-*`, `communication-job-failure`, `analytics-*`, `db/tests/communication`, puis `db:migrate` et `db:seed` restent à jouer en une seule vérification, et la suite complète sur base neuve à rejouer avant de déclarer P9 vérifiée à nouveau.
 
 ---
 

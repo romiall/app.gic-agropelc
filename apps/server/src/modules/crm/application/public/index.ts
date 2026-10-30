@@ -37,7 +37,13 @@ export {
   portfolioHealth,
 } from './home-metrics.js';
 export type { PortfolioHealth } from './home-metrics.js';
-export { commercialEffort, listInteractions, listTargets, listVisits } from './activity-query.js';
+export {
+  TARGET_LIST_LIMIT,
+  commercialEffort,
+  listInteractions,
+  listTargets,
+  listVisits,
+} from './activity-query.js';
 export type {
   ActivityFilter,
   CommercialEffort,

@@ -2,7 +2,7 @@
  * Consommateur d'événements et tâches planifiées de `communication` (P9-04 : consommateur
  * `communication.alerts` ; P9-05 : destinataires, notifications, escalade et envoi des push ; P9-10 :
  * consommateur en échec ; P9-11 : consommateur `communication.direct` des notifications directes ; P9-25 :
- * purges techniques). Module séparé de `CommunicationModule` (comme `InventoryJobsModule`) : il ne
+ * purges techniques ; P9-27 : tâches de fond en échec, `JOB_FAILED`). Module séparé de `CommunicationModule` (comme `InventoryJobsModule`) : il ne
  * dépend que de `platform` — et du port du résolveur de destinataires, fourni par jeton par
  * `CommunicationRecipientsModule` (global) — pour être importé aussi par le processus worker sans tirer
  * les gestionnaires de commande.
@@ -17,6 +17,7 @@ import { AlertEscalationJob } from './application/jobs/alert-escalation-job.js';
 import { CommunicationPurgeJob } from './application/jobs/communication-purge-job.js';
 import { CommunicationRecurringJobs } from './application/jobs/communication-recurring-jobs.js';
 import { ConsumerFailureJob } from './application/jobs/consumer-failure-job.js';
+import { JobFailureJob } from './application/jobs/job-failure-job.js';
 import { PushDispatchJob } from './application/jobs/push-dispatch-job.js';
 import { DisabledWebPushSender, WEB_PUSH_SENDER } from './application/notifications/web-push.js';
 
@@ -28,6 +29,7 @@ import { DisabledWebPushSender, WEB_PUSH_SENDER } from './application/notificati
     AlertEscalationJob,
     PushDispatchJob,
     ConsumerFailureJob,
+    JobFailureJob,
     CommunicationPurgeJob,
     CommunicationRecurringJobs,
   ],

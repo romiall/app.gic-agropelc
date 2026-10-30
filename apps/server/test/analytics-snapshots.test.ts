@@ -218,9 +218,21 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
         kpis: snapshot.kpis,
       });
       for (const kpi of parsed.kpis) expect(kpi).not.toHaveProperty('explore');
-      // Les indicateurs du bloc DISTRIBUTION (aucun si la base n'a aucun point de vente).
-      const allowed = ['KPI-DIS-03', 'KPI-DIS-06', 'KPI-DIS-05', 'KPI-FIN-CS-PENDING'];
+      // Les indicateurs du bloc DISTRIBUTION (aucun si la base n'a aucun point de vente) : les quatre d'origine, plus
+      // KPI-OPS-02 (AV-480) et son compteur de conflits, que ce titulaire sans `sync.conflict.resolve` ne reçoit pas.
+      const allowed = [
+        'KPI-DIS-03',
+        'KPI-DIS-06',
+        'KPI-DIS-05',
+        'KPI-FIN-CS-PENDING',
+        'KPI-OPS-02',
+        'KPI-OPS-02-CONFLICTS',
+      ];
       for (const kpi of parsed.kpis) expect(allowed).toContain(kpi.code);
+      const codes = parsed.kpis.map((kpi) => kpi.code);
+      // Un bloc non vide (au moins un point de vente dans la portée) porte les opérations en attente.
+      if (codes.length > 0) expect(codes).toContain('KPI-OPS-02');
+      expect(codes).not.toContain('KPI-OPS-02-CONFLICTS');
     }
     // Droit révoqué : les trois instantanés disparaissent et la suppression est publiée.
     await db

@@ -108,8 +108,8 @@ export async function executeExploration(
 }
 
 /**
- * Exécute l'exploration sous un emplacement de concurrence de l'utilisateur **et** un emplacement global (AV-461),
- * dans un instantané en lecture seule. `db` est la base entière : la connexion est épinglée ici.
+ * Exécute l'exploration sous un emplacement de concurrence de l'utilisateur **et**, si `maxConcurrentGlobal` > 0, un
+ * emplacement global (AV-461 : 0 = aucun plafond global, le défaut), dans un instantané en lecture seule. `db` est la base entière : la connexion est épinglée ici.
  */
 export async function runExploration(
   db: Kysely<DB>,
@@ -138,12 +138,15 @@ export async function runExploration(
     }
     let globalSlot: number | null = null;
     try {
-      globalSlot = await acquireGlobalQuerySlot(connection, input.limits.maxConcurrentGlobal);
-      if (globalSlot === null) {
-        throw new ExplorationLimitError(
-          'concurrency',
-          'Le serveur traite déjà le nombre maximal de requêtes d’analyse : réessayez dans un instant.',
-        );
+      // Plafond global désactivé par défaut (0, AV-461) : aucun emplacement pris, aucune requête de verrou de plus.
+      if (input.limits.maxConcurrentGlobal > 0) {
+        globalSlot = await acquireGlobalQuerySlot(connection, input.limits.maxConcurrentGlobal);
+        if (globalSlot === null) {
+          throw new ExplorationLimitError(
+            'concurrency',
+            'Le serveur traite déjà le nombre maximal de requêtes d’analyse : réessayez dans un instant.',
+          );
+        }
       }
       return await connection
         .transaction()

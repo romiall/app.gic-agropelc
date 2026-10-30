@@ -214,6 +214,15 @@ export interface TargetSummary {
   readonly status: string;
 }
 
+/**
+ * Plafond technique de lecture des objectifs (borne de requête, pas un seuil métier : règle 8) ; un appelant qui
+ * lit exactement ce nombre de lignes sait que la liste peut être incomplète (P9-27, AV-473).
+ */
+export const TARGET_LIST_LIMIT = 500;
+
+/** Taille des paquets d'identifiants d'une clause `IN` (P9-27) : un périmètre large ne fabrique pas une requête géante. */
+const TARGET_USER_CHUNK = 500;
+
 export async function listTargets(
   executor: Executor,
   filter: {
@@ -223,25 +232,60 @@ export async function listTargets(
     /** Objectifs dont la période couvre ce jour (`AAAA-MM-JJ`). */
     readonly activeOn?: string;
     readonly includeCancelled?: boolean;
+    /** P9-27 : un seul type d'objectif (`USER`, `TEAM` ou `SITE`). */
+    readonly targetType?: 'USER' | 'TEAM' | 'SITE';
+    /** P9-27 : titulaires lus ; liste vide = aucun résultat (jamais tout, TB-9), lue sans requête. */
+    readonly userIds?: readonly string[];
+    /** P9-27 : plafond de lecture (défaut `TARGET_LIST_LIMIT`). */
+    readonly limit?: number;
   },
 ): Promise<readonly TargetSummary[]> {
-  const rows = await executor
-    .selectFrom('crm_sales_targets as t')
-    .leftJoin('organization_teams as team', 'team.id', 't.team_id')
-    .selectAll('t')
-    .select('team.manager_user_id as team_manager_user_id')
-    .$if(filter.userId !== undefined, (qb) => qb.where('t.user_id', '=', toBin(filter.userId!)))
-    .$if(filter.teamId !== undefined, (qb) => qb.where('t.team_id', '=', toBin(filter.teamId!)))
-    .$if(filter.siteId !== undefined, (qb) => qb.where('t.site_id', '=', toBin(filter.siteId!)))
-    .$if(filter.activeOn !== undefined, (qb) =>
-      qb
-        .where(sql<boolean>`t.period_start <= ${filter.activeOn!}`)
-        .where(sql<boolean>`t.period_end >= ${filter.activeOn!}`),
-    )
-    .$if(filter.includeCancelled !== true, (qb) => qb.where('t.status', '=', 'ACTIVE'))
-    .orderBy('t.period_start', 'desc')
-    .limit(500)
-    .execute();
+  if (filter.userIds?.length === 0) return [];
+  const limit = filter.limit ?? TARGET_LIST_LIMIT;
+  const read = (userChunk: readonly string[] | null) =>
+    executor
+      .selectFrom('crm_sales_targets as t')
+      .leftJoin('organization_teams as team', 'team.id', 't.team_id')
+      .selectAll('t')
+      .select('team.manager_user_id as team_manager_user_id')
+      .$if(filter.userId !== undefined, (qb) => qb.where('t.user_id', '=', toBin(filter.userId!)))
+      .$if(filter.teamId !== undefined, (qb) => qb.where('t.team_id', '=', toBin(filter.teamId!)))
+      .$if(filter.siteId !== undefined, (qb) => qb.where('t.site_id', '=', toBin(filter.siteId!)))
+      .$if(filter.targetType !== undefined, (qb) =>
+        qb.where('t.target_type', '=', filter.targetType!),
+      )
+      .$if(userChunk !== null, (qb) =>
+        qb.where(
+          't.user_id',
+          'in',
+          userChunk!.map((id) => toBin(id)),
+        ),
+      )
+      .$if(filter.activeOn !== undefined, (qb) =>
+        qb
+          .where(sql<boolean>`t.period_start <= ${filter.activeOn!}`)
+          .where(sql<boolean>`t.period_end >= ${filter.activeOn!}`),
+      )
+      .$if(filter.includeCancelled !== true, (qb) => qb.where('t.status', '=', 'ACTIVE'))
+      .orderBy('t.period_start', 'desc')
+      .limit(limit)
+      .execute();
+  let rows: Awaited<ReturnType<typeof read>>;
+  if (filter.userIds === undefined) {
+    rows = await read(null);
+  } else {
+    // Un paquet à la fois ; chaque paquet est plafonné, puis le tout est retrié et replafonné.
+    const chunks: (readonly string[])[] = [];
+    for (let i = 0; i < filter.userIds.length; i += TARGET_USER_CHUNK) {
+      chunks.push(filter.userIds.slice(i, i + TARGET_USER_CHUNK));
+    }
+    const merged: Awaited<ReturnType<typeof read>> = [];
+    for (const chunk of chunks) merged.push(...(await read(chunk)));
+    rows =
+      chunks.length > 1
+        ? merged.sort((a, b) => b.period_start.getTime() - a.period_start.getTime()).slice(0, limit)
+        : merged;
+  }
   return rows.map((row) => ({
     id: fromBin(row.id),
     targetType: row.target_type,

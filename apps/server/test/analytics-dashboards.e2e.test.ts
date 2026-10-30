@@ -22,6 +22,11 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { listSnapshotsOf } from '../src/modules/analytics/application/public/index.js';
+import {
+  costPerHead,
+  latestWeighing,
+  referenceLotType,
+} from '../src/modules/production/application/public/index.js';
 import { refreshSnapshotsOf } from '../src/analytics-api/jobs/kpi-snapshots-refresh-job.js';
 import { readScopeOf, scopeIssueOf } from '../src/analytics-api/dashboards/scope-adapter.js';
 import { ALL_SCOPE } from '../src/platform/read-scope.js';
@@ -46,6 +51,14 @@ const BLOCK_ORDER = {
   finance: ['FINANCES', 'VENTES', 'ALERTES', 'COORDINATION'],
 } as const;
 
+/** Compteurs des tableaux qui ne sont pas des indicateurs du registre (D11 §7.1). */
+const NON_REGISTRY_COUNTERS: ReadonlySet<string> = new Set([
+  'KPI-OPS-ALERTS-CRITICAL',
+  'KPI-OPS-ALERTS-WARNING',
+  'KPI-OPS-ALERTS-INFO',
+  'KPI-OPS-APPROVALS',
+]);
+
 describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
   let app: NestFastifyApplication;
   let clock: Clock;
@@ -56,6 +69,8 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
   let financeNoValuation: CommandActor & { roleCode: string };
   let directionPlain: CommandActor & { roleCode: string };
   let directionValued: CommandActor & { roleCode: string };
+  let productionPlain: CommandActor & { roleCode: string };
+  let productionValued: CommandActor & { roleCode: string };
   let nobody: CommandActor & { roleCode: string };
   const tokens = new Map<string, string>();
 
@@ -96,6 +111,11 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       'analytics.dashboard.direction',
       'inventory.valuation.read',
     ]);
+    productionPlain = await actorWith(root, ['analytics.dashboard.production']);
+    productionValued = await actorWith(root, [
+      'analytics.dashboard.production',
+      'inventory.valuation.read',
+    ]);
     nobody = await actorWith(root, ['sales.sale.read']);
     const everyone: { id: string; deviceId: string }[] = [
       { id: direction.userId, deviceId: direction.deviceId },
@@ -104,6 +124,8 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       financeNoValuation,
       directionPlain,
       directionValued,
+      productionPlain,
+      productionValued,
       nobody,
     ];
     for (const actor of everyone) {
@@ -201,9 +223,10 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       const response = await dashboard(direction, 'direction');
       for (const block of response.blocks) {
         for (const kpi of block.kpis) {
-          // Les compteurs d'alertes et de validations (`KPI-OPS-*`) ne sont pas des indicateurs du registre de D11 §7.1.
-          // Un indicateur à créer n'entre pas dans un tableau avant sa fonction de référence (ADR-065 §1, EP-5).
-          if (!kpi.code.startsWith('KPI-OPS-')) {
+          // Les compteurs d'alertes et de validations ne sont pas des indicateurs du registre de D11 §7.1 ;
+          // KPI-OPS-02 et KPI-OPS-02-CONFLICTS le sont (AV-462, P9-27). Un indicateur à créer n'entrerait pas dans un
+          // tableau avant sa fonction de référence (ADR-065 §1) : tous sont `EXISTING`.
+          if (!NON_REGISTRY_COUNTERS.has(kpi.code)) {
             expect(kpiDefinitionOf(kpi.code), kpi.code).toBeDefined();
             expect(kpiDefinitionOf(kpi.code)?.state, kpi.code).toBe('EXISTING');
           }
@@ -216,7 +239,102 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
     });
   });
 
+  describe('AV-462 (P9-27) : cinq indicateurs dans les bons tableaux', () => {
+    const kpiCodes = (response: DashboardResponse, blockCode: string): string[] =>
+      response.blocks.find((block) => block.code === blockCode)?.kpis.map((kpi) => kpi.code) ?? [];
+
+    it('production et direction portent KPI-PRD-04, 05 et 09 dans PRODUCTION ; commercial et direction KPI-COM-16 dans EQUIPES', async () => {
+      const [directionBoard, productionBoard, commercialBoard] = await Promise.all([
+        dashboard(direction, 'direction'),
+        dashboard(direction, 'production'),
+        dashboard(direction, 'commercial'),
+      ]);
+      for (const board of [directionBoard, productionBoard]) {
+        expect(kpiCodes(board, 'PRODUCTION')).toEqual(
+          expect.arrayContaining(['KPI-PRD-04', 'KPI-PRD-05', 'KPI-PRD-09']),
+        );
+      }
+      for (const board of [directionBoard, commercialBoard]) {
+        // DIRECTION détient `crm.target.read` (ALL) : l'indicateur est présent, de valeur nulle sans objectif.
+        expect(kpiCodes(board, 'EQUIPES')).toContain('KPI-COM-16');
+        const attainment = board.blocks
+          .find((block) => block.code === 'EQUIPES')!
+          .kpis.find((kpi) => kpi.code === 'KPI-COM-16')!;
+        expect(attainment.unit).toBe('pct');
+        // Un ratio n'a pas de période précédente.
+        expect(attainment.previousValue).toBeUndefined();
+      }
+    });
+
+    it('KPI-OPS-02 et son compteur de conflits (DIRECTION détient sync.conflict.resolve) sont dans DISTRIBUTION, sur direction et stock', async () => {
+      for (const code of ['direction', 'stock'] as const) {
+        const board = await dashboard(direction, code);
+        const block = board.blocks.find((candidate) => candidate.code === 'DISTRIBUTION')!;
+        expect(block.unavailable, code).toBeNull();
+        // Une base sans point de vente rend un bloc vide (jamais « tout ») : l'assertion est alors la vacuité.
+        if (block.kpis.length === 0) {
+          expect(block.details, code).toEqual([]);
+          continue;
+        }
+        const codes = block.kpis.map((kpi) => kpi.code);
+        expect(codes, code).toEqual(expect.arrayContaining(['KPI-OPS-02', 'KPI-OPS-02-CONFLICTS']));
+        for (const opsCode of ['KPI-OPS-02', 'KPI-OPS-02-CONFLICTS']) {
+          const kpi = block.kpis.find((candidate) => candidate.code === opsCode)!;
+          expect(kpi.unit).toBe('count');
+          expect(kpi.value, opsCode).toBeGreaterThanOrEqual(0);
+          expect(kpi.previousValue, opsCode).toBeUndefined();
+        }
+      }
+    });
+
+    it('un lecteur sans crm.target.read ne voit pas KPI-COM-16 (absent, jamais 0)', async () => {
+      // `directionPlain` n'a que le tableau de direction : aucune permission d'objectifs.
+      const board = await dashboard(directionPlain, 'direction');
+      expect(kpiCodes(board, 'EQUIPES')).not.toContain('KPI-COM-16');
+      expect(
+        board.blocks
+          .find((block) => block.code === 'EQUIPES')!
+          .details.filter((detail) => detail.label.startsWith('Atteinte d’objectif')),
+      ).toEqual([]);
+    });
+  });
+
   describe('valeurs au coût (RC-05)', () => {
+    /** Coût par tête du type de lot de référence, comme le bloc PRODUCTION le choisit (AV-475, AV-478). */
+    const referenceCostPerHead = async (): Promise<number | null> => {
+      const [weighing, cost] = await Promise.all([
+        latestWeighing(db, ALL_SCOPE, { at: clock.now() }),
+        costPerHead(db, ALL_SCOPE),
+      ]);
+      const reference = referenceLotType(weighing.byLotType);
+      return cost.byLotType.find((type) => type.lotType === reference)?.costPerHeadXaf ?? null;
+    };
+    const costPerHeadKpi = (response: DashboardResponse) =>
+      response.blocks
+        .find((block) => block.code === 'PRODUCTION')!
+        .kpis.find((kpi) => kpi.code === 'KPI-PRD-09')!;
+
+    it('KPI-PRD-09 : valeur et lien nuls sans inventory.valuation.read (direction et production) ; avec le droit, la valeur de costPerHead', async () => {
+      for (const [actor, code] of [
+        [directionPlain, 'direction'],
+        [productionPlain, 'production'],
+      ] as const) {
+        const masked = costPerHeadKpi(await dashboard(actor, code));
+        expect(masked.value, code).toBeNull();
+        expect(masked.explore ?? null, code).toBeNull();
+      }
+      for (const [actor, code] of [
+        [directionValued, 'direction'],
+        [productionValued, 'production'],
+      ] as const) {
+        // La base est partagée : le coût est lu avant et après le tableau, la valeur égale l'une des deux lectures.
+        const before = await referenceCostPerHead();
+        const shown = costPerHeadKpi(await dashboard(actor, code));
+        const after = await referenceCostPerHead();
+        expect([before, after], code).toContain(shown.value);
+      }
+    });
+
     it('sans inventory.valuation.read, toute valeur au coût vaut null, sans lien d’exploration ni période précédente', async () => {
       const masked = await dashboard(financeNoValuation, 'finance');
       let protectedSeen = 0;
@@ -319,7 +437,26 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
         }
       }
       expect(compared.length).toBeGreaterThan(0);
+      // P9-27 : l'aliment consommé (KPI-PRD-04) est un flux à mesure d'explorateur égale (AV-476).
+      expect(compared).toContain('KPI-PRD-04');
       expect(gaps).toEqual([]);
+    });
+
+    it('l’instantané du tableau production égale le tableau, KPI-PRD-04, 05 et 09 compris (AV-462)', async () => {
+      await db
+        .transaction()
+        .execute((trx) => refreshSnapshotsOf(trx, productionValued.id, clock.now()));
+      const month = (await listSnapshotsOf(db, productionValued.id)).find(
+        (snapshot) => snapshot.periodKey === 'MONTH' && snapshot.scopeKey === 'production',
+      );
+      expect(month).toBeDefined();
+      const live = await dashboard(productionValued, 'production', 'period=MONTH');
+      const liveKpis = live.blocks.flatMap((block) =>
+        block.kpis.map(({ explore: _explore, ...rest }) => rest),
+      );
+      const codes = month!.kpis.map((kpi) => kpi.code);
+      expect(codes).toEqual(expect.arrayContaining(['KPI-PRD-04', 'KPI-PRD-05', 'KPI-PRD-09']));
+      expect(month!.kpis).toEqual(JSON.parse(JSON.stringify(liveKpis)));
     });
   });
 

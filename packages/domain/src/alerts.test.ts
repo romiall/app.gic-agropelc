@@ -48,7 +48,7 @@ const D13_TYPES = [
 ];
 
 describe('catalogue des alertes (D13 §7.1, AV-352)', () => {
-  it('porte les trente types de D13 puis les six ajoutés, sans doublon', () => {
+  it('porte les trente types de D13, les six ajoutés (AV-352) puis JOB_FAILED (AV-469), sans doublon', () => {
     expect(ALERT_TYPES.slice(0, 30)).toEqual(D13_TYPES);
     expect(ALERT_TYPES.slice(30)).toEqual([
       'ALLOCATION_EXPIRED',
@@ -57,7 +57,9 @@ describe('catalogue des alertes (D13 §7.1, AV-352)', () => {
       'CONSUMER_FAILED',
       'LEDGER_MISMATCH',
       'CASH_MISMATCH',
+      'JOB_FAILED',
     ]);
+    expect(ALERT_TYPES).toHaveLength(37);
     expect(new Set(ALERT_TYPES).size).toBe(ALERT_TYPES.length);
     expect(Object.keys(ALERT_CATALOG).sort()).toEqual([...ALERT_TYPES].sort());
   });
@@ -130,6 +132,40 @@ describe('catalogue des alertes (D13 §7.1, AV-352)', () => {
     expect(isAlertType(42)).toBe(false);
     expect(isAlertSeverity('CRITICAL')).toBe(true);
     expect(isAlertSeverity('FATAL')).toBe(false);
+  });
+});
+
+describe('JOB_FAILED : tâche de fond en échec (AV-469, P9-27)', () => {
+  const definition = alertDefinitionOf('JOB_FAILED');
+
+  it('alerte d’état technique de l’Admin, résolue par la passe, un sujet par type de tâche', () => {
+    expect(definition).toMatchObject({
+      nature: 'STATE',
+      detectorModule: 'communication',
+      defaultSeverity: 'WARNING',
+      severities: ['WARNING'],
+      resolution: 'AUTO',
+      recipientRoles: ['ADMIN'],
+      escalationHours: null,
+      subjectType: 'JOB_TYPE',
+      subjectParts: ['job_type'],
+      settings: ['platform.failed_jobs_window_hours'],
+      sourceAvailable: true,
+    });
+    expect(definition.raisedBy.map((trigger) => trigger.eventType)).toEqual(['JobFailureDetected']);
+    // Résolution par le seul marqueur de passe (la condition est « plus aucune tâche échouée dans la fenêtre »).
+    expect(definition.resolvedBy).toEqual([]);
+    expect(enabledByDefault('JOB_FAILED')).toBe(true);
+  });
+
+  it('deux types de tâche en échec donnent deux sujets ; un type sans nom n’en donne aucun', () => {
+    const first = alertSubjectKey(definition, 'ignoré', { job_type: 'analytics.export.run' });
+    const second = alertSubjectKey(definition, 'ignoré', { job_type: 'sales.receivables.scan' });
+    expect(first).toBe('JOB_TYPE:analytics.export.run');
+    expect(second).not.toBe(first);
+    expect(alertDedupKey('JOB_FAILED', first!)).toBe('JOB_FAILED:JOB_TYPE:analytics.export.run');
+    expect(alertSubjectKey(definition, 'ignoré', {})).toBeUndefined();
+    expect(alertSubjectKey(definition, 'ignoré', { job_type: '  ' })).toBeUndefined();
   });
 });
 

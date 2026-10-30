@@ -10,6 +10,8 @@
  * **Plafond global** (P9-25, EP-2 et PF-4, AV-461) : au plus `analytics.query_max_concurrent_global` requêtes de
  * l'explorateur en cours pour tous les utilisateurs, par des emplacements globaux du même mécanisme. Chaque requête
  * épingle une connexion du pool partagé avec les commandes ; le plafond garde des connexions pour elles.
+ * Désactivé par défaut (décision du porteur du 29/10/2026) : à 0, l'appelant ne prend ni ne libère aucun emplacement
+ * global ; le mécanisme reste disponible en posant une valeur > 0.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';

@@ -118,7 +118,7 @@
 | `escalation_roles` | text[] | Non | `{DIRECTION}` | Rôles du niveau supérieur (AV-367) |
 | `updated_at`, `updated_by` | | | | |
 
-- **PK** `alert_type`. **Suppr.** Désactivation (`enabled`). **Audit** Modification.
+- **PK** `alert_type`. **CK** `ck_communication_alert_rules_type` : le type est l'un des **37** types du catalogue (D13 §7.1) ; `JOB_FAILED` (37e, AV-469 choix (b), P9-27) a étendu le `CHECK` par la migration `20261202090000_add_job_failed_alert_type.sql` ; un type de plus demande une migration. **Suppr.** Désactivation (`enabled`). **Audit** Modification.
 
 ## communication.alerts
 

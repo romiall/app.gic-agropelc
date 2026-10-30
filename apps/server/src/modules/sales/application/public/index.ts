@@ -66,3 +66,12 @@ export {
 export type { ActivityPeriod, CashedActivityRow, SalesActivityDay } from './period-activity.js';
 export { ordersActivity, repurchaseRate } from './sales-indicators.js';
 export type { OrdersActivity, RepurchaseRate } from './sales-indicators.js';
+// P9-27 (KPI-COM-16, AV-473, AV-474) : atteinte d'objectif et réalisé d'un objectif, définition unique.
+export { targetAttainment, targetRealized } from './target-attainment.js';
+export type {
+  TargetAttainment,
+  TargetAttainmentGroup,
+  TargetAttainmentLine,
+  TargetMetric,
+  TargetRealizedInput,
+} from './target-attainment.js';

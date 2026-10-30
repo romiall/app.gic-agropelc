@@ -84,6 +84,8 @@ describe('communication_alert_rules', () => {
           [type, severity, hours],
         );
       await insert('STOCK_LOW');
+      // Migration 20261202090000 (AV-469, P9-27) : le 37e type du catalogue est admis par le CHECK.
+      await insert('JOB_FAILED');
       await expect(insert('NOT_A_TYPE')).rejects.toThrow(/ck_communication_alert_rules_type/);
       await expect(
         conn.query(
@@ -126,7 +128,7 @@ describe('communication_alert_rules', () => {
       );
     }));
 
-  it('le seed pose les 36 règles du catalogue, dont une seule désactivée (P10)', async () => {
+  it('le seed pose les 37 règles du catalogue, dont une seule désactivée (P10)', async () => {
     const [rows] = await withRollback(async (conn) =>
       conn.query<RowDataPacket[]>(
         `SELECT COUNT(*) AS total, SUM(enabled = 0) AS disabled FROM communication_alert_rules`,
@@ -135,7 +137,7 @@ describe('communication_alert_rules', () => {
     // La base de test peut n'être que migrée : le décompte n'est vérifié que si le seed a tourné.
     const total = Number(rows[0]!.total);
     if (total > 0) {
-      expect(total).toBeGreaterThanOrEqual(36);
+      expect(total).toBeGreaterThanOrEqual(37);
       expect(Number(rows[0]!.disabled)).toBeGreaterThanOrEqual(1);
     }
   });

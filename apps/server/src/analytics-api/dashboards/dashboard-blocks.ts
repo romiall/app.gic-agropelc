@@ -40,10 +40,14 @@ import {
   stockHealth,
 } from '../../modules/inventory/application/public/index.js';
 import {
+  costPerHead,
   cumulativeMortalityRate,
   eggSummary,
+  feedConsumption,
   hatchRate,
+  latestWeighing,
   productionOverview,
+  referenceLotType,
 } from '../../modules/production/application/public/index.js';
 import {
   cashedActivity,
@@ -53,11 +57,15 @@ import {
   repurchaseRate,
   salesActivityByDay,
   sumSalesActivity,
+  targetAttainment,
 } from '../../modules/sales/application/public/index.js';
 import { hasPermissionAt } from '../../modules/identity/application/public/index.js';
 import { toBin } from '../../platform/kysely/uuid-columns.js';
 import { supplierServiceRate } from '../../modules/procurement/application/public/index.js';
 import { countPendingApprovalsFor } from '../../modules/approvals/application/public/index.js';
+import { syncBacklog } from '../../sync/sync-backlog.js';
+import { devicesOfSites } from '../../sync/device-freshness.js';
+import { CONFLICT_RESOLVE, conflictOwnerRolesOf } from '../../sync/conflict-access.js';
 import { buildDistributionDashboard } from '../../distribution-api/distribution-dashboard.service.js';
 import {
   DISTRIBUTION_DASHBOARD_READ,
@@ -69,6 +77,11 @@ type BlockCode = DashboardBlock['code'];
 
 /** Borne du libellé d'une ligne de détail du contrat (`details[].label`) : une borne de forme, pas un seuil métier. */
 const DETAIL_LABEL_MAX = 200;
+/** Borne du nombre de lignes de détail du contrat (`details`, 50 au plus) : une borne de forme, pas un seuil métier. */
+const DETAIL_MAX = 50;
+
+/** Droit de lire les objectifs commerciaux : conditionne l'indicateur d'atteinte d'objectif (KPI-COM-16, AV-473). */
+const CRM_TARGET_READ = 'crm.target.read';
 
 /** Libellé ramené à `max` caractères au plus, terminé par « … » s'il a été coupé. */
 export const fitLabel = (label: string, max: number): string =>
@@ -480,20 +493,72 @@ export async function stockBlock(context: DashboardContext): Promise<DashboardBl
   );
 }
 
+/** Libellés des types de lot (AV-475) ; un type inconnu s'affiche par son code. */
+const LOT_TYPE_LABELS: Readonly<Record<string, string>> = {
+  POULET_CHAIR: 'Poulets de chair',
+  PONDEUSE: 'Pondeuses',
+  REPRODUCTEUR_VOLAILLE: 'Reproducteurs volaille',
+  PORC_ENGRAISSEMENT: 'Porcs d’engraissement',
+  PORC_NAISSAGE: 'Porcs de naissage',
+};
+
 export async function productionBlock(context: DashboardContext): Promise<DashboardBlock> {
   const scope = scopeOf(context);
   const can = context.canReadValuation;
-  const [overview, mortality, previousMortality, cumulative, eggs, previousEggs, hatch] =
-    await Promise.all([
-      productionOverview(context.executor, scope),
-      mortalitySummary(context.executor, scope, dayWindow(context.period)),
-      mortalitySummary(context.executor, scope, dayWindow(context.period.previous)),
-      cumulativeMortalityRate(context.executor, scope),
-      eggSummary(context.executor, scope, dayWindow(context.period)),
-      eggSummary(context.executor, scope, dayWindow(context.period.previous)),
-      hatchRate(context.executor, scope, utcWindow(context.period)),
-    ]);
+  const [
+    overview,
+    mortality,
+    previousMortality,
+    cumulative,
+    eggs,
+    previousEggs,
+    hatch,
+    feed,
+    previousFeed,
+    weighing,
+    cost,
+  ] = await Promise.all([
+    productionOverview(context.executor, scope),
+    mortalitySummary(context.executor, scope, dayWindow(context.period)),
+    mortalitySummary(context.executor, scope, dayWindow(context.period.previous)),
+    cumulativeMortalityRate(context.executor, scope),
+    eggSummary(context.executor, scope, dayWindow(context.period)),
+    eggSummary(context.executor, scope, dayWindow(context.period.previous)),
+    hatchRate(context.executor, scope, utcWindow(context.period)),
+    feedConsumption(context.executor, scope, utcWindow(context.period)),
+    feedConsumption(context.executor, scope, utcWindow(context.period.previous)),
+    // Poids moyen et coût par tête sont des instants : lus à l'instant du calcul, quelle que soit la période
+    // affichée (AV-477, AV-478). Le coût n'est lu que pour un lecteur qui peut le voir (RC-05).
+    latestWeighing(context.executor, scope, { at: context.at }),
+    can ? costPerHead(context.executor, scope) : null,
+  ]);
   const pct = (rate: number | null) => (rate === null ? null : round1(rate * 100));
+  // Un poids moyen ou un coût par tête ne se mêle pas entre espèces : l'indicateur est celui du type de lot qui
+  // compte le plus de têtes en élevage, les autres types sont des lignes de détail (AV-475).
+  const referenceType = referenceLotType(weighing.byLotType);
+  const typeName = (lotType: string) => LOT_TYPE_LABELS[lotType] ?? lotType;
+  const withType = (label: string) =>
+    referenceType === null ? label : `${label} — ${typeName(referenceType)}`;
+  const kg = (grams: number | null | undefined) =>
+    grams === null || grams === undefined ? null : Math.round(grams) / 1000;
+  const referenceWeight = weighing.byLotType.find((type) => type.lotType === referenceType);
+  const referenceCost = cost?.byLotType.find((type) => type.lotType === referenceType);
+  const typeDetails: DashboardBlock['details'] = [
+    ...weighing.byLotType
+      .filter((type) => type.lotType !== referenceType && type.avgWeightG !== null)
+      .map((type) => ({
+        label: fitLabel(`Poids moyen (kg) — ${typeName(type.lotType)}`, DETAIL_LABEL_MAX),
+        value: kg(type.avgWeightG),
+        unit: 'quantity' as const,
+      })),
+    ...(cost?.byLotType ?? [])
+      .filter((type) => type.lotType !== referenceType && type.costPerHeadXaf !== null)
+      .map((type) => ({
+        label: fitLabel(`Coût par tête — ${typeName(type.lotType)}`, DETAIL_LABEL_MAX),
+        value: type.costPerHeadXaf,
+        unit: 'xaf' as const,
+      })),
+  ];
   return block(
     'PRODUCTION',
     'Production',
@@ -526,6 +591,24 @@ export async function productionBlock(context: DashboardContext): Promise<Dashbo
         canReadValuation: can,
       }),
       kpi({
+        code: 'KPI-PRD-04',
+        label: 'Aliment consommé (kg)',
+        unit: 'quantity',
+        value: feed.quantity,
+        previous: previousFeed.quantity,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_production_daily', ['feed_consumed'], {
+          dimensions: ['business_day'],
+        }),
+      }),
+      kpi({
+        code: 'KPI-PRD-05',
+        label: withType('Poids moyen (kg)'),
+        unit: 'quantity',
+        value: kg(referenceWeight?.avgWeightG),
+        canReadValuation: can,
+      }),
+      kpi({
         code: 'KPI-PRD-06',
         label: 'Œufs collectés',
         unit: 'count',
@@ -550,13 +633,88 @@ export async function productionBlock(context: DashboardContext): Promise<Dashbo
         value: pct(hatch.rate),
         canReadValuation: can,
       }),
+      kpi({
+        code: 'KPI-PRD-09',
+        label: withType('Coût par tête'),
+        unit: 'xaf',
+        value: referenceCost?.costPerHeadXaf ?? null,
+        protectedValue: true,
+        canReadValuation: can,
+      }),
     ],
-    mortality.byDay.slice(-14).map((day) => ({
-      label: `Mortalité du ${day.day}`,
-      value: day.heads,
-      unit: 'count' as const,
-    })),
+    [
+      ...mortality.byDay.slice(-14).map((day) => ({
+        label: `Mortalité du ${day.day}`,
+        value: day.heads,
+        unit: 'count' as const,
+      })),
+      ...typeDetails,
+    ].slice(0, DETAIL_MAX),
   );
+}
+
+/** Libellé d'une métrique d'objectif autre que le chiffre d'affaires et la quantité de produit. */
+const TARGET_METRIC_LABELS: Readonly<Record<string, string>> = {
+  VISITES: 'visites',
+  PROSPECTS_CREES: 'prospects créés',
+  NOUVEAUX_CLIENTS: 'nouveaux clients',
+};
+
+/**
+ * Atteinte d'objectif (KPI-COM-16 ; AV-473, AV-474, AV-480) : l'indicateur est celui du chiffre d'affaires, les autres
+ * métriques sont des lignes de détail. Le jour de lecture est le dernier jour de la période, plafonné à aujourd'hui
+ * (le réalisé est cumulé jusqu'à lui). Sans `crm.target.read`, ou pour une étendue de sites seuls (aucun lien personne
+ * → site fiable), l'indicateur est **absent** du bloc, jamais `0`. Une lecture tronquée à `TARGET_LIST_LIMIT`
+ * objectifs rend la valeur `null` et aucun détail (jamais un chiffre incomplet). La portée de `crm.target.read` n'est
+ * pas rejouée : l'étendue lue est celle du tableau (AV-480).
+ */
+async function targetAttainmentParts(
+  context: DashboardContext,
+  scope: ReadScope,
+): Promise<{ attainmentKpis: DashboardKpi[]; attainmentDetails: DashboardBlock['details'] }> {
+  const none = { attainmentKpis: [], attainmentDetails: [] };
+  const allowed = await hasPermissionAt(
+    context.executor,
+    toBin(context.userId),
+    CRM_TARGET_READ,
+    context.at,
+  );
+  if (!allowed) return none;
+  const day = context.period.toDay < context.today ? context.period.toDay : context.today;
+  const attainment = await targetAttainment(context.executor, scope, { day });
+  if (!attainment.resolved) return none;
+  const usable = !attainment.truncated;
+  const revenueGroup = attainment.groups.find((group) => group.metric === 'CA');
+  const pctOf = (ratio: number | null | undefined) =>
+    ratio === null || ratio === undefined ? null : round1(ratio * 100);
+  const attainmentKpis = [
+    kpi({
+      code: 'KPI-COM-16',
+      label: 'Atteinte d’objectif (chiffre d’affaires)',
+      unit: 'pct',
+      value: usable ? pctOf(revenueGroup?.attainment) : null,
+      canReadValuation: context.canReadValuation,
+    }),
+  ];
+  const others = usable ? attainment.groups.filter((group) => group.metric !== 'CA') : [];
+  const productNames = others.some((group) => group.productId !== null)
+    ? new Map((await listProducts(context.executor)).map((product) => [product.id, product.name]))
+    : new Map<string, string>();
+  const attainmentDetails: DashboardBlock['details'] = others
+    .filter((group) => group.attainment !== null)
+    .map((group) => {
+      const metric =
+        group.metric === 'QTE_PRODUIT'
+          ? `quantité — ${(group.productId !== null ? productNames.get(group.productId) : undefined) ?? 'produit'}`
+          : (TARGET_METRIC_LABELS[group.metric] ?? group.metric);
+      return {
+        label: fitLabel(`Atteinte d’objectif — ${metric}`, DETAIL_LABEL_MAX),
+        value: pctOf(group.attainment),
+        unit: 'pct' as const,
+      };
+    })
+    .slice(0, DETAIL_MAX);
+  return { attainmentKpis, attainmentDetails };
 }
 
 export async function teamsBlock(context: DashboardContext): Promise<DashboardBlock> {
@@ -572,59 +730,66 @@ export async function teamsBlock(context: DashboardContext): Promise<DashboardBl
       attendanceDays(context.executor, scope, utcWindow(context.period.previous)),
     ]);
   const pct = (rate: number | null) => (rate === null ? null : round1(rate * 100));
-  return block('EQUIPES', 'Équipes commerciales', [
-    kpi({
-      code: 'KPI-COM-01',
-      label: 'Prospects créés',
-      unit: 'count',
-      value: activity.accountsCreated,
-      previous: previousActivity.accountsCreated,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_prospecting', ['accounts_created']),
-    }),
-    kpi({
-      code: 'KPI-COM-03',
-      label: 'Visites',
-      unit: 'count',
-      value: activity.visits,
-      previous: previousActivity.visits,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_prospecting', ['visits']),
-      alertType: 'INACTIVE_COMMERCIAL',
-    }),
-    kpi({
-      code: 'KPI-COM-05',
-      label: 'Nouveaux clients',
-      unit: 'count',
-      value: activity.newCustomers,
-      previous: previousActivity.newCustomers,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_prospecting', ['conversions']),
-    }),
-    kpi({
-      code: 'KPI-COM-11',
-      label: 'Taux de conversion (cohorte)',
-      unit: 'pct',
-      value: pct(cohort.rate),
-      canReadValuation: can,
-    }),
-    kpi({
-      code: 'KPI-COM-12',
-      label: 'Taux visite → commande',
-      unit: 'pct',
-      value: pct(orderRate.rate),
-      canReadValuation: can,
-    }),
-    kpi({
-      code: 'KPI-COM-17',
-      label: 'Jours de présence',
-      unit: 'count',
-      value: attendance.presenceDays,
-      previous: previousAttendance.presenceDays,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_attendance', ['presence_days']),
-    }),
-  ]);
+  const { attainmentKpis, attainmentDetails } = await targetAttainmentParts(context, scope);
+  return block(
+    'EQUIPES',
+    'Équipes commerciales',
+    [
+      kpi({
+        code: 'KPI-COM-01',
+        label: 'Prospects créés',
+        unit: 'count',
+        value: activity.accountsCreated,
+        previous: previousActivity.accountsCreated,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_prospecting', ['accounts_created']),
+      }),
+      kpi({
+        code: 'KPI-COM-03',
+        label: 'Visites',
+        unit: 'count',
+        value: activity.visits,
+        previous: previousActivity.visits,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_prospecting', ['visits']),
+        alertType: 'INACTIVE_COMMERCIAL',
+      }),
+      kpi({
+        code: 'KPI-COM-05',
+        label: 'Nouveaux clients',
+        unit: 'count',
+        value: activity.newCustomers,
+        previous: previousActivity.newCustomers,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_prospecting', ['conversions']),
+      }),
+      kpi({
+        code: 'KPI-COM-11',
+        label: 'Taux de conversion (cohorte)',
+        unit: 'pct',
+        value: pct(cohort.rate),
+        canReadValuation: can,
+      }),
+      kpi({
+        code: 'KPI-COM-12',
+        label: 'Taux visite → commande',
+        unit: 'pct',
+        value: pct(orderRate.rate),
+        canReadValuation: can,
+      }),
+      kpi({
+        code: 'KPI-COM-17',
+        label: 'Jours de présence',
+        unit: 'count',
+        value: attendance.presenceDays,
+        previous: previousAttendance.presenceDays,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_attendance', ['presence_days']),
+      }),
+      ...attainmentKpis,
+    ],
+    attainmentDetails,
+  );
 }
 
 export async function commercialBlock(context: DashboardContext): Promise<DashboardBlock> {
@@ -700,6 +865,32 @@ export async function distributionBlock(context: DashboardContext): Promise<Dash
   });
   const can = context.canReadValuation;
   const totals = response.totals;
+  // KPI-OPS-02 (AV-479, AV-480) : appareils des points de vente **ouverts** de la portée, `allSites` compris (même
+  // règle que KPI-OPS-01 : AV-208) ; les conflits ne se lisent qu'avec `sync.conflict.resolve`, par les rôles
+  // propriétaires du lecteur, sur les sites de la portée (sans filtre de site pour `allSites`).
+  const bySite = await devicesOfSites(
+    context.executor,
+    scope.kept.filter((pos) => pos.siteStatus === 'ACTIVE').map((pos) => pos.siteId),
+  );
+  const deviceIds = [...new Set([...bySite.values()].flat())];
+  const canConflicts = await hasPermissionAt(
+    context.executor,
+    toBin(context.userId),
+    CONFLICT_RESOLVE,
+    context.at,
+  );
+  const ownerRoles = canConflicts
+    ? await conflictOwnerRolesOf(context.executor, context.userId, context.at)
+    : null;
+  const backlog = await syncBacklog(context.executor, {
+    devices: { deviceIds },
+    conflicts: canConflicts
+      ? {
+          ...(ownerRoles !== null && ownerRoles !== 'ALL' ? { ownerRoles } : {}),
+          ...(scope.allSites ? {} : { siteIds: scope.kept.map((pos) => pos.siteId) }),
+        }
+      : false,
+  });
   return block('DISTRIBUTION', 'Distribution', [
     kpi({
       code: 'KPI-DIS-03',
@@ -731,6 +922,24 @@ export async function distributionBlock(context: DashboardContext): Promise<Dash
       canReadValuation: can,
       alertType: 'CASH_VARIANCE',
     }),
+    kpi({
+      code: 'KPI-OPS-02',
+      label: 'Opérations en attente d’envoi',
+      unit: 'count',
+      value: backlog.pendingOperations,
+      canReadValuation: can,
+    }),
+    ...(backlog.openConflicts !== null
+      ? [
+          kpi({
+            code: 'KPI-OPS-02-CONFLICTS',
+            label: 'Conflits de synchronisation ouverts',
+            unit: 'count',
+            value: backlog.openConflicts.total,
+            canReadValuation: can,
+          }),
+        ]
+      : []),
   ]);
 }
 

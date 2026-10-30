@@ -6,7 +6,8 @@
  * `state` dit où en est la fonction : `EXISTING` (la fonction est exportée par l'API publique de son module : un
  * essai du serveur le vérifie) ou `TO_CREATE` (fonction de référence à écrire : l'indicateur est défini par D11
  * §7.1 mais aucun tableau, accueil ni instantané ne l'affiche ; il n'y entre qu'avec sa fonction et son essai
- * d'équivalence, AV-462).
+ * d'équivalence). Aucun indicateur n'est plus à créer depuis P9-27 (AV-462 choix (b) : KPI-COM-16, KPI-PRD-04,
+ * KPI-PRD-05, KPI-PRD-09 et KPI-OPS-02 livrés) ; l'état reste prévu pour un indicateur futur.
  */
 
 import type { ExplorationFilter } from './analytics-catalog.js';
@@ -177,11 +178,12 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     label: "Atteinte d'objectif",
     nature: 'RATIO',
     // Le réalisé d'une cible compose `crm.listTargets` et `commercialEffort` avec `sales.periodRevenue` et
-    // `periodProductQuantity` (crm-read.controller.ts) ; `crm` n'importe pas `sales` (graphe) : la fonction ne peut
-    // vivre que dans `sales`. Aucune fonction publique aujourd'hui (EP-5, AV-462).
+    // `periodProductQuantity` ; `crm` n'importe pas `sales` (graphe) : la fonction vit dans `sales` (P9-27, AV-462).
+    // Objectifs `USER` actifs au jour de lecture, réalisé cumulé jusqu'à ce jour (AV-473, AV-474) : pas de lien
+    // d'exploration, l'explorateur n'a pas de mesure égale.
     module: 'sales',
     reference: 'targetAttainment',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-COM-17',
@@ -361,10 +363,10 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'production',
     reference: 'feedConsumption',
-    state: 'TO_CREATE',
-    // Par lot et par jour : `costObjectConsumptionsByDay` (inventory), sans somme sur un périmètre. Lien
-    // d'exploration (`feed_consumed`) à confirmer par l'essai d'équivalence (D11 §7.1 cite `f_stock_moves`) ;
-    // il n'est posé qu'avec cet essai (EP-5, AV-462).
+    state: 'EXISTING',
+    // Consommations d'intrant de nature `ALIMENT` imputées aux lots du périmètre (AV-476) : la vue de
+    // `f_production_daily` reproduit la même définition, l'essai d'équivalence (P9-27) le prouve.
+    explorer: { dataset: 'f_production_daily', measure: 'feed_consumed' },
   }),
   kpi({
     code: 'KPI-PRD-05',
@@ -372,9 +374,10 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'INSTANT',
     module: 'production',
     reference: 'latestWeighing',
-    state: 'TO_CREATE',
-    // La fiche du lot liste les pesées ; la mesure `average_weight` de l'explorateur est la moyenne des pesées de
-    // la période, non la dernière (AV-329) : pas de lien d'exploration (EP-5, AV-462).
+    state: 'EXISTING',
+    // Dernière pesée de chaque lot en élevage, pondérée par l'effectif, par type de lot (AV-475, AV-477) ; la mesure
+    // `average_weight` de l'explorateur est la moyenne des pesées de la période, non la dernière (AV-329) : pas de
+    // lien d'exploration.
   }),
   kpi({
     code: 'KPI-PRD-06',
@@ -407,9 +410,9 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'production',
     reference: 'costPerHead',
-    state: 'TO_CREATE',
-    // Par lot : `getProductionLot().costs.costPerHeadXaf` (coût restant ÷ effectif non vendu, BR-PRD-012) ; aucune
-    // fonction publique de ce nom (EP-5, AV-462).
+    state: 'EXISTING',
+    // Σ coûts restants ÷ Σ effectifs non vendus par type de lot en élevage, à l'instant de lecture (BR-PRD-012,
+    // AV-478) ; aucune mesure de l'explorateur n'est égale (AV-329) : pas de lien d'exploration.
     protected: true,
   }),
   kpi({
@@ -550,9 +553,19 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'INSTANT',
     module: 'sync',
     reference: 'syncBacklog',
-    state: 'TO_CREATE',
-    // Conflits ouverts : `openConflictSummary` (platform/sync/conflicts.ts) ; opérations en attente : `pending_reported`
-    // par appareil (`deviceFreshness`) ; leur somme sous une étendue n'a pas de fonction (EP-5, AV-462).
+    state: 'EXISTING',
+    // Opérations en attente d'envoi : Σ du dernier reste déclaré (`pending_reported`) des appareils en service lus
+    // (AV-479) ; pas de lien d'exploration. Les conflits ouverts sont un second indicateur de la même fonction.
+  }),
+  kpi({
+    // Code local (comme KPI-FIN-CS-*) : le décompte des conflits ouverts n'est lisible qu'avec
+    // `sync.conflict.resolve`, droit que n'a pas tout lecteur du tableau (AV-479).
+    code: 'KPI-OPS-02-CONFLICTS',
+    label: 'Conflits de synchronisation ouverts',
+    nature: 'INSTANT',
+    module: 'sync',
+    reference: 'syncBacklog',
+    state: 'EXISTING',
   }),
 ];
 
@@ -579,7 +592,7 @@ export function maskProtectedKpi<T extends { readonly code: string }>(entry: T):
   } as T;
 }
 
-/** Indicateurs dont la fonction de référence reste à écrire (cinq depuis la revue de P9-25, AV-462). */
+/** Indicateurs dont la fonction de référence reste à écrire (aucun depuis P9-27, AV-462). */
 export function kpisToCreate(): readonly KpiDefinition[] {
   return KPI_CATALOG.filter((k) => k.state === 'TO_CREATE');
 }

@@ -135,6 +135,21 @@ describe('renderAlertMessage (ADR-061 §11, AV-390)', () => {
     }
   });
 
+  it('AV-469 : JOB_FAILED cite le type de tâche et le nombre d’échecs, jamais le message d’erreur', () => {
+    const rendered = renderAlertMessage(
+      'JOB_FAILED',
+      {
+        job_type: 'analytics.export.run',
+        failed_jobs: 3,
+        last_error: 'Erreur brute avec une valeur : 699000000',
+      },
+      { showProtected: false },
+    );
+    expect(rendered.title).toBe('Tâche de fond en échec');
+    expect(rendered.message).toBe('Tâche : analytics.export.run ; Échecs : 3');
+    expect(rendered.message).not.toContain('699000000');
+  });
+
   it('P9-09 : mortalité (taux à la française, champ omis sans effectif de référence) et quarantaine (motif)', () => {
     const mortality = renderAlertMessage(
       'HIGH_MORTALITY',

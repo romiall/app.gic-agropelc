@@ -19,7 +19,10 @@ export interface ExplorerLimits {
   readonly maxDetailDays: number;
   /** Requêtes simultanées au plus par utilisateur (ADR-068 §1 : 2). */
   readonly maxConcurrentPerUser: number;
-  /** Requêtes simultanées au plus, tous utilisateurs confondus (P9-25, AV-461 : 4). */
+  /**
+   * Requêtes simultanées au plus, tous utilisateurs confondus (P9-25, AV-461). Décision du porteur du 29/10/2026 :
+   * désactivé par défaut. 0 = aucun plafond global ; une valeur entière > 0 l'active.
+   */
   readonly maxConcurrentGlobal: number;
   /** Candidats par sorte de l'étendue exacte (AV-373 : 500). */
   readonly scopeMaxCandidates: number;
@@ -39,12 +42,16 @@ export const DEFAULT_EXPLORER_LIMITS: ExplorerLimits = {
   maxExecutionMs: 15_000,
   maxDetailDays: 1_096,
   maxConcurrentPerUser: 2,
-  maxConcurrentGlobal: 4,
+  maxConcurrentGlobal: 0,
   scopeMaxCandidates: DEFAULT_MAX_SCOPE_CANDIDATES,
 };
 
 const positiveInteger = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+
+/** Entier >= 0 (0 = limite désactivée, AV-461) ; toute autre valeur retombe sur le défaut. */
+const nonNegativeInteger = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
 
 export async function readExplorerLimits(executor: Executor, at: Date): Promise<ExplorerLimits> {
   const read = async (key: string): Promise<unknown> =>
@@ -66,7 +73,7 @@ export async function readExplorerLimits(executor: Executor, at: Date): Promise<
       await read(EXPLORER_SETTING_KEYS.maxConcurrentPerUser),
       DEFAULT_EXPLORER_LIMITS.maxConcurrentPerUser,
     ),
-    maxConcurrentGlobal: positiveInteger(
+    maxConcurrentGlobal: nonNegativeInteger(
       await read(EXPLORER_SETTING_KEYS.maxConcurrentGlobal),
       DEFAULT_EXPLORER_LIMITS.maxConcurrentGlobal,
     ),

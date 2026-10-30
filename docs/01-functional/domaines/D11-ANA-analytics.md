@@ -77,7 +77,7 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-COM-13 | Clients actifs | Clients avec au moins une vente dans les N derniers jours à la fin de P (N = `crm.inactive_after_days`, 30 par défaut) | `f_sales_line` | C (CM §9) / AV-013 |
 | KPI-COM-14 | Clients inactifs | Clients sans vente depuis N jours à la fin de P (N = `crm.inactive_after_days`, 30 par défaut) | `f_sales_line` | C (CM §9) / AV-013 |
 | KPI-COM-15 | Taux de réachat | Clients ayant ≥ 2 ventes dans P ÷ clients ayant ≥ 1 vente dans P | `f_sales_line` | C (CM §9) / D |
-| KPI-COM-16 | Atteinte d'objectif | Valeur réalisée de la métrique ÷ valeur cible | `crm.sales_targets` + faits | C (CM §34.3) |
+| KPI-COM-16 | Atteinte d'objectif | Chiffre d'affaires réalisé ÷ chiffre d'affaires visé des objectifs `USER` actifs au jour de lecture, réalisé cumulé du début de l'objectif au jour de lecture ; détail par autre métrique et par produit (AV-473, AV-474) | `crm.sales_targets` + faits | C (CM §34.3) / D (AV-473, AV-474) |
 | KPI-COM-17 | Jours de présence | Jours distincts avec une session de travail acceptée | `f_attendance` | C (CM §10) |
 | KPI-COM-18 | CA du portefeuille acquis | CA des ventes aux clients dont l'acquéreur est l'utilisateur | `f_sales_line` | C (CM §7) |
 | KPI-STK-01 | Stock disponible | BR-STK-011, à l'instant ou à une date | `f_stock_balance` | C (CM §2) |
@@ -90,12 +90,12 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-PRD-01 | Effectif | BR-PRD-003 (en élevage / non vendu) | `f_stock_balance` | C (CM §2) |
 | KPI-PRD-02 | Mortalité | Σ quantités des pertes `MORTALITE` reconnues ou en attente | `f_losses` | C (CM §16) |
 | KPI-PRD-03 | Taux de mortalité cumulé | Mortalité cumulée ÷ (effectif initial + entrées) | dérivé | D / AV-049 |
-| KPI-PRD-04 | Consommation d'aliment | Σ consommations d'intrants de famille aliment, imputées au lot | `f_stock_moves` | C (CM §15) |
-| KPI-PRD-05 | Poids moyen | Dernière pesée du lot | `production.lot_weighings` | C (CM §15) |
+| KPI-PRD-04 | Consommation d'aliment | Σ consommations d'intrants de nature aliment (`RECORDED`), imputées aux lots du périmètre, en kg (AV-476) | `inventory.consumptions` (vue `f_production_daily`, mesure `feed_consumed`) | C (CM §15) / D (AV-476) |
+| KPI-PRD-05 | Poids moyen | Dernière pesée `RECORDED` de chaque lot en élevage, moyenne par type de lot pondérée par l'effectif en élevage ; type de référence et détail des autres types (AV-475, AV-477) | `production.lot_weighings` | C (CM §15) / D (AV-475, AV-477) |
 | KPI-PRD-06 | Œufs collectés, commercialisables, à couver, cassés, non conformes | Σ par lot et par jour | `f_production_daily` | C (CM §17) |
 | KPI-PRD-07 | Taux d'œufs commercialisables | Commercialisables ÷ collectés | dérivé | D |
 | KPI-PRD-08 | Taux d'éclosion | BR-INC-007 | `production.incubation_batches` | C (CM §18) |
-| KPI-PRD-09 | Coût par tête | BR-PRD-012 | `f_costs` | C (CM §33) |
+| KPI-PRD-09 | Coût par tête | BR-PRD-012 : Σ des coûts restants ÷ Σ des effectifs non vendus des lots en élevage du type de référence, à l'instant de lecture ; masqué sans `inventory.valuation.read` (AV-475, AV-478) | `inventory` (coût restant) + `production` (effectifs) | C (CM §33) / D (AV-478) |
 | KPI-PRD-10 | Marge du lot | BR-PRD-014 | `f_costs`, `f_sales_line` | C (CM §33) |
 | KPI-FIN-01 | Encaissé | Σ encaissements confirmés dans P (enregistrés, en demande d'annulation ou annulés depuis), à leur date − Σ annulations décidées dans P, à leur date ; un doublon approuvé compte à sa date d'origine ; remboursements non retranchés (AV-244) ; négatif possible | `f_payments` | C (CM §31) / D (datation : ADR-041, AV-200) |
 | KPI-FIN-02 | Créances | Σ soldes dus à la fin de P, par âge (0-30, 31-60, 61-90, > 90 jours) | requête sur `sales.sales` (`balance_due_xaf`, `due_date`) | C (CM §31) |
@@ -108,9 +108,9 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-APP-01 | Taux de service fournisseur | Σ acceptées ÷ Σ commandées (BC clôturés dans P) | `f_purchases` | C (CM §26) / D |
 | KPI-APP-02 | Taux de rejet | Σ rejetées ÷ Σ livrées | `f_purchases` | C (CM §28) / D |
 | KPI-OPS-01 | Fraîcheur de synchronisation | Délai depuis le dernier contact de chaque appareil (connexion, envoi ou pull, AV-202) ; résumé de l'accueil et du tableau de distribution : nombre d'appareils en service sans contact depuis plus de `analytics.freshness_warning_hours` | `sync.device_sync_state` | C (CM §36) / D (dernier contact, résumé : AV-202, AV-208) |
-| KPI-OPS-02 | Opérations en attente et conflits ouverts | Comptage | `sync.*` | C (PM §29) |
+| KPI-OPS-02 | Opérations en attente et conflits ouverts | Deux indicateurs : `KPI-OPS-02` = Σ des restes d'envoi déclarés par les appareils en service des points de vente ouverts de la portée ; `KPI-OPS-02-CONFLICTS` (code local) = conflits de synchronisation ouverts, rendu avec `sync.conflict.resolve` (AV-479) | `sync.device_sync_state`, `sync.sync_conflicts` | C (PM §29) / D (AV-479) |
 
-> **Indicateurs sans fonction de référence ni écran en P9** (revue de P9, EP-5, AV-462) : KPI-COM-16 (atteinte d'objectif), KPI-PRD-04 (consommation d'aliment), KPI-PRD-05 (poids moyen = dernière pesée), KPI-PRD-09 (coût par tête) et KPI-OPS-02 sont à l'état `TO_CREATE` dans le registre (`kpi-catalog.ts`) ; aucun tableau, accueil ni instantané ne les affiche.
+> **Indicateurs livrés en P9-27** (décision du porteur du 29/10/2026, AV-462 choix (b) ; revue de P9, EP-5) : KPI-COM-16 (`sales.targetAttainment`), KPI-PRD-04 (`production.feedConsumption`), KPI-PRD-05 (`production.latestWeighing`), KPI-PRD-09 (`production.costPerHead`) et KPI-OPS-02 (`sync.syncBacklog`) sont à l'état `EXISTING` dans le registre (`kpi-catalog.ts`), avec leur essai d'équivalence (AT-054) ; seul KPI-PRD-04 a un lien d'exploration (`f_production_daily` / `feed_consumed`). Placement dans les blocs : §7.2 (AV-480).
 
 **Codes locaux de l'accueil liés à la distribution** (ADR-030 §7, P5-20, AV-208 ; DÉDUIT) : `KPI-FIN-CS-PENDING` (sessions de caisse de PDV à valider, ajustements en attente en détail), `KPI-FIN-CS-VAR` (toutes les sessions ouvertes le jour métier dont l'écart courant est non nul, manquant et excédent en détail), `KPI-FIN-TRANSFERS` (remises de fonds en transit ou en écart, tous comptes), `KPI-DIS-QUOTAS` (quotas actifs échus ou en révocation, chacun compté une fois, sur les emplacements de vente des PDV du magasinier). Chacun est calculé par la fonction que le tableau de distribution appelle (BR-ANA-009).
 
@@ -118,12 +118,12 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 
 | Bloc | Indicateurs | Alerte associée |
 |---|---|---|
-| PRODUCTION | Effectifs par type de lot, mortalité du jour et de 7 jours, œufs du jour, incubations en cours | `HIGH_MORTALITY`, `DAILY_ENTRY_MISSING` |
+| PRODUCTION | Effectifs par type de lot, mortalité du jour et de 7 jours, œufs du jour, incubations en cours ; aliment consommé, poids moyen et coût par tête (type de lot de référence, AV-475 ; KPI-PRD-04, 05, 09) | `HIGH_MORTALITY`, `DAILY_ENTRY_MISSING` |
 | STOCK | Disponible des produits clés par zone (dont « poulets vendables à Douala »), valeur du stock, ruptures | `STOCK_OUT`, `STOCK_NEGATIVE` |
-| DISTRIBUTION | Tableau des PDV : vendu, restant, perdu, encaissé, fraîcheur | `POS_REPLENISH` |
+| DISTRIBUTION | Tableau des PDV : vendu, restant, perdu, encaissé, fraîcheur ; opérations en attente et conflits ouverts (KPI-OPS-02, AV-479) | `POS_REPLENISH` |
 | VENTES | CA et nombre de ventes du jour et de la semaine vs période précédente, par canal, top commerciaux | — |
 | FINANCES | Encaissé du jour, créances et retards, dépenses, trésorerie | `OVERDUE_RECEIVABLE`, `CASH_VARIANCE` |
-| ÉQUIPES | Commerciaux en service, sans activité, visites du jour | `INACTIVE_COMMERCIAL` |
+| ÉQUIPES | Commerciaux en service, sans activité, visites du jour ; atteinte d'objectif (KPI-COM-16, avec `crm.target.read`) | `INACTIVE_COMMERCIAL` |
 | ALERTES | Alertes ouvertes par gravité ; validations en attente | toutes |
 
 ## 8. Validations

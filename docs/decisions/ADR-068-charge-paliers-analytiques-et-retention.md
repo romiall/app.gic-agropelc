@@ -3,7 +3,7 @@
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; applique NFR-12, NFR-13, NFR-15, RISK-13, AV-086 et la stratégie analytique §6 ; les choix métier sont AV-386, AV-387 et AV-388, défauts paramétrables)
 - **Date** : 14/10/2026 (numéro provisoire 078 de la plage 070 à 079, renuméroté ADR-068 à l'intégration du 26/10/2026 ; révisé le même jour après la revue adverse de la conception)
 - **Précise** : [ADR-060](ADR-060-architecture-de-p9-communication-et-analytics.md), [ADR-064](ADR-064-couche-semantique-et-explorateur.md), [ADR-066](ADR-066-tableaux-tour-de-controle-et-instantanes.md)
-- **Questions liées** : AV-086, AV-386, AV-387, AV-388
+- **Questions liées** : AV-086, AV-386, AV-387, AV-388, AV-461
 
 ## Contexte
 
@@ -22,6 +22,7 @@ Faits de la plateforme :
    - `LIMIT + 1` imposé par le compilateur (affichage 10 000, export 100 000), dépassement = erreur (ADR-064 §8) ;
    - durée maximale par requête (ADR-064 §8) ;
    - au plus `analytics.query_max_concurrent_per_user` requêtes simultanées par utilisateur (2) : au-delà, 429 `QUERY_LIMIT_EXCEEDED` (D11 §8, détail `concurrency`).
+   - **plafond global désactivé par défaut** (AV-461, décision du porteur du 29/10/2026, P9-27) : `analytics.query_max_concurrent_global` vaut 0 (aucun plafond global, seul le pool de connexions limite) ; un entier > 0 réactive le plafond, par verrous nommés `analytics:q:global:n`.
 2. **Aucun balayage complet à la lecture** : la boîte d'alertes se lit par l'index `alert_recipients (user_id, alert_id)` joint à `alerts` (filtré sur `status`) et, pour la supervision, par `alerts (status, severity, first_detected_at)`, `(site_id, status)` et `(owner_user_id, status)` ; un tableau appelle des fonctions bornées par période et par périmètre ; l'instantané personnel évite le calcul à l'ouverture. Les compteurs d'alertes suivent la lecture exacte d'ADR-062 §3 ; le compteur de validations est un balayage borné par plafond (ADR-066 §4).
 3. **Écritures de fond bornées et isolées** :
    - le consommateur d'alertes est une transaction par événement, des écritures en nombre borné par événement (une alerte, ses destinataires, ses notifications) ;
@@ -73,7 +74,7 @@ Faits de la plateforme :
 
 ## Révision du 28/10/2026 (P9-25, revue adverse)
 
-- **Plafond global des explorations (§1, AV-461 ; EP-2 et PF-4)** : en plus des `analytics.query_max_concurrent_per_user` (2) requêtes par utilisateur, au plus `analytics.query_max_concurrent_global` (4) requêtes de l'explorateur tournent en même temps pour tous les utilisateurs (verrous nommés `analytics:q:global:n`, pris sur la connexion épinglée de la requête, libérés dans le `finally`). Chaque requête épingle une connexion du pool mysql2, partagé avec les commandes de synchronisation ; sans ce plafond, cinq utilisateurs à deux agrégations lentes occupaient les 10 connexions par défaut et tout le reste attendait dans une file non bornée. La taille du pool reste réglable par le paramètre `connectionLimit` de l'URI de connexion.
+- **Plafond global des explorations (§1, AV-461 ; EP-2 et PF-4) — désactivé par défaut depuis le 29/10/2026 (P9-27)** : le porteur a décidé de n'imposer aucun plafond global : `analytics.query_max_concurrent_global` est semé à 0 (0 = désactivé), le plafond par utilisateur (2) restant. Le mécanisme livré en P9-25 reste disponible : avec un entier > 0 (4 était le défaut de P9-25), au plus ce nombre de requêtes de l'explorateur tournent en même temps pour tous les utilisateurs (verrous nommés `analytics:q:global:n`, pris sur la connexion épinglée de la requête, libérés dans le `finally`). Chaque requête épingle une connexion du pool mysql2, partagé avec les commandes de synchronisation ; sans ce plafond, cinq utilisateurs à deux agrégations lentes occupaient les 10 connexions par défaut et tout le reste attendait dans une file non bornée. La taille du pool reste réglable par le paramètre `connectionLimit` de l'URI de connexion.
 - **Purge des exports (§8, EX-1, EX-2, EX-6)** : voir [ADR-067](ADR-067-vues-sauvegardees-et-exports-audites.md), révision du 28/10/2026 : lecture des abandonnés en `SKIP LOCKED`, fichier supprimé après la mise à jour de la ligne, purge par listage du stockage (`ChunkStorage.listKeys`), seuil d'abandon `analytics.export_abandon_hours` (24).
 - **Voie courte et XLSX (§3, EX-4)** : l'écriture d'un XLSX de 100 000 lignes se faisait d'un bloc (environ 4 s, 580 Mo) sur le fil du worker, donc au détriment de la voie courte (alertes, consommateurs) que la voie longue devait précisément protéger ; `buildXlsx` et `zipArchive` sont asynchrones, par lots, et rendent la main à la boucle d'événements.
 - **Durée cumulée (§1, EP-2)** : la durée maximale de l'exploration vaut pour l'exploration entière (lignes et total) ; la durée cumulée est bornée, exports compris (120 s).

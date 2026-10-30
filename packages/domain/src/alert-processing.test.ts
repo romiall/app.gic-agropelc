@@ -540,6 +540,67 @@ describe('alertsResolvedByPass (ADR-061 §3)', () => {
   });
 });
 
+describe('alertFromEvent — JOB_FAILED (AV-469, P9-27)', () => {
+  const JOB_EVENT = '0191a3f0-0000-7000-8000-0000000000e1';
+  const failure = (jobType: string, failedJobs: number) =>
+    event('JobFailureDetected', JOB_EVENT, {
+      job_type: jobType,
+      failed_jobs: failedJobs,
+      business_day: '2026-10-14',
+      pass_id: 'JOB_FAILED:slot-1',
+    });
+
+  it('lève une alerte d’état par type de tâche, pour l’Admin, sans écran ni propriétaire', () => {
+    const action = raise(failure('analytics.export.run', 3));
+    expect(action).toMatchObject({
+      alertType: 'JOB_FAILED',
+      subjectType: 'JOB_TYPE',
+      subjectKey: 'JOB_TYPE:analytics.export.run',
+      dedupKey: 'JOB_FAILED:JOB_TYPE:analytics.export.run',
+      severity: 'WARNING',
+      declaredSeverity: null,
+      ownerUserIds: [],
+      recipientRoles: ['ADMIN'],
+      teamManager: false,
+      approvers: false,
+      actionScreen: null,
+      businessDay: '2026-10-14',
+      passId: 'JOB_FAILED:slot-1',
+    });
+    // Deux types de tâche en échec : deux alertes distinctes, même événement d’origine.
+    expect(raise(failure('sales.receivables.scan', 1)).dedupKey).not.toBe(action.dedupKey);
+  });
+
+  it('un événement sans type de tâche ne lève rien et signale le sujet manquant', () => {
+    const result = alertFromEvent(event('JobFailureDetected', JOB_EVENT, { failed_jobs: 2 }));
+    expect(result.actions).toEqual([]);
+    expect(result.issues).toEqual([
+      expect.objectContaining({ alertType: 'JOB_FAILED', code: 'SUBJECT_MISSING' }),
+    ]);
+    expect(isAlertTriggerEvent('JobFailureDetected')).toBe(true);
+  });
+
+  it('le marqueur de passe résout les alertes dont le type de tâche n’a pas été revu', () => {
+    const open = [
+      {
+        id: 'j1',
+        alertType: 'JOB_FAILED',
+        status: 'OPEN',
+        lastPassId: 'JOB_FAILED:slot-1',
+      },
+      {
+        id: 'j2',
+        alertType: 'JOB_FAILED',
+        status: 'ACKNOWLEDGED',
+        lastPassId: 'JOB_FAILED:slot-2',
+      },
+    ] as const;
+    // La passe 2 n'a revu que le second type : le premier n'a plus de tâche échouée dans la fenêtre.
+    const marker = { alertType: 'JOB_FAILED', passId: 'JOB_FAILED:slot-2' } as const;
+    expect(alertsResolvedByPass(open, marker)).toEqual(['j1']);
+  });
+});
+
 describe('alertFromEvent — alertes de stock (P9-08)', () => {
   const LOT = '0191a3f0-0000-7000-8000-0000000000d1';
   const SITE_B = '0191a3f0-0000-7000-8000-0000000000bb';

@@ -1,11 +1,12 @@
 /**
  * P9-25 (EP-5 ; ADR-065 §1, BR-ANA-009) — les références du registre des indicateurs sont exactes, sans base : chaque
  * fonction de référence d'un indicateur `EXISTING` est exportée par l'API publique de son module ; aucune fonction de
- * référence d'un indicateur `TO_CREATE` ne l'est encore (le jour où elle existe, l'état doit changer).
+ * référence d'un indicateur `TO_CREATE` ne l'est encore (le jour où elle existe, l'état doit changer). Depuis P9-27
+ * (AV-462 choix (b)) aucun indicateur n'est plus à créer : la liste `TO_CREATE` est vide.
  *
  * Aucune connexion de base : les API publiques sont importées statiquement, `helpers.ts` ne l'est pas (il lève sans
  * `SERVER_DATABASE_URL`) et rien ne ferme de connexion. Le module `sync` n'a pas d'API publique : ses fonctions de
- * référence vivent dans `sync/device-freshness.ts` et `platform/sync/conflicts.ts`.
+ * référence vivent dans `sync/device-freshness.ts`, `sync/sync-backlog.ts` et `platform/sync/conflicts.ts`.
  */
 import { describe, expect, it } from 'vitest';
 import { KPI_CATALOG } from '@gic/domain';
@@ -17,6 +18,7 @@ import * as fieldwork from '../src/modules/fieldwork/application/public/index.js
 import * as finance from '../src/modules/finance/application/public/index.js';
 import * as procurement from '../src/modules/procurement/application/public/index.js';
 import * as deviceFreshness from '../src/sync/device-freshness.js';
+import * as syncBacklog from '../src/sync/sync-backlog.js';
 import * as conflicts from '../src/platform/sync/conflicts.js';
 
 const PUBLIC_API: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
@@ -27,7 +29,7 @@ const PUBLIC_API: Readonly<Record<string, Readonly<Record<string, unknown>>>> = 
   fieldwork: { ...fieldwork },
   finance: { ...finance },
   procurement: { ...procurement },
-  sync: { ...deviceFreshness, ...conflicts },
+  sync: { ...deviceFreshness, ...conflicts, ...syncBacklog },
 };
 
 describe('P9-25 (EP-5) : les références du registre des indicateurs existent', () => {
@@ -48,9 +50,9 @@ describe('P9-25 (EP-5) : les références du registre des indicateurs existent',
     }
   });
 
-  it('indicateur TO_CREATE : la fonction de référence n’existe pas encore (sinon passer l’état à EXISTING, poser l’essai d’équivalence AT-054 et retirer AV-462)', () => {
+  it('aucun indicateur n’est plus à créer (AV-462 livré en P9-27) ; un indicateur éventuel à créer n’a pas encore sa fonction', () => {
     const toCreate = KPI_CATALOG.filter((kpi) => kpi.state === 'TO_CREATE');
-    expect(toCreate.length).toBeGreaterThan(0);
+    expect(toCreate).toEqual([]);
     for (const kpi of toCreate) {
       const api = PUBLIC_API[kpi.module]!;
       expect(

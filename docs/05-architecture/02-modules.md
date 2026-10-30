@@ -204,7 +204,7 @@
 | Responsabilité | Règles d'alerte, alertes, notifications, push, notes de direction |
 | Tables | `alert_rules`, `alerts`, `notifications`, `push_subscriptions`, `internal_notes`, `note_audiences`, `note_acknowledgements` |
 | API | `/alerts`, `/notifications`, `/notes`. **Aucune API interne appelée par les modules métier** : les alertes naissent des gestionnaires d'événements de `communication` (et de ses tâches planifiées) |
-| Événements | `Alert*`, `InternalNote*`, `ConsumerFailureDetected` (P9-10 : passe de 5 minutes, AV-425) |
+| Événements | `Alert*`, `InternalNote*`, `ConsumerFailureDetected` (P9-10 : passe de 5 minutes, AV-425), `JobFailureDetected` (P9-27 : passe de 5 minutes, AV-469) |
 | Autorisées | `platform`, `audit`, `identity`, `organization` ; **consomme** les événements de tous les modules |
 | Interdites | Appels synchrones vers les modules métier (seulement de la lecture de résumé par événement) |
 

@@ -44,3 +44,40 @@ export async function readJobBacklog(
     failedJobs: Number(failed?.failed_jobs ?? 0),
   };
 }
+
+/** Tâches `FAILED` d'un même type dans la fenêtre demandée. */
+export interface FailedJobsOfType {
+  readonly jobType: string;
+  readonly failedJobs: number;
+  /** `run_at` du dernier essai de la plus récente tâche échouée du type. */
+  readonly lastFailedAt: Date;
+}
+
+/**
+ * Tâches `FAILED` de la fenêtre `(failedSince, now]`, regroupées par type de tâche (P9-27, AV-469 : une alerte
+ * `JOB_FAILED` par type), par nom de type croissant. Même fenêtre que {@link readJobBacklog} (borne haute
+ * comprise). Le message d'erreur et la charge utile ne sont jamais lus.
+ */
+export async function readFailedJobsByType(
+  executor: Kysely<DB> | Transaction<DB>,
+  window: { readonly now: Date; readonly failedSince: Date },
+): Promise<readonly FailedJobsOfType[]> {
+  const rows = await executor
+    .selectFrom('platform_jobs')
+    .select(({ fn }) => [
+      'job_type',
+      fn.countAll<number>().as('failed_jobs'),
+      fn.max('run_at').as('last_failed_at'),
+    ])
+    .where('status', '=', 'FAILED')
+    .where('run_at', '>', window.failedSince)
+    .where('run_at', '<=', window.now)
+    .groupBy('job_type')
+    .orderBy('job_type')
+    .execute();
+  return rows.map((row) => ({
+    jobType: row.job_type,
+    failedJobs: Number(row.failed_jobs),
+    lastFailedAt: new Date(row.last_failed_at ?? window.now),
+  }));
+}

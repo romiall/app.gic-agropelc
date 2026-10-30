@@ -37,7 +37,7 @@ function rule(
   };
 }
 
-/** 36 règles : les 30 types de D13 §7.1 puis les 6 ajoutés par AV-352. */
+/** 37 règles : les 30 types de D13 §7.1, les 6 ajoutés par AV-352, puis `JOB_FAILED` (AV-469). */
 export const ALERT_RULES: readonly AlertRuleSeed[] = [
   rule('STOCK_LOW', 'WARNING', ['MAGASINIER', 'VENDEUR_PDV'], 'AUTO'),
   rule('STOCK_OUT', 'CRITICAL', ['MAGASINIER', 'VENDEUR_PDV', 'RESP_COMMERCIAL'], 'AUTO', {
@@ -93,4 +93,6 @@ export const ALERT_RULES: readonly AlertRuleSeed[] = [
     },
   ),
   rule('CASH_MISMATCH', 'CRITICAL', ['FINANCE', 'DIRECTION'], 'MANUAL', { escalationHours: 4 }),
+  // AV-469 (P9-27) : tâche de fond passée FAILED, alerte technique de l'Admin.
+  rule('JOB_FAILED', 'WARNING', ['ADMIN'], 'AUTO'),
 ];

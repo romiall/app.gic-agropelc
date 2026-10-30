@@ -1058,7 +1058,8 @@ describe('requêtes simultanées par utilisateur', () => {
     maxRows: 100,
     maxExecutionMs: 15_000,
     maxConcurrentPerUser: 1,
-    maxConcurrentGlobal: 4,
+    // Plafond global désactivé par défaut (AV-461) ; les essais du plafond posent explicitement une valeur > 0.
+    maxConcurrentGlobal: 0,
   } as const;
   const simple = (): CompiledExploration =>
     compileExploration(planOf(definitionOf(sales, { measures: ['revenue'] })), ALL_SCOPE, {
@@ -1151,6 +1152,23 @@ describe('requêtes simultanées par utilisateur', () => {
     });
   });
 
+  it('plafond global à 0 (défaut) : plus de requêtes simultanées que l’ancien plafond ne bloquent pas (AV-461)', async () => {
+    // Un emplacement global tenu par ailleurs n'est ni consulté ni pris quand la limite vaut 0.
+    await db.connection().execute(async (holder) => {
+      expect(await acquireGlobalQuerySlot(holder, 1)).toBe(1);
+      try {
+        const results = await Promise.all(
+          Array.from({ length: 5 }, () =>
+            runExploration(db, { userId: freshUuid(), compiled: simple(), limits }),
+          ),
+        );
+        for (const result of results) expect(result.rowCount).toBe(1);
+      } finally {
+        await releaseGlobalQuerySlot(holder, 1);
+      }
+    });
+  });
+
   it('l’emplacement est rendu après une erreur de lecture ; la lecture est en lecture seule', async () => {
     const userId = freshUuid();
     const broken: CompiledExploration = {
@@ -1211,6 +1229,44 @@ describe('limites paramétrées et journal', () => {
         ...DEFAULT_EXPLORER_LIMITS,
         maxRows: 250,
       });
+    });
+  });
+
+  it('plafond global : réglage mal formé (négatif, fractionnaire, texte) ou 0 → 0 ; entier > 0 → activé (AV-461)', async () => {
+    expect(DEFAULT_EXPLORER_LIMITS.maxConcurrentGlobal).toBe(0);
+    for (const bad of [-1, 2.5, 'quatre', 0, null]) {
+      await withTestUow(async (trx) => {
+        const author = await insertTestUser(trx);
+        const at = new Date(Date.now() + 60_000);
+        await trx
+          .insertInto('organization_system_settings')
+          .values({
+            id: toBin(freshUuid()),
+            key: 'analytics.query_max_concurrent_global',
+            value: JSON.stringify(bad),
+            scope_type: 'GLOBAL',
+            valid_from: new Date(at.getTime() - 1000),
+            created_by: toBin(author),
+          })
+          .execute();
+        expect((await readExplorerLimits(trx, at)).maxConcurrentGlobal).toBe(0);
+      });
+    }
+    await withTestUow(async (trx) => {
+      const author = await insertTestUser(trx);
+      const at = new Date(Date.now() + 60_000);
+      await trx
+        .insertInto('organization_system_settings')
+        .values({
+          id: toBin(freshUuid()),
+          key: 'analytics.query_max_concurrent_global',
+          value: JSON.stringify(3),
+          scope_type: 'GLOBAL',
+          valid_from: new Date(at.getTime() - 1000),
+          created_by: toBin(author),
+        })
+        .execute();
+      expect((await readExplorerLimits(trx, at)).maxConcurrentGlobal).toBe(3);
     });
   });
 

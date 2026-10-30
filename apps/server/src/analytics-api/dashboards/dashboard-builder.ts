@@ -36,8 +36,8 @@ type BlockCode = DashboardResponse['blocks'][number]['code'];
 
 /**
  * Blocs de chaque tableau, dans l'ordre de D11 §7.2. `distribution` : le bloc `DISTRIBUTION` de la tour de contrôle,
- * soit les quatre indicateurs de l'instantané personnel du titulaire de `analytics.dashboard.distribution` (TB-4 ;
- * AV-467).
+ * soit les quatre indicateurs d'origine de l'instantané personnel du titulaire de `analytics.dashboard.distribution`
+ * (TB-4 ; AV-467), plus KPI-OPS-02 (et son compteur de conflits avec le droit de les lire : six au plus, AV-480).
  */
 export const DASHBOARD_BLOCKS: Readonly<Record<DashboardCode, readonly BlockCode[]>> = {
   direction: [

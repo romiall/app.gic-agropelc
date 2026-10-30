@@ -657,7 +657,7 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
       const response = await get(actor, '/api/v1/alert-rules');
       expect(response.statusCode).toBe(200);
       const body = alertRuleListResponseSchema.parse(response.json());
-      expect(body.items).toHaveLength(36);
+      expect(body.items).toHaveLength(37);
       const stockLow = body.items.find((item) => item.alertType === 'STOCK_LOW')!;
       expect(stockLow).toMatchObject({
         nature: 'STATE',

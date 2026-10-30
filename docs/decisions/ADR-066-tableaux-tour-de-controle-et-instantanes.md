@@ -3,7 +3,7 @@
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; applique D11 §7.2, §12, BR-ANA-005, NFR-12, UC-ANA-01 et 02 ; les choix métier sont AV-379 à AV-381, défauts paramétrables)
 - **Date** : 14/10/2026 (numéro provisoire 076 de la plage 070 à 079, renuméroté ADR-066 à l'intégration du 26/10/2026 ; révisé le même jour après la revue adverse de la conception)
 - **Précise** : [ADR-035](ADR-035-tableaux-d-analyse-avant-p9.md) (contrat « repris sans changement par P9 »), [ADR-065](ADR-065-une-seule-definition-par-indicateur-et-periodes.md)
-- **Questions liées** : AV-013, AV-086, AV-202, AV-379 à AV-381
+- **Questions liées** : AV-013, AV-086, AV-202, AV-379 à AV-381, AV-467, AV-480
 
 ## Contexte
 
@@ -25,7 +25,7 @@ Faits du code :
    - Elle appelle `resolveDashboardScope` et les mêmes fonctions que les tableaux, **sous l'étendue exacte de l'utilisateur** (jamais élargie pour une réutilisation), écrase la ligne et pose `computed_at` (« à jour au »).
    - À chaque passe, elle **supprime** les lignes d'un utilisateur dont le tableau n'est plus couvert par ses droits ou sans appareil actif, et publie la suppression au flux (`DELETE`, identifiant dérivé de `(user, scope_key, period_key)` par `codeEntityId`, portée `USER`).
    - Traitement par lots d'utilisateurs de `analytics.snapshot_batch_size` (50) avec reprise ; une passe a un budget de durée, `analytics.snapshot_time_budget_seconds` (60 s ; ADR-068 §3) ; elle est isolée du consommateur d'alertes. Chaque unité (tableau, période) est isolée par un point de sauvegarde (révision du 28/10/2026).
-   - L'instantané `distribution` porte les quatre indicateurs du bloc DISTRIBUTION (AV-467).
+   - L'instantané `distribution` porte les quatre indicateurs du bloc DISTRIBUTION (AV-467), puis cinq avec KPI-OPS-02 (AV-480, révision du 29/10/2026).
 6. **Jeu hors ligne `kpi`** (portée `USER`, ligne par `(scope_key, period_key)`) : publié par le chemin des autres jeux (`sync_change_feed`, lecteur `sync/kpi-projections.ts`, ADR-060 §6). Le contenu publié porte `computed_at` : la ligne est republiée quand le contenu change **ou** au plus toutes les heures pour la date seule, afin que « à jour au » ne soit pas trompeur ; `computed_at` est l'instant de la dernière publication, écrit seulement à la publication (révision du 28/10/2026, AV-381). L'appareil affiche ses indicateurs locaux et, en regard, l'instantané daté ; la tour de contrôle et l'explorateur restent en ligne, avec le dernier affichage en cache et sa date.
 7. **Lecture personnelle** : `GET /analytics/snapshots/me` rend les lignes de l'utilisateur authentifié, jamais celles d'un autre ; la lecture (route et jeu `kpi`) revérifie le droit du tableau et masque les valeurs au coût sans `inventory.valuation.read` (révision du 28/10/2026, AV-380).
 8. **Fraîcheur** : chaque tableau rend `computedAt` et les appareils en retard (`analytics.freshness_warning_hours`) ; aucune extrapolation des données manquantes (D11 §14).
@@ -63,6 +63,12 @@ Faits du code :
 - **Validation par bloc (TB-12).** Chaque bloc rendu est validé par le contrat ; un bloc invalide est `unavailable` avec le code `BLOCK_INVALID`, et un échec technique d'un bloc est journalisé (`BLOCK_FAILED`).
 - **Lecture du portefeuille clients (TB-1, AV-465).** Le titulaire, sinon le site de rattachement (le plus souvent vide) ; une étendue vide rend zéro.
 - **Bloc indisponible dans l'instantané (TB-10, AV-448).** Un bloc `unavailable` n'a pas d'indicateurs dans l'instantané : un indicateur absent du jeu `kpi` veut dire « non disponible », pas zéro ; le tableau entier garde son instantané daté quand son calcul échoue ; marqueur par bloc ou report daté des valeurs à décider avec l'écran hors ligne.
+
+## Révision du 29/10/2026 (P9-27, AV-462, AV-480)
+
+- **Contenu des blocs (§2).** D11 §7.2 reste le socle (AV-379) ; on y ajoute, sans rien retirer : au bloc ÉQUIPES l'atteinte d'objectif (KPI-COM-16, tableaux commercial et direction), au bloc PRODUCTION l'aliment consommé, le poids moyen et le coût par tête (KPI-PRD-04, 05, 09, tableaux production et direction), au bloc DISTRIBUTION les opérations en attente (KPI-OPS-02) et, avec `sync.conflict.resolve`, les conflits ouverts (`KPI-OPS-02-CONFLICTS`) (tableaux distribution, direction et stock). Aucun contrat nouveau : `kpiSnapshotSchema` accepte les codes.
+- **Instantané `distribution` (§5, AV-467 amendé).** L'instantané porte les quatre indicateurs d'origine plus KPI-OPS-02, soit cinq indicateurs, et six avec les conflits ouverts. Le bloc DISTRIBUTION reste vide sans point de vente, donc sans KPI-OPS-02. Le jeu hors ligne `kpi` du vendeur en est augmenté.
+- **Charge.** KPI-PRD-05 et KPI-PRD-09 font deux lectures d'`inventory` par lot en élevage, par période et par utilisateur dans la tâche d'instantanés (paquets de dix lots) : à mesurer (AV-478).
 
 ## Tests
 

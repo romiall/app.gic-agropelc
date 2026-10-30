@@ -143,6 +143,8 @@ export DATABASE_URL="mysql://<admin>:<mot de passe>@127.0.0.1:3306/gic_agropelc_
 pnpm run db:seed
 ```
 
+Rejouer `pnpm run db:seed` après chaque migration qui ajoute un référentiel : celle du 02/12/2026 (`20261202090000_add_job_failed_alert_type.sql`, P9-27, AV-469) étend le `CHECK` des types d'alerte et exige la règle `JOB_FAILED` semée (37 règles ; `db/tests/communication.test.ts` échoue sur une base semée avant ce type). Le semis pose aussi une révision datée de `analytics.query_max_concurrent_global` à 0 (AV-461, plafond global désactivé) sur une base qui avait reçu le défaut 4 de P9-25.
+
 Rôles, permissions et portées (matrice RBAC, [`docs/07-security-rbac/01-rbac.md`](../docs/07-security-rbac/01-rbac.md)),
 emplacements virtuels (BR-ADM-010) et paramètres système par défaut
 (`organization.system_settings`, BR-ADM-015) — source de vérité dans [`seeds/rbac-data.ts`](seeds/rbac-data.ts),

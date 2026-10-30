@@ -36,6 +36,7 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { deviceFreshness, devicesOfSites } from '../src/sync/device-freshness.js';
+import { syncBacklog } from '../src/sync/sync-backlog.js';
 import { openConflictSummary, recordConflict } from '../src/platform/sync/conflicts.js';
 import {
   allocationPositions,
@@ -1481,8 +1482,10 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
       expect(rows.map((snapshot) => snapshot.periodKey).sort()).toEqual(['MONTH', 'TODAY', 'WEEK']);
       const month = rows.find((snapshot) => snapshot.periodKey === 'MONTH')!;
       const indicators = month.kpis as { code: string; value: number | null }[];
+      // Les quatre indicateurs d'origine plus KPI-OPS-02 (AV-480) ; le vendeur n'a pas `sync.conflict.resolve` : pas
+      // de compteur de conflits.
       expect(indicators.map((kpi) => kpi.code).sort()).toEqual(
-        ['KPI-DIS-03', 'KPI-DIS-05', 'KPI-DIS-06', 'KPI-FIN-CS-PENDING'].sort(),
+        ['KPI-DIS-03', 'KPI-DIS-05', 'KPI-DIS-06', 'KPI-FIN-CS-PENDING', 'KPI-OPS-02'].sort(),
       );
       const valueOf = (code: string) => indicators.find((kpi) => kpi.code === code)?.value;
       const window = resolveAnalyticsPeriod({ code: 'MONTH', today: businessDayOf(snapshotAt) });
@@ -1493,6 +1496,13 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
       // Le vendeur n'a pas `inventory.valuation.read` : la valeur du restant est masquée des deux côtés.
       expect(live.totals.remainingValueXaf).toBeNull();
       expect(valueOf('KPI-DIS-05')).toBeNull();
+      // KPI-OPS-02 : les opérations en attente des appareils des points de vente du vendeur (AV-479).
+      const posDevices = [...(await devicesOfSites(db, [siteP])).values()].flat();
+      const backlog = await syncBacklog(db, {
+        devices: { deviceIds: [...new Set(posDevices)] },
+        conflicts: false,
+      });
+      expect(valueOf('KPI-OPS-02')).toBe(backlog.pendingOperations);
     });
 
     it('masque par droit : valeurs, détail de caisse, receveurs, auteurs (AV-205, AV-206)', async () => {
