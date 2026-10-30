@@ -360,7 +360,11 @@ describe('Factures fournisseurs (ECR-FIN-03, P8E-05)', () => {
     const user = userEvent.setup();
     renderScreen();
     const debts = await screen.findByRole('region', { name: 'Dettes fournisseurs' });
-    expect(await within(debts).findByText(/Dette totale : 2\s150\s000 F CFA/)).toBeInTheDocument();
+    // Tuile « Dette totale » (libellé, valeur) à la place de la phrase d'avant.
+    const totalTile = (await within(debts).findByText('Dette totale')).closest(
+      '.tile',
+    ) as HTMLElement;
+    expect(within(totalTile).getByText(/^2\s150\s000 F CFA$/)).toBeInTheDocument();
     const supplierDebt = within(debts).getByRole('listitem', { name: 'Provenderie du Centre' });
     expect(within(supplierDebt).getByText(/échu 650\s000 F CFA/)).toBeInTheDocument();
     expect(
@@ -678,7 +682,7 @@ describe('Factures fournisseurs (ECR-FIN-03, P8E-05)', () => {
     ).toBeInTheDocument();
     serve(baseRoutes());
     await user.click(screen.getByRole('button', { name: 'Relire les dettes' }));
-    expect(await screen.findByText(/Dette totale : 2\s150\s000 F CFA/)).toBeInTheDocument();
+    expect(await screen.findByText('Dette totale')).toBeInTheDocument();
     third.unmount();
 
     serve({ ...baseRoutes(), '/api/v1/payables': DENIED });

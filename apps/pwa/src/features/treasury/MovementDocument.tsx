@@ -7,6 +7,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, Button } from '../../components/ui/index.js';
 import type { ExpenseItem } from '../finance/expense-follow.js';
 import type { SupplierView } from '../procurement/suppliers.js';
 import { readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
@@ -70,25 +71,30 @@ export function MovementDocument({
   const kind = movement.sourceDocType === 'EXPENSE' ? 'EXPENSE' : 'SUPPLIER_PAYMENT';
   if (!shown) {
     return (
-      <button type="button" className="secondary" onClick={() => setShown(true)}>
+      <Button variant="ghost" size="sm" onClick={() => setShown(true)}>
         {t(`treasury.movement_document_open.${kind}`, { label })}
-      </button>
+      </Button>
     );
   }
   const data = read.data;
   let content;
   if (read.failed) {
     content = (
-      <p className="text-warn" role="alert">
+      <Banner
+        tone="warn"
+        role="alert"
+        action={
+          read.denied ? undefined : (
+            <Button variant="outline" size="sm" onClick={read.retry}>
+              {t('distribution.retry')}
+            </Button>
+          )
+        }
+      >
         {read.denied
           ? t('treasury.movement_document_denied')
-          : t('treasury.movement_document_failed')}{' '}
-        {read.denied ? null : (
-          <button type="button" className="secondary" onClick={read.retry}>
-            {t('distribution.retry')}
-          </button>
-        )}
-      </p>
+          : t('treasury.movement_document_failed')}
+      </Banner>
     );
   } else if (!data) {
     content = <p className="home-muted">{t('sales.loading')}</p>;

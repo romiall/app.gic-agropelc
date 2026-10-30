@@ -9,12 +9,27 @@
  *   d'une dépense non payée ; justificatif joint après coup à une dépense en validation qui l'attend.
  * - Suivi (`?vue=suivi`, en ligne) : pour les rôles qui lisent les dépenses des autres.
  */
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeDecaissementDepense } from '../pieces/adaptateurs-finance.js';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  Segmented,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { photoAttachment } from '../attachments/attachments.js';
@@ -61,6 +76,7 @@ import {
 } from './expense.js';
 import { imputationLabel, reviewReasonsText, shortId } from './expense-format.js';
 import { ExpenseFollowUp } from './ExpenseFollowUp.js';
+import './finance.css';
 
 export function ExpenseScreen() {
   const { t } = useTranslation();
@@ -77,31 +93,35 @@ export function ExpenseScreen() {
   if (!userId || navigation === undefined) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.expenses')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.expenses')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.expenses')}</h1>
+      <PageHeader title={t('nav.screens.expenses')} />
       {mayFollow ? (
-        <nav className="result-actions" aria-label={t('expense.views_label')}>
-          <Link
+        <nav className="chip-row" aria-label={t('expense.views_label')}>
+          <LinkButton
             to={ROUTES.expenses}
-            className="action action-compact"
+            variant={follow ? 'outline' : 'tonal'}
+            size="sm"
+            icon="plus"
             aria-current={follow ? undefined : 'page'}
           >
-            <span className="action-label">{t('expense.entry_tab')}</span>
-          </Link>
-          <Link
+            {t('expense.entry_tab')}
+          </LinkButton>
+          <LinkButton
             to={`${ROUTES.expenses}?vue=suivi`}
-            className="action action-compact"
+            variant={follow ? 'tonal' : 'outline'}
+            size="sm"
+            icon="clipboard"
             aria-current={follow ? 'page' : undefined}
           >
-            <span className="action-label">{t('expense.follow_tab')}</span>
-          </Link>
+            {t('expense.follow_tab')}
+          </LinkButton>
         </nav>
       ) : null}
       {/* La saisie reste montée, masquée, pendant le suivi : le brouillon et la photo ne se perdent pas
@@ -127,20 +147,9 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
   const [submitted, setSubmitted] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const ids = {
-    account: useId(),
-    category: useId(),
-    amount: useId(),
-    amountIssue: useId(),
-    description: useId(),
-    site: useId(),
-    imputation: useId(),
-    payee: useId(),
-    supplier: useId(),
-  };
 
   if (!refs) {
-    return <p className="home-muted">{t('sales.loading')}</p>;
+    return <SkeletonRows rows={3} />;
   }
 
   const reset = () => {
@@ -154,9 +163,9 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
     return (
       <>
         <CommandResult commandId={submitted} messages="expense.result">
-          <button type="button" onClick={reset}>
+          <Button variant="tonal" size="sm" onClick={reset}>
             {t('expense.another')}
-          </button>
+          </Button>
         </CommandResult>
         <StatusAfterRecord commandId={submitted} />
         <MyExpenses refs={refs} userId={userId} online={online} />
@@ -317,219 +326,216 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
   return (
     <>
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('expense.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
-      <section className="sale-block" aria-labelledby="expense-new-title">
-        <h2 id="expense-new-title">{t('expense.new_title')}</h2>
-        {accounts.length === 0 ? (
-          <p className="home-muted">{t('expense.no_account')}</p>
-        ) : (
-          <fieldset className="choice-group">
-            <legend>{t('expense.payment_legend')}</legend>
-            <label className="choice">
-              <input
-                type="radio"
-                name="expense-payment"
-                checked={paidNow}
-                onChange={() => update({ paidNow: true })}
-              />
-              {t('expense.paid_now')}
-            </label>
-            <label className="choice">
-              <input
-                type="radio"
-                name="expense-payment"
-                checked={!paidNow}
-                onChange={() => update({ paidNow: false })}
-              />
-              {t('expense.to_pay')}
-            </label>
-          </fieldset>
-        )}
-        {paidNow ? (
-          accounts.length > 1 ? (
-            <div className="field">
-              <label htmlFor={ids.account}>{t('expense.account_label')}</label>
-              <select
-                id={ids.account}
-                className="text-input"
-                value={accountId}
-                onChange={(event) => update({ accountId: event.target.value })}
-              >
-                <option value="">{t('expense.account_placeholder')}</option>
-                {accounts.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <section className="section" aria-labelledby="expense-new-title">
+        <div className="section-head">
+          <h2 id="expense-new-title">{t('expense.new_title')}</h2>
+        </div>
+        <Card padded className="fin-form">
+          {accounts.length === 0 ? (
+            <p className="home-muted">{t('expense.no_account')}</p>
           ) : (
-            <>
-              <span className="field-label">{t('expense.account_label')}</span>
-              <p className="picked-title">{account?.name}</p>
-            </>
-          )
-        ) : null}
-        {account ? (
-          <p className="home-muted">
-            {balance?.kind === 'SHOWN'
-              ? t('expense.balance', { amount: formatMoney(balance.xaf) })
-              : balance?.kind === 'BLIND'
-                ? t('expense.balance_blind')
-                : t('expense.balance_unknown')}
-          </p>
-        ) : null}
-        {paidFromPos && (coverage === 'MISSING' || coverage === 'UNKNOWN') ? (
-          <CashSessionPrompt
-            coverage={coverage}
-            online={online}
-            userId={userId}
-            subject="expense"
-          />
-        ) : null}
-        {categories.length === 0 ? (
-          <p className="home-muted">{t('expense.no_category')}</p>
-        ) : (
-          <div className="field">
-            <label htmlFor={ids.category}>{t('expense.category_label')}</label>
-            <select
-              id={ids.category}
-              className="text-input"
-              value={category?.id ?? ''}
-              onChange={(event) => update({ categoryId: event.target.value })}
-            >
-              <option value="">{t('expense.category_placeholder')}</option>
-              {categories.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        <div className="field">
-          <label htmlFor={ids.amount}>{t('expense.amount_label')}</label>
-          <input
-            id={ids.amount}
-            className="text-input"
-            inputMode="numeric"
-            autoComplete="off"
-            value={draft.amountText}
-            aria-invalid={amountIssue}
-            aria-describedby={amountIssue ? ids.amountIssue : undefined}
-            onChange={(event) => update({ amountText: event.target.value })}
-          />
-          {amountIssue ? (
-            <p id={ids.amountIssue} className="error-message">
-              {t('expense.issue.AMOUNT')}
-            </p>
-          ) : over ? (
-            <p className="text-warn" role="status">
-              {t('expense.over_balance')}
+            <div className="field">
+              <span className="field-label" aria-hidden="true">
+                {t('expense.payment_legend')}
+              </span>
+              <Segmented
+                label={t('expense.payment_legend')}
+                name="expense-payment"
+                value={paidNow ? 'now' : 'later'}
+                options={[
+                  { value: 'now', label: t('expense.paid_now') },
+                  { value: 'later', label: t('expense.to_pay') },
+                ]}
+                onChange={(value) => update({ paidNow: value === 'now' })}
+              />
+            </div>
+          )}
+          {paidNow ? (
+            accounts.length > 1 ? (
+              <Field label={t('expense.account_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={accountId}
+                    onChange={(event) => update({ accountId: event.target.value })}
+                  >
+                    <option value="">{t('expense.account_placeholder')}</option>
+                    {accounts.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            ) : (
+              <div className="field">
+                <span className="field-label">{t('expense.account_label')}</span>
+                <p className="picked-title">{account?.name}</p>
+              </div>
+            )
+          ) : null}
+          {account ? (
+            <p className="home-muted">
+              {balance?.kind === 'SHOWN'
+                ? t('expense.balance', { amount: formatMoney(balance.xaf) })
+                : balance?.kind === 'BLIND'
+                  ? t('expense.balance_blind')
+                  : t('expense.balance_unknown')}
             </p>
           ) : null}
-        </div>
-        <div className="field">
-          <label htmlFor={ids.description}>{t('expense.description_label')}</label>
-          <textarea
-            id={ids.description}
-            className="text-input"
-            rows={2}
-            maxLength={MAX_EXPENSE_DESCRIPTION}
-            value={draft.description}
-            onChange={(event) => update({ description: event.target.value })}
+          {paidFromPos && (coverage === 'MISSING' || coverage === 'UNKNOWN') ? (
+            <CashSessionPrompt
+              coverage={coverage}
+              online={online}
+              userId={userId}
+              subject="expense"
+            />
+          ) : null}
+          {categories.length === 0 ? (
+            <p className="home-muted">{t('expense.no_category')}</p>
+          ) : (
+            <Field label={t('expense.category_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={category?.id ?? ''}
+                  onChange={(event) => update({ categoryId: event.target.value })}
+                >
+                  <option value="">{t('expense.category_placeholder')}</option>
+                  {categories.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
+          <Field
+            label={t('expense.amount_label')}
+            error={amountIssue ? t('expense.issue.AMOUNT') : undefined}
+            hint={
+              !amountIssue && over ? (
+                <span className="text-warn" role="status">
+                  {t('expense.over_balance')}
+                </span>
+              ) : undefined
+            }
+          >
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                autoComplete="off"
+                value={draft.amountText}
+                onChange={(event) => update({ amountText: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t('expense.description_label')}>
+            {(control) => (
+              <Textarea
+                {...control}
+                rows={2}
+                maxLength={MAX_EXPENSE_DESCRIPTION}
+                value={draft.description}
+                onChange={(event) => update({ description: event.target.value })}
+              />
+            )}
+          </Field>
+          <PhotoField
+            label={t('expense.photo_label')}
+            hint={t('expense.photo_hint', { threshold: formatMoney(thresholds.photoXaf) })}
+            value={photo}
+            onChange={setPhoto}
+            onBusyChange={setPreparing}
           />
-        </div>
-        <PhotoField
-          label={t('expense.photo_label')}
-          hint={t('expense.photo_hint', { threshold: formatMoney(thresholds.photoXaf) })}
-          value={photo}
-          onChange={setPhoto}
-          onBusyChange={setPreparing}
-        />
-        {sites.length > 1 ? (
-          <div className="field">
-            <label htmlFor={ids.site}>{t('expense.site_label')}</label>
-            <select
-              id={ids.site}
-              className="text-input"
-              value={siteId}
-              onChange={(event) => update({ siteId: event.target.value, imputationKey: '' })}
-            >
-              <option value="">{t('expense.site_placeholder')}</option>
-              {sites.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : site ? (
-          <p className="home-muted">{t('expense.site_fixed', { name: site.name })}</p>
-        ) : (
-          <p className="home-muted">{t('expense.no_site')}</p>
-        )}
-        {imputations.length > 0 && imputation ? (
-          <div className="field">
-            <label htmlFor={ids.imputation}>{t('expense.imputation_label')}</label>
-            <select
-              id={ids.imputation}
-              className="text-input"
-              value={imputation.key}
-              onChange={(event) => update({ imputationKey: event.target.value })}
-            >
-              {imputations.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {imputationText(option)}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        <div className="field">
-          <label htmlFor={ids.payee}>{t('expense.payee_label')}</label>
-          <input
-            id={ids.payee}
-            className="text-input"
-            maxLength={MAX_PAYEE_NAME}
-            value={draft.payeeName}
-            onChange={(event) => update({ payeeName: event.target.value })}
-          />
-        </div>
-        {refs.suppliers.size > 0 ? (
-          <div className="field">
-            <label htmlFor={ids.supplier}>{t('expense.supplier_label')}</label>
-            <select
-              id={ids.supplier}
-              className="text-input"
-              value={draft.supplierId}
-              onChange={(event) => update({ supplierId: event.target.value })}
-            >
-              <option value="">{t('expense.supplier_none')}</option>
-              {[...refs.suppliers.values()]
-                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-                .map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-        ) : null}
+          {sites.length > 1 ? (
+            <Field label={t('expense.site_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={siteId}
+                  onChange={(event) => update({ siteId: event.target.value, imputationKey: '' })}
+                >
+                  <option value="">{t('expense.site_placeholder')}</option>
+                  {sites.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : site ? (
+            <p className="home-muted">{t('expense.site_fixed', { name: site.name })}</p>
+          ) : (
+            <p className="home-muted">{t('expense.no_site')}</p>
+          )}
+          {imputations.length > 0 && imputation ? (
+            <Field label={t('expense.imputation_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={imputation.key}
+                  onChange={(event) => update({ imputationKey: event.target.value })}
+                >
+                  {imputations.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {imputationText(option)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+          <Field label={t('expense.payee_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={MAX_PAYEE_NAME}
+                value={draft.payeeName}
+                onChange={(event) => update({ payeeName: event.target.value })}
+              />
+            )}
+          </Field>
+          {refs.suppliers.size > 0 ? (
+            <Field label={t('expense.supplier_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={draft.supplierId}
+                  onChange={(event) => update({ supplierId: event.target.value })}
+                >
+                  <option value="">{t('expense.supplier_none')}</option>
+                  {[...refs.suppliers.values()]
+                    .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                    .map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+        </Card>
         {preview && preview.reasons.length > 0 ? (
           online ? (
-            <p className="error-message" role="alert">
+            <Banner tone="bad" role="alert">
               {t('expense.review_online', {
                 reasons: reviewReasonsText(t, preview.reasons, {
                   cap: formatMoney(thresholds.posCapXaf),
                 }),
               })}
-            </p>
+            </Banner>
           ) : (
-            <p className="text-warn" role="status">
+            <Banner tone="warn" role="status">
               {t(
                 reviewStillPending(preview.status)
                   ? 'expense.review_offline'
@@ -540,13 +546,13 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
                   }),
                 },
               )}
-            </p>
+            </Banner>
           )
         ) : preview &&
           (preview.status === 'PENDING_APPROVAL' || preview.status === 'PAID_PENDING_APPROVAL') ? (
-          <p className="home-muted" role="status">
+          <Banner tone="info" role="status">
             {t('expense.approval_announce', { threshold: formatMoney(thresholds.approvalXaf) })}
-          </p>
+          </Banner>
         ) : null}
         {touched
           ? issues
@@ -559,18 +565,21 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
               ))
           : null}
         {saveError ? (
-          <p className="alert alert-error" role="alert">
+          <Banner tone="bad" role="alert">
             {t(saveError)}
-          </p>
+          </Banner>
         ) : null}
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!ready}
-          onClick={() => void submit()}
-        >
-          {busy ? t('sales.submitting') : t('expense.submit')}
-        </button>
+        <ActionBar>
+          <Button
+            size="lg"
+            className="submit-sale"
+            disabled={!ready}
+            loading={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? t('sales.submitting') : t('expense.submit')}
+          </Button>
+        </ActionBar>
       </section>
       <MyExpenses refs={refs} userId={userId} online={online} />
     </>
@@ -605,7 +614,6 @@ function MyExpenses({
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const reasonId = useId();
   const openers = useRef(new Map<string, HTMLButtonElement | null>());
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const lastOpened = useRef<string | null>(null);
@@ -695,10 +703,11 @@ function MyExpenses({
   };
 
   const card = (view: ExpenseView, actions: ReactNode) => (
-    <li key={view.id} className="line-card" aria-label={labelOf(view)}>
-      <p>
-        <strong>{labelOf(view)}</strong> · {formatMoney(view.amountXaf)}
-      </p>
+    <li key={view.id} className="line-card fin-card" aria-label={labelOf(view)}>
+      <div className="fin-card-head">
+        <strong>{labelOf(view)}</strong>
+        <strong className="fin-amount">{formatMoney(view.amountXaf)}</strong>
+      </div>
       <p className="home-muted">
         {categoryOf(view.categoryId)} · {formatDateTime(view.occurredAt)} · {siteOf(view.siteId)}
       </p>
@@ -715,12 +724,8 @@ function MyExpenses({
           refs.incubationBatches,
         )}
       </p>
-      <p
-        className={
-          view.status === 'REJECTED' || view.status === 'PAID_REJECTED' ? 'text-warn' : 'home-muted'
-        }
-      >
-        {stateText(view)}
+      <p>
+        <span className={`fin-status ${expenseStateTone(view)}`}>{stateText(view)}</span>
       </p>
       {view.reviewReasons.length > 0 ? (
         <p className={reviewStillPending(view.status) ? 'text-warn' : 'home-muted'}>
@@ -784,68 +789,93 @@ function MyExpenses({
     if (!online) return <p className="home-muted">{t('expense.cancel_online_only')}</p>;
     if (editing === view.id) {
       return (
-        <div className="field">
-          <label htmlFor={reasonId}>{t('expense.cancel_reason_label')}</label>
-          <textarea
-            id={reasonId}
-            ref={reasonRef}
-            className="text-input"
-            rows={2}
-            maxLength={MAX_EXPENSE_CANCEL_REASON}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
+        <div className="fin-decision">
+          <Field label={t('expense.cancel_reason_label')}>
+            {(control) => (
+              <textarea
+                {...control}
+                ref={reasonRef}
+                className="textarea"
+                rows={2}
+                maxLength={MAX_EXPENSE_CANCEL_REASON}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
+            )}
+          </Field>
           <div className="result-actions">
-            <button
-              type="button"
+            <Button
               disabled={busy || waiting || reason.trim() === ''}
               onClick={() => void cancel(view)}
             >
               {t('expense.cancel_submit')}
-            </button>
-            <button type="button" className="secondary" onClick={close}>
+            </Button>
+            <Button variant="ghost" onClick={close}>
               {t('expense.close_form')}
-            </button>
+            </Button>
           </div>
         </div>
       );
     }
     return (
-      <button
-        type="button"
-        className="secondary"
-        ref={(element) => {
-          openers.current.set(view.id, element);
-        }}
-        disabled={busy || waiting}
-        onClick={() => {
-          setEditing(view.id);
-          setReason('');
-        }}
-      >
-        {t('expense.cancel_open', { label: labelOf(view) })}
-      </button>
+      <div className="result-actions">
+        <Button
+          variant="outline"
+          size="sm"
+          ref={(element) => {
+            openers.current.set(view.id, element);
+          }}
+          disabled={busy || waiting}
+          onClick={() => {
+            setEditing(view.id);
+            setReason('');
+          }}
+        >
+          {t('expense.cancel_open', { label: labelOf(view) })}
+        </Button>
+      </div>
     );
   };
 
   return (
-    <section className="sale-block" aria-labelledby="expense-mine-title">
-      <h2 id="expense-mine-title" tabIndex={-1}>
-        {t('expense.mine_title')}
-      </h2>
+    <section className="section" aria-labelledby="expense-mine-title">
+      <div className="section-head">
+        <h2 id="expense-mine-title" tabIndex={-1}>
+          {t('expense.mine_title')}
+        </h2>
+      </div>
       {last ? <CommandResult commandId={last} messages="expense.cancel_result" /> : null}
       {saveError ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t(saveError)}
-        </p>
+        </Banner>
       ) : null}
       {views.length === 0 ? (
-        <p className="home-muted">{t('expense.mine_empty')}</p>
+        <EmptyState icon="receipt" title={t('expense.mine_empty')} />
       ) : (
         <ul className="line-list">{views.map((view) => card(view, cancelAction(view)))}</ul>
       )}
     </section>
   );
+}
+
+/** Ton de la situation d'une de ses dépenses : le refus alerte, l'attente avertit, le payé rassure. */
+function expenseStateTone(view: ExpenseView): string {
+  if (view.cancelling || view.status === null) return 'is-info';
+  switch (view.status) {
+    case 'REJECTED':
+    case 'PAID_REJECTED':
+      return 'is-bad';
+    case 'PENDING_APPROVAL':
+    case 'PAID_PENDING_APPROVAL':
+      return 'is-warn';
+    case 'PAID':
+      return 'is-ok';
+    case 'CANCELLED':
+      return 'is-muted';
+    default:
+      return 'is-info';
+  }
 }
 
 /**

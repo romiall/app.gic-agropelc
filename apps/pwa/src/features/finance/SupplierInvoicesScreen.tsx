@@ -12,10 +12,26 @@
  * Toute réponse d'une opération sur les factures relit la liste, les dettes et la saisie.
  * Le Resp. achats lit (AV-298).
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import {
+  Badge,
+  Banner,
+  Button,
+  DataCell,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  KpiTile,
+  LinkButton,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  type BadgeTone,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import type { OutboxCommand } from '../../storage/db.js';
 import { AttachPhoto } from '../attachments/PhotoViews.js';
@@ -45,6 +61,7 @@ import type { ExpenseAttachmentItem } from './expense-follow.js';
 import { userName } from './expense-format.js';
 import { mismatchText } from './invoice-format.js';
 import { InvoiceForm } from './InvoiceForm.js';
+import './finance.css';
 import {
   AGING_BUCKETS,
   INVOICE_GROUP_ORDER,
@@ -113,8 +130,8 @@ export function SupplierInvoicesScreen() {
   if (!userId || navigation === undefined) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.supplier_invoices')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.supplier_invoices')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -122,19 +139,24 @@ export function SupplierInvoicesScreen() {
   const supplierList = suppliers.data?.suppliers ?? [];
   return (
     <section className="sale">
-      <h1>{t('nav.screens.supplier_invoices')}</h1>
+      <PageHeader title={t('nav.screens.supplier_invoices')} />
       {online ? null : (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t('supplier_invoice.offline_banner')}
-        </p>
+        </Banner>
       )}
       {suppliers.failed && !suppliers.denied ? (
-        <p className="text-warn" role="status">
-          {t('supplier_invoice.suppliers_failed')}{' '}
-          <button type="button" className="secondary" onClick={suppliers.retry}>
-            {t('supplier_invoice.retry_suppliers')}
-          </button>
-        </p>
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <Button variant="outline" size="sm" onClick={suppliers.retry}>
+              {t('supplier_invoice.retry_suppliers')}
+            </Button>
+          }
+        >
+          {t('supplier_invoice.suppliers_failed')}
+        </Banner>
       ) : null}
       <Payables suppliers={supplierList} online={online} reloadKey={reloadKey} />
       <InvoiceList
@@ -155,6 +177,23 @@ export function SupplierInvoicesScreen() {
       ) : null}
     </section>
   );
+}
+
+/** Ton de la pastille d'une facture : l'écart se décide, la contestation alerte, le payé rassure. */
+function invoiceStatusTone(status: string): BadgeTone {
+  switch (status) {
+    case 'MISMATCH':
+      return 'warn';
+    case 'DISPUTED':
+      return 'bad';
+    case 'APPROVED':
+    case 'PARTIALLY_PAID':
+      return 'info';
+    case 'PAID':
+      return 'ok';
+    default:
+      return 'muted';
+  }
 }
 
 /** Dettes fournisseurs (BR-FIN-032, KPI-FIN-05) : totaux et ligne par fournisseur. */
@@ -179,23 +218,27 @@ function Payables({
     suppliers.find((supplier) => supplier.id === id)?.name ?? `…${id.slice(-4)}`;
   const data = read.data;
   return (
-    <section className="sale-block" aria-labelledby="payables-title">
-      <h2 id="payables-title">{t('supplier_invoice.payables_title')}</h2>
+    <Section title={t('supplier_invoice.payables_title')}>
       {read.failed ? (
-        <p className="alert alert-error" role="alert">
-          {read.denied ? t('supplier_invoice.denied') : t('supplier_invoice.payables_failed')}{' '}
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('supplier_invoice.retry_payables')}
-            </button>
-          )}
-        </p>
+        <Banner
+          tone="bad"
+          role="alert"
+          action={
+            read.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={read.retry}>
+                {t('supplier_invoice.retry_payables')}
+              </Button>
+            )
+          }
+        >
+          {read.denied ? t('supplier_invoice.denied') : t('supplier_invoice.payables_failed')}
+        </Banner>
       ) : null}
       {!data ? (
-        read.failed ? null : (
-          <p className="home-muted" aria-busy={online}>
-            {t(online ? 'sales.loading' : 'supplier_invoice.online_only')}
-          </p>
+        read.failed ? null : online ? (
+          <SkeletonRows rows={2} />
+        ) : (
+          <EmptyState icon="offline" title={t('supplier_invoice.online_only')} />
         )
       ) : (
         <>
@@ -204,54 +247,69 @@ function Payables({
               {t('expense.refreshing')}
             </p>
           ) : null}
-          <p>
-            {t('supplier_invoice.payables_totals', {
-              balance: formatMoney(data.total_balance_xaf),
-              advance: formatMoney(data.total_advance_xaf),
-              date: formatBusinessDate(data.as_of),
-            })}
+          <p className="home-muted">
+            {t('supplier_invoice.payables_as_of', { date: formatBusinessDate(data.as_of) })}
           </p>
+          <div className="fin-kpis">
+            <KpiTile
+              icon="receipt"
+              label={t('supplier_invoice.tile_balance')}
+              value={formatMoney(data.total_balance_xaf)}
+            />
+            <KpiTile
+              icon="cash"
+              label={t('supplier_invoice.tile_advance')}
+              value={formatMoney(data.total_advance_xaf)}
+            />
+          </div>
           {data.suppliers.length === 0 ? (
-            <p className="home-muted">{t('supplier_invoice.payables_empty')}</p>
+            <EmptyState icon="check-circle" title={t('supplier_invoice.payables_empty')} />
           ) : (
-            <ul className="line-list">
+            <DataList
+              template="minmax(0, 2.2fr) minmax(7rem, 1fr) minmax(0, 2.4fr)"
+              columns={[
+                { label: t('supplier_invoice.col_supplier') },
+                { label: t('supplier_invoice.col_debt'), numeric: true },
+                { label: t('supplier_invoice.col_position') },
+              ]}
+            >
               {[...data.suppliers]
                 .sort((a, b) => b.balanceXaf - a.balanceXaf)
                 .map((supplier) => (
-                  <li
-                    key={supplier.supplierId}
-                    className="line-card"
-                    aria-label={nameOf(supplier.supplierId)}
-                  >
-                    <p>
-                      <strong>{nameOf(supplier.supplierId)}</strong> ·{' '}
-                      {t('supplier_invoice.payable_balance', {
-                        amount: formatMoney(supplier.balanceXaf),
-                      })}
-                    </p>
-                    <p className={supplier.overdueXaf > 0 ? 'text-warn' : 'home-muted'}>
-                      {t('supplier_invoice.payable_line', {
-                        overdue: formatMoney(supplier.overdueXaf),
-                        advance: formatMoney(supplier.advanceXaf),
-                        net: formatMoney(supplier.netXaf),
-                      })}
-                    </p>
-                    <p className="home-muted">
-                      {t('supplier_invoice.buckets_intro')}{' '}
-                      {AGING_BUCKETS.map((bucket) =>
-                        t('supplier_invoice.bucket', {
-                          bucket: t(`supplier_invoice.bucket_label.${bucket}`),
-                          amount: formatMoney(supplier.buckets[bucket] ?? 0),
-                        }),
-                      ).join(' · ')}
-                    </p>
-                  </li>
+                  <DataRow key={supplier.supplierId} aria-label={nameOf(supplier.supplierId)}>
+                    <DataCell primary>
+                      <strong>{nameOf(supplier.supplierId)}</strong>
+                    </DataCell>
+                    <DataCell label={t('supplier_invoice.col_debt')} numeric>
+                      {formatMoney(supplier.balanceXaf)}
+                    </DataCell>
+                    <DataCell>
+                      <span className={supplier.overdueXaf > 0 ? 'text-warn' : 'home-muted'}>
+                        {t('supplier_invoice.payable_line', {
+                          overdue: formatMoney(supplier.overdueXaf),
+                          advance: formatMoney(supplier.advanceXaf),
+                          net: formatMoney(supplier.netXaf),
+                        })}
+                      </span>
+                    </DataCell>
+                    <DataCell wide>
+                      <small className="fin-group-meta">
+                        {t('supplier_invoice.buckets_intro')}{' '}
+                        {AGING_BUCKETS.map((bucket) =>
+                          t('supplier_invoice.bucket', {
+                            bucket: t(`supplier_invoice.bucket_label.${bucket}`),
+                            amount: formatMoney(supplier.buckets[bucket] ?? 0),
+                          }),
+                        ).join(' · ')}
+                      </small>
+                    </DataCell>
+                  </DataRow>
                 ))}
-            </ul>
+            </DataList>
           )}
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -282,7 +340,6 @@ function InvoiceList({
   const [last, setLast] = useState<{ commandId: string; decision: Decision }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const ids = { group: useId(), supplier: useId(), reason: useId() };
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const openers = useRef(new Map<string, HTMLButtonElement | null>());
@@ -382,6 +439,9 @@ function InvoiceList({
     const actions = invoiceActions(item, userId, mayDecide);
     const pieces = item.attachments ?? [];
     const opened = open?.id === item.id ? open.decision : null;
+    const decisions = (['approve', 'dispute', 'cancel'] as const).filter(
+      (decision) => actions[decision],
+    );
     // Photo à joindre par l'auteur quand aucune n'est reçue ni en route (refusée, jamais reçue).
     const scanToAttach =
       item.createdBy === userId &&
@@ -390,225 +450,254 @@ function InvoiceList({
         (piece) => piece.uploadStatus === 'AVAILABLE' || piece.uploadStatus === 'PENDING_UPLOAD',
       );
     return (
-      <li key={item.id} className="line-card" aria-label={item.docNumber}>
-        <p>
-          <strong>{item.docNumber}</strong> · {formatMoney(item.totalXaf)}
-        </p>
-        <p>{nameOf(item.supplierId)}</p>
-        <p className="home-muted">
-          {t('supplier_invoice.card_dates', {
-            ref: item.supplierInvoiceRef,
-            date: formatBusinessDate(item.invoiceDate),
-            due: formatBusinessDate(item.dueDate),
-          })}
-        </p>
-        <p className="home-muted">
-          {t('supplier_invoice.card_author', {
-            name: userName(t, refs?.users ?? [], item.createdBy, userId),
-          })}
-          {item.purchaseOrderId ? '' : ` · ${t('supplier_invoice.no_order')}`}
-        </p>
-        <p
-          className={
-            item.status === 'MISMATCH' || item.status === 'DISPUTED' ? 'text-warn' : 'home-muted'
-          }
-        >
-          {t(`supplier_invoice.status.${item.status}`, { defaultValue: item.status })}
-          {item.status === 'APPROVED' || item.status === 'PARTIALLY_PAID' || item.status === 'PAID'
-            ? ` · ${t('supplier_invoice.card_paid', {
+      <DataRow key={item.id} aria-label={item.docNumber}>
+        <DataCell primary>
+          <strong>{item.docNumber}</strong>
+          <small className="fin-group-meta">{nameOf(item.supplierId)}</small>
+        </DataCell>
+        <DataCell>
+          <span className="fin-meta">
+            {t('supplier_invoice.card_dates', {
+              ref: item.supplierInvoiceRef,
+              date: formatBusinessDate(item.invoiceDate),
+              due: formatBusinessDate(item.dueDate),
+            })}
+          </span>
+        </DataCell>
+        <DataCell label={t('supplier_invoice.col_total')} numeric>
+          {formatMoney(item.totalXaf)}
+        </DataCell>
+        <DataCell label={t('supplier_invoice.col_status')}>
+          <Badge tone={invoiceStatusTone(item.status)}>
+            {t(`supplier_invoice.status.${item.status}`, { defaultValue: item.status })}
+          </Badge>
+          {item.status === 'APPROVED' ||
+          item.status === 'PARTIALLY_PAID' ||
+          item.status === 'PAID' ? (
+            <small className="fin-group-meta">
+              {t('supplier_invoice.card_paid', {
                 paid: formatMoney(item.paidXaf),
                 balance: formatMoney(item.balanceXaf),
-              })}`
-            : ''}
-        </p>
-        {item.mismatchDetails.length > 0 ? (
-          <ul className="text-warn">
-            {item.mismatchDetails.map((detail, index) => (
-              <li key={`${detail.reason}-${index}`}>
-                {mismatchText(t, detail, (poLineId) => lineNames[poLineId] ?? null)}
-              </li>
+              })}
+            </small>
+          ) : null}
+        </DataCell>
+        {decisions.length > 0 && !opened ? (
+          <DataCell actions>
+            {decisions.map((decision) => (
+              <Button
+                key={decision}
+                variant={decision === 'approve' ? 'tonal' : 'outline'}
+                size="sm"
+                ref={(element) => {
+                  openers.current.set(`${decision}:${item.id}`, element);
+                }}
+                disabled={blocked}
+                aria-label={t(`supplier_invoice.open_decision.${decision}`, {
+                  doc: item.docNumber,
+                })}
+                onClick={() => toggle(item.id, decision)}
+              >
+                {t(`supplier_invoice.decision_short.${decision}`)}
+              </Button>
             ))}
-          </ul>
+          </DataCell>
         ) : null}
-        {item.approvalReason ? (
-          <p className="home-muted">
-            {t('supplier_invoice.approval_reason', { reason: item.approvalReason })}
-          </p>
-        ) : null}
-        {item.disputeReason ? (
-          <p className="home-muted">
-            {t('supplier_invoice.dispute_reason', { reason: item.disputeReason })}
-          </p>
-        ) : null}
-        {item.cancelReason ? (
-          <p className="home-muted">
-            {t('supplier_invoice.cancel_reason', { reason: item.cancelReason })}
-          </p>
-        ) : null}
-        {pieces.length === 0 ? (
-          <p className="home-muted">{t('supplier_invoice.no_scan')}</p>
-        ) : (
-          pieces.map((piece) =>
-            piece.uploadStatus === 'AVAILABLE' ? (
-              <ServerPhoto
-                key={piece.id}
-                attachmentId={piece.id}
-                alt={t('supplier_invoice.scan_alt', { doc: item.docNumber })}
-                label={t('supplier_invoice.scan_view', { doc: item.docNumber })}
-              />
+        <DataCell wide>
+          <div className="fin-detail">
+            <p className="home-muted">
+              {t('supplier_invoice.card_author', {
+                name: userName(t, refs?.users ?? [], item.createdBy, userId),
+              })}
+              {item.purchaseOrderId ? '' : ` · ${t('supplier_invoice.no_order')}`}
+            </p>
+            {item.mismatchDetails.length > 0 ? (
+              <ul className="fin-mismatch">
+                {item.mismatchDetails.map((detail, index) => (
+                  <li key={`${detail.reason}-${index}`}>
+                    {mismatchText(t, detail, (poLineId) => lineNames[poLineId] ?? null)}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {item.approvalReason ? (
+              <p className="home-muted">
+                {t('supplier_invoice.approval_reason', { reason: item.approvalReason })}
+              </p>
+            ) : null}
+            {item.disputeReason ? (
+              <p className="home-muted">
+                {t('supplier_invoice.dispute_reason', { reason: item.disputeReason })}
+              </p>
+            ) : null}
+            {item.cancelReason ? (
+              <p className="home-muted">
+                {t('supplier_invoice.cancel_reason', { reason: item.cancelReason })}
+              </p>
+            ) : null}
+            {pieces.length === 0 ? (
+              <p className="home-muted">{t('supplier_invoice.no_scan')}</p>
             ) : (
-              <p
-                key={piece.id}
-                className={piece.uploadStatus === 'PENDING_UPLOAD' ? 'home-muted' : 'text-warn'}
+              pieces.map((piece) =>
+                piece.uploadStatus === 'AVAILABLE' ? (
+                  <ServerPhoto
+                    key={piece.id}
+                    attachmentId={piece.id}
+                    alt={t('supplier_invoice.scan_alt', { doc: item.docNumber })}
+                    label={t('supplier_invoice.scan_view', { doc: item.docNumber })}
+                  />
+                ) : (
+                  <p
+                    key={piece.id}
+                    className={piece.uploadStatus === 'PENDING_UPLOAD' ? 'home-muted' : 'text-warn'}
+                  >
+                    {t(
+                      piece.uploadStatus === 'PENDING_UPLOAD'
+                        ? 'supplier_invoice.scan_uploading'
+                        : piece.uploadStatus === 'MISSING'
+                          ? 'supplier_invoice.scan_missing'
+                          : 'supplier_invoice.scan_refused',
+                    )}
+                  </p>
+                ),
+              )
+            )}
+            {scanToAttach ? (
+              <AttachPhoto
+                userId={userId}
+                target={{
+                  kind: 'INVOICE',
+                  ownerType: 'SUPPLIER_INVOICE',
+                  cited: false,
+                  ownerId: item.id,
+                }}
+                label={t('supplier_invoice.attach_scan', { doc: item.docNumber })}
+              />
+            ) : null}
+            <div className="result-actions">
+              <Button
+                variant="ghost"
+                size="sm"
+                iconEnd={shownLines === item.id ? 'chevron-up' : 'chevron-down'}
+                aria-expanded={shownLines === item.id}
+                aria-label={t(
+                  shownLines === item.id
+                    ? 'supplier_invoice.lines_hide'
+                    : 'supplier_invoice.lines_show',
+                  { doc: item.docNumber },
+                )}
+                onClick={() => setShownLines((current) => (current === item.id ? null : item.id))}
               >
                 {t(
-                  piece.uploadStatus === 'PENDING_UPLOAD'
-                    ? 'supplier_invoice.scan_uploading'
-                    : piece.uploadStatus === 'MISSING'
-                      ? 'supplier_invoice.scan_missing'
-                      : 'supplier_invoice.scan_refused',
+                  shownLines === item.id
+                    ? 'supplier_invoice.lines_hide_short'
+                    : 'supplier_invoice.lines_show_short',
                 )}
-              </p>
-            ),
-          )
-        )}
-        {scanToAttach ? (
-          <AttachPhoto
-            userId={userId}
-            target={{
-              kind: 'INVOICE',
-              ownerType: 'SUPPLIER_INVOICE',
-              cited: false,
-              ownerId: item.id,
-            }}
-            label={t('supplier_invoice.attach_scan', { doc: item.docNumber })}
-          />
-        ) : null}
-        <button
-          type="button"
-          className="secondary"
-          aria-expanded={shownLines === item.id}
-          onClick={() => setShownLines((current) => (current === item.id ? null : item.id))}
-        >
-          {t(
-            shownLines === item.id ? 'supplier_invoice.lines_hide' : 'supplier_invoice.lines_show',
-            {
-              doc: item.docNumber,
-            },
-          )}
-        </button>
-        {shownLines === item.id ? (
-          <InvoiceLines
-            invoiceId={item.id}
-            docNumber={item.docNumber}
-            online={online}
-            reloadKey={reloadKey}
-            onLines={rememberLines}
-          />
-        ) : null}
-        {actions.ownInvoice &&
-        (item.status === 'MISMATCH' || item.status === 'DISPUTED') &&
-        mayDecide ? (
-          <p className="home-muted">{t('supplier_invoice.own_invoice')}</p>
-        ) : null}
-        {opened ? (
-          <div className="field">
-            <label htmlFor={ids.reason}>{t(`supplier_invoice.reason_label.${opened}`)}</label>
-            <textarea
-              id={ids.reason}
-              ref={reasonRef}
-              className="text-input"
-              rows={2}
-              maxLength={MAX_INVOICE_REASON}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-            <div className="result-actions">
-              <button
-                type="button"
-                disabled={blocked || reason.trim() === ''}
-                onClick={() => void decide(item, opened)}
-              >
-                {t(`supplier_invoice.submit_decision.${opened}`)}
-              </button>
-              <button type="button" className="secondary" onClick={() => setOpen(null)}>
-                {t('expense.close_form')}
-              </button>
+              </Button>
             </div>
+            {shownLines === item.id ? (
+              <InvoiceLines
+                invoiceId={item.id}
+                docNumber={item.docNumber}
+                online={online}
+                reloadKey={reloadKey}
+                onLines={rememberLines}
+              />
+            ) : null}
+            {actions.ownInvoice &&
+            (item.status === 'MISMATCH' || item.status === 'DISPUTED') &&
+            mayDecide ? (
+              <p className="home-muted">{t('supplier_invoice.own_invoice')}</p>
+            ) : null}
+            {opened ? (
+              <div className="fin-decision">
+                <Field label={t(`supplier_invoice.reason_label.${opened}`)}>
+                  {(control) => (
+                    <textarea
+                      {...control}
+                      ref={reasonRef}
+                      className="textarea"
+                      rows={2}
+                      maxLength={MAX_INVOICE_REASON}
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                    />
+                  )}
+                </Field>
+                <div className="result-actions">
+                  <Button
+                    disabled={blocked || reason.trim() === ''}
+                    onClick={() => void decide(item, opened)}
+                  >
+                    {t(`supplier_invoice.submit_decision.${opened}`)}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setOpen(null)}>
+                    {t('expense.close_form')}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : actions.dispute || actions.approve || actions.cancel ? (
-          <div className="result-actions">
-            {(['approve', 'dispute', 'cancel'] as const)
-              .filter((decision) => actions[decision])
-              .map((decision) => (
-                <button
-                  key={decision}
-                  type="button"
-                  className={decision === 'approve' ? undefined : 'secondary'}
-                  ref={(element) => {
-                    openers.current.set(`${decision}:${item.id}`, element);
-                  }}
-                  disabled={blocked}
-                  onClick={() => toggle(item.id, decision)}
-                >
-                  {t(`supplier_invoice.open_decision.${decision}`, { doc: item.docNumber })}
-                </button>
-              ))}
-          </div>
-        ) : null}
-      </li>
+        </DataCell>
+      </DataRow>
     );
   };
 
   return (
-    <section className="sale-block" aria-labelledby="invoices-title">
-      <h2 id="invoices-title">{t('supplier_invoice.list_title')}</h2>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.group}>{t('supplier_invoice.group_label')}</label>
-          <select
-            id={ids.group}
-            className="text-input"
-            value={group}
-            onChange={(event) => {
-              setGroup(event.target.value as InvoiceGroup);
-              setOpen(null);
-            }}
-          >
-            {INVOICE_GROUP_ORDER.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {t(`supplier_invoice.group.${candidate}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={ids.supplier}>{t('supplier_invoice.filter_supplier')}</label>
-          <select
-            id={ids.supplier}
-            className="text-input"
-            value={supplierId}
-            onChange={(event) => {
-              setSupplierId(event.target.value);
-              setOpen(null);
-            }}
-          >
-            <option value="">{t('supplier_invoice.all_suppliers')}</option>
-            {[...suppliers]
-              .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-              .map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
+    <Section title={t('supplier_invoice.list_title')}>
+      <div className="filter-bar">
+        <Field label={t('supplier_invoice.group_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={group}
+              onChange={(event) => {
+                setGroup(event.target.value as InvoiceGroup);
+                setOpen(null);
+              }}
+            >
+              {INVOICE_GROUP_ORDER.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {t(`supplier_invoice.group.${candidate}`)}
                 </option>
               ))}
-          </select>
-        </div>
+            </Select>
+          )}
+        </Field>
+        <Field label={t('supplier_invoice.filter_supplier')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={supplierId}
+              onChange={(event) => {
+                setSupplierId(event.target.value);
+                setOpen(null);
+              }}
+            >
+              <option value="">{t('supplier_invoice.all_suppliers')}</option>
+              {[...suppliers]
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
       </div>
       {/* Écarts aussi décidés dans la file des validations (ADR-047 §5), par leurs approbateurs. */}
       {mayDecide && group === 'TO_DECIDE' ? (
-        <Link to={`${ROUTES.approvals}?types=INVOICE_MISMATCH`} className="action action-compact">
-          <span className="action-label">{t('supplier_invoice.decide_link')}</span>
-        </Link>
+        <div className="chip-row">
+          <LinkButton
+            to={`${ROUTES.approvals}?types=INVOICE_MISMATCH`}
+            variant="tonal"
+            size="sm"
+            icon="check-circle"
+          >
+            {t('supplier_invoice.decide_link')}
+          </LinkButton>
+        </div>
       ) : null}
       {last ? (
         <div ref={resultRef} tabIndex={-1}>
@@ -619,29 +708,32 @@ function InvoiceList({
         </div>
       ) : null}
       {saveError ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t(saveError)}
-        </p>
+        </Banner>
       ) : null}
       {read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>
-            {read.denied
-              ? t('supplier_invoice.denied')
-              : t(data ? 'supplier_invoice.failed_stale' : 'supplier_invoice.failed')}
-          </p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('supplier_invoice.retry_list')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          role="alert"
+          action={
+            read.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={read.retry}>
+                {t('supplier_invoice.retry_list')}
+              </Button>
+            )
+          }
+        >
+          {read.denied
+            ? t('supplier_invoice.denied')
+            : t(data ? 'supplier_invoice.failed_stale' : 'supplier_invoice.failed')}
+        </Banner>
       ) : null}
       {!data ? (
-        read.failed ? null : (
-          <p className="home-muted" aria-busy={online}>
-            {t(online ? 'sales.loading' : 'supplier_invoice.online_only')}
-          </p>
+        read.failed ? null : online ? (
+          <SkeletonRows rows={3} />
+        ) : (
+          <EmptyState icon="offline" title={t('supplier_invoice.online_only')} />
         )
       ) : (
         <>
@@ -651,14 +743,26 @@ function InvoiceList({
             </p>
           ) : null}
           {data.items.length === 0 ? (
-            <p className="home-muted">{t('supplier_invoice.empty')}</p>
+            <EmptyState icon="file" title={t('supplier_invoice.empty')} />
           ) : (
-            <ul className="line-list">{data.items.map((item) => card(item))}</ul>
+            <DataList
+              className="fin-invoices"
+              template="minmax(0, 1.8fr) minmax(0, 2.4fr) minmax(7rem, 1fr) minmax(0, 1.6fr) minmax(0, 1.8fr)"
+              columns={[
+                { label: t('supplier_invoice.col_invoice') },
+                { label: t('supplier_invoice.col_dates') },
+                { label: t('supplier_invoice.col_total'), numeric: true },
+                { label: t('supplier_invoice.col_status') },
+                { label: '' },
+              ]}
+            >
+              {data.items.map((item) => card(item))}
+            </DataList>
           )}
           {data.more ? <p className="home-muted">{t('expense.truncated')}</p> : null}
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -689,19 +793,24 @@ function InvoiceLines({
   }, [detail, onLines]);
   if (read.failed) {
     return (
-      <p className="text-warn" role="alert">
-        {read.denied ? t('supplier_invoice.lines_denied') : t('supplier_invoice.lines_failed')}{' '}
-        {read.denied ? null : (
-          <button type="button" className="secondary" onClick={read.retry}>
-            {t('supplier_invoice.retry_lines', { doc: docNumber })}
-          </button>
-        )}
-      </p>
+      <Banner
+        tone="warn"
+        role="alert"
+        action={
+          read.denied ? undefined : (
+            <Button variant="outline" size="sm" onClick={read.retry}>
+              {t('supplier_invoice.retry_lines', { doc: docNumber })}
+            </Button>
+          )
+        }
+      >
+        {read.denied ? t('supplier_invoice.lines_denied') : t('supplier_invoice.lines_failed')}
+      </Banner>
     );
   }
   if (!detail) return <p className="home-muted">{t('sales.loading')}</p>;
   return (
-    <div className="sale-block">
+    <div className="fin-invoice-lines">
       <ol>
         {detail.lines.map((line) => (
           <li key={line.lineNo}>

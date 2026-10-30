@@ -11,12 +11,26 @@
  * Toute opération sur les paiements relit la liste, les affectations et la saisie.
  * Le Resp. achats lit (AV-298).
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeDecaissementFournisseur } from '../pieces/adaptateurs-finance.js';
-import { Link } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import {
+  Banner,
+  Button,
+  DataCell,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import type { OutboxCommand } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -46,6 +60,7 @@ import type {
 } from '../treasury/treasury.js';
 import { familyReloadKey, useCommandFamily } from './command-family.js';
 import { userName } from './expense-format.js';
+import './finance.css';
 import { PaymentForm } from './PaymentForm.js';
 import { pendingPaymentsPath, readPending } from './pending-payments.js';
 import {
@@ -132,8 +147,8 @@ export function SupplierPaymentsScreen() {
   if (!userId || navigation === undefined) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.supplier_payments')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.supplier_payments')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -143,28 +158,38 @@ export function SupplierPaymentsScreen() {
   const mayRecord = holdsAnyRole(roles, ROLE_SETS.supplierPaymentRecord);
   return (
     <section className="sale">
-      <h1>{t('nav.screens.supplier_payments')}</h1>
+      <PageHeader title={t('nav.screens.supplier_payments')} />
       {online ? null : (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t('supplier_payment.offline_banner')}
-        </p>
+        </Banner>
       )}
       {suppliers.failed && !suppliers.denied ? (
-        <p className="text-warn" role="status">
-          {t('supplier_invoice.suppliers_failed')}{' '}
-          <button type="button" className="secondary" onClick={suppliers.retry}>
-            {t('supplier_invoice.retry_suppliers')}
-          </button>
-        </p>
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <Button variant="outline" size="sm" onClick={suppliers.retry}>
+              {t('supplier_invoice.retry_suppliers')}
+            </Button>
+          }
+        >
+          {t('supplier_invoice.suppliers_failed')}
+        </Banner>
       ) : null}
       {/* Sans droit sur les comptes (Resp. achats), leur nom abrégé suffit ; une panne s'annonce. */}
       {accounts.failed && !accounts.denied ? (
-        <p className="text-warn" role="status">
-          {t('supplier_payment.accounts_failed')}{' '}
-          <button type="button" className="secondary" onClick={accounts.retry}>
-            {t('supplier_payment.retry_accounts')}
-          </button>
-        </p>
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <Button variant="outline" size="sm" onClick={accounts.retry}>
+              {t('supplier_payment.retry_accounts')}
+            </Button>
+          }
+        >
+          {t('supplier_payment.accounts_failed')}
+        </Banner>
       ) : null}
       <PaymentList
         userId={userId}
@@ -221,7 +246,6 @@ function PaymentList({
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const ids = { group: useId(), supplier: useId(), reason: useId(), allocation: useId() };
   const firstField = useRef<HTMLElement | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const openers = useRef(new Map<string, HTMLButtonElement | null>());
@@ -351,28 +375,23 @@ function PaymentList({
       invoices,
     });
     const close = (
-      <button type="button" className="secondary" onClick={() => setOpen(null)}>
+      <Button variant="ghost" onClick={() => setOpen(null)}>
         {t('expense.close_form')}
-      </button>
+      </Button>
     );
     if (payables.failed) {
       return (
-        <div className="field">
-          <p className="text-warn" role="status">
+        <div className="fin-decision">
+          <Banner tone="warn" role="status">
             {payables.denied
               ? t('supplier_payment.form_denied')
               : t('supplier_payment.payables_failed')}
-          </p>
+          </Banner>
           <div className="result-actions">
             {payables.denied ? null : (
-              <button
-                type="button"
-                className="secondary"
-                ref={firstFieldRef}
-                onClick={payables.retry}
-              >
+              <Button variant="outline" ref={firstFieldRef} onClick={payables.retry}>
                 {t('supplier_payment.retry_payables')}
-              </button>
+              </Button>
             )}
             {close}
           </div>
@@ -381,14 +400,14 @@ function PaymentList({
     }
     if (!payables.data) {
       return (
-        <div className="field">
+        <div className="fin-decision">
           <p className="home-muted">{t('sales.loading')}</p>
           {close}
         </div>
       );
     }
     return (
-      <fieldset className="field">
+      <fieldset className="field fin-decision">
         <legend>
           {t('supplier_payment.allocate_legend', {
             doc: item.docNumber,
@@ -399,59 +418,67 @@ function PaymentList({
           <p className="home-muted">{t('supplier_payment.no_invoice')}</p>
         ) : (
           <>
-            <button
-              type="button"
-              className="secondary"
+            <Button
+              variant="tonal"
+              size="sm"
               ref={firstFieldRef}
               onClick={() =>
                 setAllocations(autoAllocation(netOfPlanned(invoices, planned), item.unallocatedXaf))
               }
             >
               {t('supplier_payment.spread')}
-            </button>
+            </Button>
             {invoices.map((invoice) => (
-              <div key={invoice.invoiceId} className="field">
-                <label htmlFor={`${ids.allocation}-${invoice.invoiceId}`}>
-                  {t('supplier_payment.allocation_short', {
-                    doc: invoice.docNumber,
-                    balance: formatMoney(invoice.balanceXaf),
-                  })}
-                </label>
-                <input
-                  id={`${ids.allocation}-${invoice.invoiceId}`}
-                  className="text-input"
-                  inputMode="numeric"
-                  value={allocations[invoice.invoiceId] ?? ''}
-                  onChange={(event) =>
-                    setAllocations((current) => ({
-                      ...current,
-                      [invoice.invoiceId]: event.target.value,
-                    }))
-                  }
-                />
-                {planned[invoice.invoiceId] ? (
-                  <p className="text-warn">
-                    {t('supplier_payment.planned_on_invoice', {
-                      amount: formatMoney(planned[invoice.invoiceId]!.amountXaf),
-                      docs: planned[invoice.invoiceId]!.docNumbers.join(', '),
-                    })}
-                  </p>
-                ) : null}
-              </div>
+              <Field
+                key={invoice.invoiceId}
+                label={t('supplier_payment.allocation_short', {
+                  doc: invoice.docNumber,
+                  balance: formatMoney(invoice.balanceXaf),
+                })}
+                hint={
+                  planned[invoice.invoiceId] ? (
+                    <span className="text-warn">
+                      {t('supplier_payment.planned_on_invoice', {
+                        amount: formatMoney(planned[invoice.invoiceId]!.amountXaf),
+                        docs: planned[invoice.invoiceId]!.docNumbers.join(', '),
+                      })}
+                    </span>
+                  ) : undefined
+                }
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    inputMode="numeric"
+                    value={allocations[invoice.invoiceId] ?? ''}
+                    onChange={(event) =>
+                      setAllocations((current) => ({
+                        ...current,
+                        [invoice.invoiceId]: event.target.value,
+                      }))
+                    }
+                  />
+                )}
+              </Field>
             ))}
           </>
         )}
         {planning.failed ? (
-          <p className="text-warn" role="status">
+          <Banner
+            tone="warn"
+            role="status"
+            action={
+              planning.denied ? undefined : (
+                <Button variant="outline" size="sm" onClick={planning.retry}>
+                  {t('supplier_payment.retry_pending')}
+                </Button>
+              )
+            }
+          >
             {planning.denied
               ? t('supplier_payment.form_denied')
-              : t('supplier_payment.pending_failed')}{' '}
-            {planning.denied ? null : (
-              <button type="button" className="secondary" onClick={planning.retry}>
-                {t('supplier_payment.retry_pending')}
-              </button>
-            )}
-          </p>
+              : t('supplier_payment.pending_failed')}
+          </Banner>
         ) : null}
         {plan.error ? (
           <p className="error-message" role="alert">
@@ -461,23 +488,17 @@ function PaymentList({
           </p>
         ) : null}
         <div className="result-actions">
-          <button
-            type="button"
+          <Button
             disabled={blocked || payables.stale || !plan.valid}
             onClick={() => void send(item, 'allocate')}
           >
             {t('supplier_payment.allocate_submit')}
-          </button>
+          </Button>
           {/* Aucune facture à payer : le focus va au seul bouton utile. */}
           {invoices.length === 0 ? (
-            <button
-              type="button"
-              className="secondary"
-              ref={firstFieldRef}
-              onClick={() => setOpen(null)}
-            >
+            <Button variant="ghost" ref={firstFieldRef} onClick={() => setOpen(null)}>
               {t('expense.close_form')}
-            </button>
+            </Button>
           ) : (
             close
           )}
@@ -487,210 +508,239 @@ function PaymentList({
   };
 
   const cancelForm = (item: SupplierPaymentItem) => (
-    <div className="field">
-      <label htmlFor={ids.reason}>{t('supplier_payment.cancel_reason_label')}</label>
-      <textarea
-        id={ids.reason}
-        ref={firstFieldRef}
-        className="text-input"
-        rows={2}
-        maxLength={MAX_PAYMENT_REASON}
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-      />
-      <p className="home-muted">
-        {t(
+    <div className="fin-decision">
+      <Field
+        label={t('supplier_payment.cancel_reason_label')}
+        hint={t(
           item.status === 'RECORDED'
             ? 'supplier_payment.cancel_recorded_note'
             : 'supplier_payment.cancel_pending_note',
         )}
-      </p>
+      >
+        {(control) => (
+          <textarea
+            {...control}
+            ref={firstFieldRef}
+            className="textarea"
+            rows={2}
+            maxLength={MAX_PAYMENT_REASON}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        )}
+      </Field>
       <div className="result-actions">
-        <button
-          type="button"
+        <Button
           disabled={blocked || reason.trim() === ''}
           onClick={() => void send(item, 'cancel')}
         >
           {t('supplier_payment.cancel_submit')}
-        </button>
-        <button type="button" className="secondary" onClick={() => setOpen(null)}>
+        </Button>
+        <Button variant="ghost" onClick={() => setOpen(null)}>
           {t('expense.close_form')}
-        </button>
+        </Button>
       </div>
     </div>
   );
 
   const card = (item: SupplierPaymentItem) => {
     const actions = paymentActions(item, userId, rights);
+    const opened = open?.id === item.id ? open.kind : null;
     return (
-      <li key={item.id} className="line-card" aria-label={item.docNumber}>
-        <p>
-          <strong>{item.docNumber}</strong> · {formatMoney(item.amountXaf)}
-        </p>
-        <p>{supplierOf(item.supplierId)}</p>
-        <p className="home-muted">
-          {t('supplier_payment.card_meta', {
-            method: methodOf(item.paymentMethodCode),
-            account: accountOf(item.fromAccountId),
-            date: formatDateTime(item.occurredAt),
-            author: userName(t, refs?.users ?? [], item.createdBy, userId),
-          })}
-          {item.externalReference
-            ? ` · ${t('treasury.supplier_payment_reference', { reference: item.externalReference })}`
-            : ''}
-        </p>
-        <p className={item.status === 'PENDING_APPROVAL' ? 'text-warn' : 'home-muted'}>
-          {t(`supplier_payment.status.${item.status}`, { defaultValue: item.status })}
-          {item.status === 'RECORDED' && item.unallocatedXaf > 0
-            ? ` · ${t('supplier_payment.unallocated', { amount: formatMoney(item.unallocatedXaf) })}`
-            : ''}
-          {item.status === 'REJECTED' && item.decidedAt
-            ? ` · ${t('supplier_payment.decided_at', { date: formatDateTime(item.decidedAt) })}`
-            : ''}
-          {/* Décaissé à la décision de la Direction (AV-276) : sa date n'est pas celle de la saisie. */}
-          {item.status === 'RECORDED' && item.disbursedAt && item.disbursedAt !== item.occurredAt
-            ? ` · ${t('supplier_payment.disbursed_at', { date: formatDateTime(item.disbursedAt) })}`
-            : ''}
-        </p>
-        {item.cancelReason ? (
-          <p className="home-muted">
-            {t('supplier_payment.cancel_reason', { reason: item.cancelReason })}
-          </p>
-        ) : null}
-        {/* Bon de décaissement (lot PP) : paiement ou avance au fournisseur, seulement une fois
-            l'argent sorti (en attente de la Direction ou refusé : aucun décaissement). */}
-        {item.status === 'RECORDED' || (item.status === 'CANCELLED' && item.disbursedAt) ? (
-          <PieceAction
-            cle={`BD:${item.id}`}
-            annulee={item.status === 'CANCELLED'}
-            demande={() =>
-              refs
-                ? demandeDecaissementFournisseur(
-                    {
-                      docNumber: item.docNumber,
-                      // Fournisseur inconnu de la liste : case laissée vide, jamais un identifiant.
-                      fournisseur:
-                        suppliers.find((supplier) => supplier.id === item.supplierId)?.name ?? null,
-                      compteId: item.fromAccountId,
-                      occurredAt: item.disbursedAt ?? item.occurredAt,
-                      creePar: item.createdBy,
-                      decidePar: item.decidedBy,
-                      montant: item.amountXaf,
-                      avance: item.unallocatedXaf >= item.amountXaf,
-                      factures: [],
-                      moyen: item.paymentMethodCode,
-                      reference: item.externalReference,
-                    },
-                    refs,
-                  )
-                : null
-            }
-          />
-        ) : null}
-        <button
-          type="button"
-          className="secondary"
-          aria-expanded={shown === item.id}
-          onClick={() => setShown((current) => (current === item.id ? null : item.id))}
-        >
-          {t(
-            shown === item.id
-              ? 'supplier_payment.allocations_hide'
-              : 'supplier_payment.allocations_show',
-            { doc: item.docNumber },
-          )}
-        </button>
-        {shown === item.id ? (
-          <PaymentAllocations payment={item} online={online} reloadKey={reloadKey} />
-        ) : null}
-        {open?.id === item.id ? (
-          open.kind === 'allocate' ? (
-            allocateForm(item)
-          ) : (
-            cancelForm(item)
-          )
-        ) : actions.allocate || actions.cancel ? (
-          <div className="result-actions">
+      <DataRow key={item.id} aria-label={item.docNumber}>
+        <DataCell primary>
+          <strong>{item.docNumber}</strong>
+          <small className="fin-group-meta">{supplierOf(item.supplierId)}</small>
+        </DataCell>
+        <DataCell label={t('supplier_payment.col_amount')} numeric>
+          {formatMoney(item.amountXaf)}
+        </DataCell>
+        <DataCell label={t('supplier_payment.col_status')}>
+          <span className={`fin-status ${paymentStatusTone(item.status)}`}>
+            {t(`supplier_payment.status.${item.status}`, { defaultValue: item.status })}
+            {item.status === 'RECORDED' && item.unallocatedXaf > 0
+              ? ` · ${t('supplier_payment.unallocated', { amount: formatMoney(item.unallocatedXaf) })}`
+              : ''}
+            {item.status === 'REJECTED' && item.decidedAt
+              ? ` · ${t('supplier_payment.decided_at', { date: formatDateTime(item.decidedAt) })}`
+              : ''}
+            {/* Décaissé à la décision de la Direction (AV-276) : sa date n'est pas celle de la saisie. */}
+            {item.status === 'RECORDED' && item.disbursedAt && item.disbursedAt !== item.occurredAt
+              ? ` · ${t('supplier_payment.disbursed_at', { date: formatDateTime(item.disbursedAt) })}`
+              : ''}
+          </span>
+        </DataCell>
+        {!opened && (actions.allocate || actions.cancel) ? (
+          <DataCell actions>
             {actions.allocate ? (
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="sm"
                 ref={(element) => {
                   openers.current.set(`allocate:${item.id}`, element);
                 }}
                 disabled={blocked}
+                aria-label={t('supplier_payment.allocate_open', { doc: item.docNumber })}
                 onClick={() => toggle(item, 'allocate')}
               >
-                {t('supplier_payment.allocate_open', { doc: item.docNumber })}
-              </button>
+                {t('supplier_payment.allocate_short')}
+              </Button>
             ) : null}
             {actions.cancel ? (
-              <button
-                type="button"
-                className="secondary"
+              <Button
+                variant="outline"
+                size="sm"
                 ref={(element) => {
                   openers.current.set(`cancel:${item.id}`, element);
                 }}
                 disabled={blocked}
+                aria-label={t('supplier_payment.cancel_open', { doc: item.docNumber })}
                 onClick={() => toggle(item, 'cancel')}
               >
-                {t('supplier_payment.cancel_open', { doc: item.docNumber })}
-              </button>
+                {t('supplier_payment.cancel_short')}
+              </Button>
             ) : null}
-          </div>
+          </DataCell>
         ) : null}
-      </li>
+        <DataCell wide>
+          <div className="fin-detail">
+            <p className="home-muted">
+              {t('supplier_payment.card_meta', {
+                method: methodOf(item.paymentMethodCode),
+                account: accountOf(item.fromAccountId),
+                date: formatDateTime(item.occurredAt),
+                author: userName(t, refs?.users ?? [], item.createdBy, userId),
+              })}
+              {item.externalReference
+                ? ` · ${t('treasury.supplier_payment_reference', { reference: item.externalReference })}`
+                : ''}
+            </p>
+            {item.cancelReason ? (
+              <p className="home-muted">
+                {t('supplier_payment.cancel_reason', { reason: item.cancelReason })}
+              </p>
+            ) : null}
+            {/* Bon de décaissement (lot PP) : paiement ou avance au fournisseur, seulement une fois
+                l'argent sorti (en attente de la Direction ou refusé : aucun décaissement). */}
+            {item.status === 'RECORDED' || (item.status === 'CANCELLED' && item.disbursedAt) ? (
+              <PieceAction
+                cle={`BD:${item.id}`}
+                annulee={item.status === 'CANCELLED'}
+                demande={() =>
+                  refs
+                    ? demandeDecaissementFournisseur(
+                        {
+                          docNumber: item.docNumber,
+                          // Fournisseur inconnu de la liste : case laissée vide, jamais un identifiant.
+                          fournisseur:
+                            suppliers.find((supplier) => supplier.id === item.supplierId)?.name ??
+                            null,
+                          compteId: item.fromAccountId,
+                          occurredAt: item.disbursedAt ?? item.occurredAt,
+                          creePar: item.createdBy,
+                          decidePar: item.decidedBy,
+                          montant: item.amountXaf,
+                          avance: item.unallocatedXaf >= item.amountXaf,
+                          factures: [],
+                          moyen: item.paymentMethodCode,
+                          reference: item.externalReference,
+                        },
+                        refs,
+                      )
+                    : null
+                }
+              />
+            ) : null}
+            <div className="result-actions">
+              <Button
+                variant="ghost"
+                size="sm"
+                iconEnd={shown === item.id ? 'chevron-up' : 'chevron-down'}
+                aria-expanded={shown === item.id}
+                aria-label={t(
+                  shown === item.id
+                    ? 'supplier_payment.allocations_hide'
+                    : 'supplier_payment.allocations_show',
+                  { doc: item.docNumber },
+                )}
+                onClick={() => setShown((current) => (current === item.id ? null : item.id))}
+              >
+                {t(
+                  shown === item.id
+                    ? 'supplier_payment.allocations_hide_short'
+                    : 'supplier_payment.allocations_show_short',
+                )}
+              </Button>
+            </div>
+            {shown === item.id ? (
+              <PaymentAllocations payment={item} online={online} reloadKey={reloadKey} />
+            ) : null}
+            {opened === 'allocate'
+              ? allocateForm(item)
+              : opened === 'cancel'
+                ? cancelForm(item)
+                : null}
+          </div>
+        </DataCell>
+      </DataRow>
     );
   };
 
   return (
-    <section className="sale-block" aria-labelledby="payments-title">
-      <h2 id="payments-title">{t('supplier_payment.list_title')}</h2>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.group}>{t('supplier_payment.group_label')}</label>
-          <select
-            id={ids.group}
-            className="text-input"
-            value={group}
-            onChange={(event) => {
-              setGroup(event.target.value as PaymentGroup);
-              setOpen(null);
-            }}
-          >
-            {PAYMENT_GROUP_ORDER.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {t(`supplier_payment.group.${candidate}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={ids.supplier}>{t('supplier_payment.filter_supplier')}</label>
-          <select
-            id={ids.supplier}
-            className="text-input"
-            value={supplierId}
-            onChange={(event) => {
-              setSupplierId(event.target.value);
-              setOpen(null);
-            }}
-          >
-            <option value="">{t('supplier_invoice.all_suppliers')}</option>
-            {[...suppliers]
-              .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-              .map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
+    <Section title={t('supplier_payment.list_title')}>
+      <div className="filter-bar">
+        <Field label={t('supplier_payment.group_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={group}
+              onChange={(event) => {
+                setGroup(event.target.value as PaymentGroup);
+                setOpen(null);
+              }}
+            >
+              {PAYMENT_GROUP_ORDER.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {t(`supplier_payment.group.${candidate}`)}
                 </option>
               ))}
-          </select>
-        </div>
+            </Select>
+          )}
+        </Field>
+        <Field label={t('supplier_payment.filter_supplier')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={supplierId}
+              onChange={(event) => {
+                setSupplierId(event.target.value);
+                setOpen(null);
+              }}
+            >
+              <option value="">{t('supplier_invoice.all_suppliers')}</option>
+              {[...suppliers]
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
       </div>
       {/* Décision de la Direction dans la file des validations (ADR-047 §5). */}
       {rights.mayApprove && group === 'PENDING' ? (
-        <Link to={`${ROUTES.approvals}?types=SUPPLIER_PAYMENT`} className="action action-compact">
-          <span className="action-label">{t('supplier_payment.decide_link')}</span>
-        </Link>
+        <div className="chip-row">
+          <LinkButton
+            to={`${ROUTES.approvals}?types=SUPPLIER_PAYMENT`}
+            variant="tonal"
+            size="sm"
+            icon="check-circle"
+          >
+            {t('supplier_payment.decide_link')}
+          </LinkButton>
+        </div>
       ) : null}
       {last ? (
         <div ref={resultRef} tabIndex={-1}>
@@ -701,29 +751,32 @@ function PaymentList({
         </div>
       ) : null}
       {saveError ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t(saveError)}
-        </p>
+        </Banner>
       ) : null}
       {read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>
-            {read.denied
-              ? t('supplier_payment.denied')
-              : t(data ? 'supplier_payment.failed_stale' : 'supplier_payment.failed')}
-          </p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('supplier_payment.retry_list')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          role="alert"
+          action={
+            read.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={read.retry}>
+                {t('supplier_payment.retry_list')}
+              </Button>
+            )
+          }
+        >
+          {read.denied
+            ? t('supplier_payment.denied')
+            : t(data ? 'supplier_payment.failed_stale' : 'supplier_payment.failed')}
+        </Banner>
       ) : null}
       {!data ? (
-        read.failed ? null : (
-          <p className="home-muted" aria-busy={online}>
-            {t(online ? 'sales.loading' : 'supplier_payment.online_only')}
-          </p>
+        read.failed ? null : online ? (
+          <SkeletonRows rows={3} />
+        ) : (
+          <EmptyState icon="offline" title={t('supplier_payment.online_only')} />
         )
       ) : (
         <>
@@ -733,15 +786,40 @@ function PaymentList({
             </p>
           ) : null}
           {data.items.length === 0 ? (
-            <p className="home-muted">{t('supplier_payment.empty')}</p>
+            <EmptyState icon="cash" title={t('supplier_payment.empty')} />
           ) : (
-            <ul className="line-list">{data.items.map((item) => card(item))}</ul>
+            <DataList
+              className="fin-payments"
+              template="minmax(0, 2fr) minmax(7rem, 1fr) minmax(0, 2.6fr) minmax(0, 1.6fr)"
+              columns={[
+                { label: t('supplier_payment.col_payment') },
+                { label: t('supplier_payment.col_amount'), numeric: true },
+                { label: t('supplier_payment.col_status') },
+                { label: '' },
+              ]}
+            >
+              {data.items.map((item) => card(item))}
+            </DataList>
           )}
           {data.more ? <p className="home-muted">{t('expense.truncated')}</p> : null}
         </>
       )}
-    </section>
+    </Section>
   );
+}
+
+/** Ton de la situation d'un paiement : l'attente de la Direction et le refus se remarquent. */
+function paymentStatusTone(status: string): string {
+  switch (status) {
+    case 'PENDING_APPROVAL':
+      return 'is-warn';
+    case 'REJECTED':
+      return 'is-bad';
+    case 'RECORDED':
+      return 'is-ok';
+    default:
+      return 'is-muted';
+  }
 }
 
 /**
@@ -772,16 +850,21 @@ function PaymentAllocations({
   );
   if (read.failed) {
     return (
-      <p className="text-warn" role="alert">
+      <Banner
+        tone="warn"
+        role="alert"
+        action={
+          read.denied ? undefined : (
+            <Button variant="outline" size="sm" onClick={read.retry}>
+              {t('supplier_payment.retry_allocations', { doc: payment.docNumber })}
+            </Button>
+          )
+        }
+      >
         {read.denied
           ? t('supplier_payment.allocations_denied')
-          : t('supplier_payment.allocations_failed')}{' '}
-        {read.denied ? null : (
-          <button type="button" className="secondary" onClick={read.retry}>
-            {t('supplier_payment.retry_allocations', { doc: payment.docNumber })}
-          </button>
-        )}
-      </p>
+          : t('supplier_payment.allocations_failed')}
+      </Banner>
     );
   }
   const detail = read.data?.supplier_payment;
@@ -794,7 +877,7 @@ function PaymentAllocations({
     invoices.data?.items.find((invoice) => invoice.id === invoiceId)?.docNumber ??
     `…${invoiceId.slice(-4)}`;
   return (
-    <ul className="home-muted">
+    <ul className="fin-invoice-lines home-muted">
       {allocations.map((allocation, index) => (
         <li key={`${allocation.invoiceId}-${index}`}>
           {t('supplier_payment.allocation_read', {

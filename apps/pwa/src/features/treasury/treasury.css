@@ -1,0 +1,64 @@
+/* Écran de la trésorerie (ADR-049, lot L8) : mouvements d'un compte et détail d'une session de caisse. Les
+   composants viennent de `components/ui` et le vocabulaire des tableaux de `features/finance/finance.css`
+   (tuiles, situations, détails) ; cette feuille ne garde que ce qui est propre à la trésorerie. Aucune
+   couleur en dur : jetons seulement. */
+
+/* --- Mouvements d'un compte ---------------------------------------------------------------------- */
+
+.tre-movements {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.tre-moves {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.tre-moves > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.tre-move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.tre-move-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Détail d'une session de caisse --------------------------------------------------------------- */
+
+.tre-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.tre-detail > p,
+.tre-detail > ul {
+  margin: 0;
+}
+
+.tre-detail .field {
+  align-self: stretch;
+  margin-bottom: 0;
+}

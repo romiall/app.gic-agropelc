@@ -12,11 +12,24 @@
  * Aucune marge n'est calculée sur l'appareil (BR-ANA-009) ; les axes produit, point de vente et
  * commercial viendront avec l'explorateur de P9 (AV-299). Finance et Direction (AV-303).
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { businessDayOf } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import {
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  KpiTile,
+  LinkButton,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -60,6 +73,7 @@ import {
   type LotMarginsResponse,
   type LotStatusChoice,
 } from './costs.js';
+import './finance.css';
 
 const shortId = (id: string) => `…${id.slice(-4)}`;
 
@@ -76,24 +90,29 @@ function SectionProblem({
   const { t } = useTranslation();
   if (!read.failed) return null;
   return (
-    <p className="text-warn" role="alert">
-      {read.denied ? t('costs_margins.denied') : t(failedKey)}{' '}
-      {read.denied ? null : (
-        <button type="button" className="secondary" onClick={read.retry}>
-          {t(retryKey)}
-        </button>
-      )}
-    </p>
+    <Banner
+      tone="warn"
+      role="alert"
+      action={
+        read.denied ? undefined : (
+          <Button variant="outline" size="sm" onClick={read.retry}>
+            {t(retryKey)}
+          </Button>
+        )
+      }
+    >
+      {read.denied ? t('costs_margins.denied') : t(failedKey)}
+    </Banner>
   );
 }
 
 /** Section sans lecture : hors ligne, en ligne seulement ; sinon en cours. */
 function Waiting({ online }: { readonly online: boolean }) {
   const { t } = useTranslation();
-  return (
-    <p className="home-muted" aria-busy={online}>
-      {t(online ? 'sales.loading' : 'costs_margins.online_only')}
-    </p>
+  return online ? (
+    <SkeletonRows rows={2} />
+  ) : (
+    <EmptyState icon="offline" title={t('costs_margins.online_only')} />
   );
 }
 
@@ -121,76 +140,76 @@ export function CostsScreen() {
   const today = businessDayOf(clock.now());
   const [period, setPeriod] = useState<CostPeriod>(DEFAULT_COST_PERIOD);
   const [custom, setCustom] = useState(() => ({ from: shiftDay(today, -29), to: today }));
-  const ids = { period: useId(), from: useId(), to: useId() };
   const range = period === 'CUSTOM' ? custom : namedPeriod(period, today);
   const issue = periodIssue(range.from, range.to, today);
 
   if (!userId || navigation === undefined) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.costs_margins')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.costs_margins')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
   const roles = navigation?.roles ?? [];
   return (
     <section className="sale">
-      <h1>{t('nav.screens.costs_margins')}</h1>
+      <PageHeader title={t('nav.screens.costs_margins')} />
       {online ? null : (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t('costs_margins.offline_banner')}
-        </p>
+        </Banner>
       )}
-      <section className="sale-block" aria-labelledby="costs-period-title">
-        <h2 id="costs-period-title">{t('costs_margins.period_title')}</h2>
-        <div className="field">
-          <label htmlFor={ids.period}>{t('costs_margins.period_label')}</label>
-          <select
-            id={ids.period}
-            className="text-input"
-            value={period}
-            onChange={(event) => setPeriod(event.target.value as CostPeriod)}
-          >
-            {COST_PERIODS.map((code) => (
-              <option key={code} value={code}>
-                {t(`costs_margins.period.${code}`)}
-              </option>
-            ))}
-          </select>
+      <Section title={t('costs_margins.period_title')}>
+        <div className="filter-bar">
+          <Field label={t('costs_margins.period_label')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={period}
+                onChange={(event) => setPeriod(event.target.value as CostPeriod)}
+              >
+                {COST_PERIODS.map((code) => (
+                  <option key={code} value={code}>
+                    {t(`costs_margins.period.${code}`)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          {period === 'CUSTOM' ? (
+            <>
+              <Field label={t('ledger.from_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={custom.from}
+                    onChange={(event) =>
+                      setCustom((current) => ({ ...current, from: event.target.value }))
+                    }
+                  />
+                )}
+              </Field>
+              <Field label={t('ledger.to_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={custom.to}
+                    onChange={(event) =>
+                      setCustom((current) => ({ ...current, to: event.target.value }))
+                    }
+                  />
+                )}
+              </Field>
+            </>
+          ) : null}
         </div>
-        {period === 'CUSTOM' ? (
-          <div className="line-fields">
-            <div className="field">
-              <label htmlFor={ids.from}>{t('ledger.from_label')}</label>
-              <input
-                id={ids.from}
-                type="date"
-                className="text-input"
-                value={custom.from}
-                onChange={(event) =>
-                  setCustom((current) => ({ ...current, from: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={ids.to}>{t('ledger.to_label')}</label>
-              <input
-                id={ids.to}
-                type="date"
-                className="text-input"
-                value={custom.to}
-                onChange={(event) =>
-                  setCustom((current) => ({ ...current, to: event.target.value }))
-                }
-              />
-            </div>
-          </div>
-        ) : null}
         {issue ? (
-          <p className="error-message" role="alert">
+          <Banner tone="bad" role="alert">
             {t(`ledger.issue.${issue}`)}
-          </p>
+          </Banner>
         ) : (
           <p className="home-muted">
             {t('costs_margins.period_range', {
@@ -199,7 +218,7 @@ export function CostsScreen() {
             })}
           </p>
         )}
-      </section>
+      </Section>
       <Overview range={issue ? null : range} online={online} />
       <Losses range={issue ? null : range} online={online} />
       <LotSection online={online} mayOpenLotSheet={holdsAnyRole(roles, ROLE_SETS.lotSheet)} />
@@ -221,12 +240,14 @@ function Overview({ range, online }: { readonly range: Range; readonly online: b
   );
   useRefreshOnVisible(read.retry);
   const data = read.data;
-  const hidden = <p className="home-muted">{t('costs_margins.block_hidden')}</p>;
   const money = (value: number | null) =>
     value === null ? t('costs_margins.not_visible') : formatMoney(value);
+  // Bloc non lisible avec ses droits : une tuile vide qui l'annonce, jamais un zéro.
+  const hiddenTile = (label: string) => (
+    <KpiTile label={label} value="—" detail={t('costs_margins.block_hidden')} />
+  );
   return (
-    <section className="sale-block" aria-labelledby="costs-overview-title">
-      <h2 id="costs-overview-title">{t('costs_margins.overview_title')}</h2>
+    <Section title={t('costs_margins.overview_title')}>
       <SectionProblem
         read={read}
         failedKey="costs_margins.overview_failed"
@@ -241,121 +262,141 @@ function Overview({ range, online }: { readonly range: Range; readonly online: b
         )
       ) : (
         <>
-          <h3>{t('costs_margins.revenue_title')}</h3>
-          {data.revenue ? (
-            <ul className="line-list">
-              <li>
-                {t('costs_margins.revenue_line', {
-                  gross: formatMoney(data.revenue.grossRevenueXaf),
-                  cancelled: formatMoney(data.revenue.cancelledXaf),
-                  net: formatMoney(data.revenue.netRevenueXaf),
-                  count: data.revenue.saleCount,
-                })}
-              </li>
-              <li>
-                {t('costs_margins.margin_line', {
-                  cost: money(data.revenue.costOfSalesXaf),
-                  margin: money(data.revenue.grossMarginXaf),
-                })}
-              </li>
-            </ul>
-          ) : (
-            hidden
-          )}
-          <h3>{t('costs_margins.collected_title')}</h3>
-          {data.collected ? (
-            <p>
-              {t('costs_margins.collected_line', {
-                amount: formatMoney(data.collected.amountXaf),
-                count: data.collected.paymentsCount,
-              })}
-            </p>
-          ) : (
-            hidden
-          )}
-          <h3>{t('costs_margins.expenses_title')}</h3>
-          {data.expenses ? (
-            <>
-              <p>
-                {t('costs_margins.expenses_line', {
-                  amount: formatMoney(data.expenses.totalXaf),
-                  count: data.expenses.count,
-                })}
-              </p>
-              {data.expenses.byCategory.length > 0 ? (
-                <ul className="home-muted">
-                  {data.expenses.byCategory.map((category) => (
-                    <li key={category.code}>
-                      {t('costs_margins.expense_category', {
-                        label: category.label,
-                        amount: formatMoney(category.amountXaf),
-                        count: category.count,
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {data.expenses.pendingXaf > 0 || data.expenses.unjustifiedXaf > 0 ? (
-                <p className="text-warn">
-                  {t('costs_margins.expenses_pending', {
-                    pending: formatMoney(data.expenses.pendingXaf),
-                    unjustified: formatMoney(data.expenses.unjustifiedXaf),
+          <div className="fin-kpis fin-kpis-4">
+            {data.revenue ? (
+              <>
+                <KpiTile
+                  icon="cart"
+                  label={t('costs_margins.tile_revenue')}
+                  value={formatMoney(data.revenue.netRevenueXaf)}
+                  detail={t('costs_margins.tile_revenue_detail', {
+                    gross: formatMoney(data.revenue.grossRevenueXaf),
+                    cancelled: formatMoney(data.revenue.cancelledXaf),
+                    count: data.revenue.saleCount,
                   })}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            hidden
-          )}
-          <h3>{t('costs_margins.balances_title', { date: formatBusinessDate(data.as_of) })}</h3>
-          <p className="home-muted">{t('costs_margins.balances_note')}</p>
-          {data.receivables ? (
-            <p>
-              {t('costs_margins.receivables_open', {
-                amount: formatMoney(data.receivables.outstandingXaf),
-                count: data.receivables.openCount,
-              })}
-              {' · '}
-              {t('costs_margins.receivables_overdue', {
-                amount: formatMoney(data.receivables.overdueXaf),
-                count: data.receivables.overdueCount,
+                />
+                <KpiTile
+                  icon="chart"
+                  label={t('costs_margins.tile_margin')}
+                  value={
+                    data.revenue.grossMarginXaf === null
+                      ? '—'
+                      : formatMoney(data.revenue.grossMarginXaf)
+                  }
+                  detail={t('costs_margins.tile_margin_detail', {
+                    cost: money(data.revenue.costOfSalesXaf),
+                  })}
+                />
+              </>
+            ) : (
+              hiddenTile(t('costs_margins.revenue_title'))
+            )}
+            {data.collected ? (
+              <KpiTile
+                icon="cash"
+                label={t('costs_margins.collected_title')}
+                value={formatMoney(data.collected.amountXaf)}
+                detail={t('costs_margins.collected_detail', {
+                  count: data.collected.paymentsCount,
+                })}
+              />
+            ) : (
+              hiddenTile(t('costs_margins.collected_title'))
+            )}
+            {data.expenses ? (
+              <KpiTile
+                icon="receipt"
+                label={t('costs_margins.expenses_title')}
+                value={formatMoney(data.expenses.totalXaf)}
+                detail={t('costs_margins.expenses_detail', { count: data.expenses.count })}
+              />
+            ) : (
+              hiddenTile(t('costs_margins.expenses_title'))
+            )}
+          </div>
+          {data.expenses && data.expenses.byCategory.length > 0 ? (
+            <ul className="fin-breakdown">
+              {data.expenses.byCategory.map((category) => (
+                <li key={category.code}>
+                  {t('costs_margins.expense_category', {
+                    label: category.label,
+                    amount: formatMoney(category.amountXaf),
+                    count: category.count,
+                  })}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {data.expenses && (data.expenses.pendingXaf > 0 || data.expenses.unjustifiedXaf > 0) ? (
+            <p className="text-warn">
+              {t('costs_margins.expenses_pending', {
+                pending: formatMoney(data.expenses.pendingXaf),
+                unjustified: formatMoney(data.expenses.unjustifiedXaf),
               })}
             </p>
-          ) : (
+          ) : null}
+          <h3 className="fin-sub">
+            {t('costs_margins.balances_title', { date: formatBusinessDate(data.as_of) })}
+          </h3>
+          <p className="home-muted">{t('costs_margins.balances_note')}</p>
+          <div className="fin-kpis">
+            {data.receivables ? (
+              <KpiTile
+                icon="users"
+                label={t('costs_margins.tile_receivables')}
+                value={formatMoney(data.receivables.outstandingXaf)}
+                tone={data.receivables.overdueXaf > 0 ? 'warn' : 'neutral'}
+                detail={`${t('costs_margins.receivables_open_detail', {
+                  count: data.receivables.openCount,
+                })} · ${t('costs_margins.receivables_overdue', {
+                  amount: formatMoney(data.receivables.overdueXaf),
+                  count: data.receivables.overdueCount,
+                })}`}
+              />
+            ) : null}
+            {data.payables ? (
+              <KpiTile
+                icon="truck"
+                label={t('costs_margins.tile_payables')}
+                value={formatMoney(data.payables.balanceXaf)}
+                detail={t('costs_margins.payables_detail', {
+                  overdue: formatMoney(data.payables.overdueXaf),
+                  advance: formatMoney(data.payables.advanceXaf),
+                  net: formatMoney(data.payables.netXaf),
+                })}
+              />
+            ) : null}
+            {data.cash ? (
+              <KpiTile
+                icon="store"
+                label={t('costs_margins.tile_cash')}
+                value={formatMoney(data.cash.totalXaf)}
+              />
+            ) : null}
+          </div>
+          {data.receivables ? null : (
             <p className="home-muted">{t('costs_margins.receivables_hidden')}</p>
           )}
-          {data.payables ? (
-            <p>
-              {t('costs_margins.payables_line', {
-                balance: formatMoney(data.payables.balanceXaf),
-                overdue: formatMoney(data.payables.overdueXaf),
-                advance: formatMoney(data.payables.advanceXaf),
-                net: formatMoney(data.payables.netXaf),
-              })}
-            </p>
-          ) : (
+          {data.payables ? null : (
             <p className="home-muted">{t('costs_margins.payables_hidden')}</p>
           )}
           {data.cash ? (
-            <>
-              <p>{t('costs_margins.cash_line', { amount: formatMoney(data.cash.totalXaf) })}</p>
-              <ul className="home-muted">
-                {Object.entries(data.cash.byAccountType).map(([type, amount]) => (
-                  <li key={type}>
-                    {t('costs_margins.cash_type', {
-                      type: t(`treasury.account_type.${type}`, { defaultValue: type }),
-                      amount: formatMoney(amount),
-                    })}
-                  </li>
-                ))}
-              </ul>
-            </>
+            <ul className="fin-breakdown">
+              {Object.entries(data.cash.byAccountType).map(([type, amount]) => (
+                <li key={type}>
+                  {t('costs_margins.cash_type', {
+                    type: t(`treasury.account_type.${type}`, { defaultValue: type }),
+                    amount: formatMoney(amount),
+                  })}
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="home-muted">{t('costs_margins.cash_hidden')}</p>
           )}
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -363,7 +404,6 @@ function Losses({ range, online }: { readonly range: Range; readonly online: boo
   const { t } = useTranslation();
   const refs = useSalesReferences();
   const [group, setGroup] = useState<LossGroup>('product');
-  const groupId = useId();
   const read = useOnlineRead(
     range ? lossesPath(range.from, range.to, group) : null,
     (key) => readPath<LossSummary>(key),
@@ -412,23 +452,24 @@ function Losses({ range, online }: { readonly range: Range; readonly online: boo
   const money = (value: number | null) =>
     value === null ? t('costs_margins.not_visible') : formatMoney(value);
   return (
-    <section className="sale-block" aria-labelledby="costs-losses-title">
-      <h2 id="costs-losses-title">{t('costs_margins.losses_title')}</h2>
+    <Section title={t('costs_margins.losses_title')}>
       <p className="home-muted">{t('costs_margins.losses_note')}</p>
-      <div className="field">
-        <label htmlFor={groupId}>{t('costs_margins.losses_group_label')}</label>
-        <select
-          id={groupId}
-          className="text-input"
-          value={group}
-          onChange={(event) => setGroup(event.target.value as LossGroup)}
-        >
-          {LOSS_GROUPS.map((code) => (
-            <option key={code} value={code}>
-              {t(`costs_margins.losses_group.${code}`)}
-            </option>
-          ))}
-        </select>
+      <div className="filter-bar">
+        <Field label={t('costs_margins.losses_group_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={group}
+              onChange={(event) => setGroup(event.target.value as LossGroup)}
+            >
+              {LOSS_GROUPS.map((code) => (
+                <option key={code} value={code}>
+                  {t(`costs_margins.losses_group.${code}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
       <SectionProblem
         read={read}
@@ -444,15 +485,18 @@ function Losses({ range, online }: { readonly range: Range; readonly online: boo
           <Waiting online={online} />
         )
       ) : data.lines.length === 0 ? (
-        <p className="home-muted">
-          {t(group === 'lot' ? 'costs_margins.losses_lot_empty' : 'costs_margins.losses_empty')}
-        </p>
+        <EmptyState
+          icon="check-circle"
+          title={t(
+            group === 'lot' ? 'costs_margins.losses_lot_empty' : 'costs_margins.losses_empty',
+          )}
+        />
       ) : (
         <>
           {data.total_value_xaf === null ? (
             <p className="home-muted">{t('lot_sheet.amounts_hidden')}</p>
           ) : (
-            <p>
+            <p className="fin-total">
               {t(
                 group === 'lot' ? 'costs_margins.losses_lot_total' : 'costs_margins.losses_total',
                 {
@@ -463,7 +507,11 @@ function Losses({ range, online }: { readonly range: Range; readonly online: boo
           )}
           <ul className="line-list">
             {data.lines.map((line, index) => (
-              <li key={`${label(line)}-${index}`} className="line-card" aria-label={label(line)}>
+              <li
+                key={`${label(line)}-${index}`}
+                className="line-card fin-card"
+                aria-label={label(line)}
+              >
                 <p>
                   <strong>{label(line)}</strong> · {money(line.valueXaf)}
                 </p>
@@ -490,7 +538,7 @@ function Losses({ range, online }: { readonly range: Range; readonly online: boo
           </ul>
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -506,7 +554,6 @@ function LotSection({
   const [status, setStatus] = useState<LotStatusChoice>('CLOSED');
   const [lotId, setLotId] = useState('');
   const [entriesShown, setEntriesShown] = useState(false);
-  const ids = { status: useId(), lot: useId() };
   const lots = useOnlineRead(
     `lots:${status}`,
     () => readPages<LotChoice>([lotsPath(status)], 'lots', 1),
@@ -530,59 +577,58 @@ function LotSection({
   const productName = (id: string) =>
     refs?.products.find((product) => product.id === id)?.name ?? shortId(id);
   return (
-    <section className="sale-block" aria-labelledby="costs-lots-title">
-      <h2 id="costs-lots-title">{t('costs_margins.lots_title')}</h2>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.status}>{t('costs_margins.lot_status_label')}</label>
-          <select
-            id={ids.status}
-            className="text-input"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as LotStatusChoice);
-              setLotId('');
-              setEntriesShown(false);
-            }}
-          >
-            {LOT_STATUSES.map((code) => (
-              <option key={code} value={code}>
-                {t(`costs_margins.lot_status.${code}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={ids.lot}>{t('costs_margins.lot_label')}</label>
-          <select
-            id={ids.lot}
-            className="text-input"
-            value={lotId}
-            disabled={choices.length === 0 && !lotId}
-            onChange={(event) => {
-              setLotId(event.target.value);
-              setEntriesShown(false);
-            }}
-          >
-            <option value="">{t('costs_margins.lot_placeholder')}</option>
-            {lotId && lot && !choices.some((choice) => choice.id === lotId) ? (
-              <option value={lotId}>
-                {t('costs_margins.lot_option', {
-                  code: lot.lotCode,
-                  product: productName(lot.productId),
-                })}
-              </option>
-            ) : null}
-            {choices.map((choice) => (
-              <option key={choice.id} value={choice.id}>
-                {t('costs_margins.lot_option', {
-                  code: choice.lotCode,
-                  product: productName(choice.productId),
-                })}
-              </option>
-            ))}
-          </select>
-        </div>
+    <Section title={t('costs_margins.lots_title')}>
+      <div className="filter-bar">
+        <Field label={t('costs_margins.lot_status_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value as LotStatusChoice);
+                setLotId('');
+                setEntriesShown(false);
+              }}
+            >
+              {LOT_STATUSES.map((code) => (
+                <option key={code} value={code}>
+                  {t(`costs_margins.lot_status.${code}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label={t('costs_margins.lot_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={lotId}
+              disabled={choices.length === 0 && !lotId}
+              onChange={(event) => {
+                setLotId(event.target.value);
+                setEntriesShown(false);
+              }}
+            >
+              <option value="">{t('costs_margins.lot_placeholder')}</option>
+              {lotId && lot && !choices.some((choice) => choice.id === lotId) ? (
+                <option value={lotId}>
+                  {t('costs_margins.lot_option', {
+                    code: lot.lotCode,
+                    product: productName(lot.productId),
+                  })}
+                </option>
+              ) : null}
+              {choices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {t('costs_margins.lot_option', {
+                    code: choice.lotCode,
+                    product: productName(choice.productId),
+                  })}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
       <SectionProblem
         read={lots}
@@ -611,17 +657,20 @@ function LotSection({
               <Waiting online={online} />
             )
           ) : (
-            <div
-              className="line-card"
+            <Card
+              padded
+              className="fin-lot"
               role="group"
               aria-label={t('costs_margins.lot_card', { code: lot.lotCode })}
             >
-              <h3>{t('costs_margins.lot_costs_title', { code: lot.lotCode })}</h3>
+              <h3 className="fin-sub">
+                {t('costs_margins.lot_costs_title', { code: lot.lotCode })}
+              </h3>
               {lot.costs.netXaf === null ? (
                 <p className="home-muted">{t('lot_sheet.amounts_hidden')}</p>
               ) : (
                 <>
-                  <ul className="home-muted">
+                  <ul className="fin-breakdown">
                     {lot.costs.breakdown.map((line) => (
                       <li key={line.costType}>
                         {t('costs_margins.cost_line', {
@@ -633,7 +682,7 @@ function LotSection({
                       </li>
                     ))}
                   </ul>
-                  <p>
+                  <p className="fin-total">
                     {t('costs_margins.cost_total', {
                       net: money(lot.costs.netXaf),
                       remaining: money(lot.costs.remainingXaf),
@@ -648,7 +697,7 @@ function LotSection({
                   ) : null}
                 </>
               )}
-              <h3>{t('costs_margins.lot_margins_title')}</h3>
+              <h3 className="fin-sub">{t('costs_margins.lot_margins_title')}</h3>
               {!lotWithoutSales(lot.sales) ? (
                 <>
                   <p>
@@ -658,7 +707,9 @@ function LotSection({
                       count: lot.sales.soldQuantity,
                     })}
                   </p>
-                  <p>{t('costs_margins.lot_margin', { amount: money(lot.sales.lotMarginXaf) })}</p>
+                  <p className="fin-total">
+                    {t('costs_margins.lot_margin', { amount: money(lot.sales.lotMarginXaf) })}
+                  </p>
                   <p>
                     {t('costs_margins.lot_gross_margin', {
                       cost: money(lot.sales.costOfSalesXaf),
@@ -670,29 +721,30 @@ function LotSection({
               ) : (
                 <p className="home-muted">{t('costs_margins.no_sales')}</p>
               )}
-              {mayOpenLotSheet ? (
-                <Link to={ROUTES.lotSheetFor(lot.id)} className="action action-compact">
-                  <span className="action-label">
+              <div className="result-actions">
+                {mayOpenLotSheet ? (
+                  <LinkButton to={ROUTES.lotSheetFor(lot.id)} variant="tonal" size="sm" icon="file">
                     {t('costs_margins.lot_sheet_link', { code: lot.lotCode })}
-                  </span>
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                className="secondary"
-                aria-expanded={entriesShown}
-                onClick={() => setEntriesShown((current) => !current)}
-              >
-                {t(entriesShown ? 'costs_margins.entries_hide' : 'costs_margins.entries_show', {
-                  code: lot.lotCode,
-                })}
-              </button>
+                  </LinkButton>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  iconEnd={entriesShown ? 'chevron-up' : 'chevron-down'}
+                  aria-expanded={entriesShown}
+                  onClick={() => setEntriesShown((current) => !current)}
+                >
+                  {t(entriesShown ? 'costs_margins.entries_hide' : 'costs_margins.entries_show', {
+                    code: lot.lotCode,
+                  })}
+                </Button>
+              </div>
               {entriesShown ? <CostEntries lotId={lot.id} online={online} /> : null}
-            </div>
+            </Card>
           )}
         </>
       ) : null}
-    </section>
+    </Section>
   );
 }
 
