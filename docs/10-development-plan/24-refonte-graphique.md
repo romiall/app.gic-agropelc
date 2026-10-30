@@ -1,6 +1,6 @@
 # 24 — Refonte graphique et ergonomique de la PWA
 
-> **Statut (30/10/2026)** : audit fait, direction visuelle **proposée au porteur** (maquette envoyée, QCM en cours). Aucun écran n'est encore refait. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
+> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; le lot L0 est clos. Aucun écran n'est encore refait ; le lot L1 (fondations) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
 > **Portée** : `apps/pwa` seulement, **à fonctionnalités constantes** (mêmes commandes, même hors ligne, même synchronisation). `apps/server`, `db/`, `deploy/` et `apps/pwa/src/features/pieces/` (mise en page exacte des pièces imprimées) ne sont pas touchés.
 > **Numéros réservés au chantier** : de 486 à 499 pour les AV, de 049 à 051 pour les ADR (la session principale n'y touche pas).
 
@@ -56,9 +56,9 @@ Relevées le 30/10/2026 sur une base locale neuve (données de démonstration), 
 - **Administration** : un paragraphe d'explication précède la liste des utilisateurs ; le filtre d'état est un groupe de radios.
 - **Tous** : le même écran sert un compte à un rôle et un compte à onze rôles ; l'accueil ne se hiérarchise pas par fréquence d'usage.
 
-## 5. Direction visuelle proposée (à valider)
+## 5. Direction visuelle (validée le 30/10/2026, ADR-049)
 
-Maquette envoyée au porteur le 30/10/2026 (accueil d'un vendeur de point de vente, nouvelle vente, thème sombre, créances sur ordinateur).
+Maquette envoyée au porteur le 30/10/2026 (accueil d'un vendeur de point de vente, nouvelle vente, thème sombre, créances sur ordinateur). Choix du porteur : style **sobre et aéré**, navigation **onglets en bas avec bouton « + »** sur téléphone (barre latérale sur ordinateur), thème **clair par défaut, sombre au choix**. Le thème automatique, qui suit le téléphone, est une troisième valeur du réglage.
 
 - **Palette** : celle du logo officiel et de la charte des pièces papier. Vert de la banderole `#3a6351` (principal), vert profond `#2b4b3d`, jaune d'œuf `#cdab0a` en accent rare (repère de l'onglet actif, pastille de compteur), neutres légèrement teintés de vert, encre `#15211b`. Le vert très sombre actuel (`#0b3d1e`) n'est pas celui du logo : il est remplacé. Couleurs d'état séparées de la marque : réussi, attention, alerte, information.
 - **Typographie** : Noto Sans pour l'interface (4 graisses), Barlow Semi Condensed pour les titres et les grands nombres ; polices déjà dépendances du projet, embarquées, sans réseau. Échelle 12, 13, 15, 17, 20, 24, 32 px ; base de 15 px, champs de 16 px (évite le zoom du téléphone).
@@ -94,4 +94,4 @@ Chaque lot ferme sur : contrôle visuel mobile et bureau, `typecheck`, essais du
 
 | Date | Fait |
 |---|---|
-| 30/10/2026 | Audit des 61 écrans (mesures § 2), maquette de la direction (§ 5), plan par lots (§ 6). |
+| 30/10/2026 | Audit des 61 écrans (mesures § 2), maquette de la direction (§ 5), plan par lots (§ 6). Direction validée par le porteur (style, navigation, thème) ; ADR-049 rédigé. Lot L0 clos. |
