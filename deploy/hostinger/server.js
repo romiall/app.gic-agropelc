@@ -30,6 +30,11 @@ const MIME = {
 };
 
 async function initBackend() {
+  // Compatibilite MariaDB (CAST AS JSON, FOR SHARE) : a poser avant la creation de l'application (mariadb-compat.mjs).
+  const { DefaultQueryCompiler } = await import('kysely');
+  const { installMariaDbCompat } = await import('./mariadb-compat.mjs');
+  installMariaDbCompat(DefaultQueryCompiler);
+
   const { NestFactory } = await import('@nestjs/core');
   const { FastifyAdapter } = await import('@nestjs/platform-fastify');
   const { AppModule } = await import('./dist/app.module.js');

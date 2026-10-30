@@ -9,7 +9,7 @@ Classification (PM §45) :
 - **IMPORTANTE** : peut être décidée pendant le développement, avant la phase concernée.
 - **SECONDAIRE** : peut rester configurable ou être reportée.
 
-Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 485 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
+Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 486 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
 
 ---
 
@@ -473,6 +473,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-482 | `JOB_FAILED` : écran d'action | SECONDAIRE | P9 | Aucun lien (`action_screen` nul) : il n'existe aucun écran de supervision des tâches ; **implémenté** (P9-27) | OUVERT |
 | AV-483 | `JOB_FAILED` : cadence de la passe | SECONDAIRE | P9 | 5 minutes, constante de planification (comme `CONSUMER_FAILED`), non réglable ; **implémenté** (P9-27) | OUVERT |
 | AV-484 | `JOB_FAILED` : regroupement et seuil | SECONDAIRE | P9 | Une alerte par type de tâche, une seule tâche `FAILED` suffit, aucun type exclu ; **implémenté** (P9-27) | OUVERT |
+| AV-485 | Base de l'hébergement : MariaDB 11.8 mutualisée, non MySQL 8.4 | IMPORTANTE | Mise en ligne, pilote | Couche de compatibilité dans le kit de mise en ligne (`CAST … AS JSON`, `FOR SHARE`, migrations, semis) et contrôle SQL sur la base réelle avant chaque redémarrage ; **mise en œuvre** (30/10/2026) ; une base MySQL 8.4 dédiée reste à décider avant le pilote | OUVERT |
 
 ---
 
@@ -3579,6 +3580,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) une alerte par type de tâche, une seule tâche `FAILED` suffit, aucun type exclu ; (b) exiger N échecs ; (c) exclure certains types.
 - **Recommandation** : (a) ; (b) ou (c) si une tâche bruyante apparaît à la mesure.
 - **Impact** : `job-failure-job.ts`, `platform/jobs/job-status.ts` (`readFailedJobsByType`), événement `JobFailureDetected` ([`02-catalogue-evenements.md`](08-api-events/02-catalogue-evenements.md)). Limite : si la passe échoue elle-même, elle apparaît dans sa propre fenêtre à la passe suivante ; le journal d'erreur reste le filet. Défaut implémenté (P9-27, 29/10/2026) : (a). Non paramétrable.
+
+### AV-485 — Base de l'hébergement : MariaDB 11.8 mutualisée, non MySQL 8.4 — IMPORTANTE
+- **Question** : jusqu'au pilote, l'application tourne-t-elle sur la base MariaDB 11.8 de l'hébergement mutualisé, avec une couche de compatibilité, ou sur une base MySQL 8.4 dédiée, celle sur laquelle elle est développée et testée ?
+- **Pourquoi** : AV-073 (24/09/2026) a retenu l'hébergement Hostinger sans VPS, donc une base « MySQL » (ADR-023). L'hébergement fournit en réalité MariaDB 11.8, avec un seul utilisateur de base. Les essais du serveur (2 234) tournent sur MySQL 8.4 et ne voient aucun écart. **CONFIRMÉ** par les journaux du serveur : MariaDB refuse `CAST(? AS JSON)` (toute écriture de colonne JSON : audit, événements, commandes, tâches) et `FOR SHARE` (plus de vingt-cinq lectures verrouillantes) ; la mise en ligne du 30/10/2026 a laissé la connexion en erreur 500 et l'ordonnanceur en échec toutes les 3 secondes. **DÉDUIT** : les colonnes JSON y sont rendues en texte (JSON est un alias de `LONGTEXT`), et d'autres écarts, non encore rencontrés, sont possibles (plans d'exécution, verrous).
+- **Choix** : (a) rester sur MariaDB avec la couche de compatibilité du kit (`deploy/hostinger/mariadb-compat.mjs`), son contrôle sur la base réelle avant chaque redémarrage et la lecture des journaux ; (b) une base MySQL 8.4 dédiée avant le pilote (autre offre d'hébergement, VPS ou base managée) ; (c) rendre le code portable dans les deux moteurs et le tester sur MariaDB 11.8 en intégration continue.
+- **Recommandation** : (a) maintenant, pour mettre en ligne ce qui fonctionne ; (b) ou (c) avant le pilote, car chaque écart de plus est un défaut que la suite d'essais ne peut pas voir.
+- **Impact** : `deploy/hostinger/` (`mariadb-compat.mjs`, `compat-check.mjs`, `migrate.mjs`, `build-bundle.ps1`, `remote-update.sh`), [`05-architecture/04-deploiement.md`](05-architecture/04-deploiement.md) §7, ADR-023. Défaut mis en œuvre (30/10/2026) : (a). Non paramétrable (propre au kit).
 
 ## 3. Journal des décisions
 
