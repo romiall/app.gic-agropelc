@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { routeOfAction } from '../../app/screens.js';
@@ -11,6 +11,18 @@ import { StockScreen } from './StockScreen.js';
 import { inTransitTo, receivingTransferIds, stockRows } from './stock-view.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
+vi.mock('../auth/AuthContext.js', () => ({
+  useAuth: () => ({
+    state: {
+      status: 'unlocked',
+      userId: '01900000-0000-7000-8000-000000000001',
+      deviceStatus: 'ACTIVE',
+    },
+    deviceId: undefined,
+  }),
+}));
+
+const USER = '01900000-0000-7000-8000-000000000001';
 
 function renderAt(path = '/stock') {
   return render(
@@ -185,5 +197,37 @@ describe('Stock par emplacement (ECR-STK-01)', () => {
     expect(screen.queryByRole('listitem', { name: 'Œufs de table' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByLabelText(/Seulement les produits sous le seuil/));
     expect(screen.getByRole('listitem', { name: 'Œufs de table' })).toBeInTheDocument();
+  });
+
+  it('opérations du stock en tête d’écran : toutes si les rôles sont inconnus, celles du rôle sinon', async () => {
+    const db = getDb();
+    await db.navigation.clear();
+    renderAt();
+    // Rôles inconnus de l'appareil : tout reste proposé.
+    const all = within(await screen.findByRole('navigation', { name: 'Opérations du stock' }));
+    expect(all.getByRole('link', { name: 'Transférer' })).toHaveAttribute(
+      'href',
+      '/stock/transferts',
+    );
+    expect(all.getByRole('link', { name: 'Registre des mouvements' })).toBeInTheDocument();
+
+    // Vendeur de PDV : il déclare une perte et fait l'inventaire, il ne transfère pas.
+    await db.navigation.put({
+      user_id: USER,
+      full_name: 'Vendeur',
+      roles: ['VENDEUR_PDV'],
+      sections: [],
+      saved_at: '2026-10-10T09:00:00.000Z',
+    });
+    await waitFor(() =>
+      expect(all.queryByRole('link', { name: 'Transférer' })).not.toBeInTheDocument(),
+    );
+    expect(all.getByRole('link', { name: 'Déclarer une perte' })).toHaveAttribute(
+      'href',
+      '/stock/perte',
+    );
+    expect(all.getByRole('link', { name: 'Inventaire' })).toBeInTheDocument();
+    expect(all.queryByRole('link', { name: 'Registre des mouvements' })).not.toBeInTheDocument();
+    await db.navigation.clear();
   });
 });

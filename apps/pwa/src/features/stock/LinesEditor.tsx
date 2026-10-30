@@ -4,6 +4,7 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Button } from '../../components/ui/index.js';
 import type { ProductData } from '../sales/types.js';
 import type { LineRow, TransferLineDraft } from './transfer.js';
 import { unitLabel } from '../sales/format.js';
@@ -123,17 +124,17 @@ export function LinesEditor({
                 </p>
               ) : null}
               {rows.length > 1 ? (
-                <button type="button" className="secondary" onClick={() => onRemove(line.key)}>
+                <Button variant="ghost" size="sm" icon="trash" onClick={() => onRemove(line.key)}>
                   {t('transfer.remove_line', { index: index + 1 })}
-                </button>
+                </Button>
               ) : null}
             </li>
           );
         })}
       </ul>
-      <button type="button" className="secondary" onClick={onAdd}>
+      <Button variant="outline" className="btn-dashed" block icon="plus" onClick={onAdd}>
         {t('transfer.add_line')}
-      </button>
+      </Button>
     </>
   );
 }

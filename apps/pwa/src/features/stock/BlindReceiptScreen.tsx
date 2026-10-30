@@ -9,6 +9,7 @@
 import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { ROUTES } from '../../app/screens.js';
 import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -55,16 +56,10 @@ export function BlindReceiptScreen() {
   const sourceSelectId = useId();
   const notesId = useId();
 
-  const back = (
-    <Link to={ROUTES.receive} className="back-link">
-      {t('receive.back')}
-    </Link>
-  );
-
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('blind.title')}</h1>
+        <PageHeader title={t('blind.title')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -73,8 +68,11 @@ export function BlindReceiptScreen() {
   if (submitted) {
     return (
       <section className="sale">
-        {back}
-        <h1>{t('blind.title')}</h1>
+        <PageHeader
+          title={t('blind.title')}
+          backTo={ROUTES.receive}
+          backLabel={t('receive.back')}
+        />
         <CommandResult commandId={submitted} messages="blind.result">
           <button
             type="button"
@@ -96,8 +94,11 @@ export function BlindReceiptScreen() {
   if (!destination) {
     return (
       <section className="sale">
-        {back}
-        <h1>{t('blind.title')}</h1>
+        <PageHeader
+          title={t('blind.title')}
+          backTo={ROUTES.receive}
+          backLabel={t('receive.back')}
+        />
         <p className="home-muted">{t('stock.no_location')}</p>
       </section>
     );
@@ -159,8 +160,7 @@ export function BlindReceiptScreen() {
 
   return (
     <section className="sale">
-      {back}
-      <h1>{t('blind.title')}</h1>
+      <PageHeader title={t('blind.title')} backTo={ROUTES.receive} backLabel={t('receive.back')} />
       <p className="home-muted">{t('blind.hint')}</p>
       {!online ? (
         <p className="home-banner" role="status">
@@ -247,14 +247,11 @@ export function BlindReceiptScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('blind.submit')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={() => void submit()}>
+          {busy ? t('sales.submitting') : t('blind.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

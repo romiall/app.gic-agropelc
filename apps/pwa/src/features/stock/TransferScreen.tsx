@@ -12,6 +12,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Badge, Button, PageHeader } from '../../components/ui/index.js';
 import { ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -505,18 +506,15 @@ function DirectDispatchForm({
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy
-          ? t('sales.submitting')
-          : mode === 'MOVE'
-            ? t('transfer.move_submit')
-            : t('transfer.submit')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={() => void submit()}>
+          {busy
+            ? t('sales.submitting')
+            : mode === 'MOVE'
+              ? t('transfer.move_submit')
+              : t('transfer.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }
@@ -873,14 +871,11 @@ function RequestDispatchForm({
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('transfer.submit_request')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={() => void submit()}>
+          {busy ? t('sales.submitting') : t('transfer.submit_request')}
+        </Button>
+      </ActionBar>
       <DeclineBlock userId={userId} online={online} onDone={onDone} transfer={transfer} />
     </section>
   );
@@ -909,7 +904,7 @@ export function TransferScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.transfer')}</h1>
+        <PageHeader title={t('nav.screens.transfer')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -941,7 +936,7 @@ export function TransferScreen() {
   if (submitted && submitted.route === transferId) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.transfer')}</h1>
+        <PageHeader title={t('nav.screens.transfer')} />
         <CommandResult commandId={submitted.commandId} messages={submitted.messages}>
           <Link
             to={ROUTES.transfer}
@@ -969,10 +964,11 @@ export function TransferScreen() {
     const entry = requests.find((candidate) => candidate.transfer.id === transferId);
     return (
       <section className="sale">
-        <Link to={ROUTES.transfer} className="back-link">
-          {t('transfer.back')}
-        </Link>
-        <h1>{t('nav.screens.transfer')}</h1>
+        <PageHeader
+          title={t('nav.screens.transfer')}
+          backTo={ROUTES.transfer}
+          backLabel={t('transfer.back')}
+        />
         {!online ? (
           <p className="home-banner" role="status">
             {t('transfer.offline_banner')}
@@ -1007,7 +1003,7 @@ export function TransferScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.transfer')}</h1>
+      <PageHeader title={t('nav.screens.transfer')} />
       {!online ? (
         <p className="home-banner" role="status">
           {t('transfer.offline_banner')}
@@ -1038,13 +1034,13 @@ export function TransferScreen() {
                   </span>
                   <span className="doc-side">
                     {dispatching ? (
-                      <span className="badge badge-warn">{t('transfer.dispatching_badge')}</span>
+                      <Badge tone="warn">{t('transfer.dispatching_badge')}</Badge>
                     ) : declining ? (
-                      <span className="badge badge-warn">{t('transfer.declining_badge')}</span>
+                      <Badge tone="warn">{t('transfer.declining_badge')}</Badge>
                     ) : (
-                      <span className="badge badge-info">
+                      <Badge tone="info">
                         {t('transfer.lines_count', { count: transfer.lines.length })}
-                      </span>
+                      </Badge>
                     )}
                   </span>
                 </Link>

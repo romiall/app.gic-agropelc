@@ -612,7 +612,7 @@ a.doc-row:hover {
 /* Filtres d'une liste : empilés sur téléphone, sur une seule ligne dès que la place le permet. */
 .filter-bar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   align-items: end;
   gap: var(--space-2) var(--space-4);
   margin-bottom: var(--space-3);

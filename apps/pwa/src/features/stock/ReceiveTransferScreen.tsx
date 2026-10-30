@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeBonTransfert } from '../pieces/adaptateurs-stock.js';
 import { businessDayOf } from '@gic/domain';
@@ -168,14 +169,11 @@ function ReceiveForm({
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('receive.submit')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={() => void submit()}>
+          {busy ? t('sales.submitting') : t('receive.submit')}
+        </Button>
+      </ActionBar>
     </>
   );
 }
@@ -197,7 +195,7 @@ export function ReceiveTransferScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.receive')}</h1>
+        <PageHeader title={t('nav.screens.receive')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -206,7 +204,7 @@ export function ReceiveTransferScreen() {
   if (submitted && submitted.transferId === transferId) {
     return (
       <section className="sale">
-        <h1>{t('receive.title', { doc: submitted.doc })}</h1>
+        <PageHeader title={t('receive.title', { doc: submitted.doc })} />
         <CommandResult commandId={submitted.commandId} messages="receive.result">
           <Link to={ROUTES.receive} className="action action-compact">
             <span className="action-label">{t('receive.back')}</span>
@@ -240,8 +238,11 @@ export function ReceiveTransferScreen() {
     const { transfer } = entry;
     return (
       <section className="sale">
-        {back}
-        <h1>{t('receive.title', { doc: transfer.doc_number })}</h1>
+        <PageHeader
+          title={t('receive.title', { doc: transfer.doc_number })}
+          backTo={ROUTES.receive}
+          backLabel={t('receive.back')}
+        />
         <p className="receipt-meta">
           {t('receive.route', {
             from: locations.get(transfer.from_location_id)?.name ?? '',
@@ -275,7 +276,7 @@ export function ReceiveTransferScreen() {
   return (
     <section className="sale">
       <div className="screen-head">
-        <h1>{t('nav.screens.receive')}</h1>
+        <PageHeader title={t('nav.screens.receive')} />
         <Link to={ROUTES.blindReceipt} className="action action-compact">
           <span className="action-label">{t('blind.title')}</span>
         </Link>

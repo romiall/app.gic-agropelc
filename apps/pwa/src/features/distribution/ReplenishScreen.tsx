@@ -8,6 +8,7 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -61,7 +62,7 @@ export function ReplenishScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.replenish')}</h1>
+        <PageHeader title={t('nav.screens.replenish')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -70,7 +71,7 @@ export function ReplenishScreen() {
   if (submitted) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.replenish')}</h1>
+        <PageHeader title={t('nav.screens.replenish')} />
         <CommandResult
           commandId={submitted.commandId}
           messages={`replenish.${submitted.kind}_result`}
@@ -98,7 +99,7 @@ export function ReplenishScreen() {
   if (!pos) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.replenish')}</h1>
+        <PageHeader title={t('nav.screens.replenish')} />
         <p className="home-muted">{t('replenish.no_pos')}</p>
       </section>
     );
@@ -180,7 +181,7 @@ export function ReplenishScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.replenish')}</h1>
+      <PageHeader title={t('nav.screens.replenish')} />
       {!online ? (
         <p className="home-banner" role="status">
           {t('replenish.offline_banner')}
@@ -327,15 +328,17 @@ export function ReplenishScreen() {
             {t('sales.error_local_save')}
           </p>
         ) : null}
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!ready}
-          aria-describedby={sourceBlocked ? ids.blocked : undefined}
-          onClick={submit}
-        >
-          {busy ? t('sales.submitting') : t('replenish.submit')}
-        </button>
+        <ActionBar>
+          <Button
+            size="lg"
+            className="submit-sale"
+            disabled={!ready}
+            aria-describedby={sourceBlocked ? ids.blocked : undefined}
+            onClick={submit}
+          >
+            {busy ? t('sales.submitting') : t('replenish.submit')}
+          </Button>
+        </ActionBar>
       </section>
 
       <section className="sale-block" aria-labelledby="replenish-pending-title">

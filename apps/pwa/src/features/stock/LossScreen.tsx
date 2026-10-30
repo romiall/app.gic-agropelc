@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeFichePerte, type PerteSaisie } from '../pieces/adaptateurs-stock.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -64,7 +65,7 @@ export function LossScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.loss')}</h1>
+        <PageHeader title={t('nav.screens.loss')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -73,7 +74,7 @@ export function LossScreen() {
   if (submitted) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.loss')}</h1>
+        <PageHeader title={t('nav.screens.loss')} />
         <CommandResult commandId={submitted} messages="loss.result">
           {/* Fiche de perte (lot PP) : la déclaration telle que saisie, numéro dès l'acceptation. */}
           <PieceAction
@@ -116,7 +117,7 @@ export function LossScreen() {
   if (!location) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.loss')}</h1>
+        <PageHeader title={t('nav.screens.loss')} />
         <p className="home-muted">{t('stock.no_location')}</p>
       </section>
     );
@@ -277,7 +278,7 @@ export function LossScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.loss')}</h1>
+      <PageHeader title={t('nav.screens.loss')} />
       {!online ? (
         <p className="home-banner" role="status">
           {t('loss.offline_banner')}
@@ -484,14 +485,11 @@ export function LossScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('loss.submit')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={() => void submit()}>
+          {busy ? t('sales.submitting') : t('loss.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

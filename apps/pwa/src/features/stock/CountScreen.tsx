@@ -7,6 +7,7 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Badge, Button, PageHeader } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeFicheInventaire } from '../pieces/adaptateurs-stock.js';
 import { businessDayOf } from '@gic/domain';
@@ -61,7 +62,7 @@ export function CountScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.count')}</h1>
+        <PageHeader title={t('nav.screens.count')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -72,7 +73,7 @@ export function CountScreen() {
   if (!location) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.count')}</h1>
+        <PageHeader title={t('nav.screens.count')} />
         <p className="home-muted">{t('stock.no_location')}</p>
       </section>
     );
@@ -141,7 +142,7 @@ export function CountScreen() {
 
   const header = (
     <>
-      <h1>{t('nav.screens.count')}</h1>
+      <PageHeader title={t('nav.screens.count')} />
       {!online ? (
         <p className="home-banner" role="status">
           {t('count.offline_banner')}
@@ -254,9 +255,11 @@ export function CountScreen() {
               {t('sales.error_local_save')}
             </p>
           ) : null}
-          <button type="button" className="btn-block submit-sale" disabled={blocked} onClick={open}>
-            {busy ? t('sales.submitting') : t('count.open')}
-          </button>
+          <ActionBar>
+            <Button size="lg" className="submit-sale" disabled={blocked} onClick={open}>
+              {busy ? t('sales.submitting') : t('count.open')}
+            </Button>
+          </ActionBar>
         </section>
         {historyBlock}
       </section>
@@ -398,9 +401,9 @@ export function CountScreen() {
                 <div className="line-head">
                   <strong>{name}</strong>
                   {row.recorded && !row.dirty ? (
-                    <span className="badge badge-ok">
+                    <Badge tone="ok">
                       {row.recorded.pending ? t('count.recorded_pending') : t('count.recorded')}
-                    </span>
+                    </Badge>
                   ) : null}
                 </div>
                 <div className="field">
@@ -516,14 +519,11 @@ export function CountScreen() {
             </button>
           </p>
         ) : null}
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!canSubmit}
-          onClick={submit}
-        >
-          {t('count.submit')}
-        </button>
+        <ActionBar>
+          <Button size="lg" className="submit-sale" disabled={!canSubmit} onClick={submit}>
+            {t('count.submit')}
+          </Button>
+        </ActionBar>
         <button type="button" className="secondary" disabled={blocked} onClick={cancel}>
           {confirmCancel ? t('count.cancel_confirm') : t('count.cancel')}
         </button>

@@ -1692,6 +1692,11 @@ export const fr = {
     all_products: 'Tous les produits',
     from_label: 'Du',
     to_label: 'Au',
+    moves_list_label: 'Mouvements de stock',
+    col_move: 'Mouvement',
+    col_quantity: 'Quantité',
+    col_when: 'Date',
+    col_value: 'Valeur',
     issue: {
       DATE_INVALID: 'Dates invalides.',
       ORDER: 'La fin de la période doit suivre son début.',
@@ -2394,6 +2399,10 @@ export const fr = {
     alerts_only: 'Seulement les produits sous le seuil ({{count}})',
     empty: 'Aucun produit en stock sur cet emplacement.',
     no_alert: 'Aucun produit sous le seuil.',
+    actions_title: 'Opérations du stock',
+    list_label: 'Soldes de l’emplacement',
+    col_product: 'Produit',
+    col_state: 'Situation',
     state: {
       STOCK_LOW: 'Sous le seuil',
       STOCK_OUT: 'Rupture',

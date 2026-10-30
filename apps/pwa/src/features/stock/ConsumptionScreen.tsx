@@ -8,6 +8,7 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -58,7 +59,7 @@ export function ConsumptionScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.consumption')}</h1>
+        <PageHeader title={t('nav.screens.consumption')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -67,7 +68,7 @@ export function ConsumptionScreen() {
   if (submitted) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.consumption')}</h1>
+        <PageHeader title={t('nav.screens.consumption')} />
         <CommandResult commandId={submitted} messages="consumption.result">
           <button
             type="button"
@@ -90,7 +91,7 @@ export function ConsumptionScreen() {
   if (!location) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.consumption')}</h1>
+        <PageHeader title={t('nav.screens.consumption')} />
         <p className="home-muted">{t('stock.no_location')}</p>
       </section>
     );
@@ -173,7 +174,7 @@ export function ConsumptionScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.consumption')}</h1>
+      <PageHeader title={t('nav.screens.consumption')} />
       {!online ? (
         <p className="home-banner" role="status">
           {t('consumption.offline_banner')}
@@ -329,14 +330,11 @@ export function ConsumptionScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('consumption.submit')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={() => void submit()}>
+          {busy ? t('sales.submitting') : t('consumption.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

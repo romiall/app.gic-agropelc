@@ -9,6 +9,7 @@
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import { DataCell, DataList, DataRow, PageHeader } from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
@@ -30,6 +31,7 @@ import {
   type MovesPage,
 } from './ledger.js';
 import { stockLocations } from './stock-view.js';
+import './stock.css';
 
 interface Loaded {
   readonly key: string;
@@ -189,7 +191,7 @@ export function LedgerScreen() {
   if (!refs) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.stock_ledger')}</h1>
+        <PageHeader title={t('nav.screens.stock_ledger')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -253,47 +255,47 @@ export function LedgerScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.stock_ledger')}</h1>
+      <PageHeader title={t('nav.screens.stock_ledger')} />
       {!online ? (
         <p className="alert alert-error" role="alert">
           {t('ledger.online_only')}
         </p>
       ) : null}
-      <div className="field">
-        <label htmlFor={ids.location}>{t('ledger.location_label')}</label>
-        <select
-          id={ids.location}
-          className="text-input"
-          value={locationId}
-          onChange={(event) => {
-            setLocationChoice(event.target.value);
-            rememberLocation(event.target.value);
-          }}
-        >
-          {physical.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.product}>{t('ledger.product_label')}</label>
-        <select
-          id={ids.product}
-          className="text-input"
-          value={productId}
-          onChange={(event) => setProductId(event.target.value)}
-        >
-          <option value="">{t('ledger.all_products')}</option>
-          {productOptions.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="line-fields">
+      <div className="filter-bar">
+        <div className="field">
+          <label htmlFor={ids.location}>{t('ledger.location_label')}</label>
+          <select
+            id={ids.location}
+            className="text-input"
+            value={locationId}
+            onChange={(event) => {
+              setLocationChoice(event.target.value);
+              rememberLocation(event.target.value);
+            }}
+          >
+            {physical.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor={ids.product}>{t('ledger.product_label')}</label>
+          <select
+            id={ids.product}
+            className="text-input"
+            value={productId}
+            onChange={(event) => setProductId(event.target.value)}
+          >
+            <option value="">{t('ledger.all_products')}</option>
+            {productOptions.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="field">
           <label htmlFor={ids.from}>{t('ledger.from_label')}</label>
           <input
@@ -415,19 +417,28 @@ export function LedgerScreen() {
           ) : current.moves.length === 0 ? (
             <p className="home-muted">{t('ledger.none')}</p>
           ) : (
-            <ul className="receipt-lines">
+            <DataList
+              aria-label={t('ledger.moves_list_label')}
+              template="minmax(0, 2.4fr) minmax(7rem, 1fr) minmax(8rem, 1fr) minmax(7rem, 1fr)"
+              columns={[
+                { label: t('ledger.col_move') },
+                { label: t('ledger.col_quantity'), numeric: true },
+                { label: t('ledger.col_when') },
+                { label: t('ledger.col_value'), numeric: true },
+              ]}
+            >
               {current.moves.map((move) => (
-                <li
+                <DataRow
                   key={move.id}
                   aria-label={t(`ledger.move_type.${move.moveType}`, {
                     defaultValue: move.moveType,
                   })}
                 >
-                  <span>
+                  <DataCell primary>
                     <strong>
                       {t(`ledger.move_type.${move.moveType}`, { defaultValue: move.moveType })}
                     </strong>
-                    <small>
+                    <small className="move-detail">
                       {[
                         productId ? null : (products.get(move.productId)?.name ?? ''),
                         counterpartOf(move)
@@ -441,15 +452,21 @@ export function LedgerScreen() {
                         .filter(Boolean)
                         .join(' · ')}
                     </small>
-                  </span>
-                  <span>
+                  </DataCell>
+                  <DataCell label={t('ledger.col_quantity')} numeric>
                     {`${move.direction === 'IN' ? '+' : '−'} ${formatQuantityUnit(move.quantity, unitOf(move.productId), refs.units)}`}
-                    <small>{formatMoveMoment(move.occurredAt)}</small>
-                    {move.valueXaf !== null ? <small>{formatMoney(move.valueXaf)}</small> : null}
-                  </span>
-                </li>
+                  </DataCell>
+                  <DataCell label={t('ledger.col_when')}>
+                    {formatMoveMoment(move.occurredAt)}
+                  </DataCell>
+                  {move.valueXaf !== null ? (
+                    <DataCell label={t('ledger.col_value')} numeric>
+                      {formatMoney(move.valueXaf)}
+                    </DataCell>
+                  ) : null}
+                </DataRow>
               ))}
-            </ul>
+            </DataList>
           )}
           {current?.failed && current.moves.length > 0 ? (
             <p className="alert alert-error">{t('ledger.unavailable')}</p>

@@ -1,0 +1,9 @@
+/* Feuille de style du domaine « stock » (lot L4) : jetons seulement, aucune couleur en dur. */
+
+/* Registre : le détail d'un mouvement sous son type, en clair (il peut passer à la ligne). */
+.move-detail {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}

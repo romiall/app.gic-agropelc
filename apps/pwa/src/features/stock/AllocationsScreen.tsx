@@ -7,6 +7,7 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { isAllocationExpired } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -172,7 +173,7 @@ export function AllocationsScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.allocations')}</h1>
+        <PageHeader title={t('nav.screens.allocations')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -180,7 +181,7 @@ export function AllocationsScreen() {
   if (!online) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.allocations')}</h1>
+        <PageHeader title={t('nav.screens.allocations')} />
         <p className="home-muted">{t('quotas.online_only')}</p>
       </section>
     );
@@ -188,7 +189,7 @@ export function AllocationsScreen() {
   if (!location) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.allocations')}</h1>
+        <PageHeader title={t('nav.screens.allocations')} />
         <p className="home-muted">{t('quotas.no_location')}</p>
       </section>
     );
@@ -284,7 +285,7 @@ export function AllocationsScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.allocations')}</h1>
+      <PageHeader title={t('nav.screens.allocations')} />
       {locations.length > 1 ? (
         <div className="field">
           <label htmlFor={ids.location}>{t('quotas.location_label')}</label>
@@ -575,14 +576,16 @@ export function AllocationsScreen() {
                 {t(hoursInvalid ? 'quotas.hours_invalid' : 'quotas.hours_hint')}
               </p>
             </div>
-            <button
-              type="button"
-              className="btn-block submit-sale"
-              disabled={blocked || !holder || !product || quantity === null || hoursInvalid}
-              onClick={grant}
-            >
-              {busy ? t('sales.submitting') : t('quotas.grant_submit')}
-            </button>
+            <ActionBar>
+              <Button
+                size="lg"
+                className="submit-sale"
+                disabled={blocked || !holder || !product || quantity === null || hoursInvalid}
+                onClick={grant}
+              >
+                {busy ? t('sales.submitting') : t('quotas.grant_submit')}
+              </Button>
+            </ActionBar>
           </section>
         </>
       )}
