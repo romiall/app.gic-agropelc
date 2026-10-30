@@ -3,9 +3,29 @@
  * hors ligne). Lots d'incubation en cours avec leurs compteurs et leur échéancier, étapes du jour
  * (mirage, transfert vers l'éclosoir, éclosion) et démarrage d'un lot. Bilans contrôlés par le
  * domaine partagé ; une étape sur un lot démarré ici attend son démarrage.
+ *
+ * Refonte (ADR-049, lot L6) : rubriques en contrôle segmenté, situation d'un lot en pastille, étapes en
+ * boutons teintés, formulaire d'une étape sous la carte du lot, démarrage dans la barre d'action collée.
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  List,
+  ListRow,
+  PageHeader,
+  Section,
+  Segmented,
+  SkeletonRows,
+  Textarea,
+  type BadgeTone,
+} from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -32,18 +52,26 @@ import {
   stepDependsOn,
   type BatchView,
 } from './incubation.js';
+import { SelectField } from './SelectField.js';
+import './production.css';
 
 type Send = (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
 type Panel = 'CANDLING' | 'TRANSFER' | 'HATCH' | 'CANCEL' | null;
 
+/** Ton de la pastille de situation d'un lot d'incubation. */
+const BATCH_TONE: Readonly<Record<string, BadgeTone>> = {
+  INCUBATING: 'info',
+  IN_HATCHER: 'brand',
+  CLOSED: 'ok',
+  CANCELLED: 'bad',
+};
+
 function NumberField({
-  id,
   label,
   value,
   onChange,
   errorId,
 }: {
-  readonly id: string;
   readonly label: string;
   readonly value: string;
   readonly onChange: (value: string) => void;
@@ -51,18 +79,18 @@ function NumberField({
   readonly errorId?: string | undefined;
 }) {
   return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        className="text-input"
-        inputMode="numeric"
-        value={value}
-        aria-invalid={errorId ? true : undefined}
-        aria-describedby={errorId}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
+    <Field label={label}>
+      {(control) => (
+        <Input
+          {...control}
+          inputMode="numeric"
+          value={value}
+          aria-invalid={errorId ? true : undefined}
+          aria-describedby={errorId}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </Field>
   );
 }
 
@@ -96,17 +124,9 @@ function BatchCard({
   const [outputId, setOutputId] = useState('');
   const [comment, setComment] = useState('');
   const ids = {
-    infertile: useId(),
-    earlyDead: useId(),
-    hatcher: useId(),
-    unhatched: useId(),
-    viable: useId(),
-    nonviable: useId(),
-    output: useId(),
     candlingError: useId(),
     hatchError: useId(),
     hold: useId(),
-    cancelComment: useId(),
     cancelOffline: useId(),
     cancelPanelReason: useId(),
   };
@@ -197,14 +217,14 @@ function BatchCard({
   const label = batch.batchCode ?? t('incubation.pending_batch');
 
   return (
-    <li className="line-card" aria-label={label}>
+    <li className="line-card prd-batch" aria-label={label}>
       <div className="line-head">
         <strong>{label}</strong>
-        <span className="badge badge-info">
+        <Badge tone={BATCH_TONE[batch.status] ?? 'muted'}>
           {t(`incubation.status.${batch.status}`, { defaultValue: batch.status })}
-        </span>
+        </Badge>
       </div>
-      <p className="home-muted">
+      <p className="prd-note">
         {[
           products.get(batch.chickProductId)?.name,
           locationNames.get(batch.hatcherLocationId ?? batch.incubatorLocationId),
@@ -213,7 +233,7 @@ function BatchCard({
           .filter(Boolean)
           .join(' · ')}
       </p>
-      <p>
+      <p className="prd-counters">
         {t('incubation.counters', {
           set: formatQuantity(batch.counters.eggsSet),
           removed: formatQuantity(batch.counters.infertile + batch.counters.earlyDead),
@@ -222,18 +242,20 @@ function BatchCard({
         })}
       </p>
       {batch.stockGap > 0 && !batch.stockStale ? (
-        <p className="text-warn">
+        <p className="prd-note is-warn">
           {t('incubation.stock_gap', { gap: formatQuantity(batch.stockGap) })}
         </p>
       ) : null}
-      {batch.pendingLoss ? <p className="text-warn">{t('incubation.pending_loss')}</p> : null}
+      {batch.pendingLoss ? (
+        <p className="prd-note is-warn">{t('incubation.pending_loss')}</p>
+      ) : null}
       {hatchHold ? (
-        <p id={ids.hold} className="text-warn" role="status">
+        <p id={ids.hold} className="prd-note is-warn" role="status">
           {t(hatchHold)}
         </p>
       ) : null}
       {batch.expectedHatchDate ? (
-        <p className="home-muted">
+        <p className="prd-note">
           {t('incubation.schedule', {
             candling: batch.expectedCandlingDate
               ? formatBusinessDay(batch.expectedCandlingDate)
@@ -247,51 +269,47 @@ function BatchCard({
       ) : null}
 
       {panel === null && (batch.status === 'INCUBATING' || batch.status === 'IN_HATCHER') ? (
-        <div className="result-actions">
+        <div className="prd-actions">
           {batch.status === 'INCUBATING' ? (
             <>
-              <button
-                type="button"
-                className="secondary"
+              <Button
+                variant="tonal"
                 disabled={blocked || batch.allLost}
                 aria-describedby={batch.allLost ? ids.hold : undefined}
                 onClick={() => open('CANDLING')}
               >
                 {t('incubation.candling')}
-              </button>
-              <button
-                type="button"
-                className="secondary"
+              </Button>
+              <Button
+                variant="tonal"
                 disabled={blocked || batch.allLost}
                 aria-describedby={batch.allLost ? ids.hold : undefined}
                 onClick={() => open('TRANSFER')}
               >
                 {t('incubation.transfer')}
-              </button>
+              </Button>
             </>
           ) : (
-            <button
-              type="button"
-              className="secondary"
+            <Button
+              variant="tonal"
               disabled={blocked || hatchHold !== null}
               onClick={() => open('HATCH')}
             >
               {t('incubation.hatch')}
-            </button>
+            </Button>
           )}
           {batch.allLost ? (
             <>
-              <button
-                type="button"
-                className="secondary"
+              <Button
+                variant="outline"
                 disabled={blocked || !online}
                 aria-describedby={!online ? ids.cancelOffline : undefined}
                 onClick={() => open('CANCEL')}
               >
                 {t('incubation.cancel_open')}
-              </button>
+              </Button>
               {!online ? (
-                <p id={ids.cancelOffline} className="home-muted">
+                <p id={ids.cancelOffline} className="prd-note">
                   {t('incubation.cancel_online_only')}
                 </p>
               ) : null}
@@ -301,54 +319,52 @@ function BatchCard({
       ) : null}
 
       {panel === 'CANCEL' ? (
-        <div className="sale-block">
-          <p className="home-muted">{t('incubation.cancel_hint')}</p>
-          <div className="field">
-            <label htmlFor={ids.cancelComment}>{t('incubation.cancel_comment_label')}</label>
-            <textarea
-              id={ids.cancelComment}
-              className="text-input"
-              rows={2}
-              maxLength={MAX_CANCEL_COMMENT}
-              aria-required="true"
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-            />
+        <div className="prd-panel">
+          <p className="prd-note">{t('incubation.cancel_hint')}</p>
+          <div className="prd-form">
+            <Field label={t('incubation.cancel_comment_label')}>
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={2}
+                  maxLength={MAX_CANCEL_COMMENT}
+                  aria-required="true"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                />
+              )}
+            </Field>
+            {!online || !batch.allLost ? (
+              <p id={ids.cancelPanelReason} className="prd-note is-warn" role="status">
+                {!online ? t('incubation.cancel_online_only') : t('incubation.cancel_no_longer')}
+              </p>
+            ) : null}
           </div>
-          {!online || !batch.allLost ? (
-            <p id={ids.cancelPanelReason} className="text-warn" role="status">
-              {!online ? t('incubation.cancel_online_only') : t('incubation.cancel_no_longer')}
-            </p>
-          ) : null}
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
+          <div className="prd-actions">
+            <Button
               disabled={blocked || !online || !batch.allLost || comment.trim() === ''}
               aria-describedby={!online || !batch.allLost ? ids.cancelPanelReason : undefined}
               onClick={() => step('production.incubation.cancel', { comment: comment.trim() })}
             >
               {t('incubation.save_cancel')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+            </Button>
+            <Button variant="ghost" onClick={() => setPanel(null)}>
               {t('price_rules.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
       {panel === 'CANDLING' ? (
-        <div className="sale-block">
-          <div className="line-fields">
+        <div className="prd-panel">
+          <div className="prd-pair">
             <NumberField
-              id={ids.infertile}
               label={t('incubation.infertile_label')}
               value={counts.infertile}
               onChange={set('infertile')}
               errorId={candlingShown ? ids.candlingError : undefined}
             />
             <NumberField
-              id={ids.earlyDead}
               label={t('incubation.early_dead_label')}
               value={counts.earlyDead}
               onChange={set('earlyDead')}
@@ -356,14 +372,12 @@ function BatchCard({
             />
           </div>
           {candlingShown ? (
-            <p id={ids.candlingError} className="error-message" role="alert">
+            <p id={ids.candlingError} className="prd-note is-bad" role="alert">
               {candlingProblem}
             </p>
           ) : null}
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
+          <div className="prd-actions">
+            <Button
               disabled={
                 blocked ||
                 candlingProblem !== null ||
@@ -373,115 +387,92 @@ function BatchCard({
               onClick={() => candling && step('production.incubation.record_candling', candling)}
             >
               {t('incubation.save_candling')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+            </Button>
+            <Button variant="ghost" onClick={() => setPanel(null)}>
               {t('price_rules.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
       {panel === 'TRANSFER' ? (
-        <div className="sale-block">
+        <div className="prd-panel">
           {hatcherList.length === 0 ? (
-            <p className="alert alert-error">{t('incubation.no_hatcher')}</p>
+            <Banner tone="bad">{t('incubation.no_hatcher')}</Banner>
           ) : (
-            <div className="field">
-              <label htmlFor={ids.hatcher}>{t('incubation.hatcher_label')}</label>
-              <select
-                id={ids.hatcher}
-                className="text-input"
-                value={hatcherId}
-                onChange={(event) => setHatcherId(event.target.value)}
-              >
-                <option value="">{t('lot_setup.choose')}</option>
-                {hatcherList.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SelectField
+              label={t('incubation.hatcher_label')}
+              value={hatcherId}
+              onChange={setHatcherId}
+              options={hatcherList.map((location) => ({
+                value: location.id,
+                label: location.name,
+              }))}
+              placeholder={t('lot_setup.choose')}
+            />
           )}
-          <p className="home-muted">
+          <p className="prd-note">
             {t('incubation.transfer_hint', { remaining: formatQuantity(remaining) })}
           </p>
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
+          <div className="prd-actions">
+            <Button
               disabled={blocked || !hatcherId}
               onClick={() =>
                 step('production.incubation.transfer_to_hatcher', { hatcherLocationId: hatcherId })
               }
             >
               {t('incubation.save_transfer')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+            </Button>
+            <Button variant="ghost" onClick={() => setPanel(null)}>
               {t('price_rules.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
       {panel === 'HATCH' ? (
-        <div className="sale-block">
-          <div className="line-fields">
-            <NumberField
-              id={ids.viable}
-              label={t('incubation.viable_label')}
-              value={counts.hatchedViable}
-              onChange={set('hatchedViable')}
-              errorId={hatchShown ? ids.hatchError : undefined}
-            />
-            <NumberField
-              id={ids.nonviable}
-              label={t('incubation.nonviable_label')}
-              value={counts.hatchedNonviable}
-              onChange={set('hatchedNonviable')}
-              errorId={hatchShown ? ids.hatchError : undefined}
-            />
-            <NumberField
-              id={ids.unhatched}
-              label={t('incubation.unhatched_label')}
-              value={counts.unhatched}
-              onChange={set('unhatched')}
-              errorId={hatchShown ? ids.hatchError : undefined}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={ids.output}>{t('incubation.output_label')}</label>
-            <select
-              id={ids.output}
-              className="text-input"
+        <div className="prd-panel">
+          <div className="prd-form">
+            <div className="prd-grid">
+              <NumberField
+                label={t('incubation.viable_label')}
+                value={counts.hatchedViable}
+                onChange={set('hatchedViable')}
+                errorId={hatchShown ? ids.hatchError : undefined}
+              />
+              <NumberField
+                label={t('incubation.nonviable_label')}
+                value={counts.hatchedNonviable}
+                onChange={set('hatchedNonviable')}
+                errorId={hatchShown ? ids.hatchError : undefined}
+              />
+              <NumberField
+                label={t('incubation.unhatched_label')}
+                value={counts.unhatched}
+                onChange={set('unhatched')}
+                errorId={hatchShown ? ids.hatchError : undefined}
+              />
+            </div>
+            <SelectField
+              label={t('incubation.output_label')}
               value={outputId}
-              onChange={(event) => setOutputId(event.target.value)}
-            >
-              <option value="">
-                {t('incubation.output_default', {
-                  name:
-                    locationNames.get(batch.hatcherLocationId ?? batch.incubatorLocationId) ?? '',
-                })}
-              </option>
-              {outputs.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="home-muted">
-            {t('incubation.hatch_hint', { remaining: formatQuantity(remaining) })}
-          </p>
-          {hatchShown ? (
-            <p id={ids.hatchError} className="error-message" role="alert">
-              {hatchProblem}
+              onChange={setOutputId}
+              options={outputs.map((location) => ({ value: location.id, label: location.name }))}
+              placeholder={t('incubation.output_default', {
+                name: locationNames.get(batch.hatcherLocationId ?? batch.incubatorLocationId) ?? '',
+              })}
+            />
+            <p className="prd-note">
+              {t('incubation.hatch_hint', { remaining: formatQuantity(remaining) })}
             </p>
-          ) : null}
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
+            {hatchShown ? (
+              <p id={ids.hatchError} className="prd-note is-bad" role="alert">
+                {hatchProblem}
+              </p>
+            ) : null}
+          </div>
+          <div className="prd-actions">
+            <Button
               disabled={blocked || hatchHold !== null || hatchProblem !== null || !hatch}
               aria-describedby={hatchHold ? ids.hold : undefined}
               onClick={() =>
@@ -493,10 +484,10 @@ function BatchCard({
               }
             >
               {t('incubation.save_hatch')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+            </Button>
+            <Button variant="ghost" onClick={() => setPanel(null)}>
               {t('price_rules.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -533,18 +524,7 @@ function StartBatch({
   const [sourceLotId, setSourceLotId] = useState('');
   const [eggSource, setEggSource] = useState<'INTERNAL' | 'PURCHASED'>('INTERNAL');
   const [eggsText, setEggsText] = useState('');
-  const ids = {
-    farm: useId(),
-    species: useId(),
-    egg: useId(),
-    chick: useId(),
-    incubator: useId(),
-    source: useId(),
-    lot: useId(),
-    eggs: useId(),
-    eggsError: useId(),
-    speciesList: useId(),
-  };
+  const speciesListId = useId();
   const siteId = siteChoice || farms[0]?.id || '';
   const incubatorList = siteId ? incubators(refs.locations, siteId) : [];
   const incubatorId = incubatorList.some((l) => l.id === incubatorChoice)
@@ -616,204 +596,149 @@ function StartBatch({
     });
   };
 
-  if (farms.length === 0) return <p className="home-muted">{t('incubation.no_incubator')}</p>;
+  if (farms.length === 0) return <p className="prd-note">{t('incubation.no_incubator')}</p>;
+
+  const eggsError =
+    eggsText && (eggs === null || eggs === 0)
+      ? t('incubation.count_invalid')
+      : over && online
+        ? t('incubation.over_online')
+        : undefined;
 
   return (
     <>
-      <div className="field">
-        <label htmlFor={ids.farm}>{t('lot_setup.farm_label')}</label>
-        <select
-          id={ids.farm}
-          className="text-input"
+      <div className="prd-form">
+        <SelectField
+          label={t('lot_setup.farm_label')}
           value={siteId}
-          onChange={(event) => setSiteChoice(event.target.value)}
-        >
-          {farms.map((farm) => (
-            <option key={farm.id} value={farm.id}>
-              {farm.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.species}>{t('incubation.species_label')}</label>
+          onChange={setSiteChoice}
+          options={farms.map((farm) => ({ value: farm.id, label: farm.name }))}
+        />
         {configuredSpecies.length > 0 ? (
-          <select
-            id={ids.species}
-            className="text-input"
+          <SelectField
+            label={t('incubation.species_label')}
             value={effectiveSpecies}
-            onChange={(event) => setSpecies(event.target.value)}
-          >
-            <option value="">{t('lot_setup.choose')}</option>
-            {configuredSpecies.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
+            onChange={setSpecies}
+            options={configuredSpecies.map((value) => ({ value, label: value }))}
+            placeholder={t('lot_setup.choose')}
+          />
         ) : (
           <>
-            <input
-              id={ids.species}
-              className="text-input"
-              maxLength={20}
-              autoCapitalize="characters"
-              placeholder="POULE"
-              list={ids.speciesList}
-              value={species}
-              onChange={(event) => setSpecies(event.target.value)}
-            />
-            <datalist id={ids.speciesList}>
-              {knownSpecies.map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
-            <p className="text-warn">{t('incubation.species_not_configured')}</p>
+            <Field label={t('incubation.species_label')}>
+              {(control) => (
+                <>
+                  <Input
+                    {...control}
+                    maxLength={20}
+                    autoCapitalize="characters"
+                    placeholder="POULE"
+                    list={speciesListId}
+                    value={species}
+                    onChange={(event) => setSpecies(event.target.value)}
+                  />
+                  <datalist id={speciesListId}>
+                    {knownSpecies.map((value) => (
+                      <option key={value} value={value} />
+                    ))}
+                  </datalist>
+                </>
+              )}
+            </Field>
+            <p className="prd-note is-warn">{t('incubation.species_not_configured')}</p>
           </>
         )}
-      </div>
-      {configuredEgg ? (
-        <p className="home-muted">{t('incubation.egg_product', { name: configuredEgg.name })}</p>
-      ) : (
-        <div className="field">
-          <label htmlFor={ids.egg}>{t('incubation.egg_label')}</label>
-          <select
-            id={ids.egg}
-            className="text-input"
+        {configuredEgg ? (
+          <p className="prd-note">{t('incubation.egg_product', { name: configuredEgg.name })}</p>
+        ) : (
+          <SelectField
+            label={t('incubation.egg_label')}
             value={eggProductChoice}
-            onChange={(event) => setEggProductChoice(event.target.value)}
-          >
-            <option value="">{t('lot_setup.choose')}</option>
-            {eggCandidates.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div className="field">
-        <label htmlFor={ids.chick}>{t('incubation.chick_label')}</label>
-        <select
-          id={ids.chick}
-          className="text-input"
+            onChange={setEggProductChoice}
+            options={eggCandidates.map((product) => ({ value: product.id, label: product.name }))}
+            placeholder={t('lot_setup.choose')}
+          />
+        )}
+        <SelectField
+          label={t('incubation.chick_label')}
           value={chickProductId}
-          onChange={(event) => setChickProductId(event.target.value)}
-        >
-          <option value="">{t('lot_setup.choose')}</option>
-          {chicks.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.incubator}>{t('incubation.incubator_label')}</label>
-        <select
-          id={ids.incubator}
-          className="text-input"
+          onChange={setChickProductId}
+          options={chicks.map((product) => ({ value: product.id, label: product.name }))}
+          placeholder={t('lot_setup.choose')}
+        />
+        <SelectField
+          label={t('incubation.incubator_label')}
           value={incubatorId}
-          onChange={(event) => setIncubatorChoice(event.target.value)}
-        >
-          {incubatorList.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {eggProductId && sources.length === 0 ? (
-        <p className="alert alert-error">{t('incubation.no_eggs')}</p>
-      ) : null}
-      {sources.length > 0 ? (
-        <div className="field">
-          <label htmlFor={ids.source}>{t('incubation.source_label')}</label>
-          <select
-            id={ids.source}
-            className="text-input"
+          onChange={setIncubatorChoice}
+          options={incubatorList.map((location) => ({ value: location.id, label: location.name }))}
+        />
+        {eggProductId && sources.length === 0 ? (
+          <Banner tone="bad">{t('incubation.no_eggs')}</Banner>
+        ) : null}
+        {sources.length > 0 ? (
+          <SelectField
+            label={t('incubation.source_label')}
             value={source ? source.locationId : ''}
-            onChange={(event) => {
-              setSourceId(event.target.value);
+            onChange={(value) => {
+              setSourceId(value);
               setSourceLotId('');
             }}
-          >
-            <option value="">{t('lot_setup.choose')}</option>
-            {sources.map((candidate) => (
-              <option key={candidate.locationId} value={candidate.locationId}>
-                {t('incubation.source', {
-                  place: locationNames.get(candidate.locationId) ?? '',
-                  quantity: formatQuantity(candidate.quantity),
-                })}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-      {source && source.lots.length > 0 ? (
-        <div className="field">
-          <label htmlFor={ids.lot}>{t('incubation.egg_lot_label')}</label>
-          <select
-            id={ids.lot}
-            className="text-input"
-            value={lotId}
-            onChange={(event) => setSourceLotId(event.target.value)}
-          >
-            <option value="">{source.fifo ? t('lot_setup.fifo') : t('lot_setup.choose')}</option>
-            {source.lots.map((lot) => (
-              <option key={lot.lotId} value={lot.lotId}>
-                {`${lot.lotCode} (${formatQuantity(lot.quantity)})`}
-              </option>
-            ))}
-          </select>
-          {!source.fifo ? <p className="home-muted">{t('incubation.egg_lot_required')}</p> : null}
-        </div>
-      ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('incubation.egg_source_label')}</legend>
-        {(['INTERNAL', 'PURCHASED'] as const).map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
-              name="egg-source"
-              value={value}
-              checked={eggSource === value}
-              onChange={() => setEggSource(value)}
-            />
-            {t(`incubation.egg_source.${value}`)}
-          </label>
-        ))}
-      </fieldset>
-      <div className="field">
-        <label htmlFor={ids.eggs}>{t('incubation.eggs_label')}</label>
-        <input
-          id={ids.eggs}
-          className="text-input"
-          inputMode="numeric"
-          value={eggsText}
-          aria-invalid={eggsText && (eggs === null || eggs === 0) ? true : undefined}
-          aria-describedby={eggsText && (eggs === null || eggs === 0) ? ids.eggsError : undefined}
-          onChange={(event) => setEggsText(event.target.value)}
-        />
-        {eggsText && (eggs === null || eggs === 0) ? (
-          <p id={ids.eggsError} className="error-message" role="alert">
-            {t('incubation.count_invalid')}
-          </p>
+            options={sources.map((candidate) => ({
+              value: candidate.locationId,
+              label: t('incubation.source', {
+                place: locationNames.get(candidate.locationId) ?? '',
+                quantity: formatQuantity(candidate.quantity),
+              }),
+            }))}
+            placeholder={t('lot_setup.choose')}
+          />
         ) : null}
+        {source && source.lots.length > 0 ? (
+          <>
+            <SelectField
+              label={t('incubation.egg_lot_label')}
+              value={lotId}
+              onChange={setSourceLotId}
+              options={source.lots.map((lot) => ({
+                value: lot.lotId,
+                label: `${lot.lotCode} (${formatQuantity(lot.quantity)})`,
+              }))}
+              placeholder={source.fifo ? t('lot_setup.fifo') : t('lot_setup.choose')}
+            />
+            {!source.fifo ? <p className="prd-note">{t('incubation.egg_lot_required')}</p> : null}
+          </>
+        ) : null}
+        <div className="field">
+          <span className="field-label">{t('incubation.egg_source_label')}</span>
+          <Segmented
+            label={t('incubation.egg_source_label')}
+            value={eggSource}
+            onChange={setEggSource}
+            options={(['INTERNAL', 'PURCHASED'] as const).map((value) => ({
+              value,
+              label: t(`incubation.egg_source.${value}`),
+            }))}
+          />
+        </div>
+        <Field label={t('incubation.eggs_label')} error={eggsError}>
+          {(control) => (
+            <Input
+              {...control}
+              inputMode="numeric"
+              value={eggsText}
+              onChange={(event) => setEggsText(event.target.value)}
+            />
+          )}
+        </Field>
+        {over && !online ? (
+          <p className="prd-note is-warn">{t('incubation.over_offline')}</p>
+        ) : null}
+        {lotRisk ? <p className="prd-note is-warn">{t('lot_setup.lot_fifo_risk')}</p> : null}
       </div>
-      {over ? (
-        online ? (
-          <p className="error-message" role="alert">
-            {t('incubation.over_online')}
-          </p>
-        ) : (
-          <p className="text-warn">{t('incubation.over_offline')}</p>
-        )
-      ) : null}
-      {lotRisk ? <p className="text-warn">{t('lot_setup.lot_fifo_risk')}</p> : null}
-      <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
-        {t('incubation.start')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={submit}>
+          {t('incubation.start')}
+        </Button>
+      </ActionBar>
     </>
   );
 }
@@ -832,8 +757,8 @@ export function IncubationScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.incubation')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.incubation')} />
+        <SkeletonRows />
       </section>
     );
   }
@@ -865,39 +790,30 @@ export function IncubationScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.incubation')}</h1>
+      <PageHeader title={t('nav.screens.incubation')} />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('incubation.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
       {last ? <CommandResult commandId={last} messages="incubation.result" /> : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('incubation.section_label')}</legend>
-        {(['BATCHES', 'START'] as const).map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
-              name="incubation-section"
-              value={value}
-              checked={section === value}
-              onChange={() => setSection(value)}
-            />
-            {t(`incubation.section.${value}`)}
-          </label>
-        ))}
-      </fieldset>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      <Segmented
+        label={t('incubation.section_label')}
+        className="prd-narrow"
+        value={section}
+        onChange={setSection}
+        options={(['BATCHES', 'START'] as const).map((value) => ({
+          value,
+          label: t(`incubation.section.${value}`),
+        }))}
+      />
       {section === 'BATCHES' ? (
         <section className="sale-block" aria-label={t('incubation.section.BATCHES')}>
           {open.length === 0 ? (
-            <p className="home-muted">{t('incubation.none')}</p>
+            <EmptyState icon="leaf" title={t('incubation.none')} />
           ) : (
-            <ul className="line-list">
+            <ul className="prd-batches">
               {open.map((batch) => (
                 <BatchCard
                   key={batch.id}
@@ -912,23 +828,25 @@ export function IncubationScreen() {
             </ul>
           )}
           {done.length > 0 ? (
-            <>
-              <h2>{t('incubation.done_title')}</h2>
-              <ul className="receipt-lines">
+            <Section title={t('incubation.done_title')}>
+              <List>
                 {done.map((batch) => (
-                  <li key={batch.id}>
-                    <span>{batch.batchCode ?? t('incubation.pending_batch')}</span>
-                    <span>
-                      {t(`incubation.status.${batch.status}`, { defaultValue: batch.status })}
-                    </span>
-                  </li>
+                  <ListRow
+                    key={batch.id}
+                    title={batch.batchCode ?? t('incubation.pending_batch')}
+                    badge={
+                      <Badge tone={BATCH_TONE[batch.status] ?? 'muted'}>
+                        {t(`incubation.status.${batch.status}`, { defaultValue: batch.status })}
+                      </Badge>
+                    }
+                  />
                 ))}
-              </ul>
-            </>
+              </List>
+            </Section>
           ) : null}
         </section>
       ) : (
-        <section className="sale-block" aria-label={t('incubation.section.START')}>
+        <section className="sale-block prd-narrow" aria-label={t('incubation.section.START')}>
           <StartBatch
             refs={refs}
             send={send}

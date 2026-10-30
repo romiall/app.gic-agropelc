@@ -881,10 +881,16 @@ export const fr = {
       ACTIVE: 'Actif',
       SELLING: 'En vente',
     },
+    col: {
+      lot: 'Lot',
+      age: 'Âge',
+      heads: 'Effectif',
+      today: 'Saisies du jour',
+      status: 'Situation',
+    },
     planned_title: 'Lots planifiés (pas encore de saisie)',
-    back: '← Lots actifs',
+    back: 'Lots actifs',
     lot_not_daily: 'Ce lot n’accepte pas de saisie (planifié, clôturé, ou absent de ce téléphone).',
-    daily_title: 'Saisie du jour — {{code}}',
     offline_banner:
       'Hors ligne : chaque saisie est enregistrée sur ce téléphone et envoyée au retour du réseau.',
     to_egg_collection: 'Saisir la collecte d’œufs de ce lot',
@@ -990,7 +996,7 @@ export const fr = {
     },
   },
   eggs: {
-    back: '← Saisie du jour {{code}}',
+    back: 'Saisie du jour {{code}}',
     offline_banner:
       'Hors ligne : la collecte sera enregistrée sur ce téléphone et envoyée au retour du réseau ; les œufs entrent aussitôt au disponible.',
     no_lot: 'Aucun lot de pondeuses ou de reproducteurs actif sur les fermes de ce téléphone.',
@@ -1009,6 +1015,7 @@ export const fr = {
     count_invalid: 'Nombres entiers attendus.',
     remaining_one: 'Reste {{count}} œuf à répartir (le bilan doit tomber juste).',
     remaining_other: 'Reste {{count}} œufs à répartir (le bilan doit tomber juste).',
+    remaining_label: 'À répartir',
     hatching_missing:
       'Le produit des œufs à couver n’est pas paramétré : le serveur refuserait la collecte. Laissez « À couver » à 0.',
     submit: 'Enregistrer la collecte',
@@ -1566,6 +1573,7 @@ export const fr = {
     start_label: 'Démarrage prévu (facultatif)',
     end_label: 'Fin prévue (facultatif)',
     notes_label: 'Note (facultatif)',
+    more_title: 'Autres informations (facultatif)',
     create: 'Créer le lot',
     no_entry_lot: 'Aucun lot planifié, actif ou en vente sur vos fermes.',
     entry_lot_label: 'Lot',
@@ -1637,7 +1645,7 @@ export const fr = {
     },
   },
   output: {
-    back: '← Saisie du jour {{code}}',
+    back: 'Saisie du jour {{code}}',
     offline_banner:
       'Hors ligne : la sortie sera enregistrée sur ce téléphone et envoyée au retour du réseau ; les têtes quittent aussitôt l’effectif affiché.',
     no_lot: 'Aucun lot actif ou en vente sur vos fermes.',
