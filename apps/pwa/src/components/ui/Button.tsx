@@ -4,7 +4,7 @@
  * en `tonal`, `ghost` ou `outline`. `type` vaut « button » par défaut : un bouton ne soumet un formulaire
  * que s'il le demande (`type="submit"`).
  */
-import type { ButtonHTMLAttributes } from 'react';
+import type { ComponentPropsWithRef } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
 import { cx } from './cx.js';
 import { Icon, type IconName } from './icons.js';
@@ -45,7 +45,7 @@ function look({
   );
 }
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, Look {
+export interface ButtonProps extends ComponentPropsWithRef<'button'>, Look {
   /** Désactive le bouton et affiche une roue : l'action est en cours. */
   loading?: boolean;
 }

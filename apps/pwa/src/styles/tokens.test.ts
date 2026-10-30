@@ -4,8 +4,8 @@
  * contrôle tiennent le niveau AA dans les deux thèmes, et aucune feuille de style de composants
  * n'écrit de couleur en dur.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { THEME_COLORS } from '../components/ui/theme.js';
@@ -16,6 +16,17 @@ const read = (relative: string): string =>
   readFileSync(join(here, relative), 'utf8').replace(/\r\n/g, '\n');
 
 const tokens = read('tokens.css');
+
+/** Toutes les feuilles de style de l'application, sauf les jetons, les polices et la charte des pièces imprimées. */
+function stylesheets(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return entry.name === 'pieces' ? [] : stylesheets(path);
+    return entry.name.endsWith('.css') && !['tokens.css', 'fonts.css'].includes(entry.name)
+      ? [path]
+      : [];
+  });
+}
 
 function declarations(block: string): Map<string, string> {
   const map = new Map<string, string>();
@@ -58,12 +69,14 @@ describe('tokens.css', () => {
     expect(THEME_COLORS.dark).toBe(dark.get('surface'));
   });
 
-  it('n’écrit aucune couleur en dur dans les feuilles de composants', () => {
-    for (const file of ['base.css', 'components.css', 'shell.css', 'home.css', 'screens.css']) {
-      expect(read(file).match(/#[0-9a-fA-F]{3,8}\b/g) ?? [], file).toEqual([]);
+  it('n’écrit aucune couleur en dur dans les feuilles de style (une feuille par domaine comprise)', () => {
+    const root = join(here, '..');
+    const files = stylesheets(root);
+    expect(files.length).toBeGreaterThanOrEqual(7);
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+      expect(text.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [], relative(root, file)).toEqual([]);
     }
-    const legacy = read('../app/app.css');
-    expect(legacy.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [], 'app.css').toEqual([]);
   });
 });
 

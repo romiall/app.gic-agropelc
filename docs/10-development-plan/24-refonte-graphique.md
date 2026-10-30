@@ -1,6 +1,6 @@
 # 24 — Refonte graphique et ergonomique de la PWA
 
-> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7), L2 (coquille, navigation, connexion, accueil, § 8) et L3 (ventes et caisse, § 8 bis) sont clos. Les écrans des autres domaines ne sont pas encore repris un à un : ils profitent déjà des jetons, du style des éléments nus et du vocabulaire commun des écrans (`screens.css`) ; le lot L4 (stock) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
+> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7), L2 (coquille, navigation, connexion, accueil, § 8) et L3 (ventes et caisse, § 8 bis) sont clos. Les écrans des autres domaines ne sont pas encore repris un à un : ils profitent déjà des jetons, du style des éléments nus et du vocabulaire commun des écrans (`screens.css`) ; les lots L4 à L9 sont menés en parallèle par quatre sessions (§ 6 bis). Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
 > **Portée** : `apps/pwa` seulement, **à fonctionnalités constantes** (mêmes commandes, même hors ligne, même synchronisation). `apps/server`, `db/`, `deploy/` et `apps/pwa/src/features/pieces/` (mise en page exacte des pièces imprimées) ne sont pas touchés.
 > **Numéros réservés au chantier** : de 486 à 499 pour les AV, de 049 à 051 pour les ADR (la session principale n'y touche pas).
 
@@ -85,6 +85,27 @@ Maquette envoyée au porteur le 30/10/2026 (accueil d'un vendeur de point de ven
 
 Chaque lot ferme sur : contrôle visuel mobile et bureau, `typecheck`, essais du domaine (la suite complète d'`apps/pwa` au plus une fois par lot), un commit en français, un point d'avancement avec avant et après sur deux ou trois écrans.
 
+## 6 bis. Développement parallèle des lots L4 à L9
+
+Décision du porteur du 30/10/2026 : après le lot L3, les lots de domaine sont menés **en parallèle** par quatre sessions, chacune en développement séquentiel (un lot à la fois, aucun sous-agent). Les dossiers de chaque lot ne se recouvrent pas ; ce qui est commun a été préparé avant le départ.
+
+| Session | Lots | Périmètre | Suivi |
+|---|---|---|---|
+| Session principale | L4, puis L10 | `features/stock/`, réapprovisionnement ; clôture sur la fusion | [L4](24-refonte-graphique-L4.md) |
+| Fork A | L5, puis L7 | `crm`, `fieldwork`, `catalog`, `pricing`, livraison ; `procurement` | [L5](24-refonte-graphique-L5.md), [L7](24-refonte-graphique-L7.md) |
+| Fork B | L6, puis L9 | `production` ; `users`, `devices`, `approvals`, `sync` (écrans), `attachments` | [L6](24-refonte-graphique-L6.md), [L9](24-refonte-graphique-L9.md) |
+| Fork C | L8 | `finance`, `treasury` | [L8](24-refonte-graphique-L8.md) |
+
+Règles qui évitent tout cumul de fichiers :
+
+- **Fichiers communs** (`components/ui/*`, `styles/{tokens,base,components,screens,shell,home}.css`, `app/app.css`, `main.tsx`, `app/screens.ts`, `shell/*`) : personne ne les modifie pendant les lots ; la session principale les ajuste sur demande et retire `app.css` au lot L10. Briques communes déjà posées : `DataCell` pleine largeur (`wide`), rangée d'actions `chip-row`, barre de filtres `filter-bar`, `ref` transmis par `Button`.
+- **Une feuille de style par domaine** : `features/<domaine>/<domaine>.css`, importée par les écrans du domaine ; le test des couleurs balaie toutes les feuilles (plus de liste à tenir).
+- **Textes** : les clés de `fr.ts` d'un lot s'ajoutent au milieu de ses propres blocs, jamais à leur première ou dernière ligne ; les conflits restants se règlent à la fusion.
+- **Suivi** : chaque lot tient son fichier ; le suivi principal est consolidé au lot L10.
+- **Questions** : pas d'AV ni d'ADR en route ; les questions s'écrivent `Q-L<n>-<k>` dans le fichier du lot, la session principale les numérote et les enregistre au lot L10 (numéros 486 à 499 pour les AV, 050 et 051 pour les ADR).
+- **Machine (8 Go)** : une seule étape lourde à la fois (types, ESLint, essais, construction, serveurs, Chromium), sous un verrou commun hors du dépôt.
+- **Fusion** : une branche par session, un commit par lot, aucun push ; la session principale fusionne sur demande du porteur, dans l'ordre L4 à L9, puis le lot L10 vérifie la fusion en une seule passe.
+
 ## 7. Fondations livrées (lot L1)
 
 Le lot L1 est l'infrastructure de tout le reste : un écran qui n'a pas encore été repris profite déjà des jetons et du style des éléments nus (boutons, champs, cases), les lots suivants adoptent les composants.
@@ -149,3 +170,4 @@ Libellés, rôles ARIA et noms accessibles sont inchangés : aucun essai de comp
 | 30/10/2026 | Lot L1 (fondations, § 7) : jetons clair et sombre, polices, base, composants partagés, page de référence, `app.css` re-tokenisée. |
 | 30/10/2026 | Lot L2 (coquille et navigation, § 8) : barre du haut, onglets du bas avec « + », barre latérale, menu du compte, connexion, accueil à un rôle à la fois, logo officiel (icônes d'installation). |
 | 30/10/2026 | Lot L3 (ventes et caisse, § 8 bis) : vocabulaire commun des écrans restylé (`screens.css`), barre d'action collée sur la vente, la commande et l'encaissement, listes avec pastilles de situation, accueil du point de vente et caisse en cartes. |
+| 30/10/2026 | Socle commun du développement parallèle des lots L4 à L9 (§ 6 bis) : balayage automatique des feuilles de style, briques communes (cellule pleine largeur, rangée d'actions, barre de filtres, `ref` du bouton), suivi par lot. |

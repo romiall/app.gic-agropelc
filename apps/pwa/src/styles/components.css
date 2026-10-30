@@ -383,6 +383,10 @@ button.list-row::before {
   gap: var(--space-2);
 }
 
+.data-cell.is-wide {
+  flex: 1 0 100%;
+}
+
 .data-cell.is-primary::before,
 .data-cell.is-actions::before {
   display: none;
@@ -428,6 +432,11 @@ button.list-row::before {
   .data-cell.is-actions {
     flex: none;
     flex-wrap: nowrap;
+  }
+
+  .data-cell.is-wide {
+    flex: none;
+    grid-column: 1 / -1;
   }
 }
 

@@ -579,3 +579,45 @@ a.doc-row:hover {
 .figures-card p {
   margin: 0;
 }
+
+/* --- Rangée d'actions et barre de filtres (briques communes aux écrans de consultation) -------------- */
+
+/* Actions d'un écran : une rangée qui défile sur téléphone, qui passe à la ligne sur ordinateur. */
+.chip-row {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 calc(-1 * var(--gutter)) var(--space-4);
+  padding: 0 var(--gutter) var(--space-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-row .btn {
+  flex: none;
+}
+
+@media (min-width: 56.25rem) {
+  .chip-row {
+    flex-wrap: wrap;
+    margin-inline: 0;
+    padding-inline: 0;
+    overflow: visible;
+  }
+}
+
+/* Filtres d'une liste : empilés sur téléphone, sur une seule ligne dès que la place le permet. */
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-items: end;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.filter-bar .field {
+  margin-bottom: 0;
+}

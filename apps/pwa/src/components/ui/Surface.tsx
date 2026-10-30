@@ -199,11 +199,21 @@ export interface DataCellProps {
   numeric?: boolean;
   /** Cellule d'actions : alignée à droite. */
   actions?: boolean;
+  /** Cellule de détail : prend toute la largeur de la ligne, sous les autres cellules. */
+  wide?: boolean;
   className?: string;
   children: ReactNode;
 }
 
-export function DataCell({ label, primary, numeric, actions, className, children }: DataCellProps) {
+export function DataCell({
+  label,
+  primary,
+  numeric,
+  actions,
+  wide,
+  className,
+  children,
+}: DataCellProps) {
   return (
     <div
       className={cx(
@@ -211,6 +221,7 @@ export function DataCell({ label, primary, numeric, actions, className, children
         primary && 'is-primary',
         numeric && 'is-num',
         actions && 'is-actions',
+        wide && 'is-wide',
         className,
       )}
       data-label={label}
