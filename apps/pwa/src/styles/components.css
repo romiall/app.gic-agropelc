@@ -657,6 +657,62 @@ button.list-row::before {
   min-width: 0;
 }
 
+/* Barre d'action d'un formulaire : collée au bas de l'écran, au-dessus des onglets sur téléphone. */
+.action-bar {
+  position: sticky;
+  z-index: 5;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: var(--space-4) calc(-1 * var(--gutter)) 0;
+  padding: var(--space-3) var(--gutter);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.action-bar-summary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+.action-bar-label {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.action-bar-value {
+  font: 700 var(--text-2xl) / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.action-bar-actions {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.action-bar .submit-sale {
+  position: static;
+  flex: 1;
+  width: auto;
+  margin: 0;
+  box-shadow: none;
+}
+
+@media (min-width: 64rem) {
+  .action-bar {
+    bottom: var(--space-4);
+    margin-inline: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+}
+
 .page-subtitle {
   color: var(--ink-3);
   font-size: var(--text-sm);

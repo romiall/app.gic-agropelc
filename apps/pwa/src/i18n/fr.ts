@@ -350,6 +350,7 @@ export const fr = {
       CANCELLATION_REQUESTED: 'Annulation demandée',
       CANCELLED: 'Annulée',
     },
+    total_to_collect: 'Total à encaisser',
     payment_status: {
       UNPAID: 'Non payée',
       PARTIALLY_PAID: 'Payée en partie',
@@ -433,6 +434,7 @@ export const fr = {
     weight_not_orderable:
       'Un produit vendu au poids ne se commande pas : faites une vente directe.',
     total_estimated: 'Total estimé',
+    total_of_order: 'Total de la commande',
     advance_title: 'Acompte',
     advance_toggle: 'Encaisser un acompte',
     advance_amount_label: 'Montant de l’acompte (F CFA)',
@@ -2405,6 +2407,7 @@ export const fr = {
     expiry: 'Péremption : {{date}}',
   },
   collect: {
+    amount_to_collect: 'Montant à encaisser',
     customer_required: 'Choisissez le client qui règle.',
     customer_unreadable:
       'Le client désigné n’a pas pu être lu (réseau ou droits) : choisissez le client qui règle.',
@@ -3932,6 +3935,8 @@ export const fr = {
     cash_unknown: 'La caisse de ce point de vente n’est pas encore sur ce téléphone.',
     cash_open: 'Caisse ouverte depuis le {{date}} par {{who}}.',
     cash_closed: 'Caisse fermée : ouvrez-la avant d’encaisser en espèces.',
+    cash_state_open: 'Ouverte',
+    cash_state_closed: 'Fermée',
     cash_closing_elsewhere:
       'Clôture saisie sur cette tablette par un autre utilisateur, pas encore envoyée : la caisse reste ouverte au serveur jusqu’à son envoi, à sa prochaine connexion avec le réseau.',
     open_cash: 'Ouvrir la caisse',
@@ -4127,6 +4132,8 @@ export const fr = {
     no_account:
       'Aucune caisse de point de vente sur ce téléphone : elle arrive avec la synchronisation de votre point de vente.',
     closed_state: 'Caisse fermée.',
+    state_open: 'Ouverte',
+    state_closed: 'Fermée',
     closing_pending: 'Clôture de la caisse enregistrée sur ce téléphone, en attente d’envoi.',
     closed_to_validate: 'Dernière session close, en attente de validation par la Finance.',
     closed_validated: 'Dernière session close et validée d’office.',

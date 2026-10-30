@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import { Badge, EmptyState, LinkButton, PageHeader } from '../../components/ui/index.js';
 import { ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -99,13 +100,11 @@ export function OrdersScreen() {
 
   return (
     <section className="sale">
-      <div className="screen-head">
-        <h1>{t('nav.screens.orders')}</h1>
-        <Link to={ROUTES.newOrder} className="action action-primary action-compact">
-          <span className="action-label">{t('nav.screens.new_order')}</span>
-        </Link>
-      </div>
-      <p className="home-muted">{t('orders.list.hint')}</p>
+      <PageHeader
+        title={t('nav.screens.orders')}
+        subtitle={t('orders.list.hint')}
+        actions={<LinkButton to={ROUTES.newOrder}>{t('nav.screens.new_order')}</LinkButton>}
+      />
 
       <div className="field">
         <label htmlFor="orders-filter">{t('orders.list.filter_label')}</label>
@@ -122,7 +121,7 @@ export function OrdersScreen() {
       </div>
 
       {orders.length === 0 ? (
-        <p className="home-muted">{t('orders.list.empty')}</p>
+        <EmptyState icon="receipt" title={t('orders.list.empty')} />
       ) : (
         <ul className="doc-list">
           {orders.map((order) => {
@@ -136,10 +135,10 @@ export function OrdersScreen() {
                   aria-label={t('orders.list.open', { doc })}
                 >
                   <span className="doc-main">
-                    <strong>{doc}</strong>
+                    <strong>{customer ?? doc}</strong>
                     <small>
                       {formatMoment(order.occurredAt, today)}
-                      {customer ? ` · ${customer}` : ''}
+                      {customer ? ` · ${doc}` : ''}
                     </small>
                     {order.requestedDeliveryDate ? (
                       <small>
@@ -151,16 +150,14 @@ export function OrdersScreen() {
                   </span>
                   <span className="doc-side">
                     <strong>{formatMoney(order.totalEstimatedXaf)}</strong>
-                    <span className={`badge badge-${orderStatusTone(order.status)}`}>
+                    <Badge tone={orderStatusTone(order.status)}>
                       {t(`orders.status.${order.status}`)}
-                    </span>
+                    </Badge>
                     {hasSomethingToDeliver(order) ? (
-                      <span className="badge badge-info">{t('orders.list.to_deliver_badge')}</span>
+                      <Badge tone="info">{t('orders.list.to_deliver_badge')}</Badge>
                     ) : null}
                     {hasPendingStock(order) && order.status !== 'PENDING' ? (
-                      <span className="badge badge-warn">
-                        {t('orders.list.waiting_stock_badge')}
-                      </span>
+                      <Badge tone="warn">{t('orders.list.waiting_stock_badge')}</Badge>
                     ) : null}
                   </span>
                 </Link>
@@ -201,7 +198,7 @@ export function OrdersScreen() {
                 </span>
                 <span className="doc-side">
                   <strong>{formatMoney(order.totalEstimatedXaf)}</strong>
-                  <span className="badge badge-muted">{t(`orders.status.${order.status}`)}</span>
+                  <Badge tone="muted">{t(`orders.status.${order.status}`)}</Badge>
                 </span>
               </li>
             ))}

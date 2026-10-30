@@ -1,6 +1,6 @@
 # 24 — Refonte graphique et ergonomique de la PWA
 
-> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7) et L2 (coquille, navigation, connexion, accueil, § 8) sont clos. Les écrans de chaque domaine ne sont pas encore repris un à un : ils profitent déjà des jetons et du style des éléments nus ; le lot L3 (ventes et caisse) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
+> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7), L2 (coquille, navigation, connexion, accueil, § 8) et L3 (ventes et caisse, § 8 bis) sont clos. Les écrans des autres domaines ne sont pas encore repris un à un : ils profitent déjà des jetons, du style des éléments nus et du vocabulaire commun des écrans (`screens.css`) ; le lot L4 (stock) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
 > **Portée** : `apps/pwa` seulement, **à fonctionnalités constantes** (mêmes commandes, même hors ligne, même synchronisation). `apps/server`, `db/`, `deploy/` et `apps/pwa/src/features/pieces/` (mise en page exacte des pièces imprimées) ne sont pas touchés.
 > **Numéros réservés au chantier** : de 486 à 499 pour les AV, de 049 à 051 pour les ADR (la session principale n'y touche pas).
 
@@ -121,7 +121,20 @@ Règles pour les lots suivants :
 | Accueil | Signaux en liste (icône, pastille de gravité, action) ; **un rôle à la fois** avec sélecteur (choix mémorisé pour la session) ; action principale pleine largeur, autres en tuiles, « Bientôt » en dernier ; indicateurs en tuiles. Compte à onze rôles : 11 565 px → 2 496 px sur téléphone, 5 621 px → 1 545 px sur ordinateur |
 | Installation | Manifeste, icône d'onglet et d'écran d'accueil : logo officiel réduit (PNG de 5 à 67 Ko, 167 Ko au total) ; couleur de la barre d'état suivant le thème |
 
-Reste pour la suite : la barre d'action collée en bas des formulaires (lot L3), l'en-tête de page des écrans, les écrans « Plus » propres à chaque rôle de bureau.
+Reste pour la suite : l'en-tête de page et la barre d'action des écrans des autres domaines (lots L4 à L9), les écrans « Plus » propres à chaque rôle de bureau.
+
+## 8 bis. Ventes et caisse livrées (lot L3)
+
+| Où | Contenu |
+|---|---|
+| `styles/screens.css` (nouvelle) | Vocabulaire commun des écrans de saisie et de consultation (titres, blocs, champs, lignes de vente, cartes de ligne, listes de documents, reçus, totaux, alertes, résultats d'opération) restylé **une fois** à partir des jetons. Tous les domaines (stock, achats, finance, production…) en profitent dès maintenant ; les règles correspondantes ont quitté `app/app.css`, qui ne garde que ce qu'aucun lot n'a encore repris |
+| `ActionBar` (`components/ui/Nav.tsx`) | Barre d'action collée au-dessus des onglets du bas : résumé (total à encaisser, total de la commande, montant à encaisser) et action principale. Posée sur la vente, la commande, l'encaissement, l'ouverture et la clôture de caisse et l'envoi d'une remise ; le bouton garde son nom accessible et son état désactivé. Un bouton principal resté seul (`submit-sale`, domaines pas encore repris) reste collé mais opaque quand il est inactif : le texte qui défile dessous ne transparaît plus |
+| `CommandResult` | Retour d'une opération rendu par `Banner`, le ton suivant la phase (enregistrée, envoyée, acceptée, avertie, en conflit, refusée) ; les clés `…result.*` et le suivi de l'outbox sont inchangés |
+| Ventes récentes, commandes | `PageHeader`, lignes de document (client, moment, numéro, montant) et pastilles de situation : paiement d'une vente confirmée, statut d'une commande, « À livrer », « Attend du stock » (`saleListBadge` dans `recent-sales.ts`, `orderStatusTone` dans `open-orders.ts`) ; détail d'une vente et d'une commande sur les mêmes composants |
+| Accueil du point de vente | Les actions passent en tête (« Nouvelle vente » pleine largeur, les autres en grille de deux colonnes), la caisse devient une carte avec la pastille Ouverte ou Fermée et son action au même endroit ; ventes du jour, quotas et stock inchangés |
+| Caisse, remises de fonds, distribution | `PageHeader` ; carte d'état de la caisse (pastille Ouverte ou Fermée) ; chiffres du comptage dans une carte (`figures-card`) ; bouton principal collé au-dessus des onglets |
+
+Libellés, rôles ARIA et noms accessibles sont inchangés : aucun essai de comportement n'a été modifié (`styles/tokens.test.ts` couvre en plus `screens.css`). Les boutons nus avec `ref` (ouverture d'une remise, d'une annulation) restent des `<button>` : le composant `Button` ne transmet pas encore de `ref` ; ils reprennent le style par la feuille commune.
 
 ## 9. Outils de vérification
 
@@ -135,3 +148,4 @@ Reste pour la suite : la barre d'action collée en bas des formulaires (lot L3),
 | 30/10/2026 | Audit des 61 écrans (mesures § 2), maquette de la direction (§ 5), plan par lots (§ 6). Direction validée par le porteur (style, navigation, thème) ; ADR-049 rédigé. Lot L0 clos. |
 | 30/10/2026 | Lot L1 (fondations, § 7) : jetons clair et sombre, polices, base, composants partagés, page de référence, `app.css` re-tokenisée. |
 | 30/10/2026 | Lot L2 (coquille et navigation, § 8) : barre du haut, onglets du bas avec « + », barre latérale, menu du compte, connexion, accueil à un rôle à la fois, logo officiel (icônes d'installation). |
+| 30/10/2026 | Lot L3 (ventes et caisse, § 8 bis) : vocabulaire commun des écrans restylé (`screens.css`), barre d'action collée sur la vente, la commande et l'encaissement, listes avec pastilles de situation, accueil du point de vente et caisse en cartes. |

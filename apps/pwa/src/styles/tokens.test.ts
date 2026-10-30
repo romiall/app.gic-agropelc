@@ -59,7 +59,7 @@ describe('tokens.css', () => {
   });
 
   it('n’écrit aucune couleur en dur dans les feuilles de composants', () => {
-    for (const file of ['base.css', 'components.css', 'shell.css', 'home.css']) {
+    for (const file of ['base.css', 'components.css', 'shell.css', 'home.css', 'screens.css']) {
       expect(read(file).match(/#[0-9a-fA-F]{3,8}\b/g) ?? [], file).toEqual([]);
     }
     const legacy = read('../app/app.css');

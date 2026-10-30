@@ -94,6 +94,25 @@ export function TabPanel({ idPrefix, id, active, children }: TabPanelProps) {
   );
 }
 
+export interface ActionBarProps {
+  /** Total ou résumé à gauche (étiquette `.action-bar-label` et valeur `.action-bar-value`). */
+  summary?: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * Barre d'action collée au bas d'un formulaire (au-dessus des onglets sur téléphone) : le total et
+ * l'unique action principale restent visibles pendant la saisie.
+ */
+export function ActionBar({ summary, children }: ActionBarProps) {
+  return (
+    <div className="action-bar">
+      {summary ? <div className="action-bar-summary">{summary}</div> : null}
+      <div className="action-bar-actions">{children}</div>
+    </div>
+  );
+}
+
 export interface PageHeaderProps {
   title: ReactNode;
   subtitle?: ReactNode;

@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { creditCheck, xaf } from '@gic/domain';
+import { ActionBar, Button } from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -364,9 +365,9 @@ export function NewOrderScreen() {
             onClose={() => setPicking(false)}
           />
         ) : (
-          <button type="button" className="secondary btn-block" onClick={() => setPicking(true)}>
+          <Button variant="outline" block className="btn-dashed" onClick={() => setPicking(true)}>
             {t('sales.add_product')}
-          </button>
+          </Button>
         )}
         <p className="home-muted">{t('orders.weight_not_orderable')}</p>
       </section>
@@ -439,14 +440,24 @@ export function NewOrderScreen() {
         </p>
       ) : null}
 
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
+      <ActionBar
+        summary={
+          <>
+            <span className="action-bar-label">{t('orders.total_of_order')}</span>
+            <strong className="action-bar-value">{formatMoney(total ?? 0)}</strong>
+          </>
+        }
       >
-        {busy ? t('sales.submitting') : t('orders.submit')}
-      </button>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          loading={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('sales.submitting') : t('orders.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

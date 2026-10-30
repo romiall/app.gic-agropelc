@@ -6,8 +6,8 @@
  * aux opérations du PDV.
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Badge, LinkButton, PageHeader } from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -130,7 +130,10 @@ export function PosHomeScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.pos_home')}</h1>
+      <PageHeader
+        title={t('nav.screens.pos_home')}
+        subtitle={points.length > 1 ? undefined : location.name}
+      />
       {points.length > 1 ? (
         <div className="field">
           <label htmlFor="pos-home-site">{t('replenish.pos_label')}</label>
@@ -147,38 +150,71 @@ export function PosHomeScreen() {
             ))}
           </select>
         </div>
-      ) : (
-        <p className="picked-title">{location.name}</p>
-      )}
+      ) : null}
       {!online ? (
         <p className="home-banner" role="status">
           {t('pos_home.offline_banner')}
         </p>
       ) : null}
 
+      <nav className="quick-links" aria-label={t('pos_home.actions_title')}>
+        <LinkButton to={ROUTES.newSale} size="lg" block>
+          {t('nav.screens.new_sale')}
+        </LinkButton>
+        <div className="quick-links-grid">
+          <LinkButton to={ROUTES.loss} variant="tonal">
+            {t('nav.screens.loss')}
+          </LinkButton>
+          <LinkButton to={ROUTES.receive} variant="tonal">
+            {t('nav.screens.receive')}
+          </LinkButton>
+          <LinkButton to={ROUTES.replenish} variant="tonal">
+            {t('nav.screens.replenish')}
+          </LinkButton>
+          <LinkButton to={ROUTES.cashTransfers} variant="tonal">
+            {t('nav.screens.cash_transfers')}
+          </LinkButton>
+          {online ? (
+            <LinkButton to={ROUTES.distribution} variant="tonal">
+              {t('nav.screens.distribution')}
+            </LinkButton>
+          ) : null}
+        </div>
+      </nav>
+
       <section className="sale-block" aria-labelledby="pos-home-cash-title">
         <h2 id="pos-home-cash-title">{t('pos_home.cash_title')}</h2>
-        {!account ? (
-          <p className="home-muted">{t('pos_home.cash_unknown')}</p>
-        ) : closingElsewhere ? (
-          <p className="home-muted">{t('pos_home.cash_closing_elsewhere')}</p>
-        ) : session ? (
-          <p>
-            {t('pos_home.cash_open', {
-              date: formatDateTime(session.openedAt),
-              who: t(session.openedBy === userId ? 'cash.opened_by_you' : 'cash.opened_by_other'),
-            })}
-          </p>
-        ) : (
-          <p className="text-warn">{t('pos_home.cash_closed')}</p>
-        )}
-        {closingElsewhere ? null : (
-          <Link to={ROUTES.cash} className="action action-compact">
-            <span className="action-label">
+        <div className="status-card">
+          <div className="status-card-text">
+            {!account ? (
+              <p className="home-muted">{t('pos_home.cash_unknown')}</p>
+            ) : closingElsewhere ? (
+              <p className="home-muted">{t('pos_home.cash_closing_elsewhere')}</p>
+            ) : session ? (
+              <>
+                <Badge tone="ok">{t('pos_home.cash_state_open')}</Badge>
+                <p>
+                  {t('pos_home.cash_open', {
+                    date: formatDateTime(session.openedAt),
+                    who: t(
+                      session.openedBy === userId ? 'cash.opened_by_you' : 'cash.opened_by_other',
+                    ),
+                  })}
+                </p>
+              </>
+            ) : (
+              <>
+                <Badge tone="warn">{t('pos_home.cash_state_closed')}</Badge>
+                <p className="text-warn">{t('pos_home.cash_closed')}</p>
+              </>
+            )}
+          </div>
+          {closingElsewhere ? null : (
+            <LinkButton to={ROUTES.cash} variant={session ? 'outline' : 'primary'}>
               {t(session ? 'pos_home.close_cash' : 'pos_home.open_cash')}
-            </span>
-          </Link>
-        )}
+            </LinkButton>
+          )}
+        </div>
       </section>
 
       <section className="sale-block" aria-labelledby="pos-home-sales-title">
@@ -325,29 +361,6 @@ export function PosHomeScreen() {
           </ul>
         )}
       </section>
-
-      <nav className="result-actions" aria-label={t('pos_home.actions_title')}>
-        <Link to={ROUTES.newSale} className="action action-compact">
-          <span className="action-label">{t('nav.screens.new_sale')}</span>
-        </Link>
-        <Link to={ROUTES.loss} className="action action-compact">
-          <span className="action-label">{t('nav.screens.loss')}</span>
-        </Link>
-        <Link to={ROUTES.receive} className="action action-compact">
-          <span className="action-label">{t('nav.screens.receive')}</span>
-        </Link>
-        <Link to={ROUTES.replenish} className="action action-compact">
-          <span className="action-label">{t('nav.screens.replenish')}</span>
-        </Link>
-        <Link to={ROUTES.cashTransfers} className="action action-compact">
-          <span className="action-label">{t('nav.screens.cash_transfers')}</span>
-        </Link>
-        {online ? (
-          <Link to={ROUTES.distribution} className="action action-compact">
-            <span className="action-label">{t('nav.screens.distribution')}</span>
-          </Link>
-        ) : null}
-      </nav>
     </section>
   );
 }

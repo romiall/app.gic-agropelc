@@ -230,6 +230,12 @@ button.secondary {
   filter: brightness(0.92);
 }
 
+.btn-dashed {
+  --btn-bd: var(--line-strong);
+  --btn-fg: var(--brand-strong);
+  border-style: dashed;
+}
+
 .btn-sm {
   min-height: var(--control-h-sm);
   padding: 0 var(--space-3);

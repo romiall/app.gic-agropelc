@@ -1,0 +1,581 @@
+/* Vocabulaire commun des écrans de saisie et de consultation (ADR-049, lot L3). Ces classes sont partagées
+   par tous les domaines (ventes, stock, finance, production…) : leur nouvelle apparence profite à chaque
+   écran dès maintenant ; les écrans passent ensuite aux composants de `components/ui` au fil des lots.
+   Aucune couleur en dur : tout passe par les jetons. */
+
+/* --- Titres, sections, champs -------------------------------------------------------------------- */
+
+.sale h1 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-2xl);
+}
+
+.sale h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--ink);
+  font: 700 var(--text-lg) / 1.2 var(--font-display);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sale-block {
+  margin: var(--space-5) 0;
+}
+
+.sale .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.sale .home-muted + .field {
+  margin-top: var(--space-3);
+}
+
+.sale .field label,
+.field-label {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.screen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.screen-head h1 {
+  margin: 0;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  margin-left: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.action-compact {
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+}
+
+/* Bouton principal d'un formulaire : il reste visible au bas de l'écran pendant qu'on remplit
+   (au-dessus des onglets sur téléphone), plein largeur sur téléphone. */
+.submit-sale {
+  position: sticky;
+  z-index: 5;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + var(--space-3));
+  width: 100%;
+  min-height: var(--control-h-lg);
+  margin-top: var(--space-4);
+  box-shadow: var(--shadow-2);
+}
+
+/* Inactif, le bouton reste opaque : le texte qui défile dessous ne doit pas transparaître. */
+.submit-sale:disabled {
+  --btn-bg: var(--surface-3);
+  --btn-fg: var(--ink-3);
+  --btn-bd: var(--line);
+  opacity: 1;
+  box-shadow: var(--shadow-1);
+}
+
+@media (min-width: 40rem) {
+  .submit-sale {
+    width: auto;
+    min-width: 14rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .submit-sale {
+    bottom: var(--space-4);
+  }
+}
+
+.order-actions {
+  margin-top: var(--space-4);
+}
+
+/* --- Choix d'un client ou d'un produit ------------------------------------------------------------ */
+
+.picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.picked-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.picked-hint {
+  margin: 2px 0 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.picker {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.picker-head {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.picker-head > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.picker-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.picker-list button {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink);
+  --btn-bd: transparent;
+  --btn-bg-h: var(--surface-2);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: var(--space-2) var(--space-4);
+  border-radius: 0;
+  font-weight: 600;
+  text-align: left;
+}
+
+.picker-list button::before {
+  display: none;
+}
+
+.picker-list small {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+/* --- Lignes de saisie ------------------------------------------------------------------------------ */
+
+.line-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.line-card {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.line-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.line-head strong {
+  font-weight: 600;
+}
+
+.line-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.line-fields .field {
+  margin-bottom: 0;
+}
+
+.line-fields .field-wide {
+  grid-column: 1 / -1;
+}
+
+.line-unit {
+  align-self: end;
+  margin: 0 0 var(--space-3);
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.line-price,
+.line-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.line-total {
+  justify-content: flex-end;
+  color: var(--ink);
+  font: 700 var(--text-lg) / 1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.link-button {
+  --btn-bg: transparent;
+  --btn-fg: var(--brand-strong);
+  --btn-bd: transparent;
+  --btn-bg-h: var(--brand-tint);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.total-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  color: var(--ink-2);
+  font-size: var(--text-lg);
+}
+
+.total-line strong {
+  color: var(--ink);
+  font: 700 var(--text-3xl) / 1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Résultat d'une opération (CommandResult : bandeau) ------------------------------------------- */
+
+.banner.result {
+  margin: var(--space-3) 0;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- Listes de documents et reçus ------------------------------------------------------------------- */
+
+.doc-list {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.doc-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 3.75rem;
+  padding: var(--space-3) var(--space-4);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.doc-row:hover {
+  background: var(--surface-2);
+}
+
+.doc-main,
+.doc-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doc-main {
+  min-width: 0;
+}
+
+.doc-main small {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-side {
+  flex-shrink: 0;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ventes d'un groupe de créances (ECR-FIN-01) : texte et lien passent à la ligne sur téléphone. */
+.doc-row.sale-row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.sale-row .doc-main {
+  flex: 1 1 10rem;
+}
+
+.sale-row .doc-side {
+  flex: 1 1 12rem;
+  flex-shrink: 1;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.receipt {
+  margin: var(--space-2) 0 var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.receipt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.receipt-head h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.receipt-meta {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.receipt-lines {
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.receipt-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.receipt-lines li > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.receipt-lines li > span:last-child:not(:first-child) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-lines small {
+  color: var(--ink-3);
+}
+
+.receipt-totals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.receipt-totals dt {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.receipt-totals dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+
+.receipt-photo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+/* --- Groupes de choix, chiffres de suivi ------------------------------------------------------------- */
+
+.choice-group {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.choice-group legend {
+  padding: 0 var(--space-1);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--field-h);
+  cursor: pointer;
+}
+
+.progress-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.progress-grid dt {
+  grid-row: 1;
+  color: var(--ink-3);
+}
+
+.progress-grid dd {
+  grid-row: 2;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.stock-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* --- Accès rapides et carte d'état (accueil du point de vente) ------------------------------------- */
+
+.quick-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.quick-links-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.quick-links-grid .btn {
+  min-width: 0;
+  padding-block: var(--space-2);
+  line-height: 1.2;
+  text-align: center;
+}
+
+@media (min-width: 48rem) {
+  .quick-links-grid {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  }
+}
+
+.status-card {
+  display: flex;
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.status-card-text {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.status-card-text p {
+  margin: 0;
+}
+
+/* Chiffres de caisse après le comptage : une carte, les lignes sans marge superflue. */
+.figures-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.figures-card p {
+  margin: 0;
+}

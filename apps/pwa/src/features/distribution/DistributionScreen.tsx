@@ -14,6 +14,7 @@ import type {
 } from '@gic/contracts';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PageHeader } from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { formatBusinessDay, formatDateTime } from '../home/format-home.js';
 import { formatMoney, formatQuantityUnit, type UnitCatalog } from '../sales/format.js';
@@ -53,7 +54,7 @@ export function DistributionScreen() {
   if (!online) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.distribution')}</h1>
+        <PageHeader title={t('nav.screens.distribution')} />
         <p className="home-muted">{t('distribution.online_only')}</p>
       </section>
     );
@@ -68,7 +69,7 @@ export function DistributionScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.distribution')}</h1>
+      <PageHeader title={t('nav.screens.distribution')} />
       <div className="field">
         <label htmlFor={ids.period}>{t('distribution.period_label')}</label>
         <select

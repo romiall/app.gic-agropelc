@@ -8,6 +8,7 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeRemiseDeFonds } from '../pieces/adaptateurs-finance.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -84,7 +85,7 @@ export function CashTransfersScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.cash_transfers')}</h1>
+        <PageHeader title={t('nav.screens.cash_transfers')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -303,7 +304,7 @@ export function CashTransfersScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.cash_transfers')}</h1>
+      <PageHeader title={t('nav.screens.cash_transfers')} />
       {!online ? (
         <p className="home-banner" role="status">
           {t('cash_transfer.offline_banner')}
@@ -477,14 +478,17 @@ export function CashTransfersScreen() {
                 onChange={(event) => setCommentText(event.target.value)}
               />
             </div>
-            <button
-              type="button"
-              className="btn-block submit-sale"
-              disabled={busy || !target || !amountValid}
-              onClick={() => void send()}
-            >
-              {busy ? t('sales.submitting') : t('cash_transfer.send_submit')}
-            </button>
+            <ActionBar>
+              <Button
+                size="lg"
+                className="submit-sale"
+                disabled={!target || !amountValid}
+                loading={busy}
+                onClick={() => void send()}
+              >
+                {busy ? t('sales.submitting') : t('cash_transfer.send_submit')}
+              </Button>
+            </ActionBar>
           </>
         )}
       </section>

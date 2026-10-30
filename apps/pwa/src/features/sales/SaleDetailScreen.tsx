@@ -18,6 +18,7 @@ import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
 import { formatMoney, formatQuantity, unitLabel } from './format.js';
+import { Badge } from '../../components/ui/index.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
 import { waitsForOtherUser } from './pending.js';
@@ -245,9 +246,7 @@ export function SaleDetailScreen() {
           <h1 id="receipt-title">
             {t('sales.detail.receipt_title')} {doc}
           </h1>
-          <span className={`badge badge-${saleStatusTone(sale.status)}`}>
-            {t(`sales.status.${sale.status}`)}
-          </span>
+          <Badge tone={saleStatusTone(sale.status)}>{t(`sales.status.${sale.status}`)}</Badge>
         </header>
         <p className="receipt-meta">
           {t('sales.detail.date', {

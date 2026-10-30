@@ -183,8 +183,10 @@ export function recentSales(
   return [...views.values()].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 }
 
+export type SaleTone = 'ok' | 'warn' | 'bad' | 'info' | 'muted';
+
 /** Teinte du badge de statut d’une vente. */
-export function saleStatusTone(status: SaleViewStatus): string {
+export function saleStatusTone(status: SaleViewStatus): SaleTone {
   switch (status) {
     case 'CONFIRMED':
       return 'ok';
@@ -195,4 +197,27 @@ export function saleStatusTone(status: SaleViewStatus): string {
     default:
       return 'warn';
   }
+}
+
+const PAYMENT_TONE: Record<NonNullable<SaleView['paymentStatus']>, SaleTone> = {
+  PAID: 'ok',
+  PARTIALLY_PAID: 'warn',
+  UNPAID: 'bad',
+};
+
+/**
+ * Pastille d’une vente dans une liste : une vente confirmée montre son paiement (« Non payée » est une
+ * alerte, pas un état neutre) ; sinon son état (en attente d’envoi, annulée, refusée…).
+ */
+export function saleListBadge(sale: Pick<SaleView, 'status' | 'paymentStatus'>): {
+  readonly tone: SaleTone;
+  readonly labelKey: string;
+} {
+  if (sale.status === 'CONFIRMED' && sale.paymentStatus) {
+    return {
+      tone: PAYMENT_TONE[sale.paymentStatus],
+      labelKey: `sales.payment_status.${sale.paymentStatus}`,
+    };
+  }
+  return { tone: saleStatusTone(sale.status), labelKey: `sales.status.${sale.status}` };
 }

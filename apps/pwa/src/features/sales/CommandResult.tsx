@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, type BannerTone } from '../../components/ui/index.js';
 import {
   inRepeatedFailure,
   phaseOf,
@@ -13,6 +14,13 @@ import {
   useHeldBehindFailure,
   useOutboxCommand,
 } from './submit.js';
+
+const BANNER_TONE = {
+  error: 'bad',
+  warn: 'warn',
+  info: 'info',
+  ok: 'ok',
+} as const satisfies Record<string, BannerTone>;
 
 interface CommandResultProps {
   readonly commandId: string;
@@ -70,9 +78,13 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
             ? 'ok'
             : 'warn';
   return (
-    <div className={`result result-${tone}`} role={phase === 'REJECTED' ? 'alert' : 'status'}>
-      <p>{text}</p>
-      {children ? <div className="result-actions">{children}</div> : null}
-    </div>
+    <Banner
+      className={`result result-${tone}`}
+      tone={BANNER_TONE[tone]}
+      role={phase === 'REJECTED' ? 'alert' : 'status'}
+      {...(children ? { action: <div className="result-actions">{children}</div> } : {})}
+    >
+      {text}
+    </Banner>
   );
 }

@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import { ActionBar, Button } from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
@@ -627,14 +628,24 @@ export function CollectScreen() {
             </p>
           ) : null}
 
-          <button
-            type="button"
-            className="btn-block submit-sale"
-            disabled={!ready}
-            onClick={() => void submit()}
+          <ActionBar
+            summary={
+              <>
+                <span className="action-bar-label">{t('collect.amount_to_collect')}</span>
+                <strong className="action-bar-value">{formatMoney(amount ?? 0)}</strong>
+              </>
+            }
           >
-            {busy ? t('sales.submitting') : t('collect.submit')}
-          </button>
+            <Button
+              size="lg"
+              className="submit-sale"
+              disabled={!ready}
+              loading={busy}
+              onClick={() => void submit()}
+            >
+              {busy ? t('sales.submitting') : t('collect.submit')}
+            </Button>
+          </ActionBar>
         </>
       ) : null}
     </section>

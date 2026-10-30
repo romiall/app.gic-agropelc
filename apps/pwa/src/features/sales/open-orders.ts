@@ -256,7 +256,7 @@ export function openOrders(
 }
 
 /** Teinte du badge de statut d'une commande. */
-export function orderStatusTone(status: OrderViewStatus): string {
+export function orderStatusTone(status: OrderViewStatus): 'ok' | 'warn' | 'info' {
   switch (status) {
     case 'CONFIRMED':
     case 'PARTIALLY_FULFILLED':

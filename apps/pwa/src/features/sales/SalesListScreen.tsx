@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Badge, EmptyState, LinkButton, PageHeader } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import {
   demandeJournalEncaissements,
@@ -17,7 +18,7 @@ import { clock } from '../../platform/composition.js';
 import { ROUTES } from '../../app/screens.js';
 import { formatMoment } from '../home/format-home.js';
 import { formatMoney } from './format.js';
-import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
+import { recentSales, saleListBadge, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences } from './references.js';
 
 /** Vente du jour, non annulée, signalée par le serveur (définition du signal `SALES_FLAGGED`). */
@@ -53,12 +54,11 @@ export function SalesListScreen() {
 
   return (
     <section className="sale">
-      <div className="screen-head">
-        <h1>{t('nav.screens.sales')}</h1>
-        <Link to={ROUTES.newSale} className="action action-primary action-compact">
-          <span className="action-label">{t('nav.screens.new_sale')}</span>
-        </Link>
-      </div>
+      <PageHeader
+        title={t('nav.screens.sales')}
+        subtitle={flaggedOnly ? undefined : t('sales.list.window_hint')}
+        actions={<LinkButton to={ROUTES.newSale}>{t('nav.screens.new_sale')}</LinkButton>}
+      />
       {flaggedOnly ? (
         <p className="home-banner" role="status">
           {t('sales.list.flagged_banner', { count: sales.length })}{' '}
@@ -66,13 +66,12 @@ export function SalesListScreen() {
             {t('sales.list.show_all')}
           </button>
         </p>
-      ) : (
-        <p className="home-muted">{t('sales.list.window_hint')}</p>
-      )}
+      ) : null}
       {sales.length === 0 ? (
-        <p className="home-muted">
-          {flaggedOnly ? t('sales.list.flagged_empty') : t('sales.list.empty')}
-        </p>
+        <EmptyState
+          icon="cart"
+          title={flaggedOnly ? t('sales.list.flagged_empty') : t('sales.list.empty')}
+        />
       ) : (
         <ul className="doc-list">
           {sales.map((sale) => {
@@ -81,6 +80,7 @@ export function SalesListScreen() {
                 t('sales.list.unknown_customer'))
               : t('sales.list.anonymous');
             const doc = sale.docNumber ?? t('sales.pending_number');
+            const badge = saleListBadge(sale);
             return (
               <li key={sale.id}>
                 <Link
@@ -89,9 +89,9 @@ export function SalesListScreen() {
                   className="doc-row"
                 >
                   <span className="doc-main">
-                    <strong>{doc}</strong>
+                    <strong>{customerName}</strong>
                     <small>
-                      {formatMoment(sale.occurredAt, today)} · {customerName}
+                      {formatMoment(sale.occurredAt, today)} · {doc}
                     </small>
                     {sale.flags.length > 0 ? (
                       <small className="text-warn">
@@ -101,11 +101,7 @@ export function SalesListScreen() {
                   </span>
                   <span className="doc-side">
                     <strong>{formatMoney(sale.netTotalXaf)}</strong>
-                    <span className={`badge badge-${saleStatusTone(sale.status)}`}>
-                      {sale.status === 'CONFIRMED' && sale.paymentStatus
-                        ? t(`sales.payment_status.${sale.paymentStatus}`)
-                        : t(`sales.status.${sale.status}`)}
-                    </span>
+                    <Badge tone={badge.tone}>{t(badge.labelKey)}</Badge>
                   </span>
                 </Link>
               </li>

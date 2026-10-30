@@ -10,6 +10,7 @@
 import { businessDayOf } from '@gic/domain';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ActionBar, Badge, Button, PageHeader } from '../../components/ui/index.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -62,7 +63,7 @@ export function CashSessionScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.cash_session')}</h1>
+        <PageHeader title={t('nav.screens.cash_session')} />
         <p className="home-muted">{t('sales.loading')}</p>
       </section>
     );
@@ -78,11 +79,11 @@ export function CashSessionScreen() {
   if (submitted) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.cash_session')}</h1>
+        <PageHeader title={t('nav.screens.cash_session')} />
         <CommandResult commandId={submitted.commandId} messages={`cash.${submitted.kind}.result`}>
-          <button type="button" onClick={reset}>
+          <Button variant="outline" onClick={reset}>
             {t('cash.back')}
-          </button>
+          </Button>
         </CommandResult>
         <CashFigures
           commandId={submitted.commandId}
@@ -98,7 +99,7 @@ export function CashSessionScreen() {
   if (!account) {
     return (
       <section className="sale">
-        <h1>{t('nav.screens.cash_session')}</h1>
+        <PageHeader title={t('nav.screens.cash_session')} />
         <p className="home-muted">{t('cash.no_account')}</p>
       </section>
     );
@@ -269,19 +270,28 @@ export function CashSessionScreen() {
       );
     return (
       <section className="sale">
-        <h1>{t('nav.screens.cash_session')}</h1>
+        <PageHeader title={t('nav.screens.cash_session')} />
         {accountPicker}
         {foreignNote}
         <section className="sale-block" aria-labelledby="cash-close-title">
           <h2 id="cash-close-title">{t('cash.close.title')}</h2>
-          <p>
-            {t('cash.open_state', {
-              date: formatDateTime(current.openedAt),
-              who: t(current.openedBy === userId ? 'cash.opened_by_you' : 'cash.opened_by_other'),
-              amount: formatMoney(current.openingCountedXaf),
-            })}
-          </p>
-          {current.openCommandId ? <p className="home-muted">{t('cash.open_pending')}</p> : null}
+          <div className="status-card">
+            <div className="status-card-text">
+              <Badge tone="ok">{t('cash.state_open')}</Badge>
+              <p>
+                {t('cash.open_state', {
+                  date: formatDateTime(current.openedAt),
+                  who: t(
+                    current.openedBy === userId ? 'cash.opened_by_you' : 'cash.opened_by_other',
+                  ),
+                  amount: formatMoney(current.openingCountedXaf),
+                })}
+              </p>
+              {current.openCommandId ? (
+                <p className="home-muted">{t('cash.open_pending')}</p>
+              ) : null}
+            </div>
+          </div>
           {previousDay ? (
             <p className="text-warn" role="status">
               {t('cash.previous_day')}
@@ -294,9 +304,17 @@ export function CashSessionScreen() {
           ) : null}
           <p className="home-muted">{t('cash.close.hint')}</p>
           {countFields}
-          <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={close}>
-            {busy ? t('sales.submitting') : t('cash.close.submit')}
-          </button>
+          <ActionBar>
+            <Button
+              size="lg"
+              className="submit-sale"
+              disabled={!ready}
+              loading={busy}
+              onClick={close}
+            >
+              {busy ? t('sales.submitting') : t('cash.close.submit')}
+            </Button>
+          </ActionBar>
         </section>
       </section>
     );
@@ -329,23 +347,28 @@ export function CashSessionScreen() {
     );
   return (
     <section className="sale">
-      <h1>{t('nav.screens.cash_session')}</h1>
+      <PageHeader title={t('nav.screens.cash_session')} />
       {accountPicker}
-      {last?.state === 'CLOSING' ? (
-        <p className="home-muted">{t('cash.closing_pending')}</p>
-      ) : last?.state === 'CLOSED' ? (
-        <p className="home-muted">
-          {t(
-            last.closedStatus === 'PENDING_VALIDATION'
-              ? 'cash.closed_to_validate'
-              : last.closedStatus === 'VALIDATED'
-                ? 'cash.closed_validated'
-                : 'cash.closed_last',
+      <div className="status-card">
+        <div className="status-card-text">
+          <Badge tone="warn">{t('cash.state_closed')}</Badge>
+          {last?.state === 'CLOSING' ? (
+            <p className="home-muted">{t('cash.closing_pending')}</p>
+          ) : last?.state === 'CLOSED' ? (
+            <p className="home-muted">
+              {t(
+                last.closedStatus === 'PENDING_VALIDATION'
+                  ? 'cash.closed_to_validate'
+                  : last.closedStatus === 'VALIDATED'
+                    ? 'cash.closed_validated'
+                    : 'cash.closed_last',
+              )}
+            </p>
+          ) : (
+            <p className="home-muted">{t('cash.closed_state')}</p>
           )}
-        </p>
-      ) : (
-        <p className="home-muted">{t('cash.closed_state')}</p>
-      )}
+        </div>
+      </div>
       {attachedNote}
       {foreignNote}
       <section className="sale-block" aria-labelledby="cash-open-title">
@@ -370,15 +393,18 @@ export function CashSessionScreen() {
             {t('cash.open_merge')}
           </p>
         ) : null}
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!ready}
-          aria-describedby={refused || blockedByForeignClose ? ids.blocked : undefined}
-          onClick={open}
-        >
-          {busy ? t('sales.submitting') : t('cash.open.submit')}
-        </button>
+        <ActionBar>
+          <Button
+            size="lg"
+            className="submit-sale"
+            disabled={!ready}
+            loading={busy}
+            aria-describedby={refused || blockedByForeignClose ? ids.blocked : undefined}
+            onClick={open}
+          >
+            {busy ? t('sales.submitting') : t('cash.open.submit')}
+          </Button>
+        </ActionBar>
       </section>
     </section>
   );

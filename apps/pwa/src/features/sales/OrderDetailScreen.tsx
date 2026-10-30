@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Badge } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeCommandeClient } from '../pieces/adaptateurs-ventes.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
@@ -256,9 +257,7 @@ export function OrderDetailScreen() {
       {back}
       <header className="receipt-head">
         <h1>{t('orders.detail.title', { doc })}</h1>
-        <span className={`badge badge-${orderStatusTone(order.status)}`}>
-          {t(`orders.status.${order.status}`)}
-        </span>
+        <Badge tone={orderStatusTone(order.status)}>{t(`orders.status.${order.status}`)}</Badge>
       </header>
       <p className="receipt-meta">
         {customer?.display_name ?? ''}

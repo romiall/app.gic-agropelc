@@ -43,7 +43,7 @@ export function CashFigures({
       : null;
   if (expected !== null && variance !== null) {
     return (
-      <section className="sale-block" aria-label={t('cash.figures_title')}>
+      <section className="sale-block figures-card" aria-label={t('cash.figures_title')}>
         {shifted ? <p>{t('cash.shifted', { date: formatDateTime(shifted) })}</p> : null}
         <p>{t('cash.expected_server', { amount: formatMoney(expected) })}</p>
         <p>{t('cash.variance_server', { amount: formatMoney(variance) })}</p>
@@ -69,14 +69,14 @@ export function CashFigures({
           ? 'cash.observed_figures'
           : null;
     return note ? (
-      <section className="sale-block" aria-label={t('cash.figures_title')}>
+      <section className="sale-block figures-card" aria-label={t('cash.figures_title')}>
         <p className="home-muted">{t(note)}</p>
       </section>
     ) : null;
   }
   if (!indicative) return null;
   return (
-    <section className="sale-block" aria-label={t('cash.figures_title')}>
+    <section className="sale-block figures-card" aria-label={t('cash.figures_title')}>
       <p>{t('cash.expected_indicative', { amount: formatMoney(indicative.expectedXaf) })}</p>
       <p>
         {t('cash.variance_indicative', {
