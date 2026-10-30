@@ -22,7 +22,6 @@ import {
   DataCell,
   DataList,
   DataRow,
-  EmptyState,
   Field,
   Input,
   LinkButton,
@@ -60,6 +59,7 @@ import type {
 } from '../treasury/treasury.js';
 import { familyReloadKey, useCommandFamily } from './command-family.js';
 import { userName } from './expense-format.js';
+import { EmptyLine } from './EmptyLine.js';
 import './finance.css';
 import { PaymentForm } from './PaymentForm.js';
 import { pendingPaymentsPath, readPending } from './pending-payments.js';
@@ -157,7 +157,7 @@ export function SupplierPaymentsScreen() {
   const accountList = accounts.data?.cash_accounts ?? [];
   const mayRecord = holdsAnyRole(roles, ROLE_SETS.supplierPaymentRecord);
   return (
-    <section className="sale">
+    <section className="sale fin-page">
       <PageHeader title={t('nav.screens.supplier_payments')} />
       {online ? null : (
         <Banner tone="warn" role="status">
@@ -570,38 +570,6 @@ function PaymentList({
               : ''}
           </span>
         </DataCell>
-        {!opened && (actions.allocate || actions.cancel) ? (
-          <DataCell actions>
-            {actions.allocate ? (
-              <Button
-                variant="tonal"
-                size="sm"
-                ref={(element) => {
-                  openers.current.set(`allocate:${item.id}`, element);
-                }}
-                disabled={blocked}
-                aria-label={t('supplier_payment.allocate_open', { doc: item.docNumber })}
-                onClick={() => toggle(item, 'allocate')}
-              >
-                {t('supplier_payment.allocate_short')}
-              </Button>
-            ) : null}
-            {actions.cancel ? (
-              <Button
-                variant="outline"
-                size="sm"
-                ref={(element) => {
-                  openers.current.set(`cancel:${item.id}`, element);
-                }}
-                disabled={blocked}
-                aria-label={t('supplier_payment.cancel_open', { doc: item.docNumber })}
-                onClick={() => toggle(item, 'cancel')}
-              >
-                {t('supplier_payment.cancel_short')}
-              </Button>
-            ) : null}
-          </DataCell>
-        ) : null}
         <DataCell wide>
           <div className="fin-detail">
             <p className="home-muted">
@@ -652,6 +620,38 @@ function PaymentList({
               />
             ) : null}
             <div className="result-actions">
+              {!opened ? (
+                <>
+                  {actions.allocate ? (
+                    <Button
+                      variant="tonal"
+                      size="sm"
+                      ref={(element) => {
+                        openers.current.set(`allocate:${item.id}`, element);
+                      }}
+                      disabled={blocked}
+                      aria-label={t('supplier_payment.allocate_open', { doc: item.docNumber })}
+                      onClick={() => toggle(item, 'allocate')}
+                    >
+                      {t('supplier_payment.allocate_short')}
+                    </Button>
+                  ) : null}
+                  {actions.cancel ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      ref={(element) => {
+                        openers.current.set(`cancel:${item.id}`, element);
+                      }}
+                      disabled={blocked}
+                      aria-label={t('supplier_payment.cancel_open', { doc: item.docNumber })}
+                      onClick={() => toggle(item, 'cancel')}
+                    >
+                      {t('supplier_payment.cancel_short')}
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
@@ -776,7 +776,7 @@ function PaymentList({
         read.failed ? null : online ? (
           <SkeletonRows rows={3} />
         ) : (
-          <EmptyState icon="offline" title={t('supplier_payment.online_only')} />
+          <EmptyLine icon="offline" title={t('supplier_payment.online_only')} />
         )
       ) : (
         <>
@@ -786,16 +786,15 @@ function PaymentList({
             </p>
           ) : null}
           {data.items.length === 0 ? (
-            <EmptyState icon="cash" title={t('supplier_payment.empty')} />
+            <EmptyLine icon="cash" title={t('supplier_payment.empty')} />
           ) : (
             <DataList
-              className="fin-payments"
-              template="minmax(0, 2fr) minmax(7rem, 1fr) minmax(0, 2.6fr) minmax(0, 1.6fr)"
+              className="fin-table"
+              template="minmax(0, 2fr) minmax(7rem, 1fr) minmax(0, 3fr)"
               columns={[
                 { label: t('supplier_payment.col_payment') },
                 { label: t('supplier_payment.col_amount'), numeric: true },
                 { label: t('supplier_payment.col_status') },
-                { label: '' },
               ]}
             >
               {data.items.map((item) => card(item))}

@@ -13,11 +13,11 @@ import {
   DataCell,
   DataList,
   DataRow,
-  EmptyState,
   LinkButton,
   Section,
   SkeletonRows,
 } from '../../components/ui/index.js';
+import { EmptyLine } from '../finance/EmptyLine.js';
 import { formatDateTime } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import type { SupplierView } from '../procurement/suppliers.js';
@@ -133,7 +133,7 @@ export function PendingSupplierPayments({
           <SkeletonRows rows={2} />
         )
       ) : data.payments.items.length === 0 ? (
-        <EmptyState icon="check-circle" title={t('treasury.supplier_payments_empty')} />
+        <EmptyLine icon="check-circle" title={t('treasury.supplier_payments_empty')} />
       ) : (
         <>
           {data.suppliersFailed ? (
@@ -155,6 +155,7 @@ export function PendingSupplierPayments({
             </p>
           ) : null}
           <DataList
+            className="fin-table"
             template="minmax(0, 2fr) minmax(8rem, 1fr) minmax(0, 3fr)"
             columns={[
               { label: t('treasury.col_payment') },

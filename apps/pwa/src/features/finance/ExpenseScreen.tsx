@@ -20,7 +20,6 @@ import {
   Banner,
   Button,
   Card,
-  EmptyState,
   Field,
   Input,
   LinkButton,
@@ -76,6 +75,7 @@ import {
 } from './expense.js';
 import { imputationLabel, reviewReasonsText, shortId } from './expense-format.js';
 import { ExpenseFollowUp } from './ExpenseFollowUp.js';
+import { EmptyLine } from './EmptyLine.js';
 import './finance.css';
 
 export function ExpenseScreen() {
@@ -100,7 +100,7 @@ export function ExpenseScreen() {
   }
 
   return (
-    <section className="sale">
+    <section className="sale fin-page">
       <PageHeader title={t('nav.screens.expenses')} />
       {mayFollow ? (
         <nav className="chip-row" aria-label={t('expense.views_label')}>
@@ -851,7 +851,7 @@ function MyExpenses({
         </Banner>
       ) : null}
       {views.length === 0 ? (
-        <EmptyState icon="receipt" title={t('expense.mine_empty')} />
+        <EmptyLine icon="receipt" title={t('expense.mine_empty')} />
       ) : (
         <ul className="line-list">{views.map((view) => card(view, cancelAction(view)))}</ul>
       )}

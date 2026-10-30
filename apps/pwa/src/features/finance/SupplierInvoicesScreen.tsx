@@ -22,7 +22,6 @@ import {
   DataCell,
   DataList,
   DataRow,
-  EmptyState,
   Field,
   KpiTile,
   LinkButton,
@@ -61,6 +60,7 @@ import type { ExpenseAttachmentItem } from './expense-follow.js';
 import { userName } from './expense-format.js';
 import { mismatchText } from './invoice-format.js';
 import { InvoiceForm } from './InvoiceForm.js';
+import { EmptyLine } from './EmptyLine.js';
 import './finance.css';
 import {
   AGING_BUCKETS,
@@ -138,7 +138,7 @@ export function SupplierInvoicesScreen() {
   const roles = navigation?.roles ?? [];
   const supplierList = suppliers.data?.suppliers ?? [];
   return (
-    <section className="sale">
+    <section className="sale fin-page">
       <PageHeader title={t('nav.screens.supplier_invoices')} />
       {online ? null : (
         <Banner tone="warn" role="status">
@@ -238,7 +238,7 @@ function Payables({
         read.failed ? null : online ? (
           <SkeletonRows rows={2} />
         ) : (
-          <EmptyState icon="offline" title={t('supplier_invoice.online_only')} />
+          <EmptyLine icon="offline" title={t('supplier_invoice.online_only')} />
         )
       ) : (
         <>
@@ -263,7 +263,7 @@ function Payables({
             />
           </div>
           {data.suppliers.length === 0 ? (
-            <EmptyState icon="check-circle" title={t('supplier_invoice.payables_empty')} />
+            <EmptyLine icon="check-circle" title={t('supplier_invoice.payables_empty')} />
           ) : (
             <DataList
               template="minmax(0, 2.2fr) minmax(7rem, 1fr) minmax(0, 2.4fr)"
@@ -482,27 +482,6 @@ function InvoiceList({
             </small>
           ) : null}
         </DataCell>
-        {decisions.length > 0 && !opened ? (
-          <DataCell actions>
-            {decisions.map((decision) => (
-              <Button
-                key={decision}
-                variant={decision === 'approve' ? 'tonal' : 'outline'}
-                size="sm"
-                ref={(element) => {
-                  openers.current.set(`${decision}:${item.id}`, element);
-                }}
-                disabled={blocked}
-                aria-label={t(`supplier_invoice.open_decision.${decision}`, {
-                  doc: item.docNumber,
-                })}
-                onClick={() => toggle(item.id, decision)}
-              >
-                {t(`supplier_invoice.decision_short.${decision}`)}
-              </Button>
-            ))}
-          </DataCell>
-        ) : null}
         <DataCell wide>
           <div className="fin-detail">
             <p className="home-muted">
@@ -575,6 +554,25 @@ function InvoiceList({
               />
             ) : null}
             <div className="result-actions">
+              {!opened
+                ? decisions.map((decision) => (
+                    <Button
+                      key={decision}
+                      variant={decision === 'approve' ? 'tonal' : 'outline'}
+                      size="sm"
+                      ref={(element) => {
+                        openers.current.set(`${decision}:${item.id}`, element);
+                      }}
+                      disabled={blocked}
+                      aria-label={t(`supplier_invoice.open_decision.${decision}`, {
+                        doc: item.docNumber,
+                      })}
+                      onClick={() => toggle(item.id, decision)}
+                    >
+                      {t(`supplier_invoice.decision_short.${decision}`)}
+                    </Button>
+                  ))
+                : null}
               <Button
                 variant="ghost"
                 size="sm"
@@ -733,7 +731,7 @@ function InvoiceList({
         read.failed ? null : online ? (
           <SkeletonRows rows={3} />
         ) : (
-          <EmptyState icon="offline" title={t('supplier_invoice.online_only')} />
+          <EmptyLine icon="offline" title={t('supplier_invoice.online_only')} />
         )
       ) : (
         <>
@@ -743,17 +741,16 @@ function InvoiceList({
             </p>
           ) : null}
           {data.items.length === 0 ? (
-            <EmptyState icon="file" title={t('supplier_invoice.empty')} />
+            <EmptyLine icon="file" title={t('supplier_invoice.empty')} />
           ) : (
             <DataList
-              className="fin-invoices"
-              template="minmax(0, 1.8fr) minmax(0, 2.4fr) minmax(7rem, 1fr) minmax(0, 1.6fr) minmax(0, 1.8fr)"
+              className="fin-table"
+              template="minmax(0, 1.6fr) minmax(0, 2.4fr) minmax(7rem, 1fr) minmax(0, 1.8fr)"
               columns={[
                 { label: t('supplier_invoice.col_invoice') },
                 { label: t('supplier_invoice.col_dates') },
                 { label: t('supplier_invoice.col_total'), numeric: true },
                 { label: t('supplier_invoice.col_status') },
-                { label: '' },
               ]}
             >
               {data.items.map((item) => card(item))}

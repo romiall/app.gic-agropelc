@@ -20,7 +20,6 @@ import {
   Banner,
   Button,
   Card,
-  EmptyState,
   Field,
   Input,
   KpiTile,
@@ -73,6 +72,7 @@ import {
   type LotMarginsResponse,
   type LotStatusChoice,
 } from './costs.js';
+import { EmptyLine } from './EmptyLine.js';
 import './finance.css';
 
 const shortId = (id: string) => `…${id.slice(-4)}`;
@@ -112,7 +112,7 @@ function Waiting({ online }: { readonly online: boolean }) {
   return online ? (
     <SkeletonRows rows={2} />
   ) : (
-    <EmptyState icon="offline" title={t('costs_margins.online_only')} />
+    <EmptyLine icon="offline" title={t('costs_margins.online_only')} />
   );
 }
 
@@ -153,7 +153,7 @@ export function CostsScreen() {
   }
   const roles = navigation?.roles ?? [];
   return (
-    <section className="sale">
+    <section className="sale fin-page">
       <PageHeader title={t('nav.screens.costs_margins')} />
       {online ? null : (
         <Banner tone="warn" role="status">
@@ -485,7 +485,7 @@ function Losses({ range, online }: { readonly range: Range; readonly online: boo
           <Waiting online={online} />
         )
       ) : data.lines.length === 0 ? (
-        <EmptyState
+        <EmptyLine
           icon="check-circle"
           title={t(
             group === 'lot' ? 'costs_margins.losses_lot_empty' : 'costs_margins.losses_empty',

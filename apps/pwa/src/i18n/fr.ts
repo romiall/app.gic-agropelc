@@ -3293,7 +3293,7 @@ export const fr = {
     hide_sales: 'Masquer les ventes de {{name}}',
     show_sales_self: 'Voir mes ventes',
     hide_sales_self: 'Masquer mes ventes',
-    // Refonte (lot L8) : tuiles de l'encours, colonnes du tableau et libellés visibles courts des
+    // Refonte (lot L8) : tuiles de l'encours, colonnes du tableau et libellé visible court des
     // actions (le nom accessible reste la phrase complète ci-dessus).
     tile_total: 'Dû par les clients',
     tile_total_detail_one: '{{count}} vente',
@@ -3305,11 +3305,9 @@ export const fr = {
     col_owner: 'Titulaire',
     col_balance: 'Dû',
     col_overdue: 'Échu',
-    call_short: 'Appeler',
-    sheet_short: 'Fiche',
     collect_short: 'Encaisser',
-    show_sales_short: 'Voir les ventes',
-    hide_sales_short: 'Masquer les ventes',
+    show_sales_short: 'Ventes',
+    hide_sales_short: 'Masquer',
     owner_self: 'Mes créances',
     sale_dates: 'Vendue le {{sold}} · échéance le {{due}}',
     days_overdue_one: '{{count}} jour de retard',
@@ -3842,6 +3840,8 @@ export const fr = {
     inactive: 'inactif',
     movements_open: 'Mouvements de {{name}}',
     movements_close: 'Replier les mouvements de {{name}}',
+    movements_short: 'Mouvements',
+    movements_close_short: 'Replier',
     movements_failed: 'Mouvements indisponibles : le serveur n’a pas répondu.',
     movements_failed_stale:
       'Actualisation des mouvements impossible : le serveur n’a pas répondu ; la liste ci-dessous peut être périmée.',

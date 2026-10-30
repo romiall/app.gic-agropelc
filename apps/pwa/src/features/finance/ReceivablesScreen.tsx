@@ -20,7 +20,6 @@ import {
   DataCell,
   DataList,
   DataRow,
-  EmptyState,
   Field,
   Icon,
   KpiTile,
@@ -72,6 +71,7 @@ import {
   type RemoteUserName,
 } from './receivables.js';
 import { AGING_BUCKETS } from './supplier-invoice.js';
+import { EmptyLine } from './EmptyLine.js';
 import './finance.css';
 
 const shortId = (id: string) => `…${id.slice(-4)}`;
@@ -283,7 +283,7 @@ export function ReceivablesScreen() {
     });
 
   return (
-    <section className="sale">
+    <section className="sale fin-page">
       <PageHeader title={t('nav.screens.receivables')} />
       {online ? null : (
         <Banner tone="warn" role="status">
@@ -301,7 +301,7 @@ export function ReceivablesScreen() {
           read.failed ? null : online ? (
             <SkeletonRows rows={2} />
           ) : (
-            <EmptyState icon="offline" title={t('receivables.online_only')} />
+            <EmptyLine icon="offline" title={t('receivables.online_only')} />
           )
         ) : (
           <>
@@ -421,13 +421,13 @@ export function ReceivablesScreen() {
             </p>
           ) : null}
           {lines.length === 0 ? (
-            <EmptyState icon="check-circle" title={t('receivables.empty')} />
+            <EmptyLine icon="check-circle" title={t('receivables.empty')} />
           ) : groups.length === 0 ? (
-            <EmptyState icon="search" title={t('receivables.filter_empty')} />
+            <EmptyLine icon="search" title={t('receivables.filter_empty')} />
           ) : (
             <DataList
-              className="fin-groups"
-              template="minmax(0, 2fr) minmax(6.5rem, 0.8fr) minmax(0, 1.8fr) minmax(15rem, 2.4fr)"
+              className="fin-table"
+              template="minmax(0, 1.8fr) minmax(6.5rem, 0.8fr) minmax(0, 1.8fr) minmax(12rem, 2.8fr)"
               columns={[
                 {
                   label: t(
@@ -515,7 +515,7 @@ function GroupCard({
       <DataCell label={t('receivables.col_balance')} numeric>
         {formatMoney(group.balanceXaf)}
       </DataCell>
-      <DataCell label={t('receivables.col_overdue')}>
+      <DataCell>
         {group.overdueXaf > 0 ? (
           <span className={`fin-status ${group.maxDaysOverdue > 30 ? 'is-bad' : 'is-warn'}`}>
             {t('receivables.group_overdue', {
@@ -529,13 +529,14 @@ function GroupCard({
       </DataCell>
       <DataCell actions>
         {phone ? (
+          // Appel et fiche : une icône seule (nom accessible et infobulle : la phrase complète).
           <a
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm btn-icon"
             href={telHref(phone)}
             aria-label={t('receivables.call', { phone })}
+            title={t('receivables.call', { phone })}
           >
             <Icon name="phone" size={18} />
-            {t('receivables.call_short')}
           </a>
         ) : null}
         {groupPayer !== null && onDevice ? (
@@ -544,10 +545,10 @@ function GroupCard({
             variant="ghost"
             size="sm"
             icon="user"
+            className="btn-icon"
             aria-label={t('receivables.customer_sheet', { name })}
-          >
-            {t('receivables.sheet_short')}
-          </LinkButton>
+            title={t('receivables.customer_sheet', { name })}
+          />
         ) : null}
         {groupPayer !== null && mayCollect ? (
           <LinkButton

@@ -18,7 +18,6 @@ import {
   DataCell,
   DataList,
   DataRow,
-  EmptyState,
   Field,
   KpiTile,
   LinkButton,
@@ -56,6 +55,7 @@ import {
 import { AccountMovements } from './AccountMovements.js';
 import { PendingSupplierPayments } from './PendingSupplierPayments.js';
 import { SessionDetail } from './SessionDetail.js';
+import { EmptyLine } from '../finance/EmptyLine.js';
 import '../finance/finance.css';
 import './treasury.css';
 import {
@@ -215,9 +215,9 @@ export function TreasuryScreen() {
   }
   if (!online) {
     return (
-      <section className="sale">
+      <section className="sale fin-page">
         <PageHeader title={t('nav.screens.treasury')} />
-        <EmptyState icon="offline" title={t('treasury.online_only')} />
+        <EmptyLine icon="offline" title={t('treasury.online_only')} />
       </section>
     );
   }
@@ -316,7 +316,7 @@ export function TreasuryScreen() {
   const count = (items: readonly unknown[], more: boolean) => `${items.length}${more ? '+' : ''}`;
 
   return (
-    <section className="sale">
+    <section className="sale fin-page">
       <PageHeader title={t('nav.screens.treasury')} />
       {last ? (
         <CommandResult commandId={last.commandId} messages={`treasury.${last.kind}_result`} />
@@ -390,7 +390,7 @@ export function TreasuryScreen() {
               </p>
             ) : null}
             {data.sessions.length === 0 ? (
-              <EmptyState icon="check-circle" title={t('treasury.sessions_empty')} />
+              <EmptyLine icon="check-circle" title={t('treasury.sessions_empty')} />
             ) : (
               <ul className="line-list">
                 {data.sessions.map((session) => {
@@ -477,7 +477,7 @@ export function TreasuryScreen() {
               </p>
             ) : null}
             {data.discrepancies.length === 0 ? (
-              <EmptyState icon="check-circle" title={t('treasury.discrepancies_empty')} />
+              <EmptyLine icon="check-circle" title={t('treasury.discrepancies_empty')} />
             ) : (
               <ul className="line-list">
                 {data.discrepancies.map((transfer) => {
@@ -577,7 +577,7 @@ export function TreasuryScreen() {
               </p>
             ) : null}
             {data.inTransit.length === 0 ? (
-              <EmptyState icon="truck" title={t('treasury.transit_empty')} />
+              <EmptyLine icon="truck" title={t('treasury.transit_empty')} />
             ) : (
               <ul className="line-list">
                 {data.inTransit.map((transfer) => {
@@ -619,10 +619,10 @@ export function TreasuryScreen() {
 
           <Section title={t('treasury.accounts_title')}>
             {data.accounts.length === 0 ? (
-              <EmptyState icon="cash" title={t('treasury.accounts_empty')} />
+              <EmptyLine icon="cash" title={t('treasury.accounts_empty')} />
             ) : (
               <DataList
-                className="tre-accounts"
+                className="tre-accounts fin-table"
                 template="minmax(0, 2fr) minmax(0, 1.6fr) minmax(8rem, 1.2fr) minmax(0, 1.4fr)"
                 columns={[
                   { label: t('treasury.col_account') },
@@ -654,11 +654,17 @@ export function TreasuryScreen() {
                           iconEnd={expanded ? 'chevron-up' : 'chevron-down'}
                           ref={opener('account', account.id)}
                           aria-expanded={expanded}
+                          aria-label={t(
+                            expanded ? 'treasury.movements_close' : 'treasury.movements_open',
+                            { name: account.name },
+                          )}
                           onClick={() => toggle(account.id, 'account')}
                         >
-                          {t(expanded ? 'treasury.movements_close' : 'treasury.movements_open', {
-                            name: account.name,
-                          })}
+                          {t(
+                            expanded
+                              ? 'treasury.movements_close_short'
+                              : 'treasury.movements_short',
+                          )}
                         </Button>
                       </DataCell>
                       {expanded ? (

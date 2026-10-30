@@ -12,7 +12,6 @@ import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import {
   Banner,
   Button,
-  EmptyState,
   Field,
   LinkButton,
   Select,
@@ -64,6 +63,7 @@ import {
   type ExpenseItem,
 } from './expense-follow.js';
 import { imputationLabel, reviewReasonsText, shortId, userName } from './expense-format.js';
+import { EmptyLine } from './EmptyLine.js';
 import './finance.css';
 
 type Kind = 'pay' | 'cancel';
@@ -167,7 +167,7 @@ export function ExpenseFollowUp({
   useRefreshOnVisible(read.retry);
 
   if (!refs) return <SkeletonRows rows={3} />;
-  if (!online) return <EmptyState icon="offline" title={t('expense.follow_online_only')} />;
+  if (!online) return <EmptyLine icon="offline" title={t('expense.follow_online_only')} />;
 
   // Retour sur l'écran avec une opération en attente : son résultat est annoncé.
   const adopt = last ? undefined : lastWaitingCommand(managed, 'finance.expense.', userId);
@@ -545,7 +545,7 @@ export function ExpenseFollowUp({
             </p>
           ) : null}
           {data.items.length === 0 ? (
-            <EmptyState
+            <EmptyLine
               icon="receipt"
               title={t(fixedGroup === 'TO_PAY' ? 'expense.none_to_pay' : 'expense.follow_empty')}
             />
