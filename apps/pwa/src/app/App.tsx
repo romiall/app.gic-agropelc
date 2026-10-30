@@ -214,6 +214,11 @@ const ApprovalsScreen = lazy(() =>
 const UsersScreen = lazy(() =>
   import('../features/users/UsersScreen.js').then((m) => ({ default: m.UsersScreen })),
 );
+// Page de référence des composants (ADR-049), réservée au développement : `import.meta.env.DEV` vaut
+// `false` à la construction, la branche et son import sont supprimés (rien de la galerie dans `dist`).
+const ComponentGallery = import.meta.env.DEV
+  ? lazy(() => import('../dev/ComponentGallery.js').then((m) => ({ default: m.ComponentGallery })))
+  : null;
 
 function AppShell() {
   const { t } = useTranslation();
@@ -302,6 +307,9 @@ function AppShell() {
               <Route path={ROUTES.devices} element={<DevicesScreen />} />
               <Route path={ROUTES.approvals} element={<ApprovalsScreen />} />
               <Route path={ROUTES.users} element={<UsersScreen />} />
+              {ComponentGallery ? (
+                <Route path="/dev/composants" element={<ComponentGallery />} />
+              ) : null}
               <Route path={ROUTES.transfer} element={<TransferScreen key="liste" />} />
               <Route path={ROUTES.transferPattern} element={<TransferScreen key="detail" />} />
               <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />

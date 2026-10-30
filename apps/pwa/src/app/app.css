@@ -1,60 +1,48 @@
-/* Styles minimaux (K2 : pas de framework UI lourd, NFR-05). UX-11 : zones tactiles >= 44px,
-   contraste AA minimum, utilisable d'une main. */
+/* Styles hérités des écrans (K2, UX-11), re-tokenisés pour la refonte (ADR-049, lot L1) : plus aucune couleur
+   écrite en dur, les anciens noms de variables renvoient aux jetons de `styles/tokens.css`. Les éléments nus
+   (`button`, `input`…) sont stylés par `styles/base.css`. Chaque lot remplace les règles de son domaine par
+   les composants partagés ; ce fichier disparaît à la clôture (lot L10). */
 
 :root {
-  --color-bg: #f5f5f0;
-  --color-text: #1a1a1a;
-  --color-primary: #0b3d1e;
-  --color-primary-text: #ffffff;
-  --color-border: #c9c9c0;
-  --color-green: #1e7a34;
-  --color-orange: #b3690a;
-  --color-red: #b3261e;
-  --color-grey: #5c5c5c;
-  --touch-target: 44px;
-  color-scheme: light;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    sans-serif;
-  font-size: 16px;
-  line-height: 1.4;
+  --color-bg: var(--bg);
+  --color-text: var(--ink);
+  --color-primary: var(--brand-strong);
+  --color-primary-text: var(--brand-ink);
+  --color-border: var(--line);
+  --color-green: var(--ok);
+  --color-orange: var(--warn);
+  --color-red: var(--bad);
+  --color-grey: var(--ink-3);
+  --touch-target: var(--field-h);
 }
 
 .app-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
-  background: var(--color-primary);
-  color: var(--color-primary-text);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--gutter);
+  background: var(--nav);
+  color: var(--nav-ink);
 }
 
 .app-header button.secondary {
-  color: var(--color-primary-text);
-  border-color: rgb(255 255 255 / 65%);
+  --btn-bg: transparent;
+  --btn-fg: var(--nav-ink);
+  --btn-bd: var(--nav-line);
+  --btn-bg-h: var(--nav-active);
 }
 
 .app-main {
   flex: 1;
-  padding: 16px;
+  padding: var(--space-4) var(--gutter) var(--space-8);
   max-width: 960px;
   width: 100%;
   margin: 0 auto;
@@ -71,42 +59,8 @@ body {
   font-weight: 600;
 }
 
-input[type='text'],
-input[type='password'],
-input[type='tel'] {
-  min-height: var(--touch-target);
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 16px;
-}
-
-button {
-  min-height: var(--touch-target);
-  min-width: var(--touch-target);
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: none;
-  background: var(--color-primary);
-  color: var(--color-primary-text);
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-button.secondary {
-  background: transparent;
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary);
-}
-
 .error-message {
-  color: var(--color-red);
+  color: var(--bad);
   font-weight: 600;
 }
 
@@ -122,20 +76,20 @@ button.secondary {
 }
 
 .sync-badge[data-color='green'] {
-  background: #e3f3e6;
-  color: var(--color-green);
+  background: var(--ok-tint);
+  color: var(--ok);
 }
 .sync-badge[data-color='orange'] {
-  background: #fbe9d6;
-  color: var(--color-orange);
+  background: var(--warn-tint);
+  color: var(--warn);
 }
 .sync-badge[data-color='red'] {
-  background: #fbdfdc;
-  color: var(--color-red);
+  background: var(--bad-tint);
+  color: var(--bad);
 }
 .sync-badge[data-color='grey'] {
-  background: #e6e6e2;
-  color: var(--color-grey);
+  background: var(--surface-2);
+  color: var(--ink-2);
 }
 
 .sync-badge-dot {
@@ -153,7 +107,7 @@ ul.outbox-list {
 
 ul.outbox-list li {
   padding: 10px 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--line);
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -168,8 +122,7 @@ ul.outbox-list li {
   min-height: 100dvh;
   padding: 32px 16px 16px;
   background:
-    linear-gradient(180deg, var(--color-primary) 0, var(--color-primary) 240px, transparent 240px),
-    var(--color-bg);
+    linear-gradient(180deg, var(--nav) 0, var(--nav) 240px, transparent 240px), var(--color-bg);
 }
 
 .auth-brand {
@@ -178,13 +131,13 @@ ul.outbox-list li {
   align-items: center;
   gap: 2px;
   margin-bottom: 20px;
-  color: var(--color-primary-text);
+  color: var(--nav-ink);
   text-align: center;
 }
 
 .auth-logo {
   border-radius: 14px;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 25%);
+  box-shadow: var(--shadow-2);
 }
 
 .auth-brand-name {
@@ -204,10 +157,10 @@ ul.outbox-list li {
   width: 100%;
   max-width: 420px;
   padding: 28px 24px 24px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  box-shadow: 0 10px 30px rgb(11 61 30 / 14%);
+  box-shadow: var(--shadow-2);
 }
 
 .auth-title {
@@ -245,23 +198,7 @@ ul.outbox-list li {
 
 .auth-form input {
   width: 100%;
-  min-height: 48px;
-  padding: 10px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--color-text);
-  font-size: 16px;
-}
-
-.auth-form input::placeholder {
-  color: #8a8a82;
-}
-
-.auth-form input:focus-visible {
-  outline: 3px solid rgb(30 122 52 / 35%);
-  outline-offset: 0;
-  border-color: var(--color-green);
+  min-height: var(--control-h-lg);
 }
 
 .input-with-action {
@@ -273,6 +210,10 @@ ul.outbox-list li {
 }
 
 .input-with-action .input-action {
+  --btn-bg: transparent;
+  --btn-fg: var(--brand-strong);
+  --btn-bd: transparent;
+  --btn-bg-h: var(--brand-tint);
   position: absolute;
   top: 50%;
   right: 6px;
@@ -280,33 +221,13 @@ ul.outbox-list li {
   min-width: 0;
   padding: 4px 12px;
   transform: translateY(-50%);
-  background: transparent;
-  color: var(--color-primary);
-  border: none;
   font-size: 14px;
-  font-weight: 600;
 }
 
-.input-with-action .input-action:hover {
-  background: #eef3ef;
-}
-
-.btn-block {
-  width: 100%;
-  min-height: 48px;
+.auth-form .btn-block {
+  min-height: var(--control-h-lg);
   margin-top: 4px;
-  border-radius: 10px;
-  font-size: 16px;
-}
-
-.btn-block:hover:not(:disabled) {
-  background: #0f5128;
-}
-
-.btn-block:focus-visible,
-.input-action:focus-visible {
-  outline: 3px solid rgb(30 122 52 / 45%);
-  outline-offset: 2px;
+  font-size: 1rem;
 }
 
 .alert {
@@ -318,9 +239,9 @@ ul.outbox-list li {
 }
 
 .alert-error {
-  background: #fbdfdc;
-  border: 1px solid #efb3ad;
-  color: #8f1d17;
+  background: var(--bad-tint);
+  border: 1px solid var(--bad-line);
+  color: var(--bad);
 }
 
 @media (min-width: 600px) {
@@ -371,7 +292,7 @@ ul.outbox-list li {
   margin: 0;
   padding: 10px 14px;
   border-radius: 10px;
-  background: #e3f3e6;
+  background: var(--ok-tint);
   color: var(--color-green);
   font-weight: 600;
 }
@@ -401,9 +322,9 @@ ul.outbox-list li {
 .home-banner {
   padding: 10px 14px;
   border-radius: 10px;
-  background: #fbe9d6;
-  border: 1px solid #ecc799;
-  color: #7a4506;
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  color: var(--warn);
   font-weight: 600;
   font-size: 14px;
 }
@@ -432,7 +353,7 @@ ul.outbox-list li {
   align-items: center;
   gap: 8px 12px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--color-border);
   border-left-width: 6px;
   border-radius: 10px;
@@ -457,16 +378,16 @@ ul.outbox-list li {
 }
 
 .signal-critical .signal-badge {
-  background: #fbdfdc;
-  color: #8f1d17;
+  background: var(--bad-tint);
+  color: var(--bad);
 }
 .signal-warning .signal-badge {
-  background: #fbe9d6;
-  color: #7a4506;
+  background: var(--warn-tint);
+  color: var(--warn);
 }
 .signal-info .signal-badge {
-  background: #e6e6e2;
-  color: #3d3d3d;
+  background: var(--surface-2);
+  color: var(--ink-2);
 }
 
 .signal-body {
@@ -528,16 +449,17 @@ ul.outbox-list li {
 }
 
 .action {
+  --btn-bg-h: var(--surface-2);
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
   min-height: 64px;
   padding: 10px 12px;
-  border: 1px solid var(--color-primary);
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: #fff;
-  color: var(--color-primary);
+  background: var(--surface);
+  color: var(--brand-strong);
   font: inherit;
   text-align: left;
   text-decoration: none;
@@ -546,8 +468,10 @@ ul.outbox-list li {
 
 .action-primary,
 .action[aria-current='page'] {
-  background: var(--color-primary);
-  color: var(--color-primary-text);
+  --btn-bg-h: var(--brand-strong);
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
 }
 
 .action-label {
@@ -562,7 +486,7 @@ ul.outbox-list li {
 .action-soon {
   border-style: dashed;
   border-color: var(--color-border);
-  background: #efefe9;
+  background: var(--surface-2);
   color: var(--color-grey);
 }
 
@@ -572,15 +496,9 @@ ul.outbox-list li {
   margin-bottom: 2px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: #e6e6e2;
+  background: var(--surface-3);
   font-size: 11px;
   font-weight: 700;
-}
-
-.action:focus-visible,
-.signal-action:focus-visible {
-  outline: 3px solid rgb(30 122 52 / 45%);
-  outline-offset: 2px;
 }
 
 /* Indicateurs. */
@@ -595,7 +513,7 @@ ul.outbox-list li {
   flex-direction: column;
   gap: 4px;
   padding: 12px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--color-border);
   border-top-width: 4px;
   border-radius: 12px;
@@ -713,9 +631,9 @@ ul.outbox-list li {
   align-items: center;
   min-height: var(--touch-target);
   padding: 0 14px;
-  border: 1px solid rgb(255 255 255 / 65%);
+  border: 1px solid var(--nav-line);
   border-radius: 8px;
-  color: var(--color-primary-text);
+  color: var(--nav-ink);
   font-weight: 600;
   text-decoration: none;
 }
@@ -739,7 +657,7 @@ ul.outbox-list li {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .menu-list li + li {
@@ -761,7 +679,7 @@ ul.outbox-list li {
 .menu-offline {
   padding: 2px 8px;
   border-radius: 999px;
-  background: #e3efe5;
+  background: var(--ok-tint);
   color: var(--color-green);
   font-size: 12px;
   font-weight: 700;
@@ -778,15 +696,6 @@ ul.outbox-list li {
 }
 
 /* --- Écrans de vente (ECR-VEN-01 à 06) ------------------------------------------------------ */
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
 
 .sale h1 {
   margin: 0 0 12px;
@@ -805,10 +714,6 @@ ul.outbox-list li {
   margin: 16px 0;
 }
 
-[hidden] {
-  display: none !important;
-}
-
 .sale .field {
   display: flex;
   flex-direction: column;
@@ -823,18 +728,6 @@ ul.outbox-list li {
 
 .text-input {
   width: 100%;
-  min-height: var(--touch-target);
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--color-text);
-  font: inherit;
-}
-
-.text-input:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
 }
 
 .picked {
@@ -845,7 +738,7 @@ ul.outbox-list li {
   padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .picked-title {
@@ -875,7 +768,7 @@ ul.outbox-list li {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .picker-list li + li {
@@ -883,9 +776,11 @@ ul.outbox-list li {
 }
 
 .picker-list button {
+  --btn-bg-h: var(--surface-2);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   width: 100%;
   min-height: 52px;
   padding: 8px 14px;
@@ -894,6 +789,10 @@ ul.outbox-list li {
   color: var(--color-text);
   text-align: left;
   font-weight: 600;
+}
+
+.picker-list button::before {
+  display: none;
 }
 
 .picker-list small {
@@ -914,7 +813,7 @@ ul.outbox-list li {
   padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .line-head {
@@ -958,6 +857,7 @@ ul.outbox-list li {
 }
 
 .link-button {
+  --btn-bg-h: transparent;
   min-height: var(--touch-target);
   padding: 0 4px;
   background: transparent;
@@ -992,7 +892,7 @@ ul.outbox-list li {
   padding: 14px;
   border-radius: 12px;
   border: 1px solid var(--color-border);
-  background: #fff;
+  background: var(--surface);
   font-weight: 600;
 }
 
@@ -1002,23 +902,23 @@ ul.outbox-list li {
 
 .result-ok {
   border-color: var(--color-green);
-  background: #e3efe5;
+  background: var(--ok-tint);
 }
 
 .result-info {
-  border-color: #9fb7a6;
-  background: #eef3ef;
+  border-color: var(--line-strong);
+  background: var(--brand-tint);
 }
 
 .result-warn {
   border-color: var(--color-orange);
-  background: #fbefdc;
+  background: var(--warn-tint);
 }
 
 .result-error {
-  border-color: #efb3ad;
-  background: #fbdfdc;
-  color: #8f1d17;
+  border-color: var(--bad-line);
+  background: var(--bad-tint);
+  color: var(--bad);
 }
 
 .result-actions {
@@ -1054,7 +954,7 @@ ul.outbox-list li {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .doc-list li + li {
@@ -1112,40 +1012,12 @@ ul.outbox-list li {
   align-items: flex-start;
 }
 
-.badge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.badge-ok {
-  background: #e3efe5;
-  color: var(--color-green);
-}
-
-.badge-info {
-  background: #eef3ef;
-  color: var(--color-primary);
-}
-
-.badge-warn {
-  background: #fbefdc;
-  color: #8a4f06;
-}
-
-.badge-muted {
-  background: #efefe9;
-  color: var(--color-grey);
-}
-
 .receipt {
   margin: 8px 0 16px;
   padding: 14px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .receipt-head {
@@ -1250,13 +1122,13 @@ ul.outbox-list li {
   width: 100%;
   overflow: hidden;
   border-radius: 6px;
-  background: #dfe5e1;
+  background: var(--surface-3);
 }
 
 .piece-apercu iframe {
   display: block;
   border: 0;
-  background: #dfe5e1;
+  background: var(--surface-3);
 }
 
 @media print {
@@ -1345,6 +1217,6 @@ ul.outbox-list li {
 
 /* Focus clavier visible sur les boutons de prise de vue (l'entrée fichier est masquée). */
 .photo-actions .action:focus-within {
-  outline: 3px solid rgb(30 122 52 / 45%);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

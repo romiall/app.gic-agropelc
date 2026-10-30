@@ -1,6 +1,6 @@
 # 24 — Refonte graphique et ergonomique de la PWA
 
-> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; le lot L0 est clos. Aucun écran n'est encore refait ; le lot L1 (fondations) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
+> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction) et L1 (fondations, § 7) sont clos. Les écrans ne sont pas encore repris un à un : ils profitent déjà des jetons et du style des éléments nus ; le lot L2 (coquille et navigation) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
 > **Portée** : `apps/pwa` seulement, **à fonctionnalités constantes** (mêmes commandes, même hors ligne, même synchronisation). `apps/server`, `db/`, `deploy/` et `apps/pwa/src/features/pieces/` (mise en page exacte des pièces imprimées) ne sont pas touchés.
 > **Numéros réservés au chantier** : de 486 à 499 pour les AV, de 049 à 051 pour les ADR (la session principale n'y touche pas).
 
@@ -10,7 +10,7 @@ L'application est complète côté métier, mais son rendu est jugé « fonction
 
 ## 2. Mesures de départ
 
-Relevées le 30/10/2026 sur une base locale neuve (données de démonstration), avec un compte qui détient les onze rôles, en largeur mobile 375 px (51 écrans ; les totaux de boutons et de contrôles portent sur 47 d'entre eux) et bureau 1280 px (8 écrans). Outil de relevé : § 7.
+Relevées le 30/10/2026 sur une base locale neuve (données de démonstration), avec un compte qui détient les onze rôles, en largeur mobile 375 px (51 écrans ; les totaux de boutons et de contrôles portent sur 47 d'entre eux) et bureau 1280 px (8 écrans). Outil de relevé : § 8.
 
 | Mesure | Valeur |
 |---|---|
@@ -85,13 +85,36 @@ Maquette envoyée au porteur le 30/10/2026 (accueil d'un vendeur de point de ven
 
 Chaque lot ferme sur : contrôle visuel mobile et bureau, `typecheck`, essais du domaine (la suite complète d'`apps/pwa` au plus une fois par lot), un commit en français, un point d'avancement avec avant et après sur deux ou trois écrans.
 
-## 7. Outils de vérification
+## 7. Fondations livrées (lot L1)
+
+Le lot L1 est l'infrastructure de tout le reste : un écran qui n'a pas encore été repris profite déjà des jetons et du style des éléments nus (boutons, champs, cases), les lots suivants adoptent les composants.
+
+| Où | Contenu |
+|---|---|
+| `apps/pwa/src/styles/tokens.css` | Jetons : couleurs clair et sombre (le sombre sous `data-theme="dark"` et, pour « automatique », sous `prefers-color-scheme`), typographie (7 tailles), espacement de 4 px, rayons, ombres, gestes (40 px visibles, 48 px pour l'action principale), mouvement |
+| `styles/fonts.css`, `base.css` | Noto Sans (400, 600, 700) et Barlow Semi Condensed (600, 700) en `woff2`, mêmes fichiers que les pièces imprimées ; style des éléments nus : boutons, champs, listes déroulantes, cases et radios dessinées, interrupteur, focus visible, `prefers-reduced-motion` |
+| `styles/components.css` | Classes des composants ; aucune couleur en dur |
+| `app/app.css` | Feuille héritée, **re-tokenisée** : plus aucune couleur écrite en dur, anciens noms de variables renvoyés aux jetons, règles en conflit avec la base retirées. Disparaît au lot L10 |
+| `components/ui/` | `Button`, `LinkButton`, `IconButton` · `Field`, `Input`, `Select`, `Textarea`, `Checkbox`, `Radio`, `Switch`, `Segmented` · `Card`, `Section`, `List`, `ListRow`, `DataList` (cartes sur téléphone, colonnes dès 900 px), `Badge`, `Avatar`, `KpiTile`, `Sparkline` · `Banner`, `EmptyState`, `Skeleton`, `Spinner`, `Sheet`, `ToastProvider` et `useToast` · `Tabs`, `TabPanel`, `PageHeader` · `Icon` (47 icônes) · thème (`theme.ts`) |
+| `dev/ComponentGallery.tsx` | Page de référence `/dev/composants`, développement seulement : absente de la construction de production (`import.meta.env.DEV`) |
+
+Règles pour les lots suivants :
+
+- **Un seul bouton plein par écran** (`primary`) ; les autres actions en `tonal`, `ghost` ou `outline`. Le bouton nu reste plein pour ne pas casser les écrans non repris : le premier geste d'un lot est de le rétrograder là où il n'est pas l'action principale.
+- **Listes** : `List` et `ListRow` sur téléphone, `DataList` quand un écran a plusieurs colonnes ; toujours des `ul` et des `li`, jamais de `table`, pour que les essais par rôle, libellé et texte restent valables.
+- **Petits choix exclusifs** (cinq au plus) : `Segmented`, pas une pile de radios ni une liste déroulante.
+- **Formulaires** : `Field` relie libellé, aide, erreur et unité au contrôle ; le bouton principal va dans une barre d'action collée en bas (lot L3).
+- **Aucune couleur en dur** : `styles/tokens.test.ts` le vérifie sur `base.css`, `components.css` et `app.css`, et vérifie les contrastes (texte 4,5 : 1, bordure de champ 3 : 1) dans les deux thèmes.
+- Les sélecteurs que les essais utilisent (`text-warn`, `result-warn`, `result-error`, `action-primary`, `home-muted`, `[data-kpi]`) sont conservés tant que l'essai correspondant ne change pas.
+
+## 8. Outils de vérification
 
 - **Relevé et captures sans fenêtre** : Chromium déjà installé (révision 1234) piloté par Playwright, profil persistant (appareil et code PIN conservés), navigation interne sans rechargement. Il rend les écrans en 375 px et 1280 px, clair et sombre, et relève par écran : débordement horizontal, boutons, contrôles natifs, tailles de police, tableaux, erreurs de console. Le navigateur intégré à l'application reste utilisable pour un coup d'œil, mais sa fenêtre est parfois masquée et les captures échouent alors.
 - **Base locale** : `gic_agropelc_refonte`, neuve (migrations, semis, `demo:data`), compte de démonstration à onze rôles ; jamais la base partagée des essais.
 
-## 8. Journal
+## 9. Journal
 
 | Date | Fait |
 |---|---|
 | 30/10/2026 | Audit des 61 écrans (mesures § 2), maquette de la direction (§ 5), plan par lots (§ 6). Direction validée par le porteur (style, navigation, thème) ; ADR-049 rédigé. Lot L0 clos. |
+| 30/10/2026 | Lot L1 (fondations, § 7) : jetons clair et sombre, polices, base, composants partagés, page de référence, `app.css` re-tokenisée. |

@@ -10,6 +10,20 @@ export const fr = {
     footer: 'Application professionnelle · utilisable hors ligne',
     screen_loading: 'Ouverture de l’écran…',
   },
+  // Libellés des composants partagés (`components/ui`, ADR-049).
+  ui: {
+    close: 'Fermer',
+    back: 'Retour',
+    loading: 'Chargement…',
+    optional: 'facultatif',
+    notifications: 'Notifications',
+    theme: {
+      title: 'Apparence',
+      light: 'Clair',
+      dark: 'Sombre',
+      auto: 'Automatique',
+    },
+  },
   auth: {
     login_title: 'Connexion',
     login_subtitle: 'Identifiez-vous pour accéder à votre espace.',

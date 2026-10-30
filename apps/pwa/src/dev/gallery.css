@@ -1,0 +1,101 @@
+/* Page de référence des composants (développement seulement, ADR-049) : mise en page de la galerie. */
+
+.gal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding-bottom: var(--space-10);
+}
+
+.gal-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.gal-block > h2 {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.gal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-3);
+}
+
+.gal-grid-wide {
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+
+.gal-swatch {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--text-xs);
+}
+
+.gal-swatch i {
+  display: block;
+  height: 2.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.gal-swatch span {
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-2);
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.gal-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: var(--space-2);
+}
+
+.gal-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-xs);
+}
+
+.gal-icon span {
+  color: var(--ink-3);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.gal-type > p {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.gal-type small {
+  flex: none;
+  width: 7rem;
+  color: var(--ink-3);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--text-xs);
+}
+
+.gal-surface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+}

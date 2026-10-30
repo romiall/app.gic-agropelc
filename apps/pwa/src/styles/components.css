@@ -1,0 +1,948 @@
+/* Composants partagés (ADR-049) : le balisage vient de `components/ui/`, l'apparence d'ici. Aucune couleur
+   en dur : tout passe par les jetons. Les listes restent des `ul` et des `li` ; sur ordinateur, la grille
+   CSS les met en colonnes sans changer les rôles du DOM. */
+
+/* Titres et paragraphes sans marge dans les composants : l'espacement vient de `gap`. */
+:where(
+    .page-header,
+    .page-title,
+    .section,
+    .sheet,
+    .empty,
+    .tile,
+    .banner,
+    .field,
+    .card,
+    .toast,
+    .gal,
+    .gal-block
+  )
+  :where(h1, h2, h3, h4, p) {
+  margin: 0;
+}
+
+.icon {
+  display: inline-block;
+  flex: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Champ : libellé, contrôle, unité, aide, erreur ---------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.field-label {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.field-optional {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.field-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.field-control > :is(input, select, textarea),
+.input,
+.select,
+.textarea {
+  width: 100%;
+}
+
+.field-control.has-unit > input {
+  padding-right: 4.5rem;
+}
+
+.field-unit {
+  position: absolute;
+  right: var(--space-3);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  pointer-events: none;
+}
+
+.field-hint {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.field-error {
+  color: var(--bad);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Case, radio, interrupteur : toute la ligne se touche. */
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--field-h);
+  cursor: pointer;
+}
+
+.check-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.check-hint {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--field-h);
+  cursor: pointer;
+}
+
+/* Contrôle segmenté : petit choix exclusif (filtre d'état, moyen de paiement). */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(max-content, 1fr);
+  gap: 2px;
+  padding: 3px;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: var(--surface-2);
+  scrollbar-width: none;
+}
+
+.segmented label {
+  position: relative;
+  display: grid;
+  cursor: pointer;
+}
+
+.segmented label::before {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+
+.segmented input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segmented span {
+  display: grid;
+  place-items: center;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--ink-2);
+  font: 600 var(--text-sm) / 1.2 var(--font-ui);
+  text-align: center;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.segmented input:checked + span {
+  background: var(--surface);
+  color: var(--brand-strong);
+  box-shadow: var(--shadow-1);
+}
+
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* --- Carte, section, liste ----------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.card-pad {
+  padding: var(--space-4);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+
+.list > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 3.5rem;
+  padding: var(--space-3) var(--space-4);
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+  text-decoration: none;
+}
+
+a.list-row,
+button.list-row {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink);
+  --btn-bd: transparent;
+  --btn-bg-h: var(--surface-2);
+  justify-content: flex-start;
+  border-radius: 0;
+  background: var(--btn-bg);
+}
+
+a.list-row:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+button.list-row::before {
+  display: none;
+}
+
+.list-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.list-lead.is-warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.list-lead.is-bad {
+  background: var(--bad-tint);
+  color: var(--bad);
+}
+
+.list-lead.is-info {
+  background: var(--info-tint);
+  color: var(--info);
+}
+
+.list-lead.is-ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.list-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.list-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.list-sub {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.list-end {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  text-align: right;
+}
+
+.list-value {
+  font: 700 var(--text-lg) / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.list-chev {
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* Liste en colonnes : cartes sur téléphone, colonnes alignées dès 900 px (`--cols` vient du composant). */
+.data-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.data-head {
+  display: none;
+}
+
+.data-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.data-rows > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.data-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.data-cell {
+  min-width: 0;
+}
+
+.data-cell[data-label]::before {
+  content: attr(data-label);
+  margin-right: var(--space-2);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.data-cell.is-primary {
+  flex: 1 0 100%;
+  font-weight: 600;
+}
+
+.data-cell.is-actions {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.data-cell.is-primary::before,
+.data-cell.is-actions::before {
+  display: none;
+}
+
+@media (min-width: 56.25rem) {
+  .data-head,
+  .data-row {
+    display: grid;
+    grid-template-columns: var(--cols);
+    align-items: center;
+    gap: 0 var(--space-4);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .data-head {
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink-3);
+    font: 600 var(--text-xs) / 1 var(--font-ui);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .data-head > .is-num,
+  .data-cell.is-num {
+    text-align: right;
+  }
+
+  .data-cell.is-num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .data-cell[data-label]::before {
+    display: none;
+  }
+
+  .data-cell.is-primary {
+    flex: none;
+  }
+
+  .data-cell.is-actions {
+    flex: none;
+    flex-wrap: nowrap;
+  }
+}
+
+/* --- Pastille d'état : un point, un texte, un ton sémantique distinct de la marque -------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 1.375rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: 600 var(--text-xs) / 1 var(--font-ui);
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge.badge-plain::before {
+  display: none;
+}
+
+.badge-ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.badge-warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.badge-bad {
+  background: var(--bad-tint);
+  color: var(--bad);
+}
+
+.badge-info {
+  background: var(--info-tint);
+  color: var(--info);
+}
+
+.badge-brand {
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+
+.badge-muted {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  font: 700 var(--text-sm) / 1 var(--font-ui);
+}
+
+.avatar-lg {
+  width: 3rem;
+  height: 3rem;
+  font-size: var(--text-md);
+}
+
+/* --- Tuile d'indicateur -------------------------------------------------------------------------- */
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.tile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.tile-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-md);
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+
+.tile-value {
+  margin-top: var(--space-1);
+  font: 700 var(--text-3xl) / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.tile-warn .tile-value {
+  color: var(--warn);
+}
+
+.tile-bad .tile-value {
+  color: var(--bad);
+}
+
+.tile-detail {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.tile-delta {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.tile-delta.is-ok {
+  color: var(--ok);
+}
+
+.tile-delta.is-warn {
+  color: var(--warn);
+}
+
+.tile-delta.is-bad {
+  color: var(--bad);
+}
+
+.spark {
+  position: relative;
+  height: 2rem;
+  margin-top: var(--space-2);
+  color: var(--brand);
+}
+
+.spark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark-area {
+  fill: currentColor;
+  opacity: 0.12;
+}
+
+.spark-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px var(--surface);
+  transform: translate(-50%, -50%);
+}
+
+/* --- En-tête de page ----------------------------------------------------------------------------- */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.page-back {
+  display: inline-flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-h);
+  margin-left: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.page-title {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.page-subtitle {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- États : vide, chargement ---------------------------------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: var(--space-1);
+  border-radius: 50%;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+
+.empty h3 {
+  color: var(--ink);
+}
+
+.empty p {
+  max-width: 28rem;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.empty .btn,
+.empty button {
+  margin-top: var(--space-2);
+}
+
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2));
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --- Bandeau et notification ----------------------------------------------------------------------- */
+
+.banner {
+  --banner-bg: var(--info-tint);
+  --banner-line: var(--info-line);
+  --banner-fg: var(--info);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--banner-line);
+  border-radius: var(--radius-lg);
+  background: var(--banner-bg);
+  color: var(--ink);
+}
+
+.banner-ok {
+  --banner-bg: var(--ok-tint);
+  --banner-line: var(--ok-line);
+  --banner-fg: var(--ok);
+}
+
+.banner-warn {
+  --banner-bg: var(--warn-tint);
+  --banner-line: var(--warn-line);
+  --banner-fg: var(--warn);
+}
+
+.banner-bad {
+  --banner-bg: var(--bad-tint);
+  --banner-line: var(--bad-line);
+  --banner-fg: var(--bad);
+}
+
+.banner-muted {
+  --banner-bg: var(--surface-2);
+  --banner-line: var(--line);
+  --banner-fg: var(--ink-2);
+}
+
+.banner-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--banner-fg);
+}
+
+.banner-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.banner-title {
+  color: var(--banner-fg);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.banner-action {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+}
+
+.toasts {
+  position: fixed;
+  z-index: 60;
+  right: 0;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + var(--space-3));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--gutter);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 28rem;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--ink);
+  box-shadow: var(--shadow-2);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  pointer-events: auto;
+  animation: toast-in var(--dur) var(--ease);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+
+/* --- Feuille du bas (mobile) ou boîte centrée (ordinateur) : `<dialog>` natif -------------------- */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.sheet::backdrop {
+  background: var(--scrim);
+}
+
+.sheet[open] {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 85vh;
+  max-height: 85dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+  animation: sheet-in var(--dur) var(--ease);
+}
+
+@media (min-width: 40rem) {
+  .sheet[open] {
+    align-items: center;
+  }
+
+  .sheet-panel {
+    border-radius: var(--radius-xl);
+  }
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.sheet-body {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  overflow: auto;
+}
+
+.sheet-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+}
+
+/* --- Onglets --------------------------------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+.tabs-item {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink-2);
+  --btn-bd: transparent;
+  --btn-bg-h: transparent;
+  flex: none;
+  min-height: var(--field-h);
+  padding: 0 var(--space-3);
+  border-radius: 0;
+}
+
+.tabs-item::before {
+  display: none;
+}
+
+.tabs-item[aria-selected='true'] {
+  --btn-fg: var(--brand-strong);
+}
+
+.tabs-item[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  right: var(--space-2);
+  bottom: -1px;
+  left: var(--space-2);
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand);
+}
+
+@media (hover: hover) {
+  .tabs-item:hover:not([aria-selected='true']) {
+    --btn-fg: var(--ink);
+  }
+}

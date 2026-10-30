@@ -1,0 +1,190 @@
+/* Jetons de design (ADR-049). Seules ces variables portent couleurs, tailles, rayons, ombres et durées ;
+   aucun composant n'écrit de couleur en dur. Clair par défaut ; sombre au choix (`data-theme="dark"`) ou
+   selon le téléphone (`data-theme="auto"`). Le bloc sombre est écrit deux fois (CSS n'a pas de mixin) :
+   `styles/tokens.test.ts` vérifie que les deux copies restent identiques et que chaque jeton clair a
+   son pendant sombre. Contrastes calculés (WCAG AA) : texte >= 4,5, bordure de champ >= 3, deux thèmes. */
+
+:root {
+  color-scheme: light;
+
+  /* Typographie : Noto Sans pour l'interface, Barlow Semi Condensed pour titres et grands nombres. */
+  --font-ui: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Barlow Semi Condensed', 'Noto Sans', system-ui, sans-serif;
+  --text-xs: 0.75rem; /* 12 px : plancher, jamais en dessous */
+  --text-sm: 0.8125rem; /* 13 */
+  --text-md: 0.9375rem; /* 15 : texte courant */
+  --text-lg: 1.0625rem; /* 17 */
+  --text-xl: 1.25rem; /* 20 */
+  --text-2xl: 1.5rem; /* 24 */
+  --text-3xl: 2rem; /* 32 : grands nombres */
+  --leading: 1.45;
+  --leading-tight: 1.15;
+
+  /* Espacement : pas de 4 px. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Formes. */
+  --radius-sm: 6px;
+  --radius-md: 8px; /* contrôles */
+  --radius-lg: 12px; /* cartes */
+  --radius-xl: 16px; /* feuilles */
+  --radius-pill: 999px;
+
+  /* Gestes : hauteur visible des contrôles ; la zone tactile est prolongée à 48 px par `::before`. */
+  --control-h: 2.5rem; /* 40 px */
+  --control-h-sm: 2.25rem; /* 36 px */
+  --control-h-lg: 3rem; /* 48 px : l'unique action principale d'un écran */
+  --field-h: 2.75rem; /* 44 px */
+
+  /* Mise en page. */
+  --gutter: 1rem;
+  --content-max: 72rem;
+  --nav-w: 15.5rem;
+  --bar-h: 3.5rem;
+  --tabbar-h: 4.25rem;
+
+  /* Mouvement : supprimé avec prefers-reduced-motion (base.css). */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  /* Couleurs, thème clair : neutres teintés de vert, vert du logo officiel (banderole #3a6351). */
+  --bg: #f2f6f3;
+  --surface: #ffffff;
+  --surface-2: #eaf0ec;
+  --surface-3: #dde7e1;
+  --line: #d8e1db;
+  --line-strong: #76897e;
+  --ink: #15211b;
+  --ink-2: #44564c;
+  --ink-3: #5b6b62;
+  --brand: #3a6351;
+  --brand-strong: #2b4b3d;
+  --brand-ink: #ffffff;
+  --brand-tint: #e2ede6;
+  --brand-tint-2: #cbded2;
+  --focus: #3a6351;
+  --nav: #243f33;
+  --nav-ink: #e4efe8;
+  --nav-ink-2: #a5bcae;
+  --nav-active: #33543f;
+  --nav-line: rgb(255 255 255 / 12%);
+  --gold: #cdab0a; /* jaune d'œuf du logo : accent rare (onglet actif, compteur) */
+  --gold-tint: #fbf0c4;
+  --gold-ink: #2b2300;
+  --ok: #1a7340;
+  --ok-tint: #dcf0e4;
+  --ok-line: #a9d6bb;
+  --warn: #8f5000;
+  --warn-tint: #fbe9cc;
+  --warn-line: #eccb94;
+  --bad: #b3261e;
+  --bad-tint: #fadcd9;
+  --bad-line: #eda9a3;
+  --bad-ink: #ffffff;
+  --info: #2a5d9f;
+  --info-tint: #dce8f6;
+  --info-line: #a9c4e6;
+  --scrim: rgb(14 25 19 / 48%);
+  --shadow-1: 0 1px 2px rgb(21 33 27 / 7%), 0 1px 1px rgb(21 33 27 / 4%);
+  --shadow-2: 0 8px 24px rgb(21 33 27 / 14%);
+  --shadow-3: 0 16px 40px rgb(21 33 27 / 22%);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0f1a15;
+  --surface: #17241e;
+  --surface-2: #1f2f27;
+  --surface-3: #283a31;
+  --line: #2a3c33;
+  --line-strong: #5d7467;
+  --ink: #e9f1ec;
+  --ink-2: #b7c8be;
+  --ink-3: #93a79b;
+  --brand: #86b999;
+  --brand-strong: #a6d0b6;
+  --brand-ink: #0d1a13;
+  --brand-tint: #22392d;
+  --brand-tint-2: #2d4a3a;
+  --focus: #86b999;
+  --nav: #13221b;
+  --nav-ink: #dce9e1;
+  --nav-ink-2: #8aa396;
+  --nav-active: #244034;
+  --nav-line: rgb(255 255 255 / 10%);
+  --gold: #e3c230;
+  --gold-tint: #3a3410;
+  --gold-ink: #2b2300;
+  --ok: #62c48a;
+  --ok-tint: #1b3a2a;
+  --ok-line: #2f5c43;
+  --warn: #f0b35a;
+  --warn-tint: #40300f;
+  --warn-line: #6a5120;
+  --bad: #f08a82;
+  --bad-tint: #43201d;
+  --bad-line: #6e3a35;
+  --bad-ink: #2a0d0b;
+  --info: #8bb6ea;
+  --info-tint: #1b2f4a;
+  --info-line: #35547f;
+  --scrim: rgb(0 0 0 / 60%);
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 50%);
+  --shadow-3: 0 16px 40px rgb(0 0 0 / 60%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'] {
+    color-scheme: dark;
+    --bg: #0f1a15;
+    --surface: #17241e;
+    --surface-2: #1f2f27;
+    --surface-3: #283a31;
+    --line: #2a3c33;
+    --line-strong: #5d7467;
+    --ink: #e9f1ec;
+    --ink-2: #b7c8be;
+    --ink-3: #93a79b;
+    --brand: #86b999;
+    --brand-strong: #a6d0b6;
+    --brand-ink: #0d1a13;
+    --brand-tint: #22392d;
+    --brand-tint-2: #2d4a3a;
+    --focus: #86b999;
+    --nav: #13221b;
+    --nav-ink: #dce9e1;
+    --nav-ink-2: #8aa396;
+    --nav-active: #244034;
+    --nav-line: rgb(255 255 255 / 10%);
+    --gold: #e3c230;
+    --gold-tint: #3a3410;
+    --gold-ink: #2b2300;
+    --ok: #62c48a;
+    --ok-tint: #1b3a2a;
+    --ok-line: #2f5c43;
+    --warn: #f0b35a;
+    --warn-tint: #40300f;
+    --warn-line: #6a5120;
+    --bad: #f08a82;
+    --bad-tint: #43201d;
+    --bad-line: #6e3a35;
+    --bad-ink: #2a0d0b;
+    --info: #8bb6ea;
+    --info-tint: #1b2f4a;
+    --info-line: #35547f;
+    --scrim: rgb(0 0 0 / 60%);
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 50%);
+    --shadow-3: 0 16px 40px rgb(0 0 0 / 60%);
+  }
+}
