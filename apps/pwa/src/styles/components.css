@@ -510,6 +510,7 @@ button.list-row::before {
 /* --- Tuile d'indicateur -------------------------------------------------------------------------- */
 
 .tile {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -542,9 +543,16 @@ button.list-row::before {
 
 .tile-value {
   margin-top: var(--space-1);
-  font: 700 var(--text-3xl) / 1.1 var(--font-display);
+  font: 700 clamp(1.25rem, 5.6vw, 2rem) / 1.1 var(--font-display);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+/* La valeur suit la largeur de sa tuile (13 caractères au plus : « 829 400 F CFA »). */
+@supports (width: 1cqw) {
+  .tile-value {
+    font-size: clamp(1.25rem, 16cqw, 2rem);
+  }
 }
 
 .tile-warn .tile-value {

@@ -27,15 +27,33 @@ export function readThemePreference(): ThemePreference {
   }
 }
 
+/**
+ * Couleur de la barre d'état du téléphone (`<meta name="theme-color">`) : le fond des barres de
+ * l'interface (`--surface`) de chaque thème. `styles/tokens.test.ts` vérifie qu'elles restent égales.
+ */
+export const THEME_COLORS = { light: '#ffffff', dark: '#17241e' } as const;
+
+function syncThemeColor(preference: ThemePreference): void {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  meta?.setAttribute('content', THEME_COLORS[resolveTheme(preference)]);
+}
+
 function apply(preference: ThemePreference): void {
   current = preference;
   document.documentElement.dataset.theme = preference;
+  syncThemeColor(preference);
   for (const listener of listeners) listener();
 }
 
 /** À appeler avant le premier rendu : applique le choix mémorisé. */
 export function initTheme(): void {
   apply(readThemePreference());
+  // En mode « automatique », la barre d'état suit le téléphone s'il change de thème en cours de route.
+  if (typeof window.matchMedia === 'function') {
+    window
+      .matchMedia('(prefers-color-scheme: dark)')
+      .addEventListener?.('change', () => syncThemeColor(current));
+  }
 }
 
 export function setThemePreference(preference: ThemePreference): void {

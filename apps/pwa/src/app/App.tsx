@@ -4,7 +4,7 @@
  * moteur de synchronisation avec le cycle de vie de la session.
  */
 import { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from '../features/auth/AuthContext.js';
 import { LoginScreen } from '../features/auth/LoginScreen.js';
@@ -13,9 +13,7 @@ import { PasswordChangeScreen } from '../features/auth/PasswordChangeScreen.js';
 import { PinUnlockScreen } from '../features/auth/PinUnlockScreen.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { MenuScreen } from '../features/navigation/MenuScreen.js';
-import { AutonomyBanner } from '../features/sync/AutonomyBanner.js';
-import { DeviceApprovalBanner } from '../features/devices/DeviceApprovalBanner.js';
-import { SyncBadge } from '../features/sync/SyncBadge.js';
+import { Shell } from '../features/shell/Shell.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
 import { countPending } from '../sync/outbox.js';
@@ -250,99 +248,78 @@ function AppShell() {
   };
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 700 }}>
-          {t('app.name')}
-        </Link>
-        <nav className="app-header-nav" aria-label={t('nav.menu')}>
-          <SyncBadge />
-          <Link to={ROUTES.menu} className="app-header-link">
-            {t('nav.menu')}
-          </Link>
-        </nav>
-      </header>
-      <main className="app-main">
-        <AutonomyBanner />
-        <DeviceApprovalBanner />
-        <ErrorBoundary resetKey={location.pathname}>
-          <Suspense fallback={<p role="status">{t('app.screen_loading')}</p>}>
-            <Routes>
-              <Route path={ROUTES.home} element={<HomeScreen />} />
-              <Route path={ROUTES.menu} element={<MenuScreen onLogout={() => void onLogout()} />} />
-              <Route path={ROUTES.sync} element={<SyncScreen />} />
-              <Route path={ROUTES.newSale} element={<NewSaleScreen />} />
-              <Route path={ROUTES.sales} element={<SalesListScreen />} />
-              <Route path={ROUTES.salePattern} element={<SaleDetailScreen />} />
-              <Route path={ROUTES.newOrder} element={<NewOrderScreen />} />
-              <Route path={ROUTES.orders} element={<OrdersScreen />} />
-              <Route path={ROUTES.orderPattern} element={<OrderDetailScreen />} />
-              <Route path={ROUTES.deliverPattern} element={<DeliverScreen />} />
-              <Route path={ROUTES.collect} element={<CollectScreen />} />
-              <Route path={ROUTES.stock} element={<StockScreen />} />
-              <Route path={ROUTES.loss} element={<LossScreen />} />
-              {/* Clés distinctes : l'écran de résultat ne survit pas au retour à la liste. */}
-              <Route path={ROUTES.receive} element={<ReceiveTransferScreen key="liste" />} />
-              <Route
-                path={ROUTES.receivePattern}
-                element={<ReceiveTransferScreen key="detail" />}
-              />
-              <Route path={ROUTES.portfolio} element={<PortfolioScreen />} />
-              <Route path={ROUTES.count} element={<CountScreen />} />
-              <Route path={ROUTES.blindReceipt} element={<BlindReceiptScreen />} />
-              <Route path={ROUTES.consumption} element={<ConsumptionScreen />} />
-              <Route path={ROUTES.cash} element={<CashSessionScreen />} />
-              <Route path={ROUTES.cashTransfers} element={<CashTransfersScreen />} />
-              <Route path={ROUTES.treasury} element={<TreasuryScreen />} />
-              <Route path={ROUTES.expenses} element={<ExpenseScreen />} />
-              <Route path={ROUTES.supplierInvoices} element={<SupplierInvoicesScreen />} />
-              <Route path={ROUTES.supplierPayments} element={<SupplierPaymentsScreen />} />
-              <Route path={ROUTES.costsMargins} element={<CostsScreen />} />
-              <Route path={ROUTES.receivables} element={<ReceivablesScreen />} />
-              <Route path={ROUTES.orderMatching} element={<MatchingScreen />} />
-              <Route path={ROUTES.replenish} element={<ReplenishScreen />} />
-              <Route path={ROUTES.distribution} element={<DistributionScreen />} />
-              <Route path={ROUTES.posHome} element={<PosHomeScreen />} />
-              <Route path={ROUTES.allocations} element={<AllocationsScreen />} />
-              <Route path={ROUTES.devices} element={<DevicesScreen />} />
-              <Route path={ROUTES.approvals} element={<ApprovalsScreen />} />
-              <Route path={ROUTES.users} element={<UsersScreen />} />
-              {ComponentGallery ? (
-                <Route path="/dev/composants" element={<ComponentGallery />} />
-              ) : null}
-              <Route path={ROUTES.transfer} element={<TransferScreen key="liste" />} />
-              <Route path={ROUTES.transferPattern} element={<TransferScreen key="detail" />} />
-              <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />
-              <Route path={ROUTES.newVisit} element={<NewVisitScreen />} />
-              <Route path={ROUTES.performance} element={<PerformanceScreen />} />
-              <Route path={ROUTES.service} element={<ServiceScreen />} />
-              <Route path={ROUTES.priceSimulator} element={<PriceSimulatorScreen />} />
-              <Route path={ROUTES.priceRules} element={<PriceRulesScreen />} />
-              <Route path={ROUTES.catalog} element={<CatalogScreen />} />
-              <Route path={ROUTES.stockLedger} element={<LedgerScreen />} />
-              <Route path={ROUTES.productionOutput} element={<OutputScreen />} />
-              <Route path={ROUTES.lotSetup} element={<LotSetupScreen />} />
-              <Route path={ROUTES.incubation} element={<IncubationScreen />} />
-              <Route path={ROUTES.lotSheet} element={<LotSheetScreen />} />
-              <Route path={ROUTES.targets} element={<TargetsScreen />} />
-              <Route path={ROUTES.suppliers} element={<SuppliersScreen />} />
-              <Route path={ROUTES.purchaseOrders} element={<PurchaseOrdersScreen />} />
-              <Route path={ROUTES.productionLots} element={<LotsScreen />} />
-              <Route path={ROUTES.dailyEntryPattern} element={<DailyEntryScreen />} />
-              <Route path={ROUTES.eggCollection} element={<EggCollectionScreen />} />
-              <Route path={ROUTES.purchaseRequests} element={<RequestScreen />} />
-              <Route path={ROUTES.purchaseReceipts} element={<ReceiptScreen key="liste" />} />
-              <Route
-                path={ROUTES.purchaseReceiptPattern}
-                element={<ReceiptScreen key="detail" />}
-              />
-              <Route path={ROUTES.customerPattern} element={<CustomerScreen />} />
-              <Route path={ROUTES.interactionPattern} element={<InteractionScreen />} />
-            </Routes>
-          </Suspense>
-        </ErrorBoundary>
-      </main>
-    </div>
+    <Shell onLogout={() => void onLogout()}>
+      <ErrorBoundary resetKey={location.pathname}>
+        <Suspense fallback={<p role="status">{t('app.screen_loading')}</p>}>
+          <Routes>
+            <Route path={ROUTES.home} element={<HomeScreen />} />
+            <Route path={ROUTES.menu} element={<MenuScreen onLogout={() => void onLogout()} />} />
+            <Route path={ROUTES.sync} element={<SyncScreen />} />
+            <Route path={ROUTES.newSale} element={<NewSaleScreen />} />
+            <Route path={ROUTES.sales} element={<SalesListScreen />} />
+            <Route path={ROUTES.salePattern} element={<SaleDetailScreen />} />
+            <Route path={ROUTES.newOrder} element={<NewOrderScreen />} />
+            <Route path={ROUTES.orders} element={<OrdersScreen />} />
+            <Route path={ROUTES.orderPattern} element={<OrderDetailScreen />} />
+            <Route path={ROUTES.deliverPattern} element={<DeliverScreen />} />
+            <Route path={ROUTES.collect} element={<CollectScreen />} />
+            <Route path={ROUTES.stock} element={<StockScreen />} />
+            <Route path={ROUTES.loss} element={<LossScreen />} />
+            {/* Clés distinctes : l'écran de résultat ne survit pas au retour à la liste. */}
+            <Route path={ROUTES.receive} element={<ReceiveTransferScreen key="liste" />} />
+            <Route path={ROUTES.receivePattern} element={<ReceiveTransferScreen key="detail" />} />
+            <Route path={ROUTES.portfolio} element={<PortfolioScreen />} />
+            <Route path={ROUTES.count} element={<CountScreen />} />
+            <Route path={ROUTES.blindReceipt} element={<BlindReceiptScreen />} />
+            <Route path={ROUTES.consumption} element={<ConsumptionScreen />} />
+            <Route path={ROUTES.cash} element={<CashSessionScreen />} />
+            <Route path={ROUTES.cashTransfers} element={<CashTransfersScreen />} />
+            <Route path={ROUTES.treasury} element={<TreasuryScreen />} />
+            <Route path={ROUTES.expenses} element={<ExpenseScreen />} />
+            <Route path={ROUTES.supplierInvoices} element={<SupplierInvoicesScreen />} />
+            <Route path={ROUTES.supplierPayments} element={<SupplierPaymentsScreen />} />
+            <Route path={ROUTES.costsMargins} element={<CostsScreen />} />
+            <Route path={ROUTES.receivables} element={<ReceivablesScreen />} />
+            <Route path={ROUTES.orderMatching} element={<MatchingScreen />} />
+            <Route path={ROUTES.replenish} element={<ReplenishScreen />} />
+            <Route path={ROUTES.distribution} element={<DistributionScreen />} />
+            <Route path={ROUTES.posHome} element={<PosHomeScreen />} />
+            <Route path={ROUTES.allocations} element={<AllocationsScreen />} />
+            <Route path={ROUTES.devices} element={<DevicesScreen />} />
+            <Route path={ROUTES.approvals} element={<ApprovalsScreen />} />
+            <Route path={ROUTES.users} element={<UsersScreen />} />
+            {ComponentGallery ? (
+              <Route path="/dev/composants" element={<ComponentGallery />} />
+            ) : null}
+            <Route path={ROUTES.transfer} element={<TransferScreen key="liste" />} />
+            <Route path={ROUTES.transferPattern} element={<TransferScreen key="detail" />} />
+            <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />
+            <Route path={ROUTES.newVisit} element={<NewVisitScreen />} />
+            <Route path={ROUTES.performance} element={<PerformanceScreen />} />
+            <Route path={ROUTES.service} element={<ServiceScreen />} />
+            <Route path={ROUTES.priceSimulator} element={<PriceSimulatorScreen />} />
+            <Route path={ROUTES.priceRules} element={<PriceRulesScreen />} />
+            <Route path={ROUTES.catalog} element={<CatalogScreen />} />
+            <Route path={ROUTES.stockLedger} element={<LedgerScreen />} />
+            <Route path={ROUTES.productionOutput} element={<OutputScreen />} />
+            <Route path={ROUTES.lotSetup} element={<LotSetupScreen />} />
+            <Route path={ROUTES.incubation} element={<IncubationScreen />} />
+            <Route path={ROUTES.lotSheet} element={<LotSheetScreen />} />
+            <Route path={ROUTES.targets} element={<TargetsScreen />} />
+            <Route path={ROUTES.suppliers} element={<SuppliersScreen />} />
+            <Route path={ROUTES.purchaseOrders} element={<PurchaseOrdersScreen />} />
+            <Route path={ROUTES.productionLots} element={<LotsScreen />} />
+            <Route path={ROUTES.dailyEntryPattern} element={<DailyEntryScreen />} />
+            <Route path={ROUTES.eggCollection} element={<EggCollectionScreen />} />
+            <Route path={ROUTES.purchaseRequests} element={<RequestScreen />} />
+            <Route path={ROUTES.purchaseReceipts} element={<ReceiptScreen key="liste" />} />
+            <Route path={ROUTES.purchaseReceiptPattern} element={<ReceiptScreen key="detail" />} />
+            <Route path={ROUTES.customerPattern} element={<CustomerScreen />} />
+            <Route path={ROUTES.interactionPattern} element={<InteractionScreen />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    </Shell>
   );
 }
 

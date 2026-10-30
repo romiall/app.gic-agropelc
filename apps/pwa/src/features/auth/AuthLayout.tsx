@@ -18,7 +18,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
     <div className="auth-page">
       <header className="auth-brand">
-        <img className="auth-logo" src="/pwa-192.svg" alt="" width={56} height={56} />
+        <img className="auth-logo" src="/pwa-192.png" alt="" width={88} height={88} />
         <p className="auth-brand-name">{t('app.name')}</p>
         <p className="auth-brand-tagline">{t('app.tagline')}</p>
       </header>

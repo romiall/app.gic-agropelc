@@ -65,8 +65,8 @@ export function List({ bare = false, className, ...rest }: ListProps) {
 
 export interface ListRowProps {
   /** Icône dans une pastille carrée à gauche. */
-  icon?: IconName;
-  iconTone?: Tone;
+  icon?: IconName | undefined;
+  iconTone?: Tone | undefined;
   /** Élément libre à gauche (avatar…), à la place de `icon`. */
   leading?: ReactNode;
   title: ReactNode;
@@ -76,10 +76,10 @@ export interface ListRowProps {
   /** Pastille d'état sous la valeur. */
   badge?: ReactNode;
   /** Ligne cliquable qui ouvre un écran. */
-  to?: string;
+  to?: string | undefined;
   /** Ligne cliquable qui exécute une action. */
-  onClick?: () => void;
-  className?: string;
+  onClick?: (() => void) | undefined;
+  className?: string | undefined;
 }
 
 /** Ligne de liste à trois zones : repère, texte, valeur et état. */
@@ -255,10 +255,12 @@ export function Avatar({ name, large = false, className }: AvatarProps) {
 
 export interface SparklineProps {
   values: readonly number[];
+  /** Nom accessible du tracé (« Évolution sur 7 jours ») ; sans lui, le tracé est décoratif. */
+  label?: string;
 }
 
 /** Tracé de tendance : ligne, aire légère, point d'extrémité net (un élément HTML, jamais étiré). */
-export function Sparkline({ values }: SparklineProps) {
+export function Sparkline({ values, label }: SparklineProps) {
   if (values.length < 2) return null;
   const width = 100;
   const height = 28;
@@ -276,8 +278,13 @@ export function Sparkline({ values }: SparklineProps) {
     .join(' ');
   const [lastX, lastY] = points[points.length - 1] ?? [width, height / 2];
   return (
-    <div className="spark" aria-hidden="true">
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <div
+      className="spark"
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+    >
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
         <path className="spark-area" d={`${line} L${width} ${height} L0 ${height} Z`} />
         <path className="spark-line" d={line} />
       </svg>
@@ -298,6 +305,8 @@ export interface KpiTileProps extends Omit<HTMLAttributes<HTMLDivElement>, 'titl
   tone?: 'neutral' | 'warn' | 'bad';
   icon?: IconName;
   spark?: readonly number[];
+  /** Nom accessible du tracé de tendance. */
+  sparkLabel?: string;
 }
 
 export function KpiTile({
@@ -308,6 +317,7 @@ export function KpiTile({
   tone = 'neutral',
   icon,
   spark,
+  sparkLabel,
   className,
   ...rest
 }: KpiTileProps) {
@@ -328,7 +338,13 @@ export function KpiTile({
           {delta.text}
         </p>
       ) : null}
-      {spark ? <Sparkline values={spark} /> : null}
+      {spark ? (
+        sparkLabel ? (
+          <Sparkline values={spark} label={sparkLabel} />
+        ) : (
+          <Sparkline values={spark} />
+        )
+      ) : null}
     </div>
   );
 }

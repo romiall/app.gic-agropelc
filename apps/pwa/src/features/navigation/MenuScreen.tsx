@@ -1,13 +1,22 @@
 /**
- * Menu par rôle (ECR-ADM-03, UX-01 ; ADR-036) : les actions du jour de chaque rôle qui mènent à un
- * écran livré, puis tous les écrans proposés à l'utilisateur, regroupés par domaine. Construit à
- * partir de la navigation mémorisée sur l'appareil : utilisable hors ligne, contrairement à
- * l'accueil calculé par le serveur. La déconnexion se trouve ici, pour alléger l'en-tête mobile.
+ * Page « Plus » (ECR-ADM-03, UX-01 ; ADR-036, ADR-049) : les actions du jour de chaque rôle qui mènent à
+ * un écran livré, puis tous les écrans proposés à l'utilisateur, regroupés par domaine, l'apparence et la
+ * déconnexion. Construite à partir de la navigation mémorisée sur l'appareil : utilisable hors ligne,
+ * contrairement à l'accueil calculé par le serveur.
  */
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  Badge,
+  Button,
+  List,
+  ListRow,
+  PageHeader,
+  Section,
+  ThemeSwitcher,
+} from '../../components/ui/index.js';
+import { routeOfAction } from '../../app/screens.js';
 import { useAuth } from '../auth/AuthContext.js';
-import { routeOfAction, SCREEN_GROUPS, screensForRoles } from '../../app/screens.js';
+import { iconOfAction, sidebarGroups } from '../shell/nav-config.js';
 import { useRememberedNavigation } from './navigation-store.js';
 
 interface MenuScreenProps {
@@ -23,13 +32,13 @@ export function MenuScreen({ onLogout }: MenuScreenProps) {
   if (navigation === undefined) {
     return (
       <section className="menu" aria-busy="true">
-        <h1>{t('nav.menu_title')}</h1>
+        <PageHeader title={t('nav.menu_title')} />
       </section>
     );
   }
 
   const roles = navigation?.roles ?? [];
-  const screens = screensForRoles(roles);
+  const groups = sidebarGroups(roles);
   const seen = new Set<string>();
   const actions = (navigation?.sections ?? []).flatMap((section) =>
     section.actions.flatMap((action) => {
@@ -43,60 +52,61 @@ export function MenuScreen({ onLogout }: MenuScreenProps) {
   );
 
   return (
-    <section className="menu">
-      <h1>{t('nav.menu_title')}</h1>
-      {navigation === null ? (
-        <p className="home-muted">{t('nav.no_navigation')}</p>
-      ) : (
-        <p className="home-muted">
-          {navigation.sections.map((section) => section.roleLabel).join(' · ')}
-        </p>
-      )}
+    <div className="menu stack">
+      <PageHeader
+        title={t('nav.menu_title')}
+        subtitle={
+          navigation === null
+            ? t('nav.no_navigation')
+            : navigation.sections.map((section) => section.roleLabel).join(' · ')
+        }
+      />
 
       {actions.length > 0 ? (
-        <section aria-labelledby="menu-actions-title">
-          <h2 id="menu-actions-title">{t('nav.actions_title')}</h2>
-          <div className="home-actions">
+        <Section title={t('nav.actions_title')}>
+          <List>
             {actions.map((action) => (
-              <Link
+              <ListRow
                 key={`${action.code}|${action.route}`}
+                icon={iconOfAction(action.code)}
+                title={action.label}
+                subtitle={action.hint ?? undefined}
                 to={action.route}
-                className={`action${action.primary ? ' action-primary' : ''}`}
-              >
-                <span className="action-label">{action.label}</span>
-                {action.hint ? <span className="action-hint">{action.hint}</span> : null}
-              </Link>
+              />
             ))}
-          </div>
-        </section>
+          </List>
+        </Section>
       ) : null}
 
-      {SCREEN_GROUPS.map((group) => {
-        const inGroup = screens.filter((screen) => screen.group === group);
-        if (inGroup.length === 0) return null;
-        const titleId = `menu-group-${group}`;
-        return (
-          <section key={group} aria-labelledby={titleId}>
-            <h2 id={titleId}>{t(`nav.groups.${group}`)}</h2>
-            <ul className="menu-list">
-              {inGroup.map((screen) => (
-                <li key={screen.id}>
-                  <Link to={screen.path}>
-                    <span>{t(`nav.screens.${screen.labelKey}`)}</span>
-                    {screen.offline ? (
-                      <small className="menu-offline">{t('nav.offline_ok')}</small>
-                    ) : null}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+      {groups.map(({ group, items }) => (
+        <Section key={group} title={t(`nav.groups.${group}`)}>
+          <List>
+            {items.map((item) => (
+              <ListRow
+                key={item.id}
+                icon={item.icon}
+                title={t(`nav.screens.${item.labelKey}`)}
+                to={item.path}
+                badge={
+                  item.offline ? (
+                    <Badge tone="ok" plain>
+                      {t('nav.offline_ok')}
+                    </Badge>
+                  ) : undefined
+                }
+              />
+            ))}
+          </List>
+        </Section>
+      ))}
 
-      <button type="button" className="secondary menu-logout" onClick={onLogout}>
+      <Section title={t('ui.theme.title')}>
+        <ThemeSwitcher />
+      </Section>
+
+      <Button variant="outline" block icon="logout" onClick={onLogout}>
         {t('auth.logout')}
-      </button>
-    </section>
+      </Button>
+    </div>
   );
 }

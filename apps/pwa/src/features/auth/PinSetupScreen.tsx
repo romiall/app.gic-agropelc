@@ -5,6 +5,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, Button, Field, Input } from '../../components/ui/index.js';
 import { isValidPin } from '../../storage/crypto.js';
 import { AuthLayout } from './AuthLayout.js';
 import { useAuth } from './AuthContext.js';
@@ -38,43 +39,41 @@ export function PinSetupScreen() {
 
   return (
     <AuthLayout title={t('auth.pin_setup_title')} subtitle={t('auth.pin_setup_help')}>
-      <form className="auth-form" onSubmit={(event) => void onSubmit(event)}>
-        <div className="field">
-          <label htmlFor="pin">{t('auth.pin_label')}</label>
-          <input
-            id="pin"
-            type="password"
-            inputMode="numeric"
-            pattern="\d{6}"
-            maxLength={6}
-            autoComplete="new-password"
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
-            required
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="pin-confirm">{t('auth.pin_confirm_label')}</label>
-          <input
-            id="pin-confirm"
-            type="password"
-            inputMode="numeric"
-            pattern="\d{6}"
-            maxLength={6}
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(event) => setConfirm(event.target.value)}
-            required
-          />
-        </div>
-        {error && (
-          <p className="alert alert-error" role="alert">
-            {error}
-          </p>
-        )}
-        <button type="submit" className="btn-block" disabled={submitting}>
+      <form className="auth-form stack" onSubmit={(event) => void onSubmit(event)}>
+        <Field label={t('auth.pin_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="password"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              autoComplete="new-password"
+              value={pin}
+              onChange={(event) => setPin(event.target.value)}
+              required
+            />
+          )}
+        </Field>
+        <Field label={t('auth.pin_confirm_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="password"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+              required
+            />
+          )}
+        </Field>
+        {error && <Banner tone="bad">{error}</Banner>}
+        <Button type="submit" size="lg" block loading={submitting}>
           {t('auth.pin_submit')}
-        </button>
+        </Button>
       </form>
     </AuthLayout>
   );

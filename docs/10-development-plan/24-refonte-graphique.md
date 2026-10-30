@@ -1,6 +1,6 @@
 # 24 — Refonte graphique et ergonomique de la PWA
 
-> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction) et L1 (fondations, § 7) sont clos. Les écrans ne sont pas encore repris un à un : ils profitent déjà des jetons et du style des éléments nus ; le lot L2 (coquille et navigation) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
+> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7) et L2 (coquille, navigation, connexion, accueil, § 8) sont clos. Les écrans de chaque domaine ne sont pas encore repris un à un : ils profitent déjà des jetons et du style des éléments nus ; le lot L3 (ventes et caisse) suit. Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
 > **Portée** : `apps/pwa` seulement, **à fonctionnalités constantes** (mêmes commandes, même hors ligne, même synchronisation). `apps/server`, `db/`, `deploy/` et `apps/pwa/src/features/pieces/` (mise en page exacte des pièces imprimées) ne sont pas touchés.
 > **Numéros réservés au chantier** : de 486 à 499 pour les AV, de 049 à 051 pour les ADR (la session principale n'y touche pas).
 
@@ -10,7 +10,7 @@ L'application est complète côté métier, mais son rendu est jugé « fonction
 
 ## 2. Mesures de départ
 
-Relevées le 30/10/2026 sur une base locale neuve (données de démonstration), avec un compte qui détient les onze rôles, en largeur mobile 375 px (51 écrans ; les totaux de boutons et de contrôles portent sur 47 d'entre eux) et bureau 1280 px (8 écrans). Outil de relevé : § 8.
+Relevées le 30/10/2026 sur une base locale neuve (données de démonstration), avec un compte qui détient les onze rôles, en largeur mobile 375 px (51 écrans ; les totaux de boutons et de contrôles portent sur 47 d'entre eux) et bureau 1280 px (8 écrans). Outil de relevé : § 9.
 
 | Mesure | Valeur |
 |---|---|
@@ -107,14 +107,31 @@ Règles pour les lots suivants :
 - **Aucune couleur en dur** : `styles/tokens.test.ts` le vérifie sur `base.css`, `components.css` et `app.css`, et vérifie les contrastes (texte 4,5 : 1, bordure de champ 3 : 1) dans les deux thèmes.
 - Les sélecteurs que les essais utilisent (`text-warn`, `result-warn`, `result-error`, `action-primary`, `home-muted`, `[data-kpi]`) sont conservés tant que l'essai correspondant ne change pas.
 
-## 8. Outils de vérification
+## 8. Coquille et navigation livrées (lot L2)
+
+| Où | Contenu |
+|---|---|
+| `features/shell/` | `Shell` (assemblage), `Bars` (barre du haut, onglets du bas, barre latérale), `Sheets` (actions rapides, menu du compte), `nav-config` (onglets par rôle, actions rapides, domaines de la barre latérale : logique pure, testée) |
+| `styles/shell.css`, `styles/home.css` | Coquille et accueil ; les composants viennent de `components.css` |
+| Navigation | Téléphone : barre du haut compacte (marque, synchronisation, compte) et onglets du bas : Accueil, deux destinations du rôle, « + », Plus. À partir de 1024 px : barre latérale verte par domaine, repliable, avec l'écran courant marqué. Table des onglets par rôle validée le 30/10/2026 (`ROLE_TABS`). Le « + » ouvre les actions du jour du rôle qui mènent à un écran livré ; il n'apparaît pas pour l'administrateur seul |
+| Compte | L'avatar ouvre « Mon compte » : nom et rôles (mémorisés avec la navigation), apparence (Clair, Sombre, Automatique), synchronisation, déconnexion ; la page « Plus » reprend l'apparence et la déconnexion |
+| Synchronisation | Pastille compacte : icône et texte, le texte n'est masqué que lorsque tout est synchronisé sur écran étroit (il reste lu) |
+| Bandeaux | Composant `Banner` ; le rôle ARIA est porté par le corps du bandeau ; l'approbation de l'appareil est refermable pour la session |
+| Connexion, PIN, mot de passe | Logo officiel, champs, boutons et bannières d'erreur partagés ; libellés et noms accessibles inchangés |
+| Accueil | Signaux en liste (icône, pastille de gravité, action) ; **un rôle à la fois** avec sélecteur (choix mémorisé pour la session) ; action principale pleine largeur, autres en tuiles, « Bientôt » en dernier ; indicateurs en tuiles. Compte à onze rôles : 11 565 px → 2 496 px sur téléphone, 5 621 px → 1 545 px sur ordinateur |
+| Installation | Manifeste, icône d'onglet et d'écran d'accueil : logo officiel réduit (PNG de 5 à 67 Ko, 167 Ko au total) ; couleur de la barre d'état suivant le thème |
+
+Reste pour la suite : la barre d'action collée en bas des formulaires (lot L3), l'en-tête de page des écrans, les écrans « Plus » propres à chaque rôle de bureau.
+
+## 9. Outils de vérification
 
 - **Relevé et captures sans fenêtre** : Chromium déjà installé (révision 1234) piloté par Playwright, profil persistant (appareil et code PIN conservés), navigation interne sans rechargement. Il rend les écrans en 375 px et 1280 px, clair et sombre, et relève par écran : débordement horizontal, boutons, contrôles natifs, tailles de police, tableaux, erreurs de console. Le navigateur intégré à l'application reste utilisable pour un coup d'œil, mais sa fenêtre est parfois masquée et les captures échouent alors.
 - **Base locale** : `gic_agropelc_refonte`, neuve (migrations, semis, `demo:data`), compte de démonstration à onze rôles ; jamais la base partagée des essais.
 
-## 9. Journal
+## 10. Journal
 
 | Date | Fait |
 |---|---|
 | 30/10/2026 | Audit des 61 écrans (mesures § 2), maquette de la direction (§ 5), plan par lots (§ 6). Direction validée par le porteur (style, navigation, thème) ; ADR-049 rédigé. Lot L0 clos. |
 | 30/10/2026 | Lot L1 (fondations, § 7) : jetons clair et sombre, polices, base, composants partagés, page de référence, `app.css` re-tokenisée. |
+| 30/10/2026 | Lot L2 (coquille et navigation, § 8) : barre du haut, onglets du bas avec « + », barre latérale, menu du compte, connexion, accueil à un rôle à la fois, logo officiel (icônes d'installation). |

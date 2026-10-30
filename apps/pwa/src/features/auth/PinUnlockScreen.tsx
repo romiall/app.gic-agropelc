@@ -6,6 +6,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, Button, Field, Input } from '../../components/ui/index.js';
 import { AuthLayout } from './AuthLayout.js';
 import { useAuth } from './AuthContext.js';
 
@@ -30,35 +31,32 @@ export function PinUnlockScreen() {
 
   return (
     <AuthLayout title={t('auth.unlock_title')} subtitle={t('auth.unlock_help')}>
-      <form className="auth-form" onSubmit={(event) => void onSubmit(event)}>
-        <div className="field">
-          <label htmlFor="pin">{t('auth.pin_label')}</label>
-          <input
-            id="pin"
-            type="password"
-            inputMode="numeric"
-            pattern="\d{6}"
-            maxLength={6}
-            autoComplete="current-password"
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
-            required
-            autoFocus
-          />
-        </div>
+      <form className="auth-form stack" onSubmit={(event) => void onSubmit(event)}>
+        <Field label={t('auth.pin_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="password"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              autoComplete="current-password"
+              value={pin}
+              onChange={(event) => setPin(event.target.value)}
+              required
+              autoFocus
+            />
+          )}
+        </Field>
         {pinError && pinError !== 'WIPED' && (
-          <p className="alert alert-error" role="alert">
+          <Banner tone="bad">
             {t('auth.pin_error_attempts', { count: pinError.attemptsLeft })}
-          </p>
+          </Banner>
         )}
-        {pinError === 'WIPED' && (
-          <p className="alert alert-error" role="alert">
-            {t('auth.pin_wiped')}
-          </p>
-        )}
-        <button type="submit" className="btn-block" disabled={submitting}>
+        {pinError === 'WIPED' && <Banner tone="bad">{t('auth.pin_wiped')}</Banner>}
+        <Button type="submit" size="lg" block loading={submitting}>
           {t('auth.unlock_submit')}
-        </button>
+        </Button>
       </form>
     </AuthLayout>
   );

@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
+import { Banner } from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { getDb } from '../../storage/db.js';
 import { loadAutonomy } from './autonomy.js';
@@ -32,12 +33,12 @@ export function AutonomyBanner() {
   if (!autonomy || autonomy.level === 'OK') return null;
   const values = { hours: autonomy.hours ?? 0, max: autonomy.maxHours };
   return autonomy.level === 'READ_ONLY' ? (
-    <p className="alert alert-error" role="alert">
+    <Banner tone="bad" role="alert">
       {t('sync.autonomy_read_only', values)}
-    </p>
+    </Banner>
   ) : (
-    <p className="home-banner" role="status">
+    <Banner tone="warn" role="status">
       {t('sync.autonomy_warning', values)}
-    </p>
+    </Banner>
   );
 }

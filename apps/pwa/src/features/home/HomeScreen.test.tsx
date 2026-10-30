@@ -307,3 +307,95 @@ describe('HomeScreen (ECR-ADM-03)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('HomeScreen : compte à plusieurs rôles (ADR-049)', () => {
+  function twoRoles(): HomeResponse {
+    const base = homeResponse();
+    return homeResponse({
+      user: { fullName: 'Awa Mbarga', roles: ['VENDEUR_PDV', 'MAGASINIER'] },
+      sections: [
+        base.sections[0]!,
+        {
+          role: 'MAGASINIER',
+          roleLabel: 'Magasinier',
+          scopeLabel: 'Vos sites',
+          actions: [
+            {
+              code: 'RECEIVE',
+              label: 'Réceptionner',
+              hint: null,
+              route: '/stock/receptions',
+              primary: true,
+            },
+          ],
+          kpis: [
+            {
+              code: 'KPI-STK-01',
+              label: 'Produits sous le seuil',
+              value: 3,
+              unit: 'COUNT',
+              detail: null,
+              delta: null,
+              series: null,
+              tone: 'warn',
+            },
+          ],
+          activity: [],
+        },
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it('un sélecteur par rôle : un seul rôle est affiché à la fois, le choix est mémorisé', async () => {
+    request.mockResolvedValue({ ok: true, data: twoRoles() });
+    const user = userEvent.setup();
+    renderHome();
+    const picker = await screen.findByRole('tablist', { name: 'Rôle affiché' });
+    expect(within(picker).getByRole('tab', { name: 'Vendeur de point de vente' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(document.querySelector('[data-kpi="KPI-COM-08"]')).not.toBeNull();
+    expect(document.querySelector('[data-kpi="KPI-STK-01"]')).toBeNull();
+
+    await user.click(within(picker).getByRole('tab', { name: 'Magasinier' }));
+    expect(document.querySelector('[data-kpi="KPI-STK-01"]')).not.toBeNull();
+    expect(document.querySelector('[data-kpi="KPI-COM-08"]')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Réceptionner' })).toHaveAttribute(
+      'href',
+      '/stock/receptions',
+    );
+    expect(window.sessionStorage.getItem('gic.home.role')).toBe('MAGASINIER');
+  });
+
+  it('rouvre le rôle choisi pendant la session', async () => {
+    window.sessionStorage.setItem('gic.home.role', 'MAGASINIER');
+    request.mockResolvedValue({ ok: true, data: twoRoles() });
+    renderHome();
+    expect(await screen.findByRole('tab', { name: 'Magasinier' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(document.querySelector('[data-kpi="KPI-STK-01"]')).not.toBeNull();
+  });
+
+  it('un rôle inconnu mémorisé retombe sur le premier ; un seul rôle : pas de sélecteur', async () => {
+    window.sessionStorage.setItem('gic.home.role', 'DIRECTION');
+    request.mockResolvedValue({ ok: true, data: twoRoles() });
+    const { unmount } = renderHome();
+    expect(await screen.findByRole('tab', { name: 'Vendeur de point de vente' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    unmount();
+
+    request.mockResolvedValue({ ok: true, data: homeResponse() });
+    renderHome();
+    await screen.findByRole('heading', { name: 'Bonjour, Awa Mbarga' });
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+  });
+});

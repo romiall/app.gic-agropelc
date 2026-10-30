@@ -49,6 +49,7 @@ export {
 } from './Feedback.js';
 export { useToast } from './toast-context.js';
 export { PageHeader, TabPanel, Tabs, type TabItem } from './Nav.js';
+export { ThemeSwitcher } from './ThemeSwitcher.js';
 export {
   THEME_PREFERENCES,
   initTheme,

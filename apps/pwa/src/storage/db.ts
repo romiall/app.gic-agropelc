@@ -195,6 +195,8 @@ export interface AttachmentBlob {
 
 export interface NavigationRecord {
   readonly user_id: string; // clé primaire
+  /** Nom de la personne, pour l'avatar et le menu du compte de la coquille (absent des anciens relevés). */
+  readonly full_name?: string;
   readonly roles: readonly string[];
   readonly sections: readonly {
     readonly role: string;

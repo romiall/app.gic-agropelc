@@ -17,6 +17,7 @@ export async function rememberNavigation(
 ): Promise<void> {
   const record: NavigationRecord = {
     user_id: userId,
+    full_name: response.user.fullName,
     roles: [...response.user.roles],
     sections: response.sections.map((section) => ({
       role: section.role,

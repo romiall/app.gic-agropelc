@@ -35,7 +35,7 @@ export default defineConfig({
       // main tout seul, `src/platform/service-worker.ts` pilote `updateSW()` explicitement.
       registerType: 'prompt',
       injectRegister: null,
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon-64.png', 'apple-touch-icon.png'],
       manifest: {
         id: '/',
         name: 'GIC AGROPELC',
@@ -45,12 +45,12 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        background_color: '#0b3d1e',
-        theme_color: '#0b3d1e',
+        background_color: '#f2f6f3',
+        theme_color: '#ffffff',
         icons: [
-          { src: 'pwa-192.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'pwa-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'pwa-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

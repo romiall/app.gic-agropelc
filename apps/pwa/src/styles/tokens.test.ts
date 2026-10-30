@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { THEME_COLORS } from '../components/ui/theme.js';
 
 // Chemins explicites : `new URL('./x.css', import.meta.url)` serait pris par Vite pour un actif à servir.
 const here = dirname(fileURLToPath(import.meta.url));
@@ -52,8 +53,13 @@ describe('tokens.css', () => {
     expect([...dark.keys()].filter((name) => !light.has(name))).toEqual([]);
   });
 
+  it('garde la barre d’état du téléphone égale au fond des barres (--surface) de chaque thème', () => {
+    expect(THEME_COLORS.light).toBe(light.get('surface'));
+    expect(THEME_COLORS.dark).toBe(dark.get('surface'));
+  });
+
   it('n’écrit aucune couleur en dur dans les feuilles de composants', () => {
-    for (const file of ['base.css', 'components.css']) {
+    for (const file of ['base.css', 'components.css', 'shell.css', 'home.css']) {
       expect(read(file).match(/#[0-9a-fA-F]{3,8}\b/g) ?? [], file).toEqual([]);
     }
     const legacy = read('../app/app.css');

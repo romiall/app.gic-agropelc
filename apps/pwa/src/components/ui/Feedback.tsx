@@ -34,6 +34,8 @@ const BANNER_ICON: Record<BannerTone, IconName> = {
 
 export interface BannerProps {
   tone?: BannerTone;
+  /** Rôle ARIA : par défaut `alert` pour une erreur ou une alerte, `status` sinon. */
+  role?: 'alert' | 'status';
   title?: ReactNode;
   /** Action sous le texte (bouton ou lien). */
   action?: ReactNode;
@@ -45,6 +47,7 @@ export interface BannerProps {
 
 export function Banner({
   tone = 'info',
+  role,
   title,
   action,
   onDismiss,
@@ -53,14 +56,15 @@ export function Banner({
 }: BannerProps) {
   const { t } = useTranslation();
   return (
-    <div
-      className={cx('banner', `banner-${tone}`, className)}
-      role={tone === 'bad' || tone === 'warn' ? 'alert' : 'status'}
-    >
+    <div className={cx('banner', `banner-${tone}`, className)}>
       <Icon name={BANNER_ICON[tone]} size={20} className="banner-icon" />
-      <div className="banner-body">
+      {/* Le rôle est sur le corps (texte, titre, action), pas sur l'icône ni sur la croix. */}
+      <div
+        className="banner-body"
+        role={role ?? (tone === 'bad' || tone === 'warn' ? 'alert' : 'status')}
+      >
         {title ? <p className="banner-title">{title}</p> : null}
-        {children ? <div>{children}</div> : null}
+        {children}
         {action ? <div className="banner-action">{action}</div> : null}
       </div>
       {onDismiss ? (

@@ -1,0 +1,190 @@
+/* Accueil par rôle (ADR-049, lot L2) : en-tête, signaux, sélecteur de rôle, actions du jour, indicateurs.
+   Les composants (tuile, liste, pastille, bandeau) viennent de `components.css`. */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.home :where(h1, h2, h3, p) {
+  margin: 0;
+}
+
+.home-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.home-date {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.home-fresh {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.home-calm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--ok-tint);
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* Signaux : la gravité se lit dans l'icône, la pastille et le texte, jamais dans la couleur seule. */
+.signal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.signal-body {
+  min-width: 0;
+}
+
+.signal-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.signal-detail {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.signal-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 2.25rem;
+  margin-top: var(--space-1);
+  color: var(--brand-strong);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.signal-action:hover {
+  text-decoration: underline;
+}
+
+.signal-action-soon {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+/* Rôles : un seul affiché à la fois quand le compte en cumule plusieurs. */
+.home-roles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.home-role {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.home-role-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.home-scope {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+/* Actions du jour : la principale sur toute la largeur, les autres en tuiles. */
+.home-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+.home-actions .action {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  min-height: 3.5rem;
+  padding: var(--space-3) var(--space-4);
+  border-color: var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.home-actions .action-primary {
+  grid-column: 1 / -1;
+  border-color: var(--brand);
+  box-shadow: none;
+}
+
+.home-actions .action-soon {
+  box-shadow: none;
+}
+
+.home-actions .action-soon-tag {
+  order: 0;
+  align-self: center;
+  margin: 0 0 0 auto;
+}
+
+.action-icon {
+  flex: none;
+}
+
+.action-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.home-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-3);
+}
+
+.activity-time {
+  flex: none;
+  width: 4.25rem;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.list-row.is-bad .list-title {
+  color: var(--bad);
+}
+
+.home-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.home-error-actions .muted {
+  flex: 1 1 100%;
+}
