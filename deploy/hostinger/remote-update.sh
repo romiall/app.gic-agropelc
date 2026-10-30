@@ -16,7 +16,7 @@ cd "$APP"
 PREV="releases/$RELEASE/previous"
 NEW="releases/$RELEASE/new"
 DUMP="$HOME/backups_db/gic-$RELEASE.sql.gz"
-ITEMS="dist pwa seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs package.json node_modules/@gic/domain node_modules/@gic/contracts"
+ITEMS="dist pwa seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs approve-device.mjs package.json node_modules/@gic/domain node_modules/@gic/contracts"
 mkdir -p "$PREV" "$NEW" "$HOME/backups_db" node_modules/@gic tmp
 
 restart() {
@@ -41,7 +41,7 @@ trap rollback ERR
 
 echo "== 1/8 Extraction du paquet"
 tar -xzf "$BUNDLE" -C "$NEW"
-for f in dist pwa pkg-domain pkg-contracts seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs package.json; do
+for f in dist pwa pkg-domain pkg-contracts seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs approve-device.mjs package.json; do
   [ -e "$NEW/$f" ] || fail "$f absent du paquet"
 done
 
@@ -78,6 +78,7 @@ mv "$NEW/server.js" server.js
 mv "$NEW/migrate.mjs" migrate.mjs
 mv "$NEW/mariadb-compat.mjs" mariadb-compat.mjs
 mv "$NEW/compat-check.mjs" compat-check.mjs
+mv "$NEW/approve-device.mjs" approve-device.mjs
 mv "$NEW/package.json" package.json
 mv "$NEW/pkg-domain" node_modules/@gic/domain
 mv "$NEW/pkg-contracts" node_modules/@gic/contracts

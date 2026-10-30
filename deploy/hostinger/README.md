@@ -65,7 +65,7 @@ Variables du `.env` du serveur (valeurs jamais versionnées) : `NODE_ENV`, `PORT
 ## Correctifs propres à la mise en ligne (non versionnés dans le code source)
 
 - **Connexion par adresse e-mail.** Depuis le 27/10/2026 le code compilé en ligne accepte une adresse e-mail dans le champ de connexion (`phone` jusqu'à 200 caractères, repli sur `identity_users.email`). Ce correctif n'existe pas dans `apps/server/src/modules/identity/api/auth.controller.ts` : `build-bundle.ps1` le **réapplique au code construit** et s'arrête si le code a changé. À intégrer proprement dans le code source (avec ses essais) quand le porteur le décide ; il faudra alors supprimer ce bloc.
-- L'approbation automatique de l'appareil `admin`, essayée le 27/10/2026, n'est plus en ligne (le fichier a été remplacé) : la procédure d'installation reste `approve-device`.
+- L'approbation automatique de l'appareil `admin`, essayée le 27/10/2026, n'est plus en ligne (le fichier a été remplacé). Le premier appareil d'un administrateur s'approuve avec `approve-device.mjs`, l'équivalent en ligne de `pnpm run db:approve-device` (qui demande `tsx`, absent de l'hébergement) : sur le serveur, dans le dossier de l'application, `node --env-file=.env approve-device.mjs <code court>`. Le code de 4 caractères s'affiche sur l'appareil en attente après la première connexion ; l'utilisateur qui l'a connecté doit être administrateur.
 
 ## Points d'attention
 

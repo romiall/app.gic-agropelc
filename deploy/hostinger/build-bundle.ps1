@@ -44,6 +44,8 @@ Copy-Item "$PSScriptRoot\migrate.mjs" "$stage\migrate.mjs" -Force
 # Compatibilite MariaDB du code serveur (CAST AS JSON, FOR SHARE) et son controle sur la base reelle.
 Copy-Item "$PSScriptRoot\mariadb-compat.mjs" "$stage\mariadb-compat.mjs" -Force
 Copy-Item "$PSScriptRoot\compat-check.mjs" "$stage\compat-check.mjs" -Force
+# Approbation du premier appareil d'administration (AV-254), sans tsx : voir README.md.
+Copy-Item "$PSScriptRoot\approve-device.mjs" "$stage\approve-device.mjs" -Force
 
 # Correctif propre a la mise en ligne (non versionne dans le code source) : connexion par adresse e-mail.
 # Il etait applique a la main sur le serveur depuis le 27/10/2026 ; le reprendre ici evite qu'une mise a jour
