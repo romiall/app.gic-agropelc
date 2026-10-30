@@ -22,6 +22,8 @@ export default [
       'pieces-papier/**',
       'scratch/**',
       '.claude/**',
+      // Scripts de mise en ligne (deploy/) : exécutés tels quels sur l'hébergement, hors du code typé du projet.
+      'deploy/**',
     ],
   },
   js.configs.recommended,

@@ -109,3 +109,7 @@ Hostinger (ADR-024 §5).
 ## 6. Estimation de coût (ordre de grandeur, AV-084)
 
 L'estimation précédente (services managés génériques : conteneurs + PostgreSQL + S3 + CDN, environ 150 à 400 USD/mois) est **caduque** : Hostinger sans VPS vise un coût nettement inférieur pour le calcul et la base (plans d'hébergement mutualisé ou cloud d'entrée de gamme, généralement de l'ordre de quelques à quelques dizaines de USD par mois), auquel s'ajoutent le stockage objet séparé (AV-091, quelques USD/mois au volume attendu) et le domaine (`gic-agropelc.com`, coût annuel usuel d'un domaine `.com`). **Chiffrage précis différé à la phase de déploiement**, une fois le plan Hostinger et la modalité d'exécution Node.js choisis (AV-090).
+
+## 7. Mise en ligne actuelle (Hostinger)
+
+La version en ligne (`https://app.gic-agropelc.com`) tourne sur l'hébergement mutualisé Hostinger : Node 22 derrière Passenger (`server.js` : API, worker et fichiers de la PWA dans un même processus) et base MariaDB 11.8 à utilisateur unique. Elle a été installée à la main le 26 et le 27/10/2026 ; la procédure est reprise en scripts versionnés dans [`deploy/hostinger/`](../../deploy/hostinger/README.md) : construction du paquet, sauvegarde de la base, migrations adaptées à MariaDB, semis, redémarrage, contrôle et retour arrière automatique. Aucun secret n'y figure.
