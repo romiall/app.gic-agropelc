@@ -86,7 +86,7 @@ describe('Noter un échange (ECR-CRM-03)', () => {
       },
     });
 
-    await user.click(screen.getByRole('link', { name: '← Fiche du compte' }));
+    await user.click(screen.getByRole('link', { name: 'Fiche du compte' }));
     const activity = within(
       await screen.findByRole('region', { name: 'Visites et échanges (90 jours)' }),
     );

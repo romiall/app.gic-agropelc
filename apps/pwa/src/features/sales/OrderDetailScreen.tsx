@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Badge } from '../../components/ui/index.js';
+import { BackLink, Badge } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeCommandeClient } from '../pieces/adaptateurs-ventes.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
@@ -190,11 +190,7 @@ export function OrderDetailScreen() {
   }
 
   const order = openOrders(refs).find((candidate) => candidate.id === orderId);
-  const back = (
-    <Link to={ROUTES.orders} className="back-link">
-      {t('orders.detail.back')}
-    </Link>
-  );
+  const back = <BackLink to={ROUTES.orders}>{t('orders.detail.back')}</BackLink>;
   if (!order) {
     // Livrée ou close par l'opération que l'on vient d'enregistrer : le jeu ne la sert plus, mais le
     // résultat de l'opération reste affiché.
@@ -278,18 +274,28 @@ export function OrderDetailScreen() {
               <span>{formatMoney(line.lineTotalXaf)}</span>
             </div>
             <dl className="progress-grid">
-              <dt>{t('orders.detail.ordered')}</dt>
-              <dd>{formatQuantity(line.orderedBase)}</dd>
-              <dt>{t('orders.detail.sold')}</dt>
-              <dd>{formatQuantity(line.soldBase)}</dd>
-              <dt>{t('orders.detail.delivered')}</dt>
-              <dd>{formatQuantity(line.deliveredBase)}</dd>
-              <dt>{t('orders.detail.pending')}</dt>
-              <dd className={line.pendingBase > 0 ? 'text-warn' : undefined}>
-                {formatQuantity(line.pendingBase)}
-              </dd>
-              <dt>{t('orders.detail.to_deliver')}</dt>
-              <dd>{formatQuantity(line.toDeliverBase)}</dd>
+              <div>
+                <dt>{t('orders.detail.ordered')}</dt>
+                <dd>{formatQuantity(line.orderedBase)}</dd>
+              </div>
+              <div>
+                <dt>{t('orders.detail.sold')}</dt>
+                <dd>{formatQuantity(line.soldBase)}</dd>
+              </div>
+              <div>
+                <dt>{t('orders.detail.delivered')}</dt>
+                <dd>{formatQuantity(line.deliveredBase)}</dd>
+              </div>
+              <div>
+                <dt>{t('orders.detail.pending')}</dt>
+                <dd className={line.pendingBase > 0 ? 'text-warn' : undefined}>
+                  {formatQuantity(line.pendingBase)}
+                </dd>
+              </div>
+              <div>
+                <dt>{t('orders.detail.to_deliver')}</dt>
+                <dd>{formatQuantity(line.toDeliverBase)}</dd>
+              </div>
             </dl>
             {line.deliveringBase > 0 ? (
               <p className="home-muted">

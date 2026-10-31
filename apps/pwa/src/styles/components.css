@@ -646,7 +646,6 @@ button.list-row::before {
 
 .page-back {
   display: inline-flex;
-  flex: 1 0 100%;
   align-items: center;
   gap: var(--space-1);
   min-height: var(--control-h);
@@ -656,6 +655,15 @@ button.list-row::before {
   font-size: var(--text-sm);
   font-weight: 600;
   text-decoration: none;
+}
+
+.page-header .page-back {
+  flex: 1 0 100%;
+}
+
+.page-back:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 .page-title {

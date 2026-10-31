@@ -126,6 +126,7 @@ export const fr = {
       orders: 'Commandes',
       receipts: 'Réceptions',
       daily: 'Saisie du jour',
+      eggs: 'Collecte',
       lots: 'Lots',
       approvals: 'Validations',
       treasury: 'Trésorerie',
@@ -359,7 +360,7 @@ export const fr = {
     detail: {
       not_found:
         'Vente introuvable sur cet appareil (au-delà de 7 jours, ou hors de votre périmètre).',
-      back: '← Ventes récentes',
+      back: 'Ventes récentes',
       receipt_title: 'Reçu',
       date: 'Le {{date}} à {{time}}',
       seller_you: 'Vendeur : vous',
@@ -480,7 +481,7 @@ export const fr = {
     detail: {
       not_found:
         'Commande introuvable sur cet appareil (livrée, close, annulée, ou hors de votre périmètre).',
-      back: '← Commandes',
+      back: 'Commandes',
       title: 'Commande {{doc}}',
       prepared_at: 'Préparée à {{location}}',
       ordered: 'Commandé',
@@ -635,13 +636,12 @@ export const fr = {
     },
     empty: 'Aucun compte ne correspond.',
     overdue: 'en retard',
-    outstanding: 'Encours {{amount}}',
     last_activity: 'Dernier contact {{when}}',
     next_action: 'À faire le {{date}} {{note}}',
     pending: 'Non confirmé',
   },
   customer: {
-    back: '← Mon portefeuille',
+    back: 'Mon portefeuille',
     not_found:
       'Ce compte n’est pas sur ce téléphone (hors de votre périmètre, ou pas encore synchronisé).',
     pending: 'Compte créé sur ce téléphone, pas encore confirmé par la synchronisation.',
@@ -654,6 +654,7 @@ export const fr = {
     credit_none: 'Non accordé',
     credit_no_limit: 'Accordé, plafond non défini : toute vente à crédit demande une validation',
     credit_limit: 'Plafond {{amount}}',
+    call: 'Appeler',
     sell: '+ Vente',
     visit_action: '+ Visite',
     interaction_action: 'Noter un échange',
@@ -755,7 +756,7 @@ export const fr = {
   },
   interaction: {
     title: 'Noter un échange',
-    back: '← Fiche du compte',
+    back: 'Fiche du compte',
     offline_banner:
       'Hors ligne : l’échange sera enregistré sur ce téléphone et envoyé au retour du réseau.',
     channel_label: 'Canal',
@@ -1120,7 +1121,7 @@ export const fr = {
       CANCELLED: 'Annulée',
     },
     supplier_unknown: 'Fournisseur',
-    back: '← Bons de commande à recevoir',
+    back: 'Bons de commande à recevoir',
     not_found:
       'Ce bon de commande n’est plus à recevoir (reçu, clôturé ou hors de vos emplacements).',
     order_title: 'Réceptionner {{doc}}',
@@ -2268,7 +2269,7 @@ export const fr = {
       'Cette demande est déjà expédiée depuis ce téléphone ; l’expédition attend l’envoi.',
     not_found:
       'Cette demande n’est plus à expédier (déjà expédiée, annulée, ou hors de vos emplacements).',
-    back: '← Transférer',
+    back: 'Transférer',
     request_title: 'Expédier la demande {{doc}}',
     requested: 'Demandé : {{quantity}} {{unit}}',
     dispatched_label: 'Expédié ({{unit}})',
@@ -2355,7 +2356,7 @@ export const fr = {
     receiving: 'Réception en attente d’envoi',
     title: 'Réception {{doc}}',
     route: '{{from}} → {{to}}',
-    back: '← Transferts à recevoir',
+    back: 'Transferts à recevoir',
     not_found: 'Transfert introuvable sur cet appareil, ou déjà reçu.',
     already_receiving:
       'Une réception de ce transfert est déjà enregistrée sur l’appareil et attend d’être envoyée.',
@@ -3308,6 +3309,7 @@ export const fr = {
     retry: 'Relire les créances',
     summary_title: 'Encours',
     as_of: 'Situation au {{date}}',
+    aging_title: 'Encours par retard',
     buckets_label: 'Échu par retard',
     bucket_line: '{{label}} : {{amount}}',
     bucket: {

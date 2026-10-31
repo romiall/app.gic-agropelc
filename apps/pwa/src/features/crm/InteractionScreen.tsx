@@ -5,11 +5,12 @@
  * choisi par l'appareil), utilisable hors ligne ; non modifiable ensuite (BR-CRM-016).
  */
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import {
   ActionBar,
+  BackLink,
   Banner,
   Button,
   Field,
@@ -63,19 +64,12 @@ export function InteractionScreen() {
   }
 
   const customer = refs.customers.find((candidate) => candidate.id === customerId);
-  const back = customer ? (
-    <Link to={ROUTES.customer(customer.id)} className="back-link">
-      {t('interaction.back')}
-    </Link>
-  ) : (
-    <Link to={ROUTES.portfolio} className="back-link">
-      {t('customer.back')}
-    </Link>
-  );
+  const backTo = customer ? ROUTES.customer(customer.id) : ROUTES.portfolio;
+  const backLabel = customer ? t('interaction.back') : t('customer.back');
   if (!customer || customer.stage === 'MERGED') {
     return (
       <section className="sale crm-screen">
-        {back}
+        <BackLink to={backTo}>{backLabel}</BackLink>
         <Banner tone="bad">{t('customer.not_found')}</Banner>
       </section>
     );
@@ -84,8 +78,12 @@ export function InteractionScreen() {
   if (submitted) {
     return (
       <section className="sale crm-screen">
-        {back}
-        <PageHeader title={t('interaction.title')} subtitle={customer.display_name} />
+        <PageHeader
+          title={t('interaction.title')}
+          subtitle={customer.display_name}
+          backTo={backTo}
+          backLabel={backLabel}
+        />
         <CommandResult commandId={submitted} messages="interaction.result">
           <Button
             variant="outline"
@@ -130,8 +128,12 @@ export function InteractionScreen() {
 
   return (
     <section className="sale crm-screen">
-      {back}
-      <PageHeader title={t('interaction.title')} subtitle={customer.display_name} />
+      <PageHeader
+        title={t('interaction.title')}
+        subtitle={customer.display_name}
+        backTo={backTo}
+        backLabel={backLabel}
+      />
       {!online ? (
         <Banner tone="warn" role="status">
           {t('interaction.offline_banner')}

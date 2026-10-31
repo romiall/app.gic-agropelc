@@ -682,7 +682,9 @@ describe('Factures fournisseurs (ECR-FIN-03, P8E-05)', () => {
     ).toBeInTheDocument();
     serve(baseRoutes());
     await user.click(screen.getByRole('button', { name: 'Relire les dettes' }));
-    expect(await screen.findByText('Dette totale')).toBeInTheDocument();
+    // Tuile « Dette totale » relue : le libellé et le montant, comme avant la refonte.
+    const reread = (await screen.findByText('Dette totale')).closest('.tile') as HTMLElement;
+    expect(within(reread).getByText(/^2\s150\s000 F CFA$/)).toBeInTheDocument();
     third.unmount();
 
     serve({ ...baseRoutes(), '/api/v1/payables': DENIED });

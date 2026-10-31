@@ -7,10 +7,12 @@
  * Disposition : en-tête et actions, puis, sur ordinateur, coordonnées et chiffres à gauche, listes à
  * droite ; sur téléphone, tout s'empile dans le même ordre.
  */
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import {
+  AnchorButton,
+  BackLink,
   Badge,
   Banner,
   Card,
@@ -51,16 +53,11 @@ export function CustomerScreen() {
     );
   }
 
-  const back = (
-    <Link to={ROUTES.portfolio} className="back-link">
-      {t('customer.back')}
-    </Link>
-  );
   const customer = refs.customers.find((candidate) => candidate.id === customerId);
   if (!customer) {
     return (
       <section className="sale crm-screen">
-        {back}
+        <BackLink to={ROUTES.portfolio}>{t('customer.back')}</BackLink>
         <Banner tone="bad">{t('customer.not_found')}</Banner>
       </section>
     );
@@ -90,12 +87,17 @@ export function CustomerScreen() {
   const hasDetails = Boolean(
     customer.contact_name || customer.phone_primary || customer.address_text || zone,
   );
+  // Numéro composable (espaces retirés) : pour « Appeler » et pour le numéro des coordonnées.
+  const phoneHref = customer.phone_primary
+    ? `tel:${customer.phone_primary.replace(/\s/g, '')}`
+    : undefined;
 
   return (
     <section className="sale crm-screen">
-      {back}
       <PageHeader
         title={customer.display_name}
+        backTo={ROUTES.portfolio}
+        backLabel={t('customer.back')}
         subtitle={
           <Badge tone={stageTone(customer.stage)}>
             {t(`portfolio.stage.${customer.stage}`, { defaultValue: customer.stage })}
@@ -109,6 +111,11 @@ export function CustomerScreen() {
       ) : null}
 
       <div className="chip-row">
+        {phoneHref ? (
+          <AnchorButton href={phoneHref} variant="tonal" icon="phone">
+            {t('customer.call')}
+          </AnchorButton>
+        ) : null}
         {holdsAnyRole(roles, ROLE_SETS.saleRecord) ? (
           <LinkButton to={ROUTES.newSaleFor(customer.id)} icon="cart">
             {t('customer.sell')}
@@ -120,7 +127,7 @@ export function CustomerScreen() {
           </LinkButton>
         ) : null}
         {holdsAnyRole(roles, ROLE_SETS.interactionRecord) ? (
-          <LinkButton to={ROUTES.interaction(customer.id)} variant="tonal" icon="phone">
+          <LinkButton to={ROUTES.interaction(customer.id)} variant="tonal" icon="edit">
             {t('customer.interaction_action')}
           </LinkButton>
         ) : null}
@@ -161,9 +168,7 @@ export function CustomerScreen() {
                   <>
                     <dt>{t('customer.phone')}</dt>
                     <dd>
-                      <a href={`tel:${customer.phone_primary.replace(/\s/g, '')}`}>
-                        {customer.phone_primary}
-                      </a>
+                      <a href={phoneHref}>{customer.phone_primary}</a>
                     </dd>
                   </>
                 ) : null}

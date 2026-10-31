@@ -123,16 +123,30 @@ export interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, subtitle, backTo, backLabel, actions }: PageHeaderProps) {
+export interface BackLinkProps {
+  to: string;
+  /** Libellé du retour (« Retour » par défaut). */
+  children?: ReactNode;
+}
+
+/**
+ * Lien de retour (chevron et libellé) de l'en-tête de page. Les écrans qui gardent leur propre titre
+ * (reçu, détail d'une commande) ou qui n'en ont pas (élément introuvable) l'emploient directement.
+ */
+export function BackLink({ to, children }: BackLinkProps) {
   const { t } = useTranslation();
   return (
+    <Link className="page-back" to={to}>
+      <Icon name="chevron-left" size={18} />
+      {children ?? t('ui.back')}
+    </Link>
+  );
+}
+
+export function PageHeader({ title, subtitle, backTo, backLabel, actions }: PageHeaderProps) {
+  return (
     <header className="page-header">
-      {backTo ? (
-        <Link className="page-back" to={backTo}>
-          <Icon name="chevron-left" size={18} />
-          {backLabel ?? t('ui.back')}
-        </Link>
-      ) : null}
+      {backTo ? <BackLink to={backTo}>{backLabel}</BackLink> : null}
       <div className="page-title">
         <h1>{title}</h1>
         {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}

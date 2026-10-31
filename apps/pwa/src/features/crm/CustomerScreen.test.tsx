@@ -359,10 +359,37 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     expect(screen.queryByRole('link', { name: '+ Commande' })).not.toBeInTheDocument();
   });
 
+  it('« Appeler » ouvre le numéro du compte, en tête des raccourcis ; rien sans numéro', async () => {
+    const NO_PHONE = '01900000-0000-7000-8000-0000000000ea';
+    await getDb().projections.put({
+      key: `customers:CUSTOMER:${NO_PHONE}`,
+      dataset: 'customers',
+      entity_type: 'CUSTOMER',
+      entity_id: NO_PHONE,
+      scope_type: 'USER',
+      scope_id: IDS.user,
+      row_version: 1,
+      seq: 1,
+      data: asData(
+        customer({ id: NO_PHONE, display_name: 'Chez Sans-Numéro', phone_primary: null }),
+      ),
+    });
+    const first = renderAt(`/clients/${IDS.customer}`);
+    const dial = await screen.findByRole('link', { name: 'Appeler' });
+    expect(dial).toHaveAttribute('href', 'tel:+237699112233');
+    // Premier raccourci de la rangée d'actions.
+    expect(dial.parentElement?.firstElementChild).toBe(dial);
+    first.unmount();
+
+    renderAt(`/clients/${NO_PHONE}`);
+    expect(await screen.findByRole('heading', { name: 'Chez Sans-Numéro' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Appeler' })).not.toBeInTheDocument();
+  });
+
   it('compte hors du téléphone : message explicite et retour au portefeuille', async () => {
     renderAt('/clients/01900000-0000-7000-8000-0000000000ee');
     expect(await screen.findByText(/n’est pas sur ce téléphone/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← Mon portefeuille' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Mon portefeuille' })).toHaveAttribute(
       'href',
       '/clients',
     );

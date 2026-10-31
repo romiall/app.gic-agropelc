@@ -104,6 +104,28 @@ export function LinkButton({
   );
 }
 
+export interface AnchorButtonProps extends ComponentPropsWithRef<'a'>, Look {}
+
+/** Lien hors de l'application (téléphone, courriel) qui a l'apparence d'un bouton. */
+export function AnchorButton({
+  variant,
+  size,
+  block,
+  icon,
+  iconEnd,
+  className,
+  children,
+  ...rest
+}: AnchorButtonProps) {
+  return (
+    <a className={look({ variant, size, block, className })} {...rest}>
+      {icon ? <Icon name={icon} size={18} /> : null}
+      {children}
+      {iconEnd ? <Icon name={iconEnd} size={18} /> : null}
+    </a>
+  );
+}
+
 export interface IconButtonProps extends Omit<ButtonProps, 'icon' | 'iconEnd' | 'children'> {
   icon: IconName;
   /** Nom accessible, aussi affiché en infobulle. */

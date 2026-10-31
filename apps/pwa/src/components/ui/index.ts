@@ -3,6 +3,7 @@ export { cx } from './cx.js';
 export { Icon, type IconName } from './icons.js';
 export { ICON_NAMES } from './icon-set.js';
 export {
+  AnchorButton,
   Button,
   IconButton,
   LinkButton,
@@ -49,7 +50,7 @@ export {
   type BannerTone,
 } from './Feedback.js';
 export { useToast } from './toast-context.js';
-export { ActionBar, PageHeader, TabPanel, Tabs, type TabItem } from './Nav.js';
+export { ActionBar, BackLink, PageHeader, TabPanel, Tabs, type TabItem } from './Nav.js';
 export { ThemeSwitcher } from './ThemeSwitcher.js';
 export {
   THEME_PREFERENCES,

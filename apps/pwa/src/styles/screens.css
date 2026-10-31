@@ -52,23 +52,6 @@
   margin: 0;
 }
 
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--control-h);
-  margin-left: calc(-1 * var(--space-2));
-  padding: 0 var(--space-2);
-  color: var(--ink-2);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: var(--ink);
-  text-decoration: underline;
-}
-
 .action-compact {
   min-height: var(--control-h);
   padding: 0 var(--space-3);
@@ -485,21 +468,25 @@ a.doc-row:hover {
   cursor: pointer;
 }
 
+/* Avancement d'une ligne de commande : cinq paires libellé et quantité ; trois par rangée sur téléphone,
+   les cinq d'une ligne dès que la place le permet. */
 .progress-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 2px var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  gap: var(--space-2) var(--space-3);
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
 }
 
+.progress-grid > div {
+  min-width: 0;
+}
+
 .progress-grid dt {
-  grid-row: 1;
   color: var(--ink-3);
 }
 
 .progress-grid dd {
-  grid-row: 2;
   margin: 0;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -620,4 +607,137 @@ a.doc-row:hover {
 
 .filter-bar .field {
   margin-bottom: 0;
+}
+
+/* --- Vocabulaire hérité des écrans (K2, UX-11) --------------------------------------------------------
+   Repris de l'ancien `app/app.css`, retiré à la clôture de la refonte (lot L10) : les écrans qui n'ont pas
+   de composant partagé pour ces éléments l'emploient encore. */
+
+.error-message {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.alert {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.alert-error {
+  background: var(--bad-tint);
+  border: 1px solid var(--bad-line);
+  color: var(--bad);
+}
+
+.home-muted {
+  margin: 0;
+  color: var(--ink-3);
+}
+
+.home-banner {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  color: var(--warn);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.action {
+  --btn-bg-h: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.action-primary,
+.action[aria-current='page'] {
+  --btn-bg-h: var(--brand-strong);
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.action-label {
+  font-weight: 700;
+}
+
+.action-hint {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.action-soon {
+  border-style: dashed;
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+
+.action-soon-tag {
+  order: -1;
+  align-self: flex-start;
+  margin-bottom: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.text-input {
+  width: 100%;
+}
+
+.text-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* Pièce papier (lot PP) : l'aperçu tient dans la largeur de l'écran, la feuille garde ses mm. */
+
+.piece-action {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.piece-apercu {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--surface-3);
+}
+
+.piece-apercu iframe {
+  display: block;
+  border: 0;
+  background: var(--surface-3);
+}
+
+@media print {
+  .page-back,
+  .no-print,
+  .cancel-form {
+    display: none;
+  }
+
+  .receipt {
+    border: none;
+  }
 }

@@ -54,6 +54,12 @@
   --seg: var(--bad);
 }
 
+/* Ce qui n'est pas encore échu : un gris neutre, en dehors de la rampe du retard. */
+.fin-age-due {
+  --seg: var(--ink-3);
+  --seg: color-mix(in srgb, var(--ink-3) 45%, var(--surface));
+}
+
 .fin-age {
   margin: var(--space-4) 0 var(--space-2);
 }
@@ -96,6 +102,7 @@
   }
 }
 
+.fin-age-line,
 .fin-age-legend li {
   display: flex;
   align-items: center;
@@ -105,6 +112,7 @@
   font-variant-numeric: tabular-nums;
 }
 
+.fin-age-line::before,
 .fin-age-legend li::before {
   content: '';
   flex: none;
@@ -112,6 +120,15 @@
   height: 0.625rem;
   border-radius: 3px;
   background: var(--seg);
+}
+
+/* Ligne « à échoir » : la première de la légende, au-dessus des quatre tranches échues. */
+.fin-age-line {
+  margin: var(--space-3) 0 0;
+}
+
+.fin-age-line + .fin-age-legend {
+  margin-top: var(--space-1);
 }
 
 /* --- Tableaux ---------------------------------------------------------------------------------------- */

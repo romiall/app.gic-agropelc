@@ -6,6 +6,7 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import './auth.css';
 
 interface AuthLayoutProps {
   readonly title: string;

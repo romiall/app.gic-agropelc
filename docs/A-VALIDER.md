@@ -9,7 +9,7 @@ Classification (PM §45) :
 - **IMPORTANTE** : peut être décidée pendant le développement, avant la phase concernée.
 - **SECONDAIRE** : peut rester configurable ou être reportée.
 
-Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 486 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
+Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 489 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026, 486 à 488 par la clôture de la refonte graphique du 31/10/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
 
 ---
 
@@ -474,6 +474,9 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-483 | `JOB_FAILED` : cadence de la passe | SECONDAIRE | P9 | 5 minutes, constante de planification (comme `CONSUMER_FAILED`), non réglable ; **implémenté** (P9-27) | OUVERT |
 | AV-484 | `JOB_FAILED` : regroupement et seuil | SECONDAIRE | P9 | Une alerte par type de tâche, une seule tâche `FAILED` suffit, aucun type exclu ; **implémenté** (P9-27) | OUVERT |
 | AV-485 | Base de l'hébergement : MariaDB 11.8 mutualisée, non MySQL 8.4 | IMPORTANTE | Mise en ligne, pilote | Couche de compatibilité dans le kit de mise en ligne (`CAST … AS JSON`, `FOR SHARE`, migrations, semis) et contrôle SQL sur la base réelle avant chaque redémarrage ; **mise en œuvre** (30/10/2026) ; une base MySQL 8.4 dédiée reste à décider avant le pilote | OUVERT |
+| AV-486 | Éditeur de règle de prix : erreurs montrées dès l'ouverture | SECONDAIRE | PWA (prix), après la refonte graphique | Comportement d'avant conservé : les champs obligatoires vides s'affichent en erreur dès l'ouverture ; à montrer après une saisie ou une tentative d'envoi | OUVERT |
+| AV-487 | Trésorerie : « Solde des comptes » et total de trésorerie des coûts et marges | IMPORTANTE | PWA (finance), pilote | Somme des comptes listés (inactifs compris) dans la trésorerie, total fourni par le serveur dans la vue d'ensemble des coûts ; à faire concorder | OUVERT |
+| AV-488 | « Fiche de suivi de la semaine » : bouton du module des pièces d'avant la refonte | SECONDAIRE | PWA (pièces papier) | Bouton nu conservé : `features/pieces/` n'a pas été touché pendant la refonte ; à reprendre avec le lot des pièces | OUVERT |
 
 ---
 
@@ -3587,6 +3590,27 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) rester sur MariaDB avec la couche de compatibilité du kit (`deploy/hostinger/mariadb-compat.mjs`), son contrôle sur la base réelle avant chaque redémarrage et la lecture des journaux ; (b) une base MySQL 8.4 dédiée avant le pilote (autre offre d'hébergement, VPS ou base managée) ; (c) rendre le code portable dans les deux moteurs et le tester sur MariaDB 11.8 en intégration continue.
 - **Recommandation** : (a) maintenant, pour mettre en ligne ce qui fonctionne ; (b) ou (c) avant le pilote, car chaque écart de plus est un défaut que la suite d'essais ne peut pas voir.
 - **Impact** : `deploy/hostinger/` (`mariadb-compat.mjs`, `compat-check.mjs`, `migrate.mjs`, `build-bundle.ps1`, `remote-update.sh`), [`05-architecture/04-deploiement.md`](05-architecture/04-deploiement.md) §7, ADR-023. Défaut mis en œuvre (30/10/2026) : (a). Non paramétrable (propre au kit).
+
+### AV-486 — Éditeur de règle de prix : erreurs montrées dès l'ouverture — SECONDAIRE
+- **Question** : l'éditeur de règle de prix doit-il montrer ses champs obligatoires vides en erreur (bord rouge, messages sous le formulaire) dès l'ouverture, ou seulement après une saisie ou une tentative d'envoi ?
+- **Pourquoi** : l'état « invalide » du formulaire est posé d'emblée. La refonte graphique (lot L5, [`24-refonte-graphique.md`](10-development-plan/24-refonte-graphique.md) § 8 ter) a conservé ce comportement : le changer touche la validation, donc sort d'une refonte à fonctionnalités constantes. Un formulaire neuf s'ouvre pourtant déjà en rouge. **CONFIRMÉ** (constat du lot L5).
+- **Choix** : (a) garder le comportement actuel ; (b) montrer l'erreur après une saisie ou une tentative d'envoi.
+- **Recommandation** : (b), dans un lot à part (validation du formulaire, essais de l'éditeur à compléter).
+- **Impact** : `features/pricing/` (éditeur de règle de prix). Défaut conservé : (a). Non paramétrable.
+
+### AV-487 — Trésorerie : « Solde des comptes » et total de trésorerie des coûts et marges — IMPORTANTE
+- **Question** : le « Solde des comptes » de l'écran de trésorerie (somme des comptes listés, comptes inactifs compris) et le total de trésorerie de la vue d'ensemble des coûts et marges (total fourni par le serveur) doivent-ils afficher le même chiffre, et un compte inactif entre-t-il dans le total ?
+- **Pourquoi** : deux définitions du même chiffre, lues à deux endroits de l'application, peuvent diverger devant la Direction. **CONFIRMÉ** (constat du lot L8 : deux lectures différentes dans le code) ; **DÉDUIT** : l'écart n'apparaît que si un compte inactif porte un solde.
+- **Choix** : (a) lire le total du serveur dans les deux écrans (une seule définition) ; (b) exclure les comptes inactifs de la somme de la trésorerie ; (c) garder les deux définitions et nommer l'écart.
+- **Recommandation** : (a), après avoir demandé à la Finance si un compte inactif peut porter un solde.
+- **Impact** : `features/treasury/TreasuryScreen.tsx`, `features/finance/CostsScreen.tsx` ; le serveur sert déjà le total. Défaut conservé : somme des comptes listés. Non paramétrable.
+
+### AV-488 — « Fiche de suivi de la semaine » : bouton du module des pièces d'avant la refonte — SECONDAIRE
+- **Question** : le bouton « Fiche de suivi de la semaine » (saisie du jour d'un lot) peut-il reprendre le composant `Button` de la refonte, ce qui exige de toucher au module `features/pieces/` ?
+- **Pourquoi** : le module des pièces papier (ADR-048) était exclu de la refonte pour que la mise en page exacte des pièces ne bouge pas ; son bouton d'action (`PieceAction`) reste un bouton nu, plein par défaut, que des règles de domaine ramènent à sa largeur (achats). **CONFIRMÉ** (constats des lots L6 et L7).
+- **Choix** : (a) laisser le bouton tel quel ; (b) le reprendre avec le lot des pièces suivant, la mise en page des pièces restant intacte.
+- **Recommandation** : (b).
+- **Impact** : `features/pieces/PieceAction.tsx` et les règles de domaine qui contournent sa largeur (`procurement.css`). Défaut conservé : (a). Non paramétrable.
 
 ## 3. Journal des décisions
 

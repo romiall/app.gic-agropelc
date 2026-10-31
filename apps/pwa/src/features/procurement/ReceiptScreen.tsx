@@ -496,18 +496,16 @@ export function ReceiptScreen() {
   const orders = receivableOrders(refs.purchaseOrders);
   const supplierName = (id: string) =>
     refs.suppliers.get(id)?.name ?? t('purchase_receipt.supplier_unknown');
-  const back = (
-    <Link to={ROUTES.purchaseReceipts} className="back-link">
-      {t('purchase_receipt.back')}
-    </Link>
-  );
 
   if (orderId) {
     if (submitted && submitted.orderId === orderId) {
       return (
         <section className="sale proc-screen">
-          {back}
-          <PageHeader title={t('nav.screens.purchase_receipt')} />
+          <PageHeader
+            title={t('nav.screens.purchase_receipt')}
+            backTo={ROUTES.purchaseReceipts}
+            backLabel={t('purchase_receipt.back')}
+          />
           <CommandResult commandId={submitted.commandId} messages="purchase_receipt.result" />
           <ReceiptPhotoResult
             commandId={submitted.commandId}
@@ -520,7 +518,6 @@ export function ReceiptScreen() {
     const order = orders.find((candidate) => candidate.id === orderId);
     return (
       <section className="sale proc-screen">
-        {back}
         <PageHeader
           title={
             order
@@ -528,6 +525,8 @@ export function ReceiptScreen() {
               : t('nav.screens.purchase_receipt')
           }
           subtitle={order ? supplierName(order.supplier_id) : undefined}
+          backTo={ROUTES.purchaseReceipts}
+          backLabel={t('purchase_receipt.back')}
         />
         {!online ? (
           <Banner tone="warn" role="status">

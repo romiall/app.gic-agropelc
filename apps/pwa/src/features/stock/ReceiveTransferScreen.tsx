@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ActionBar, Button, PageHeader } from '../../components/ui/index.js';
+import { ActionBar, BackLink, Button, PageHeader } from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeBonTransfert } from '../pieces/adaptateurs-stock.js';
 import { businessDayOf } from '@gic/domain';
@@ -220,15 +220,10 @@ export function ReceiveTransferScreen() {
 
   if (transferId) {
     const entry = incoming.find((candidate) => candidate.transfer.id === transferId);
-    const back = (
-      <Link to={ROUTES.receive} className="back-link">
-        {t('receive.back')}
-      </Link>
-    );
     if (!entry || entry.receiving) {
       return (
         <section className="sale">
-          {back}
+          <BackLink to={ROUTES.receive}>{t('receive.back')}</BackLink>
           <p className="alert alert-error">
             {t(entry?.receiving ? 'receive.already_receiving' : 'receive.not_found')}
           </p>

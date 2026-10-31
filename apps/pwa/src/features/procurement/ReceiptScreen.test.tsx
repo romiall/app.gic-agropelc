@@ -359,7 +359,7 @@ describe('Réceptionner (ECR-APP-04)', () => {
 
     // Réception attendue en quarantaine : elle n'avance pas le bon (le serveur ne le fait qu'en
     // comptabilisant), le reste à recevoir est inchangé.
-    await user.click(screen.getByRole('link', { name: '← Bons de commande à recevoir' }));
+    await user.click(screen.getByRole('link', { name: 'Bons de commande à recevoir' }));
     await user.click(
       await screen.findByRole('link', { name: 'Réceptionner le bon de commande BC-2026-000004' }),
     );

@@ -107,24 +107,42 @@ function ReadProblem({
 }
 
 /**
- * Vieillissement de l'échu : une barre empilée ordinale (un ton, du plus clair au plus foncé à mesure que
- * le retard s'allonge) dont la liste des tranches est la légende et le tableau équivalent. La barre est
- * décorative (`aria-hidden`) : chaque montant est lu dans la liste.
+ * Vieillissement de l'encours : une barre empilée qui va de ce qui n'est pas encore échu (gris) à l'échu
+ * le plus ancien (rampe ordinale à un ton, du plus clair au plus foncé à mesure que le retard s'allonge).
+ * La barre est décorative (`aria-hidden`) : la ligne « à échoir » et la liste des tranches échues sont la
+ * légende et le tableau équivalent, où chaque montant est lu.
  */
-function AgingBar({ buckets }: { readonly buckets: Readonly<Record<string, number>> }) {
+function AgingBar({
+  buckets,
+  notDue,
+}: {
+  readonly buckets: Readonly<Record<string, number>>;
+  readonly notDue: number;
+}) {
   const { t } = useTranslation();
   const amounts = AGING_BUCKETS.map((bucket) => buckets[bucket] ?? 0);
-  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  const total = notDue + amounts.reduce((sum, amount) => sum + amount, 0);
   const line = (bucket: (typeof AGING_BUCKETS)[number]) =>
     t('receivables.bucket_line', {
       label: t(`receivables.bucket.${bucket}`),
       amount: formatMoney(buckets[bucket] ?? 0),
     });
+  const notDueLine = t('receivables.bucket_line', {
+    label: t('receivables.tile_not_due'),
+    amount: formatMoney(notDue),
+  });
   return (
     <div className="fin-age">
-      <h3 className="fin-age-title">{t('receivables.buckets_label')}</h3>
+      <h3 className="fin-age-title">{t('receivables.aging_title')}</h3>
       {total > 0 ? (
         <div className="fin-age-bar" aria-hidden="true">
+          {notDue > 0 ? (
+            <span
+              className="fin-age-seg fin-age-due"
+              style={{ flexGrow: notDue }}
+              title={notDueLine}
+            />
+          ) : null}
           {AGING_BUCKETS.map((bucket, index) =>
             amounts[index] ? (
               <span
@@ -137,6 +155,7 @@ function AgingBar({ buckets }: { readonly buckets: Readonly<Record<string, numbe
           )}
         </div>
       ) : null}
+      <p className="fin-age-line fin-age-due">{notDueLine}</p>
       <ul className="fin-age-legend" aria-label={t('receivables.buckets_label')}>
         {AGING_BUCKETS.map((bucket, index) => (
           <li key={bucket} className={`fin-age-${String(index + 1)}`}>
@@ -336,7 +355,7 @@ export function ReceivablesScreen() {
                 value={formatMoney(notDueXaf(data.summary))}
               />
             </div>
-            <AgingBar buckets={data.summary.buckets} />
+            <AgingBar buckets={data.summary.buckets} notDue={notDueXaf(data.summary)} />
             <p className="home-muted">{t('receivables.scope_note')}</p>
           </>
         )}

@@ -5,6 +5,7 @@
  */
 import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Button } from '../../components/ui/index.js';
 import { formatMoney } from './format.js';
 import type { CustomerData } from './types.js';
 
@@ -90,9 +91,9 @@ export function CustomerPicker({
                 : t('sales.customer_anonymous_hint')}
           </p>
         </div>
-        <button type="button" className="secondary" onClick={() => setSearching(true)}>
+        <Button variant="outline" size="sm" onClick={() => setSearching(true)}>
           {t('sales.customer_change')}
-        </button>
+        </Button>
       </div>
     );
   }

@@ -320,6 +320,8 @@ describe('Créances (ECR-FIN-01, P8E-09)', () => {
       expect.stringMatching(/^61 à 90 jours de retard : 0 F CFA$/),
       expect.stringMatching(/^Plus de 90 jours de retard : 8\s000 F CFA$/),
     ]);
+    // La barre commence par ce qui n'est pas encore échu (gris) ; sa ligne de légende le dit.
+    expect(within(summary).getByText(/^À échoir : 5\s000 F CFA$/)).toBeInTheDocument();
 
     // Le compte absorbé est réuni au compte conservé ; le plus en retard d'abord.
     const mado = await within(list()).findByRole('listitem', { name: 'Restaurant Chez Mado' });

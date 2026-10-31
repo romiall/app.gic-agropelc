@@ -17,7 +17,7 @@ describe('tabsForRoles (onglets du bas, ADR-049)', () => {
     ['VENDEUR_PDV', [ROUTES.sales, ROUTES.stock]],
     ['COMMERCIAL_TERRAIN', [ROUTES.portfolio, ROUTES.sales]],
     ['MAGASINIER', [ROUTES.receive, ROUTES.stock]],
-    ['RESP_FERME', [ROUTES.productionLots, ROUTES.stock]],
+    ['RESP_FERME', [ROUTES.productionLots, ROUTES.eggCollection]],
     ['DIRECTION', [ROUTES.approvals, ROUTES.treasury]],
     ['FINANCE', [ROUTES.receivables, ROUTES.treasury]],
     ['RESP_ACHATS', [ROUTES.purchaseRequests, ROUTES.purchaseOrders]],

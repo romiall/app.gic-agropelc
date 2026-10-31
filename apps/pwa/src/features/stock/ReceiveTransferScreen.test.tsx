@@ -122,7 +122,7 @@ describe('Recevoir un transfert (ECR-STK-03)', () => {
 
     // Retour à la liste depuis le résultat, sans démonter l'écran : la liste s'affiche, et le
     // transfert n'est pas proposé une seconde fois.
-    await user.click(screen.getByRole('link', { name: '← Transferts à recevoir' }));
+    await user.click(screen.getByRole('link', { name: 'Transferts à recevoir' }));
     expect(await screen.findByText('Réception en attente d’envoi')).toBeInTheDocument();
     expect(screen.queryByText(/Réception enregistrée sur ce téléphone/)).not.toBeInTheDocument();
     unmount();

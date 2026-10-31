@@ -1,8 +1,8 @@
 # 24 — Refonte graphique et ergonomique de la PWA
 
-> **Statut (30/10/2026)** : audit fait, **direction visuelle validée par le porteur sur maquette** ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7), L2 (coquille, navigation, connexion, accueil, § 8) et L3 (ventes et caisse, § 8 bis) sont clos. Les écrans des autres domaines ne sont pas encore repris un à un : ils profitent déjà des jetons, du style des éléments nus et du vocabulaire commun des écrans (`screens.css`) ; les lots L4 à L9 sont menés en parallèle par quatre sessions (§ 6 bis). Branche `claude/refonte-graphique-b75250`, travail séquentiel, un lot à la fois, un commit par lot.
+> **Statut (31/10/2026)** : **refonte close**. Direction visuelle validée par le porteur sur maquette ([ADR-049](../decisions/ADR-049-systeme-de-design-de-la-pwa.md), compléments : [ADR-050](../decisions/ADR-050-complements-au-systeme-de-design-de-la-pwa.md)) ; les lots L0 (audit, direction), L1 (fondations, § 7), L2 (coquille, navigation, connexion, accueil, § 8), L3 (ventes et caisse, § 8 bis), L4 à L9 (les domaines, § 8 ter) et L10 (clôture, § 8 quater) sont faits. Branche `claude/refonte-graphique-b75250`, **commits locaux, rien de poussé** ; les lots L0 à L3 et L10 ont été menés en séquence, les lots L4 à L9 par trois sessions en parallèle (§ 6 bis) puis fusionnés.
 > **Portée** : `apps/pwa` seulement, **à fonctionnalités constantes** (mêmes commandes, même hors ligne, même synchronisation). `apps/server`, `db/`, `deploy/` et `apps/pwa/src/features/pieces/` (mise en page exacte des pièces imprimées) ne sont pas touchés.
-> **Numéros réservés au chantier** : de 486 à 499 pour les AV, de 049 à 051 pour les ADR (la session principale n'y touche pas).
+> **Numéros pris par le chantier** : AV-486 à AV-488, ADR-049 et ADR-050 ; les autres numéros réservés (AV 489 à 499, ADR 051) sont rendus au projet.
 
 ## 1. Pourquoi
 
@@ -91,20 +91,20 @@ Décision du porteur du 30/10/2026 : après le lot L3, les lots de domaine sont 
 
 | Session | Lots | Périmètre | Suivi |
 |---|---|---|---|
-| Session principale | L4, puis L10 | `features/stock/`, réapprovisionnement ; clôture sur la fusion | [L4](24-refonte-graphique-L4.md) |
-| Fork A | L5, puis L7 | `crm`, `fieldwork`, `catalog`, `pricing`, livraison ; `procurement` | [L5](24-refonte-graphique-L5.md), [L7](24-refonte-graphique-L7.md) |
-| Fork B | L6, puis L9 | `production` ; `users`, `devices`, `approvals`, `sync` (écrans), `attachments` | [L6](24-refonte-graphique-L6.md), [L9](24-refonte-graphique-L9.md) |
-| Fork C | L8 | `finance`, `treasury` | [L8](24-refonte-graphique-L8.md) |
+| Session principale | L4, puis L10 | `features/stock/`, réapprovisionnement ; clôture sur la fusion | § 8 ter, § 8 quater |
+| Fork A | L5, puis L7 | `crm`, `fieldwork`, `catalog`, `pricing`, livraison ; `procurement` | § 8 ter |
+| Fork B | L6, puis L9 | `production` ; `users`, `devices`, `approvals`, `sync` (écrans), `attachments` | § 8 ter |
+| Fork C | L8 | `finance`, `treasury` | § 8 ter |
 
 Règles qui évitent tout cumul de fichiers :
 
 - **Fichiers communs** (`components/ui/*`, `styles/{tokens,base,components,screens,shell,home}.css`, `app/app.css`, `main.tsx`, `app/screens.ts`, `shell/*`) : personne ne les modifie pendant les lots ; la session principale les ajuste sur demande et retire `app.css` au lot L10. Briques communes déjà posées : `DataCell` pleine largeur (`wide`), rangée d'actions `chip-row`, barre de filtres `filter-bar`, `ref` transmis par `Button`.
 - **Une feuille de style par domaine** : `features/<domaine>/<domaine>.css`, importée par les écrans du domaine ; le test des couleurs balaie toutes les feuilles (plus de liste à tenir).
 - **Textes** : les clés de `fr.ts` d'un lot s'ajoutent au milieu de ses propres blocs, jamais à leur première ou dernière ligne ; les conflits restants se règlent à la fusion.
-- **Suivi** : chaque lot tient son fichier ; le suivi principal est consolidé au lot L10.
+- **Suivi** : chaque lot a tenu son propre fichier ; ils sont consolidés dans ce document au lot L10 (§ 8 ter) et supprimés.
 - **Questions** : pas d'AV ni d'ADR en route ; les questions s'écrivent `Q-L<n>-<k>` dans le fichier du lot, la session principale les numérote et les enregistre au lot L10 (numéros 486 à 499 pour les AV, 050 et 051 pour les ADR).
 - **Machine (8 Go)** : une seule étape lourde à la fois (types, ESLint, essais, construction, serveurs, Chromium), sous un verrou commun hors du dépôt.
-- **Fusion** : une branche par session, un commit par lot, aucun push ; la session principale fusionne sur demande du porteur, dans l'ordre L4 à L9, puis le lot L10 vérifie la fusion en une seule passe.
+- **Fusion** : une branche par session, un commit par lot, aucun push ; la session principale fusionne sur demande du porteur, dans l'ordre L4 à L9, puis le lot L10 vérifie la fusion en une seule passe. **Fait le 31/10/2026** : trois fusions sans aucun conflit (seul `fr.ts` était commun et chaque lot ajoutait ses clés dans ses propres blocs), vérification faite une fois au lot L10 (§ 8 quater).
 
 ## 7. Fondations livrées (lot L1)
 
@@ -115,7 +115,7 @@ Le lot L1 est l'infrastructure de tout le reste : un écran qui n'a pas encore �
 | `apps/pwa/src/styles/tokens.css` | Jetons : couleurs clair et sombre (le sombre sous `data-theme="dark"` et, pour « automatique », sous `prefers-color-scheme`), typographie (7 tailles), espacement de 4 px, rayons, ombres, gestes (40 px visibles, 48 px pour l'action principale), mouvement |
 | `styles/fonts.css`, `base.css` | Noto Sans (400, 600, 700) et Barlow Semi Condensed (600, 700) en `woff2`, mêmes fichiers que les pièces imprimées ; style des éléments nus : boutons, champs, listes déroulantes, cases et radios dessinées, interrupteur, focus visible, `prefers-reduced-motion` |
 | `styles/components.css` | Classes des composants ; aucune couleur en dur |
-| `app/app.css` | Feuille héritée, **re-tokenisée** : plus aucune couleur écrite en dur, anciens noms de variables renvoyés aux jetons, règles en conflit avec la base retirées. Disparaît au lot L10 |
+| `app/app.css` | Feuille héritée, **re-tokenisée** : plus aucune couleur écrite en dur, anciens noms de variables renvoyés aux jetons, règles en conflit avec la base retirées. Retirée au lot L10 (§ 8 quater) |
 | `components/ui/` | `Button`, `LinkButton`, `IconButton` · `Field`, `Input`, `Select`, `Textarea`, `Checkbox`, `Radio`, `Switch`, `Segmented` · `Card`, `Section`, `List`, `ListRow`, `DataList` (cartes sur téléphone, colonnes dès 900 px), `Badge`, `Avatar`, `KpiTile`, `Sparkline` · `Banner`, `EmptyState`, `Skeleton`, `Spinner`, `Sheet`, `ToastProvider` et `useToast` · `Tabs`, `TabPanel`, `PageHeader` · `Icon` (47 icônes) · thème (`theme.ts`) |
 | `dev/ComponentGallery.tsx` | Page de référence `/dev/composants`, développement seulement : absente de la construction de production (`import.meta.env.DEV`) |
 
@@ -125,7 +125,7 @@ Règles pour les lots suivants :
 - **Listes** : `List` et `ListRow` sur téléphone, `DataList` quand un écran a plusieurs colonnes ; toujours des `ul` et des `li`, jamais de `table`, pour que les essais par rôle, libellé et texte restent valables.
 - **Petits choix exclusifs** (cinq au plus) : `Segmented`, pas une pile de radios ni une liste déroulante.
 - **Formulaires** : `Field` relie libellé, aide, erreur et unité au contrôle ; le bouton principal va dans une barre d'action collée en bas (lot L3).
-- **Aucune couleur en dur** : `styles/tokens.test.ts` le vérifie sur `base.css`, `components.css` et `app.css`, et vérifie les contrastes (texte 4,5 : 1, bordure de champ 3 : 1) dans les deux thèmes.
+- **Aucune couleur en dur** : `styles/tokens.test.ts` le vérifie sur toutes les feuilles de style (une par domaine comprise), et vérifie les contrastes (texte 4,5 : 1, bordure de champ 3 : 1) dans les deux thèmes.
 - Les sélecteurs que les essais utilisent (`text-warn`, `result-warn`, `result-error`, `action-primary`, `home-muted`, `[data-kpi]`) sont conservés tant que l'essai correspondant ne change pas.
 
 ## 8. Coquille et navigation livrées (lot L2)
@@ -157,6 +157,68 @@ Reste pour la suite : l'en-tête de page et la barre d'action des écrans des au
 
 Libellés, rôles ARIA et noms accessibles sont inchangés : aucun essai de comportement n'a été modifié (`styles/tokens.test.ts` couvre en plus `screens.css`). Les boutons nus avec `ref` (ouverture d'une remise, d'une annulation) restent des `<button>` : le composant `Button` ne transmet pas encore de `ref` ; ils reprennent le style par la feuille commune.
 
+## 8 ter. Domaines livrés (lots L4 à L9)
+
+Menés par trois sessions en parallèle sur trois branches (fusionnées le 31/10/2026 sans conflit), chacune en développement séquentiel : un lot à la fois, un commit par lot (deux pour L8), contrôle visuel à 375 et 1280 px, clair et sombre. Principe commun : les composants partagés remplacent le vocabulaire hérité ; libellés, rôles ARIA et noms accessibles lus par les essais sont conservés ; une feuille de style par domaine, sans couleur en dur.
+
+| Lot | Domaine | Ce qui change | Essais et construction du lot |
+|---|---|---|---|
+| **L4** | Stock (`stock`, réapprovisionnement) | Opérations du stock (transférer, recevoir, perte, inventaire, registre, consommation, quotas, réapprovisionnement) en rangée d'actions en tête de l'écran de stock, selon le rôle ; soldes et registre en colonnes (`DataList`) avec pastilles Rupture et Sous le seuil ; formulaires avec `PageHeader`, barre d'action collée et pastilles d'état ; éditeur de lignes (« Ajouter un produit » en bouton pointillé, « Retirer » discret) | 171 essais (stock, distribution, styles) ; un essai ajouté (opérations selon le rôle) et un simulacre d'authentification dans `StockScreen.test.tsx` |
+| **L5** | Clients et terrain (`crm`, `fieldwork`, `catalog`, `pricing`, livraison) | Portefeuille en colonnes (cartes sur téléphone) avec filtre de stade segmenté ; fiche client (actions en rangée, tuiles, deux colonnes sur ordinateur) ; prospect, visite, échange ; objectifs avec jauges ; prise de service ; catalogue, règles et simulateur de prix ; livraison ; quatre feuilles de domaine | 261 essais ; un essai modifié : le filtre de stade du portefeuille passe d'une liste déroulante à un contrôle segmenté (même comportement) |
+| **L6** | Production (`production`) | Saisie du jour d'une main : nature de la saisie en tuiles, un seul bouton plein dans la barre d'action collée, retour de l'opération ramené sous les yeux ; lots en colonnes dont la ligne entière est le lien ; collecte (reste à répartir dans la barre), mise en place (informations facultatives repliées), incubation, sortie, fiche de lot en tuiles | 112 essais, aucun modifié |
+| **L7** | Achats (`procurement`) | Demande d'achat ; fournisseurs ; bons de commande (liste en colonnes, lignes et actions sous la ligne, total dans la barre d'action) ; réceptions ; rapprochement en colonnes avec un point d'attention par écart | 167 essais des domaines voisins, aucun modifié ; construction verte, JavaScript initial 256,8 Ko gzip |
+| **L8** | Finance et trésorerie (`finance`, `treasury`) | Phrases d'indicateurs en tuiles ; créances, factures, paiements et comptes en tableaux (`DataList`) avec détail et actions sous la ligne ; vieillissement des créances en barre empilée ordinale (rampe validée pour les deux thèmes) ; saisies en champs reliés et barre d'action collée ; états vides compacts | 250 essais ; quatre fichiers d'essais adaptés dans leur forme (phrases devenues tuiles, mêmes valeurs) ; JavaScript initial 256,9 Ko gzip |
+| **L9** | Administration, validations, synchronisation, photo jointe (`users`, `devices`, `approvals`, `sync`, `attachments`) | Filtres d'état en contrôle segmenté, explications repliées (`HelpDisclosure`) ; comptes, appareils et validations en cartes, actions teintées ou à contour ; synchronisation en listes à icônes ; champ photo en boutons teintés | 136 essais du lot et 297 des écrans qui affichent la photo, aucun modifié ; JavaScript initial 257,4 Ko gzip |
+
+Contrôle visuel de chaque lot : aucun débordement horizontal ni erreur de console. Les écrans sans données de démonstration (créances échues, factures, paiements, validations, lots de production) ont été regardés avec des lectures simulées dans l'outil de capture, sans rien livrer. **Non regardés** : les formulaires ouverts sous une ligne (décisions de la finance), les mouvements d'un compte, la création réelle d'un compte ou l'envoi d'une photo au serveur (l'appareil de démonstration attend son approbation). **Aucun écran n'a été vu sur un téléphone réel.**
+
+Questions posées par les sessions et suites (décision du porteur du 31/10/2026) :
+
+| Question | Sujet | Suite |
+|---|---|---|
+| Q-L5-1 | Retours « ← … » | Adoptée : un seul lien de retour (§ 8 quater) |
+| Q-L5-2 | Bouton « Appeler » sur la fiche client | Adoptée (§ 8 quater) |
+| Q-L5-3 | Éditeur de règle de prix : erreurs dès l'ouverture | Laissée au registre : AV-486 |
+| Q-L6-1 | Bouton « Fiche de suivi de la semaine » (module des pièces) | Laissée au registre : AV-488 |
+| Q-L6-2 | Onglets du bas du responsable de ferme | Adoptée (§ 8 quater) |
+| Q-L7-1 | Pastille de statut dans le rapprochement | Non retenue à ce jour (ADR-050) |
+| Q-L8-1 | Barre de vieillissement de tout l'encours | Adoptée (§ 8 quater) |
+| Q-L8-2 | Solde des comptes de la trésorerie et total du serveur | Laissée au registre : AV-487 |
+| Q-L9-1 | Aide repliée en composant commun | Non retenue à ce jour (ADR-050) |
+| Q-L9-2 | Bouton à contour rouge pour les actions destructives | Non retenue à ce jour (ADR-050) |
+
+Briques communes que les lots ont contournées dans leurs feuilles de domaine (ADR-050 §7) : marge portée par `Banner` et `Section`, ligne de liste en colonnes cliquable (`DataRow` avec lien), contrôle segmenté avec libellé visible, état vide compact, `ref` transmis par `Input`, `Select` et `Textarea`, état à point dont le texte passe à la ligne, barre empilée ordinale, ligne extensible, cadre « position ». À promouvoir en composants si un cinquième domaine refait le même contournement.
+
+Notes de lots à garder : les groupes de choix exclusifs « Nature de la perte » (six choix) et « Opération » des transferts (deux choix) restent des boutons radio (un contrôle segmenté conviendrait au second) ; `move-detail` (`stock/stock.css`) est l'équivalent de `doc-main small` sans coupure de ligne ; les écrans de chargement passent de « Chargement… » à `SkeletonRows` (même nom accessible) ; les rôles ARIA d'origine sont conservés sur les bandeaux.
+
+## 8 quater. Clôture (lot L10)
+
+| Où | Contenu |
+|---|---|
+| Fusion | Les trois branches des sessions fusionnées dans la branche du chantier, dans l'ordre, sans conflit : `refs/heads/claude/refonte-l5-l7-79286f` (L5, L7), `refs/heads/claude/refonte-l6-l9-7e4005` (L6, L9), `refs/heads/claude/refonte-l8-45f38c` (L8). Rien de poussé |
+| Retours | `BackLink` (`components/ui/Nav.tsx`) : le lien de retour de l'en-tête de page, utilisable seul par les écrans qui gardent leur propre titre (reçu d'une vente, détail d'une commande) ou n'en ont pas (élément introuvable). Sept retours « ← … » passent à `PageHeader` ou à `BackLink`, la flèche quitte les libellés (`fr.ts`), la classe `back-link` disparaît ; le retour des transferts et des réceptions du lot L4 n'affiche plus deux flèches. Quatre essais lisaient le nom du lien avec la flèche : ils lisent le même lien sans elle |
+| Appeler | `AnchorButton` (`components/ui/Button.tsx`) : lien hors de l'application (téléphone, courriel) qui a l'apparence d'un bouton. Fiche client : « Appeler » ouvre la rangée d'actions quand le compte a un numéro ; « Noter un échange » prend l'icône du crayon. Un essai ajouté (numéro, première place, absence sans numéro) |
+| Créances | La barre de vieillissement montre tout l'encours : segment gris neutre « à échoir » puis les quatre tranches échues ; titre « Encours par retard » ; la ligne « À échoir » ouvre la légende, la liste des quatre tranches échues est inchangée. Une assertion ajoutée à l'essai de l'encours |
+| Responsable de ferme | Onglets du bas : Saisie du jour et Collecte (le stock passe dans « Plus » et sert de repli si la collecte n'est pas proposée) ; l'essai de `tabsForRoles` suit |
+| `app/app.css` retiré | Règles encore employées reprises dans `styles/screens.css` (vocabulaire hérité : `error-message`, `alert`, `home-muted`, `home-banner`, `action*`, `text-input`, `text-warn`, pièces papier, impression) et `features/auth/auth.css` (écrans de connexion) ; alias de variables, `form-field`, `outbox-list` et règles de l'ancien champ photo supprimés ; la règle d'impression masque `page-back` au lieu de `back-link` |
+| Reliquats corrigés | Grille d'avancement du détail d'une commande : trois paires par rangée sur téléphone, les libellés ne se chevauchent plus ; « Changer » du sélecteur de compte en `Button` ; l'essai de la relecture des dettes (L8) contrôle de nouveau le montant ; clé `portfolio.outstanding` retirée |
+
+Vérification, **une seule fois** sur le résultat fusionné (31/10/2026, sous le verrou commun) :
+
+| Contrôle | Résultat |
+|---|---|
+| Types (`pnpm --filter @gic/pwa run typecheck`) | 0 erreur |
+| ESLint (`npx eslint apps/pwa`) | 0 erreur ; 1 avertissement antérieur à la refonte (`AuthContext.tsx`, `react-refresh/only-export-components`) |
+| Essais (`npx vitest run` dans `apps/pwa`) | 106 fichiers passés (1 ignoré), 983 essais passés (1 ignoré : `pieces/apercu.test.ts`, ignoré avant la refonte) |
+| Construction et budget NFR-05 (`build`, `tools/size-check.mjs`) | Réussie ; JavaScript initial **257,5 Ko gzip** pour un budget de 300 Ko ; écrans chargés à la demande 264,5 Ko, hors budget |
+| Frontières (`pnpm run check:boundaries`) | Aucune violation (694 modules) |
+| Références (`python docs/_tools/check_refs.py`) | Aucune référence orpheline, aucun identifiant défini deux fois, aucun lien relatif cassé |
+| Prettier | Appliqué fichier par fichier, depuis la racine, aux fichiers touchés |
+
+Essais modifiés au lot L10, comportement inchangé : quatre noms de lien de retour sans flèche (`CustomerScreen`, `InteractionScreen`, `ReceiptScreen`, `ReceiveTransferScreen`) ; la table des onglets de la ferme (`nav-config.test.ts`) ; la relecture des dettes (`SupplierInvoicesScreen`, assertion renforcée). Essais ajoutés : « Appeler » ; ligne « À échoir » de la légende.
+
+Reste à faire (hors de la refonte) : le contrôle dans un navigateur sur un téléphone réel ; AV-486 à AV-488 ; le bandeau d'approbation de l'appareil, qui prend environ 120 px en haut de chaque écran tant que l'appareil n'est pas approuvé (constat du lot L6, à raccourcir) ; la reprise des briques communes contournées si un domaine rouvre ; la fusion de la branche dans `main` et la mise en ligne, **sur demande explicite du porteur**.
+
 ## 9. Outils de vérification
 
 - **Relevé et captures sans fenêtre** : Chromium déjà installé (révision 1234) piloté par Playwright, profil persistant (appareil et code PIN conservés), navigation interne sans rechargement. Il rend les écrans en 375 px et 1280 px, clair et sombre, et relève par écran : débordement horizontal, boutons, contrôles natifs, tailles de police, tableaux, erreurs de console. Le navigateur intégré à l'application reste utilisable pour un coup d'œil, mais sa fenêtre est parfois masquée et les captures échouent alors.
@@ -171,3 +233,5 @@ Libellés, rôles ARIA et noms accessibles sont inchangés : aucun essai de comp
 | 30/10/2026 | Lot L2 (coquille et navigation, § 8) : barre du haut, onglets du bas avec « + », barre latérale, menu du compte, connexion, accueil à un rôle à la fois, logo officiel (icônes d'installation). |
 | 30/10/2026 | Lot L3 (ventes et caisse, § 8 bis) : vocabulaire commun des écrans restylé (`screens.css`), barre d'action collée sur la vente, la commande et l'encaissement, listes avec pastilles de situation, accueil du point de vente et caisse en cartes. |
 | 30/10/2026 | Socle commun du développement parallèle des lots L4 à L9 (§ 6 bis) : balayage automatique des feuilles de style, briques communes (cellule pleine largeur, rangée d'actions, barre de filtres, `ref` du bouton), suivi par lot. |
+| 31/10/2026 | Lots L4 à L9 (§ 8 ter) : stock (session principale), clients, terrain, catalogue, prix et achats (session A), production, administration, validations, synchronisation et photo jointe (session B), finance et trésorerie (session C) ; trois branches, un commit par lot (deux pour L8). |
+| 31/10/2026 | Lot L10 (clôture, § 8 quater) : fusion des trois branches sans conflit ; retours en en-tête (`BackLink`), « Appeler » (`AnchorButton`), vieillissement de tout l'encours, onglets de la ferme ; `app.css` retiré ; vérification complète ; ADR-050, AV-486 à AV-488. |

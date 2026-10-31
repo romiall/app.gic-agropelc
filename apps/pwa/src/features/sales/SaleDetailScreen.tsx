@@ -18,7 +18,7 @@ import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
 import { formatMoney, formatQuantity, unitLabel } from './format.js';
-import { Badge } from '../../components/ui/index.js';
+import { BackLink, Badge } from '../../components/ui/index.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
 import { waitsForOtherUser } from './pending.js';
@@ -209,11 +209,7 @@ export function SaleDetailScreen() {
   }
 
   const sale = recentSales(refs).find((candidate) => candidate.id === saleId);
-  const back = (
-    <Link to={ROUTES.sales} className="back-link">
-      {t('sales.detail.back')}
-    </Link>
-  );
+  const back = <BackLink to={ROUTES.sales}>{t('sales.detail.back')}</BackLink>;
   if (!sale) {
     return (
       <section className="sale">

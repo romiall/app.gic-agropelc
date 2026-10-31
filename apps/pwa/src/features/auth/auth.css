@@ -1,0 +1,133 @@
+/* Écrans d'authentification (ECR-ADM-01, ECR-ADM-02) : cadre commun `AuthLayout`. */
+
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 32px 16px 16px;
+  background: linear-gradient(180deg, var(--nav) 0, var(--nav) 240px, transparent 240px), var(--bg);
+}
+
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 20px;
+  color: var(--nav-ink);
+  text-align: center;
+}
+
+.auth-logo {
+  border-radius: 50%;
+  box-shadow: var(--shadow-2);
+}
+
+.auth-brand-name {
+  margin: 12px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.auth-brand-tagline {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px 24px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-2);
+}
+
+.auth-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  line-height: 1.25;
+  color: var(--brand-strong);
+}
+
+.auth-subtitle {
+  margin: 0 0 20px;
+  color: var(--ink-3);
+  font-size: 15px;
+}
+
+.auth-footer {
+  margin-top: auto;
+  padding: 24px 0 8px;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.auth-form label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: var(--control-h-lg);
+}
+
+.input-with-action {
+  position: relative;
+  width: 100%;
+}
+
+.input-with-action input {
+  padding-right: 96px;
+}
+
+.input-with-action .input-action {
+  --btn-bg: transparent;
+  --btn-fg: var(--brand-strong);
+  --btn-bd: transparent;
+  --btn-bg-h: var(--brand-tint);
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  min-height: 36px;
+  min-width: 0;
+  padding: 4px 12px;
+  transform: translateY(-50%);
+  font-size: 14px;
+}
+
+.auth-form .btn-block {
+  min-height: var(--control-h-lg);
+  margin-top: 4px;
+  font-size: 1rem;
+}
+
+@media (min-width: 600px) {
+  .auth-page {
+    justify-content: center;
+    padding-top: 24px;
+    background: var(--bg);
+  }
+
+  .auth-brand {
+    color: var(--brand-strong);
+  }
+
+  .auth-footer {
+    margin-top: 0;
+  }
+}

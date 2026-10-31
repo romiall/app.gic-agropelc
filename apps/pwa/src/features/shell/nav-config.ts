@@ -45,6 +45,7 @@ const TAB = {
   receipts: { id: 'receipts', path: ROUTES.receive, labelKey: 'receipts', icon: 'truck' },
   daily: { id: 'daily', path: ROUTES.productionLots, labelKey: 'daily', icon: 'clipboard' },
   lots: { id: 'lots', path: ROUTES.productionLots, labelKey: 'lots', icon: 'leaf' },
+  eggs: { id: 'eggs', path: ROUTES.eggCollection, labelKey: 'eggs', icon: 'leaf' },
   approvals: { id: 'approvals', path: ROUTES.approvals, labelKey: 'approvals', icon: 'shield' },
   treasury: { id: 'treasury', path: ROUTES.treasury, labelKey: 'treasury', icon: 'cash' },
   receivables: {
@@ -69,7 +70,12 @@ const TAB = {
   users: { id: 'users', path: ROUTES.users, labelKey: 'users', icon: 'users' },
 } as const satisfies Record<string, TabSpec>;
 
-/** Deux destinations par rôle (choix du porteur du 30/10/2026, ADR-049), après « Accueil ». */
+/**
+ * Deux destinations par rôle (choix du porteur du 30/10/2026, ADR-049), après « Accueil » ; les suivantes
+ * d'une liste ne servent que si un écran n'est pas proposé au rôle. Responsable de ferme : la collecte des
+ * œufs prend la place du stock dans la barre (choix du porteur du 31/10/2026, lot L6) ; le stock reste dans
+ * « Plus ».
+ */
 const ROLE_TABS: Readonly<Record<string, readonly TabSpec[]>> = {
   DIRECTION: [TAB.approvals, TAB.treasury],
   FINANCE: [TAB.receivables, TAB.treasury],
@@ -78,7 +84,7 @@ const ROLE_TABS: Readonly<Record<string, readonly TabSpec[]>> = {
   COMMERCIAL_SEDENTAIRE: [TAB.orders, TAB.customers],
   VENDEUR_PDV: [TAB.sales, TAB.stock],
   RESP_PRODUCTION: [TAB.lots, TAB.stock],
-  RESP_FERME: [TAB.daily, TAB.stock],
+  RESP_FERME: [TAB.daily, TAB.eggs, TAB.stock],
   MAGASINIER: [TAB.receipts, TAB.stock],
   RESP_ACHATS: [TAB.requests, TAB.purchaseOrders],
   ADMIN: [TAB.devices, TAB.users],
