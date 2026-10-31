@@ -794,7 +794,8 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     const { unmount } = renderScreen();
     const accountsRegion = await screen.findByRole('region', { name: 'Comptes de trésorerie' });
     const central = within(accountsRegion).getByRole('listitem', { name: 'Caisse centrale' });
-    expect(within(central).getByText(/Solde : 1\s250\s000 F CFA/)).toBeInTheDocument();
+    // Colonne « Solde » du tableau : le montant seul, plus la phrase « Solde : … ».
+    expect(within(central).getByText(/^1\s250\s000 F CFA$/)).toBeInTheDocument();
     await user.click(
       within(central).getByRole('button', { name: 'Mouvements de Caisse centrale' }),
     );
@@ -849,9 +850,7 @@ describe('Trésorerie (ECR-FIN-05)', () => {
       synced_at: '2026-10-10T19:30:00.000Z',
     });
     const accountsRegion = screen.getByRole('region', { name: 'Comptes de trésorerie' });
-    expect(
-      await within(accountsRegion).findByText(/Solde : 1\s245\s000 F CFA/),
-    ).toBeInTheDocument();
+    expect(await within(accountsRegion).findByText(/^1\s245\s000 F CFA$/)).toBeInTheDocument();
     expect(await within(region).findByText('Aucune dépense à payer.')).toBeInTheDocument();
     expect(within(region).getByRole('link', { name: 'Toutes les dépenses' })).toHaveAttribute(
       'href',

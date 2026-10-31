@@ -10,8 +10,18 @@
  * réponse est repris au retour sur l'écran et bloque la saisie suivante (pas de double décaissement).
  * Hors ligne, le brouillon reste à l'écran, l'envoi attend le réseau.
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Card,
+  Field,
+  Input,
+  Select,
+  Textarea,
+} from '../../components/ui/index.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import type { OutboxCommand } from '../../storage/db.js';
 import { formatBusinessDate } from '../home/format-home.js';
@@ -30,6 +40,7 @@ import {
   useOutboxCommand,
 } from '../sales/submit.js';
 import type { CashAccountItem } from '../treasury/treasury.js';
+import './finance.css';
 import type { PayablesResponse } from './supplier-invoice.js';
 import { pendingPaymentsPath, readPending } from './pending-payments.js';
 import {
@@ -80,14 +91,6 @@ export function PaymentForm({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string>();
   const submittedCommand = useOutboxCommand(submitted);
-  const ids = {
-    supplier: useId(),
-    amount: useId(),
-    method: useId(),
-    account: useId(),
-    reference: useId(),
-    comment: useId(),
-  };
   const titleRef = useRef<HTMLHeadingElement>(null);
   const supplierRef = useRef<HTMLSelectElement>(null);
   const focusNext = useRef<'title' | 'supplier' | null>(null);
@@ -130,29 +133,33 @@ export function PaymentForm({
   if (submitted) {
     const phase = submittedCommand ? phaseOf(submittedCommand) : 'WAITING';
     const stillWaiting = submittedCommand === undefined || isBlockingWait(submittedCommand, outbox);
+    const refused = phase === 'REJECTED' || phase === 'CONFLICT';
     return (
-      <section className="sale-block" aria-labelledby="payment-new-title">
-        <h2 id="payment-new-title" ref={titleRef} tabIndex={-1}>
-          {t('supplier_payment.new_title')}
-        </h2>
+      <section className="section" aria-labelledby="payment-new-title">
+        <div className="section-head">
+          <h2 id="payment-new-title" ref={titleRef} tabIndex={-1}>
+            {t('supplier_payment.new_title')}
+          </h2>
+        </div>
         <CommandResult commandId={submitted} messages="supplier_payment.record_result">
           {stillWaiting ? null : (
             <div className="result-actions">
               {/* Refus ou conflit : la saisie est gardée pour être corrigée. */}
-              {phase === 'REJECTED' || phase === 'CONFLICT' ? (
-                <button
-                  type="button"
+              {refused ? (
+                <Button
+                  variant="tonal"
+                  size="sm"
                   onClick={() => {
                     setSubmitted(undefined);
                     focusNext.current = 'supplier';
                   }}
                 >
                   {t('supplier_payment.correct')}
-                </button>
+                </Button>
               ) : null}
-              <button
-                type="button"
-                className={phase === 'REJECTED' || phase === 'CONFLICT' ? 'secondary' : undefined}
+              <Button
+                variant={refused ? 'ghost' : 'tonal'}
+                size="sm"
                 onClick={() => {
                   setDraft(EMPTY_PAYMENT_DRAFT);
                   setSubmitted(undefined);
@@ -160,7 +167,7 @@ export function PaymentForm({
                 }}
               >
                 {t('supplier_payment.another')}
-              </button>
+              </Button>
             </div>
           )}
         </CommandResult>
@@ -242,238 +249,266 @@ export function PaymentForm({
   };
 
   return (
-    <section className="sale-block" aria-labelledby="payment-new-title">
-      <h2 id="payment-new-title" ref={titleRef} tabIndex={-1}>
-        {t('supplier_payment.new_title')}
-      </h2>
+    <section className="section" aria-labelledby="payment-new-title">
+      <div className="section-head">
+        <h2 id="payment-new-title" ref={titleRef} tabIndex={-1}>
+          {t('supplier_payment.new_title')}
+        </h2>
+      </div>
       {online ? null : (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t('supplier_payment.form_offline')}
-        </p>
+        </Banner>
       )}
-      <div className="field">
-        <label htmlFor={ids.supplier}>{t('supplier_payment.supplier_label')}</label>
-        <select
-          id={ids.supplier}
-          ref={supplierRef}
-          className="text-input"
-          value={supplierId}
-          onChange={(event) => update({ supplierId: event.target.value, allocations: {} })}
-        >
-          <option value="">{t('supplier_payment.supplier_placeholder')}</option>
-          {supplierChoices.map((supplier) => (
-            <option key={supplier.id} value={supplier.id}>
-              {supplier.status === 'ACTIVE'
-                ? supplier.name
-                : t('supplier_payment.supplier_inactive', { name: supplier.name })}
-            </option>
-          ))}
-        </select>
+      <Card padded className="fin-form">
+        <Field label={t('supplier_payment.supplier_label')}>
+          {(control) => (
+            <select
+              {...control}
+              ref={supplierRef}
+              className="select"
+              value={supplierId}
+              onChange={(event) => update({ supplierId: event.target.value, allocations: {} })}
+            >
+              <option value="">{t('supplier_payment.supplier_placeholder')}</option>
+              {supplierChoices.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.status === 'ACTIVE'
+                    ? supplier.name
+                    : t('supplier_payment.supplier_inactive', { name: supplier.name })}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
         {supplierId && pending.failed ? (
-          <p className="text-warn" role="status">
+          <Banner
+            tone="warn"
+            role="status"
+            action={
+              pending.denied ? undefined : (
+                <Button variant="outline" size="sm" onClick={pending.retry}>
+                  {t('supplier_payment.retry_pending')}
+                </Button>
+              )
+            }
+          >
             {pending.denied
               ? t('supplier_payment.form_denied')
-              : t('supplier_payment.pending_failed')}{' '}
-            {pending.denied ? null : (
-              <button type="button" className="secondary" onClick={pending.retry}>
-                {t('supplier_payment.retry_pending')}
-              </button>
-            )}
-          </p>
+              : t('supplier_payment.pending_failed')}
+          </Banner>
         ) : waiting.count > 0 ? (
-          <p className="text-warn" role="status">
+          <Banner tone="warn" role="status">
             {t('supplier_payment.pending_for_supplier', {
               count: waiting.count,
               total: formatMoney(waiting.totalXaf),
             })}
-          </p>
+          </Banner>
         ) : null}
-      </div>
-      <div className="field">
-        <label htmlFor={ids.amount}>{t('supplier_payment.amount_label')}</label>
-        <input
-          id={ids.amount}
-          className="text-input"
-          inputMode="numeric"
-          value={draft.amountText}
-          onChange={(event) => update({ amountText: event.target.value })}
-        />
-      </div>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.method}>{t('supplier_payment.method_label')}</label>
-          <select
-            id={ids.method}
-            className="text-input"
-            value={draft.methodCode}
-            onChange={(event) => update({ methodCode: event.target.value, accountId: '' })}
+        <Field label={t('supplier_payment.amount_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              inputMode="numeric"
+              value={draft.amountText}
+              onChange={(event) => update({ amountText: event.target.value })}
+            />
+          )}
+        </Field>
+        <div className="fin-fields">
+          <Field label={t('supplier_payment.method_label')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={draft.methodCode}
+                onChange={(event) => update({ methodCode: event.target.value, accountId: '' })}
+              >
+                <option value="">{t('supplier_payment.method_placeholder')}</option>
+                {methods.map((candidate) => (
+                  <option key={candidate.code} value={candidate.code}>
+                    {candidate.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field
+            label={t('supplier_payment.account_label')}
+            hint={
+              method && methodAccounts.length === 0 && accountsLoaded
+                ? t('supplier_payment.no_account')
+                : account?.accountType === 'CAISSE_PDV'
+                  ? t('supplier_payment.pos_session_note')
+                  : undefined
+            }
           >
-            <option value="">{t('supplier_payment.method_placeholder')}</option>
-            {methods.map((candidate) => (
-              <option key={candidate.code} value={candidate.code}>
-                {candidate.label}
-              </option>
-            ))}
-          </select>
+            {(control) => (
+              <Select
+                {...control}
+                value={accountId}
+                disabled={!method}
+                onChange={(event) => update({ accountId: event.target.value })}
+              >
+                <option value="">{t('supplier_payment.account_placeholder')}</option>
+                {methodAccounts.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {t('supplier_payment.account_option', {
+                      name: candidate.name,
+                      balance: formatMoney(candidate.balanceXaf),
+                    })}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </div>
-        <div className="field">
-          <label htmlFor={ids.account}>{t('supplier_payment.account_label')}</label>
-          <select
-            id={ids.account}
-            className="text-input"
-            value={accountId}
-            disabled={!method}
-            onChange={(event) => update({ accountId: event.target.value })}
-          >
-            <option value="">{t('supplier_payment.account_placeholder')}</option>
-            {methodAccounts.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {t('supplier_payment.account_option', {
-                  name: candidate.name,
-                  balance: formatMoney(candidate.balanceXaf),
-                })}
-              </option>
-            ))}
-          </select>
-          {method && methodAccounts.length === 0 && accountsLoaded ? (
-            <p className="home-muted">{t('supplier_payment.no_account')}</p>
-          ) : null}
-          {account?.accountType === 'CAISSE_PDV' ? (
-            <p className="home-muted">{t('supplier_payment.pos_session_note')}</p>
-          ) : null}
-        </div>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.reference}>
-          {method?.requires_reference
-            ? t('supplier_payment.reference_required')
-            : t('supplier_payment.reference_label')}
-        </label>
-        <input
-          id={ids.reference}
-          className="text-input"
-          maxLength={MAX_PAYMENT_REFERENCE}
-          value={draft.reference}
-          onChange={(event) => update({ reference: event.target.value })}
-        />
-      </div>
-      {supplierId ? (
-        <fieldset className="field">
-          <legend>{t('supplier_payment.allocations_legend')}</legend>
-          {payables.failed ? (
-            <p className="text-warn" role="status">
-              {payables.denied
-                ? t('supplier_payment.form_denied')
-                : t('supplier_payment.payables_failed')}{' '}
-              {payables.denied ? null : (
-                <button type="button" className="secondary" onClick={payables.retry}>
-                  {t('supplier_payment.retry_payables')}
-                </button>
-              )}
-            </p>
-          ) : !payables.data ? (
-            <p className="home-muted">{t('sales.loading')}</p>
-          ) : invoices.length === 0 ? (
-            <p className="home-muted">{t('supplier_payment.no_invoice')}</p>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="secondary"
-                disabled={amount === null || amount <= 0}
-                onClick={() =>
-                  update({
-                    allocations: autoAllocation(netOfPlanned(invoices, planned), amount ?? 0),
-                  })
+        <Field
+          label={
+            method?.requires_reference
+              ? t('supplier_payment.reference_required')
+              : t('supplier_payment.reference_label')
+          }
+        >
+          {(control) => (
+            <Input
+              {...control}
+              maxLength={MAX_PAYMENT_REFERENCE}
+              value={draft.reference}
+              onChange={(event) => update({ reference: event.target.value })}
+            />
+          )}
+        </Field>
+        {supplierId ? (
+          <fieldset className="field fin-lines">
+            <legend>{t('supplier_payment.allocations_legend')}</legend>
+            {payables.failed ? (
+              <Banner
+                tone="warn"
+                role="status"
+                action={
+                  payables.denied ? undefined : (
+                    <Button variant="outline" size="sm" onClick={payables.retry}>
+                      {t('supplier_payment.retry_payables')}
+                    </Button>
+                  )
                 }
               >
-                {t('supplier_payment.spread')}
-              </button>
-              <ul className="line-list">
-                {invoices.map((invoice) => {
-                  const plannedHere = planned[invoice.invoiceId];
-                  return (
-                    <li
-                      key={invoice.invoiceId}
-                      className="line-card"
-                      aria-label={invoice.docNumber}
-                    >
-                      <label htmlFor={`${ids.amount}-${invoice.invoiceId}`}>
-                        {t('supplier_payment.allocation_label', {
-                          doc: invoice.docNumber,
-                          ref: invoice.supplierInvoiceRef,
-                          balance: formatMoney(invoice.balanceXaf),
-                          due: formatBusinessDate(invoice.dueDate),
-                        })}
-                      </label>
-                      {invoice.overdue ? (
-                        <p className="text-warn">
-                          {t('supplier_payment.overdue', { count: invoice.daysOverdue })}
-                        </p>
-                      ) : null}
-                      {plannedHere ? (
-                        <p className="text-warn">
-                          {t('supplier_payment.planned_on_invoice', {
-                            amount: formatMoney(plannedHere.amountXaf),
-                            docs: plannedHere.docNumbers.join(', '),
+                {payables.denied
+                  ? t('supplier_payment.form_denied')
+                  : t('supplier_payment.payables_failed')}
+              </Banner>
+            ) : !payables.data ? (
+              <p className="home-muted">{t('sales.loading')}</p>
+            ) : invoices.length === 0 ? (
+              <p className="home-muted">{t('supplier_payment.no_invoice')}</p>
+            ) : (
+              <>
+                <Button
+                  variant="tonal"
+                  size="sm"
+                  disabled={amount === null || amount <= 0}
+                  onClick={() =>
+                    update({
+                      allocations: autoAllocation(netOfPlanned(invoices, planned), amount ?? 0),
+                    })
+                  }
+                >
+                  {t('supplier_payment.spread')}
+                </Button>
+                <ul className="line-list">
+                  {invoices.map((invoice) => {
+                    const plannedHere = planned[invoice.invoiceId];
+                    return (
+                      <li
+                        key={invoice.invoiceId}
+                        className="line-card"
+                        aria-label={invoice.docNumber}
+                      >
+                        <Field
+                          label={t('supplier_payment.allocation_label', {
+                            doc: invoice.docNumber,
+                            ref: invoice.supplierInvoiceRef,
+                            balance: formatMoney(invoice.balanceXaf),
+                            due: formatBusinessDate(invoice.dueDate),
                           })}
-                        </p>
-                      ) : null}
-                      <input
-                        id={`${ids.amount}-${invoice.invoiceId}`}
-                        className="text-input"
-                        inputMode="numeric"
-                        value={draft.allocations[invoice.invoiceId] ?? ''}
-                        onChange={(event) =>
-                          update({
-                            allocations: {
-                              ...draft.allocations,
-                              [invoice.invoiceId]: event.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
+                          hint={
+                            invoice.overdue || plannedHere ? (
+                              <>
+                                {invoice.overdue ? (
+                                  <span className="text-warn">
+                                    {t('supplier_payment.overdue', { count: invoice.daysOverdue })}
+                                  </span>
+                                ) : null}
+                                {plannedHere ? (
+                                  <span className="text-warn">
+                                    {t('supplier_payment.planned_on_invoice', {
+                                      amount: formatMoney(plannedHere.amountXaf),
+                                      docs: plannedHere.docNumbers.join(', '),
+                                    })}
+                                  </span>
+                                ) : null}
+                              </>
+                            ) : undefined
+                          }
+                        >
+                          {(control) => (
+                            <Input
+                              {...control}
+                              inputMode="numeric"
+                              value={draft.allocations[invoice.invoiceId] ?? ''}
+                              onChange={(event) =>
+                                update({
+                                  allocations: {
+                                    ...draft.allocations,
+                                    [invoice.invoiceId]: event.target.value,
+                                  },
+                                })
+                              }
+                            />
+                          )}
+                        </Field>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </fieldset>
+        ) : null}
+        <Field label={t('supplier_payment.comment_label')}>
+          {(control) => (
+            <Textarea
+              {...control}
+              rows={2}
+              maxLength={MAX_PAYMENT_COMMENT}
+              value={draft.comment}
+              onChange={(event) => update({ comment: event.target.value })}
+            />
           )}
-        </fieldset>
-      ) : null}
-      <div className="field">
-        <label htmlFor={ids.comment}>{t('supplier_payment.comment_label')}</label>
-        <textarea
-          id={ids.comment}
-          className="text-input"
-          rows={2}
-          maxLength={MAX_PAYMENT_COMMENT}
-          value={draft.comment}
-          onChange={(event) => update({ comment: event.target.value })}
-        />
-      </div>
+        </Field>
+      </Card>
       {preview.planError ? (
-        <p className="error-message" role="alert">
+        <Banner tone="bad" role="alert">
           {t(`supplier_payment.plan_error.${preview.planError}`, {
             defaultValue: t('supplier_payment.plan_error.ALLOCATION_INVALID'),
           })}
-        </p>
+        </Banner>
       ) : preview.unallocatedXaf !== null && preview.unallocatedXaf > 0 ? (
-        <p className="home-muted" role="status">
+        <Banner tone="info" role="status">
           {t('supplier_payment.advance', { amount: formatMoney(preview.unallocatedXaf) })}
-        </p>
+        </Banner>
       ) : null}
       {preview.needsApproval ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('supplier_payment.needs_approval', {
             threshold: formatMoney(settings.thresholdXaf),
           })}
-        </p>
+        </Banner>
       ) : null}
       {preview.cashInsufficient ? (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t('supplier_payment.cash_insufficient')}
-        </p>
+        </Banner>
       ) : null}
       {touched
         ? issues.map((issue) => (
@@ -488,18 +523,21 @@ export function PaymentForm({
         </p>
       ) : null}
       {saveError ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t(saveError)}
-        </p>
+        </Banner>
       ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('supplier_payment.submit')}
-      </button>
+      <ActionBar>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          loading={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('sales.submitting') : t('supplier_payment.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

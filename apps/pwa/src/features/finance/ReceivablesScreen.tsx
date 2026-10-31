@@ -10,11 +10,25 @@
  * Les relances ne sont pas enregistrées dans l'application (AV-304). Finance, Direction et Resp.
  * commercial ; le serveur reste seul juge de la portée (TEAM pour le Resp. commercial).
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { businessDayOf } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import {
+  Banner,
+  Button,
+  DataCell,
+  DataList,
+  DataRow,
+  Field,
+  Icon,
+  KpiTile,
+  LinkButton,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDate } from '../home/format-home.js';
@@ -57,6 +71,8 @@ import {
   type RemoteUserName,
 } from './receivables.js';
 import { AGING_BUCKETS } from './supplier-invoice.js';
+import { EmptyLine } from './EmptyLine.js';
+import './finance.css';
 
 const shortId = (id: string) => `…${id.slice(-4)}`;
 const NO_USERS: readonly RemoteUserName[] = [];
@@ -74,14 +90,61 @@ function ReadProblem({
   const { t } = useTranslation();
   if (!read.failed) return null;
   return (
-    <p className="text-warn" role="alert">
-      {read.denied ? t('receivables.denied') : t(failedKey)}{' '}
-      {read.denied ? null : (
-        <button type="button" className="secondary" onClick={read.retry}>
-          {t(retryKey)}
-        </button>
-      )}
-    </p>
+    <Banner
+      tone="warn"
+      role="alert"
+      action={
+        read.denied ? undefined : (
+          <Button variant="outline" size="sm" onClick={read.retry}>
+            {t(retryKey)}
+          </Button>
+        )
+      }
+    >
+      {read.denied ? t('receivables.denied') : t(failedKey)}
+    </Banner>
+  );
+}
+
+/**
+ * Vieillissement de l'échu : une barre empilée ordinale (un ton, du plus clair au plus foncé à mesure que
+ * le retard s'allonge) dont la liste des tranches est la légende et le tableau équivalent. La barre est
+ * décorative (`aria-hidden`) : chaque montant est lu dans la liste.
+ */
+function AgingBar({ buckets }: { readonly buckets: Readonly<Record<string, number>> }) {
+  const { t } = useTranslation();
+  const amounts = AGING_BUCKETS.map((bucket) => buckets[bucket] ?? 0);
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  const line = (bucket: (typeof AGING_BUCKETS)[number]) =>
+    t('receivables.bucket_line', {
+      label: t(`receivables.bucket.${bucket}`),
+      amount: formatMoney(buckets[bucket] ?? 0),
+    });
+  return (
+    <div className="fin-age">
+      <h3 className="fin-age-title">{t('receivables.buckets_label')}</h3>
+      {total > 0 ? (
+        <div className="fin-age-bar" aria-hidden="true">
+          {AGING_BUCKETS.map((bucket, index) =>
+            amounts[index] ? (
+              <span
+                key={bucket}
+                className={`fin-age-seg fin-age-${String(index + 1)}`}
+                style={{ flexGrow: amounts[index] }}
+                title={line(bucket)}
+              />
+            ) : null,
+          )}
+        </div>
+      ) : null}
+      <ul className="fin-age-legend" aria-label={t('receivables.buckets_label')}>
+        {AGING_BUCKETS.map((bucket, index) => (
+          <li key={bucket} className={`fin-age-${String(index + 1)}`}>
+            {line(bucket)}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -106,7 +169,6 @@ export function ReceivablesScreen() {
   const [siteId, setSiteId] = useState('');
   const [grouping, setGrouping] = useState<ReceivableGrouping>('customer');
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
-  const ids = { view: useId(), site: useId(), grouping: useId() };
 
   const lines = read.data?.receivables ?? [];
   const local = customerDirectory(refs?.customers ?? [], refs?.customerAlias ?? new Map(), []);
@@ -140,8 +202,8 @@ export function ReceivablesScreen() {
   if (!userId || navigation === undefined || !refs) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.receivables')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.receivables')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -221,15 +283,14 @@ export function ReceivablesScreen() {
     });
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.receivables')}</h1>
+    <section className="sale fin-page">
+      <PageHeader title={t('nav.screens.receivables')} />
       {online ? null : (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t('receivables.offline_banner')}
-        </p>
+        </Banner>
       )}
-      <section className="sale-block" aria-labelledby="receivables-summary-title">
-        <h2 id="receivables-summary-title">{t('receivables.summary_title')}</h2>
+      <Section title={t('receivables.summary_title')}>
         <ReadProblem read={read} failedKey="receivables.failed" retryKey="receivables.retry" />
         {online && data && read.stale && !read.failed ? (
           <p className="home-muted" role="status">
@@ -237,95 +298,103 @@ export function ReceivablesScreen() {
           </p>
         ) : null}
         {!data ? (
-          read.failed ? null : (
-            <p className="home-muted" aria-busy={online}>
-              {t(online ? 'sales.loading' : 'receivables.online_only')}
-            </p>
+          read.failed ? null : online ? (
+            <SkeletonRows rows={2} />
+          ) : (
+            <EmptyLine icon="offline" title={t('receivables.online_only')} />
           )
         ) : (
           <>
             <p className="home-muted">
               {t('receivables.as_of', { date: formatBusinessDate(data.as_of) })}
             </p>
-            <p>
-              {t('receivables.total', {
-                amount: formatMoney(data.summary.totalXaf),
-                count: data.summary.count,
-              })}
-            </p>
-            <p className={data.summary.overdueXaf > 0 ? 'text-warn' : undefined}>
-              {t('receivables.overdue', { amount: formatMoney(data.summary.overdueXaf) })}
-            </p>
-            <p>{t('receivables.not_due', { amount: formatMoney(notDueXaf(data.summary)) })}</p>
-            <ul className="home-muted" aria-label={t('receivables.buckets_label')}>
-              {AGING_BUCKETS.map((bucket) => (
-                <li key={bucket}>
-                  {t('receivables.bucket_line', {
-                    label: t(`receivables.bucket.${bucket}`),
-                    amount: formatMoney(data.summary.buckets[bucket] ?? 0),
-                  })}
-                </li>
-              ))}
-            </ul>
+            <div className="fin-kpis fin-kpis-lead">
+              <KpiTile
+                icon="receipt"
+                label={t('receivables.tile_total')}
+                value={formatMoney(data.summary.totalXaf)}
+                detail={t('receivables.tile_total_detail', { count: data.summary.count })}
+              />
+              <KpiTile
+                icon="alert"
+                label={t('receivables.tile_overdue')}
+                value={formatMoney(data.summary.overdueXaf)}
+                tone={data.summary.overdueXaf > 0 ? 'bad' : 'neutral'}
+                detail={
+                  data.summary.totalXaf > 0
+                    ? t('receivables.tile_overdue_detail', {
+                        percent: Math.round(
+                          (data.summary.overdueXaf / data.summary.totalXaf) * 100,
+                        ),
+                      })
+                    : undefined
+                }
+              />
+              <KpiTile
+                icon="calendar"
+                label={t('receivables.tile_not_due')}
+                value={formatMoney(notDueXaf(data.summary))}
+              />
+            </div>
+            <AgingBar buckets={data.summary.buckets} />
             <p className="home-muted">{t('receivables.scope_note')}</p>
           </>
         )}
-      </section>
+      </Section>
       {data ? (
-        <section className="sale-block" aria-labelledby="receivables-list-title">
-          <h2 id="receivables-list-title">{t('receivables.list_title')}</h2>
-          <div className="line-fields">
-            <div className="field">
-              <label htmlFor={ids.view}>{t('receivables.view_label')}</label>
-              <select
-                id={ids.view}
-                className="text-input"
-                value={view}
-                onChange={(event) => setView(event.target.value as ReceivableView)}
-              >
-                {RECEIVABLE_VIEWS.map((code) => (
-                  <option key={code} value={code}>
-                    {t(`receivables.view.${code}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {sites.length > 1 ? (
-              <div className="field">
-                <label htmlFor={ids.site}>{t('receivables.site_label')}</label>
-                <select
-                  id={ids.site}
-                  className="text-input"
-                  value={site}
-                  onChange={(event) => setSiteId(event.target.value)}
+        <Section title={t('receivables.list_title')}>
+          <div className="filter-bar">
+            <Field label={t('receivables.view_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={view}
+                  onChange={(event) => setView(event.target.value as ReceivableView)}
                 >
-                  <option value="">{t('receivables.all_sites')}</option>
-                  {sites.map((id) => (
-                    <option key={id} value={id}>
-                      {siteName(id)}
+                  {RECEIVABLE_VIEWS.map((code) => (
+                    <option key={code} value={code}>
+                      {t(`receivables.view.${code}`)}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              )}
+            </Field>
+            {sites.length > 1 ? (
+              <Field label={t('receivables.site_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={site}
+                    onChange={(event) => setSiteId(event.target.value)}
+                  >
+                    <option value="">{t('receivables.all_sites')}</option>
+                    {sites.map((id) => (
+                      <option key={id} value={id}>
+                        {siteName(id)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
             ) : null}
-            <div className="field">
-              <label htmlFor={ids.grouping}>{t('receivables.grouping_label')}</label>
-              <select
-                id={ids.grouping}
-                className="text-input"
-                value={grouping}
-                onChange={(event) => {
-                  setGrouping(event.target.value as ReceivableGrouping);
-                  setOpened(new Set());
-                }}
-              >
-                {RECEIVABLE_GROUPINGS.map((code) => (
-                  <option key={code} value={code}>
-                    {t(`receivables.grouping.${code}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Field label={t('receivables.grouping_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={grouping}
+                  onChange={(event) => {
+                    setGrouping(event.target.value as ReceivableGrouping);
+                    setOpened(new Set());
+                  }}
+                >
+                  {RECEIVABLE_GROUPINGS.map((code) => (
+                    <option key={code} value={code}>
+                      {t(`receivables.grouping.${code}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
           </div>
           <ReadProblem
             read={remoteCustomers}
@@ -343,7 +412,7 @@ export function ReceivablesScreen() {
             <p className="home-muted">{t('receivables.names_truncated')}</p>
           ) : null}
           {filtered && selected.length > 0 ? (
-            <p>
+            <p className="fin-selection">
               {t('receivables.selection', {
                 amount: formatMoney(selection.totalXaf),
                 overdue: formatMoney(selection.overdueXaf),
@@ -352,11 +421,24 @@ export function ReceivablesScreen() {
             </p>
           ) : null}
           {lines.length === 0 ? (
-            <p className="home-muted">{t('receivables.empty')}</p>
+            <EmptyLine icon="check-circle" title={t('receivables.empty')} />
           ) : groups.length === 0 ? (
-            <p className="home-muted">{t('receivables.filter_empty')}</p>
+            <EmptyLine icon="search" title={t('receivables.filter_empty')} />
           ) : (
-            <ul className="line-list">
+            <DataList
+              className="fin-table"
+              template="minmax(0, 1.8fr) minmax(6.5rem, 0.8fr) minmax(0, 1.8fr) minmax(12rem, 2.8fr)"
+              columns={[
+                {
+                  label: t(
+                    grouping === 'customer' ? 'receivables.col_customer' : 'receivables.col_owner',
+                  ),
+                },
+                { label: t('receivables.col_balance'), numeric: true },
+                { label: t('receivables.col_overdue') },
+                { label: '' },
+              ]}
+            >
               {groups.map((group) => (
                 <GroupCard
                   key={group.key}
@@ -378,10 +460,10 @@ export function ReceivablesScreen() {
                   customerName={(line) => customerName(customerKey(line))}
                 />
               ))}
-            </ul>
+            </DataList>
           )}
           <p className="home-muted">{t('receivables.reminder_note')}</p>
-        </section>
+        </Section>
       ) : null}
     </section>
   );
@@ -420,44 +502,71 @@ function GroupCard({
   const { t } = useTranslation();
   const byCustomer = grouping === 'customer';
   return (
-    <li className="line-card" aria-label={name}>
-      <p>
-        <strong>{name}</strong> · {formatMoney(group.balanceXaf)}
-      </p>
-      {group.overdueXaf > 0 ? (
-        <p className="text-warn">
-          {t('receivables.group_overdue', {
-            amount: formatMoney(group.overdueXaf),
-            count: group.maxDaysOverdue,
+    <DataRow aria-label={name}>
+      <DataCell primary>
+        <strong>{name}</strong>
+        <small className="fin-group-meta">
+          {t('receivables.group_sales', {
+            count: group.lines.length,
+            date: formatBusinessDate(group.oldestDueDate),
           })}
-        </p>
-      ) : (
-        <p className="home-muted">{t('receivables.group_not_due')}</p>
-      )}
-      <p className="home-muted">
-        {t('receivables.group_sales', {
-          count: group.lines.length,
-          date: formatBusinessDate(group.oldestDueDate),
-        })}
-      </p>
-      <div className="result-actions">
+        </small>
+      </DataCell>
+      <DataCell label={t('receivables.col_balance')} numeric>
+        {formatMoney(group.balanceXaf)}
+      </DataCell>
+      <DataCell>
+        {group.overdueXaf > 0 ? (
+          <span className={`fin-status ${group.maxDaysOverdue > 30 ? 'is-bad' : 'is-warn'}`}>
+            {t('receivables.group_overdue', {
+              amount: formatMoney(group.overdueXaf),
+              count: group.maxDaysOverdue,
+            })}
+          </span>
+        ) : (
+          <span className="home-muted">{t('receivables.group_not_due')}</span>
+        )}
+      </DataCell>
+      <DataCell actions>
         {phone ? (
-          <a className="action action-compact" href={telHref(phone)}>
-            <span className="action-label">{t('receivables.call', { phone })}</span>
+          // Appel et fiche : une icône seule (nom accessible et infobulle : la phrase complète).
+          <a
+            className="btn btn-ghost btn-sm btn-icon"
+            href={telHref(phone)}
+            aria-label={t('receivables.call', { phone })}
+            title={t('receivables.call', { phone })}
+          >
+            <Icon name="phone" size={18} />
           </a>
         ) : null}
         {groupPayer !== null && onDevice ? (
-          <Link to={ROUTES.customer(groupPayer)} className="action action-compact">
-            <span className="action-label">{t('receivables.customer_sheet', { name })}</span>
-          </Link>
+          <LinkButton
+            to={ROUTES.customer(groupPayer)}
+            variant="ghost"
+            size="sm"
+            icon="user"
+            className="btn-icon"
+            aria-label={t('receivables.customer_sheet', { name })}
+            title={t('receivables.customer_sheet', { name })}
+          />
         ) : null}
         {groupPayer !== null && mayCollect ? (
-          <Link to={ROUTES.collectFor(groupPayer)} className="action action-compact">
-            <span className="action-label">{t('receivables.collect', { name })}</span>
-          </Link>
+          <LinkButton
+            to={ROUTES.collectFor(groupPayer)}
+            variant="tonal"
+            size="sm"
+            icon="cash"
+            aria-label={t('receivables.collect', { name })}
+          >
+            {t('receivables.collect_short')}
+          </LinkButton>
         ) : null}
-        <button type="button" className="secondary" aria-expanded={opened} onClick={onToggle}>
-          {t(
+        <Button
+          variant="ghost"
+          size="sm"
+          iconEnd={opened ? 'chevron-up' : 'chevron-down'}
+          aria-expanded={opened}
+          aria-label={t(
             self
               ? opened
                 ? 'receivables.hide_sales_self'
@@ -467,52 +576,57 @@ function GroupCard({
                 : 'receivables.show_sales',
             { name },
           )}
-        </button>
-      </div>
+          onClick={onToggle}
+        >
+          {t(opened ? 'receivables.hide_sales_short' : 'receivables.show_sales_short')}
+        </Button>
+      </DataCell>
       {opened ? (
-        <ul className="doc-list">
-          {group.lines.map((line) => (
-            <li key={line.saleId} className="doc-row sale-row" aria-label={line.docNumber}>
-              <div className="doc-main">
-                <p>
-                  <strong>{line.docNumber}</strong>
-                  {byCustomer ? null : ` · ${customerName(line)}`}
-                </p>
-                <p className="home-muted">
-                  {t('receivables.sale_dates', {
-                    sold: formatBusinessDate(businessDayOf(new Date(line.occurredAt))),
-                    due: formatBusinessDate(line.dueDate),
-                  })}
-                </p>
-                <p className={line.overdue ? 'text-warn' : 'home-muted'}>
-                  {line.overdue
-                    ? t('receivables.days_overdue', { count: line.daysOverdue })
-                    : t('receivables.sale_not_due')}
-                </p>
-              </div>
-              <div className="doc-side">
-                <p>
-                  {t('receivables.sale_balance', {
-                    balance: formatMoney(line.balanceDueXaf),
-                    total: formatMoney(line.netTotalXaf),
-                    paid: formatMoney(line.amountPaidXaf),
-                  })}
-                </p>
-                {mayCollect && payerOf(line) !== null ? (
-                  <Link
-                    to={ROUTES.collectFor(payerOf(line) ?? '', line.saleId)}
-                    className="action action-compact"
-                  >
-                    <span className="action-label">
+        <DataCell wide>
+          <ul className="doc-list fin-sales">
+            {group.lines.map((line) => (
+              <li key={line.saleId} className="doc-row sale-row" aria-label={line.docNumber}>
+                <div className="doc-main">
+                  <p>
+                    <strong>{line.docNumber}</strong>
+                    {byCustomer ? null : ` · ${customerName(line)}`}
+                  </p>
+                  <p className="home-muted">
+                    {t('receivables.sale_dates', {
+                      sold: formatBusinessDate(businessDayOf(new Date(line.occurredAt))),
+                      due: formatBusinessDate(line.dueDate),
+                    })}
+                  </p>
+                  <p className={line.overdue ? 'text-warn' : 'home-muted'}>
+                    {line.overdue
+                      ? t('receivables.days_overdue', { count: line.daysOverdue })
+                      : t('receivables.sale_not_due')}
+                  </p>
+                </div>
+                <div className="doc-side">
+                  <p>
+                    {t('receivables.sale_balance', {
+                      balance: formatMoney(line.balanceDueXaf),
+                      total: formatMoney(line.netTotalXaf),
+                      paid: formatMoney(line.amountPaidXaf),
+                    })}
+                  </p>
+                  {mayCollect && payerOf(line) !== null ? (
+                    <LinkButton
+                      to={ROUTES.collectFor(payerOf(line) ?? '', line.saleId)}
+                      variant="tonal"
+                      size="sm"
+                      icon="cash"
+                    >
                       {t('receivables.collect_sale', { doc: line.docNumber })}
-                    </span>
-                  </Link>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
+                    </LinkButton>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </DataCell>
       ) : null}
-    </li>
+    </DataRow>
   );
 }

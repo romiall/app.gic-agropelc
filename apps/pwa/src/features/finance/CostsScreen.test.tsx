@@ -285,21 +285,26 @@ describe('Coûts et marges (ECR-FIN-06, P8E-08)', () => {
     renderScreen();
     expect(await screen.findByText('Du 1 octobre 2026 au 10 octobre 2026')).toBeInTheDocument();
     const block = screen.getByRole('region', { name: 'Vue d’ensemble de la période' });
+    // Tuiles d'indicateur (libellé, valeur, précision) à la place des phrases d'avant.
+    const tile = (label: string) => within(block).getByText(label).closest('.tile') as HTMLElement;
+    await within(block).findByText('Chiffre d’affaires net');
+    const revenue = tile('Chiffre d’affaires net');
+    expect(within(revenue).getByText(/^1\s150\s000 F CFA$/)).toBeInTheDocument();
     expect(
-      await within(block).findByText(
-        /^Chiffre d’affaires brut 1\s200\s000 F CFA, annulé 50\s000 F CFA, net 1\s150\s000 F CFA \(12 ventes\)$/,
-      ),
+      within(revenue).getByText(/^Brut 1\s200\s000 F CFA · annulé 50\s000 F CFA · 12 ventes$/),
     ).toBeInTheDocument();
+    const margin = tile('Marge brute des ventes');
+    expect(within(margin).getByText(/^450\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(margin).getByText(/^Coût des ventes 700\s000 F CFA$/)).toBeInTheDocument();
+    const collected = tile('Encaissé');
+    expect(within(collected).getByText(/^900\s000 F CFA$/)).toBeInTheDocument();
     expect(
-      within(block).getByText(
-        /^Coût des ventes 700\s000 F CFA · marge brute des ventes 450\s000 F CFA$/,
-      ),
+      within(collected).getByText('9 encaissements, annulations déduites'),
     ).toBeInTheDocument();
+    const expenses = tile('Dépenses');
+    expect(within(expenses).getByText(/^140\s000 F CFA$/)).toBeInTheDocument();
     expect(
-      within(block).getByText(/^900\s000 F CFA \(9 encaissements, annulations déduites\)$/),
-    ).toBeInTheDocument();
-    expect(
-      within(block).getByText(/^140\s000 F CFA \(2 dépenses enregistrées, approuvées ou payées\)$/),
+      within(expenses).getByText('2 dépenses enregistrées, approuvées ou payées'),
     ).toBeInTheDocument();
     expect(within(block).getByText(/^Transport : 140\s000 F CFA \(2\)$/)).toBeInTheDocument();
     expect(
@@ -308,17 +313,19 @@ describe('Coûts et marges (ECR-FIN-06, P8E-08)', () => {
       ),
     ).toBeInTheDocument();
     expect(within(block).getByText('Soldes au 10 octobre 2026')).toBeInTheDocument();
+    const receivables = tile('Créances clients');
+    expect(within(receivables).getByText(/^250\s000 F CFA$/)).toBeInTheDocument();
     expect(
-      within(block).getByText(
-        /^Créances clients 250\s000 F CFA \(3 ventes\) · échu 100\s000 F CFA \(1 vente\)$/,
+      within(receivables).getByText(/^3 ventes ouvertes · échu 100\s000 F CFA \(1 vente\)$/),
+    ).toBeInTheDocument();
+    const payables = tile('Dettes fournisseurs');
+    expect(within(payables).getByText(/^700\s000 F CFA$/)).toBeInTheDocument();
+    expect(
+      within(payables).getByText(
+        /^échu 300\s000 F CFA · avances 20\s000 F CFA · net 680\s000 F CFA$/,
       ),
     ).toBeInTheDocument();
-    expect(
-      within(block).getByText(
-        /^Dettes fournisseurs 700\s000 F CFA · échu 300\s000 F CFA · avances 20\s000 F CFA · net 680\s000 F CFA$/,
-      ),
-    ).toBeInTheDocument();
-    expect(within(block).getByText(/^Trésorerie 2\s000\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(tile('Trésorerie')).getByText(/^2\s000\s000 F CFA$/)).toBeInTheDocument();
     expect(within(block).getByText(/^Banque : 1\s500\s000 F CFA$/)).toBeInTheDocument();
     expect(within(block).getByText(/^Caisse centrale : 500\s000 F CFA$/)).toBeInTheDocument();
     expect(
@@ -366,24 +373,14 @@ describe('Coûts et marges (ECR-FIN-06, P8E-08)', () => {
       },
     });
     renderScreen();
+    expect(await screen.findByText('Coût des ventes non visible')).toBeInTheDocument();
     expect(
-      await screen.findByText('Coût des ventes non visible · marge brute des ventes non visible'),
+      screen.getByText(/^Brut 1\s200\s000 F CFA · annulé 50\s000 F CFA · 1 vente$/),
     ).toBeInTheDocument();
+    expect(screen.getByText('1 encaissement, annulations déduites')).toBeInTheDocument();
+    expect(screen.getByText('1 dépense enregistrée, approuvée ou payée')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /^Chiffre d’affaires brut 1\s200\s000 F CFA, annulé 50\s000 F CFA, net 1\s150\s000 F CFA \(1 vente\)$/,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/^900\s000 F CFA \(1 encaissement, annulations déduites\)$/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/^140\s000 F CFA \(1 dépense enregistrée, approuvée ou payée\)$/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /^Créances clients 250\s000 F CFA \(1 vente\) · échu 100\s000 F CFA \(1 vente\)$/,
-      ),
+      screen.getByText(/^1 vente ouverte · échu 100\s000 F CFA \(1 vente\)$/),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Vue d’ensemble de la période' })).queryByText(

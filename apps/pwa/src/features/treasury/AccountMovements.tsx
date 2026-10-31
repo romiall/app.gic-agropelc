@@ -6,6 +6,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, Button, SkeletonRows } from '../../components/ui/index.js';
 import { formatDateTime } from '../home/format-home.js';
 import { formatMoney } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
@@ -76,23 +77,24 @@ export function AccountMovements({
 
   // Relecture en échec : annoncée avec « Réessayer », les mouvements d'avant restant affichés.
   const failure = read.failed ? (
-    <div className="alert alert-error" role="alert">
-      <p>{t(first ? 'treasury.movements_failed_stale' : 'treasury.movements_failed')}</p>
-      <button type="button" className="secondary" onClick={read.retry}>
-        {t('distribution.retry')}
-      </button>
-    </div>
+    <Banner
+      tone="bad"
+      role="alert"
+      action={
+        <Button variant="outline" size="sm" onClick={read.retry}>
+          {t('distribution.retry')}
+        </Button>
+      }
+    >
+      {t(first ? 'treasury.movements_failed_stale' : 'treasury.movements_failed')}
+    </Banner>
   ) : null;
   if (!first) {
     if (failure) return failure;
-    return (
-      <p className="home-muted" aria-busy="true">
-        {t('sales.loading')}
-      </p>
-    );
+    return <SkeletonRows rows={2} />;
   }
   return (
-    <div className="sale-block">
+    <div className="tre-movements">
       {failure}
       {read.stale && !read.failed ? (
         <p className="home-muted" role="status">
@@ -102,20 +104,22 @@ export function AccountMovements({
       {items.length === 0 ? (
         <p className="home-muted">{t('treasury.movements_empty')}</p>
       ) : (
-        <ul className="line-list">
+        <ul className="tre-moves">
           {items.map((movement) => {
             const date = formatDateTime(movement.occurredAt);
             const amount = `${movement.direction === 'OUT' ? '−' : '+'}${formatMoney(movement.amountXaf)}`;
             return (
-              <li key={movement.id}>
-                {t('treasury.movement_line', {
-                  date,
-                  type: t(`treasury.movement_type.${movement.movementType}`, {
-                    defaultValue: movement.movementType,
-                  }),
-                  amount,
-                })}
-                {movement.isReversal ? ` ${t('treasury.reversal')}` : ''}{' '}
+              <li key={movement.id} className="tre-move">
+                <span className="tre-move-text">
+                  {t('treasury.movement_line', {
+                    date,
+                    type: t(`treasury.movement_type.${movement.movementType}`, {
+                      defaultValue: movement.movementType,
+                    }),
+                    amount,
+                  })}
+                  {movement.isReversal ? ` ${t('treasury.reversal')}` : ''}
+                </span>
                 <MovementDocument
                   movement={movement}
                   label={t('treasury.movement_document_label', { date, amount })}
@@ -127,9 +131,9 @@ export function AccountMovements({
         </ul>
       )}
       {extra?.failed ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t('treasury.movements_failed')}
-        </p>
+        </Banner>
       ) : null}
       {/* Feuille journalière de caisse (lot PP, D4) : mouvements du jour métier, offerte seulement
           quand ils sont tous chargés (dernière page atteinte, ou un mouvement d'un jour antérieur
@@ -162,14 +166,16 @@ export function AccountMovements({
         />
       ) : null}
       {next ? (
-        <button
-          type="button"
-          className="secondary"
-          disabled={extra?.loading === true}
-          onClick={() => void loadMore()}
-        >
-          {t('treasury.movements_more')}
-        </button>
+        <div className="result-actions">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={extra?.loading === true}
+            onClick={() => void loadMore()}
+          >
+            {t('treasury.movements_more')}
+          </Button>
+        </div>
       ) : null}
     </div>
   );

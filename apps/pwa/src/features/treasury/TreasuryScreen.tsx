@@ -7,12 +7,25 @@
  * Direction (lecture, AV-300), comptes et leurs mouvements (dépense ou paiement fournisseur ouvert
  * depuis sa ligne). Les ajustements tardifs des sessions déjà validées ne sont pas listés (S-51).
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import type { CashTransferImputation } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import {
+  Banner,
+  Button,
+  DataCell,
+  DataList,
+  DataRow,
+  Field,
+  KpiTile,
+  LinkButton,
+  PageHeader,
+  Section,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { ExpenseFollowUp } from '../finance/ExpenseFollowUp.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
@@ -42,6 +55,9 @@ import {
 import { AccountMovements } from './AccountMovements.js';
 import { PendingSupplierPayments } from './PendingSupplierPayments.js';
 import { SessionDetail } from './SessionDetail.js';
+import { EmptyLine } from '../finance/EmptyLine.js';
+import '../finance/finance.css';
+import './treasury.css';
 import {
   closeDiscrepancyPayload,
   imputationOptions,
@@ -137,7 +153,6 @@ export function TreasuryScreen() {
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const ids = { option: useId(), reason: useId() };
   // Commandes gérées lues dans la base locale, indépendamment des référentiels de vente.
   const managed =
     useLiveQuery(
@@ -193,16 +208,16 @@ export function TreasuryScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.treasury')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.treasury')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
   if (!online) {
     return (
-      <section className="sale">
-        <h1>{t('nav.screens.treasury')}</h1>
-        <p className="home-muted">{t('treasury.online_only')}</p>
+      <section className="sale fin-page">
+        <PageHeader title={t('nav.screens.treasury')} />
+        <EmptyLine icon="offline" title={t('treasury.online_only')} />
       </section>
     );
   }
@@ -276,9 +291,10 @@ export function TreasuryScreen() {
 
   const transferLines = (transfer: CashTransferItem) => (
     <>
-      <p>
-        <strong>{transfer.docNumber}</strong> · {formatMoney(transfer.amountSentXaf)}
-      </p>
+      <div className="fin-card-head">
+        <strong>{transfer.docNumber}</strong>
+        <strong className="fin-amount">{formatMoney(transfer.amountSentXaf)}</strong>
+      </div>
       <p className="home-muted">
         {t('cash_transfer.route', {
           from: nameOf(transfer.fromAccountId),
@@ -296,36 +312,42 @@ export function TreasuryScreen() {
     </>
   );
 
+  /** Compte tenu de la lecture partielle : « 5+ » quand d'autres pages existent. */
+  const count = (items: readonly unknown[], more: boolean) => `${items.length}${more ? '+' : ''}`;
+
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.treasury')}</h1>
+    <section className="sale fin-page">
+      <PageHeader title={t('nav.screens.treasury')} />
       {last ? (
         <CommandResult commandId={last.commandId} messages={`treasury.${last.kind}_result`} />
       ) : null}
       {saveError ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t(saveError)}
-        </p>
+        </Banner>
       ) : null}
       {read.failed && !read.denied ? (
         // Relecture en échec : annoncée avec « Réessayer », la liste d'avant restant affichée comme
         // périmée (les actions y restent bloquées).
-        <div className="alert alert-error" role="alert">
-          <p>{t(data ? 'treasury.failed_stale' : 'treasury.failed')}</p>
-          <button type="button" className="secondary" onClick={read.retry}>
-            {t('distribution.retry')}
-          </button>
-        </div>
+        <Banner
+          tone="bad"
+          role="alert"
+          action={
+            <Button variant="outline" size="sm" onClick={read.retry}>
+              {t('distribution.retry')}
+            </Button>
+          }
+        >
+          {t(data ? 'treasury.failed_stale' : 'treasury.failed')}
+        </Banner>
       ) : null}
       {read.denied ? (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad" role="alert">
           {t('treasury.denied')}
-        </p>
+        </Banner>
       ) : !data ? (
         read.failed ? null : (
-          <p className="home-muted" aria-busy="true">
-            {t('sales.loading')}
-          </p>
+          <SkeletonRows rows={3} />
         )
       ) : (
         <>
@@ -334,15 +356,41 @@ export function TreasuryScreen() {
               {t('treasury.refreshing')}
             </p>
           ) : null}
-          <section className="sale-block" aria-labelledby="treasury-sessions-title">
-            <h2 id="treasury-sessions-title">{t('treasury.sessions_title')}</h2>
+          <div className="fin-kpis fin-kpis-4">
+            <KpiTile
+              icon="cash"
+              label={t('treasury.tile_balance')}
+              value={formatMoney(
+                data.accounts.reduce((sum, account) => sum + account.balanceXaf, 0),
+              )}
+              detail={t('treasury.tile_balance_detail', { count: data.accounts.length })}
+            />
+            <KpiTile
+              icon="clipboard"
+              label={t('treasury.tile_sessions')}
+              value={count(data.sessions, data.sessionsMore)}
+              tone={data.sessions.length > 0 ? 'warn' : 'neutral'}
+            />
+            <KpiTile
+              icon="alert"
+              label={t('treasury.tile_discrepancies')}
+              value={count(data.discrepancies, data.discrepanciesMore)}
+              tone={data.discrepancies.length > 0 ? 'bad' : 'neutral'}
+            />
+            <KpiTile
+              icon="truck"
+              label={t('treasury.tile_transit')}
+              value={count(data.inTransit, data.inTransitMore)}
+            />
+          </div>
+          <Section title={t('treasury.sessions_title')}>
             {data.sessionsMore ? (
               <p className="text-warn" role="status">
                 {t('treasury.partial', { count: data.sessions.length })}
               </p>
             ) : null}
             {data.sessions.length === 0 ? (
-              <p className="home-muted">{t('treasury.sessions_empty')}</p>
+              <EmptyLine icon="check-circle" title={t('treasury.sessions_empty')} />
             ) : (
               <ul className="line-list">
                 {data.sessions.map((session) => {
@@ -357,7 +405,7 @@ export function TreasuryScreen() {
                   });
                   const expanded = open?.id === session.id && open.kind === 'session';
                   return (
-                    <li key={session.id} className="line-card" aria-label={label}>
+                    <li key={session.id} className="line-card fin-card" aria-label={label}>
                       <p>
                         <strong>{label}</strong>
                       </p>
@@ -389,17 +437,20 @@ export function TreasuryScreen() {
                       {session.clockSuspect ? (
                         <p className="text-warn">{t('treasury.clock_suspect')}</p>
                       ) : null}
-                      <button
-                        type="button"
-                        className="secondary"
-                        ref={opener('session', session.id)}
-                        aria-expanded={expanded}
-                        onClick={() => toggle(session.id, 'session')}
-                      >
-                        {t(expanded ? 'treasury.session_close' : 'treasury.session_open', {
-                          label,
-                        })}
-                      </button>
+                      <div className="result-actions">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          iconEnd={expanded ? 'chevron-up' : 'chevron-down'}
+                          ref={opener('session', session.id)}
+                          aria-expanded={expanded}
+                          onClick={() => toggle(session.id, 'session')}
+                        >
+                          {t(expanded ? 'treasury.session_close' : 'treasury.session_open', {
+                            label,
+                          })}
+                        </Button>
+                      </div>
                       {expanded ? (
                         <SessionDetail
                           sessionId={session.id}
@@ -417,24 +468,27 @@ export function TreasuryScreen() {
               </ul>
             )}
             <p className="home-muted">{t('treasury.adjustments_hint')}</p>
-          </section>
+          </Section>
 
-          <section className="sale-block" aria-labelledby="treasury-discrepancies-title">
-            <h2 id="treasury-discrepancies-title">{t('treasury.discrepancies_title')}</h2>
+          <Section title={t('treasury.discrepancies_title')}>
             {data.discrepanciesMore ? (
               <p className="text-warn" role="status">
                 {t('treasury.partial', { count: data.discrepancies.length })}
               </p>
             ) : null}
             {data.discrepancies.length === 0 ? (
-              <p className="home-muted">{t('treasury.discrepancies_empty')}</p>
+              <EmptyLine icon="check-circle" title={t('treasury.discrepancies_empty')} />
             ) : (
               <ul className="line-list">
                 {data.discrepancies.map((transfer) => {
                   const block = transferDecisionBlock(transfer, userId);
                   const expanded = open?.id === transfer.id && open.kind === 'decide';
                   return (
-                    <li key={transfer.id} className="line-card" aria-label={transfer.docNumber}>
+                    <li
+                      key={transfer.id}
+                      className="line-card fin-card"
+                      aria-label={transfer.docNumber}
+                    >
                       {transferLines(transfer)}
                       <p className="text-warn">
                         {t('treasury.discrepancy_line', {
@@ -448,88 +502,93 @@ export function TreasuryScreen() {
                       {block ? (
                         <p className="home-muted">{t(`treasury.decision_block.${block}`)}</p>
                       ) : expanded ? (
-                        <div className="field">
-                          <label htmlFor={ids.option}>{t('treasury.imputation_label')}</label>
-                          <select
-                            id={ids.option}
-                            ref={optionRef}
-                            className="text-input"
-                            value={option}
-                            onChange={(event) =>
-                              setOption(event.target.value as CashTransferImputation | '')
-                            }
-                          >
-                            <option value="">{t('treasury.imputation_placeholder')}</option>
-                            {imputationOptions(transfer).map((choice) => (
-                              <option
-                                key={choice.option}
-                                value={choice.option}
-                                disabled={choice.disabled}
+                        <div className="fin-decision">
+                          <Field label={t('treasury.imputation_label')}>
+                            {(control) => (
+                              <select
+                                {...control}
+                                ref={optionRef}
+                                className="select"
+                                value={option}
+                                onChange={(event) =>
+                                  setOption(event.target.value as CashTransferImputation | '')
+                                }
                               >
-                                {t(`treasury.imputation.${choice.option}`)}
-                              </option>
-                            ))}
-                          </select>
-                          <label htmlFor={ids.reason}>{t('treasury.decision_reason')}</label>
-                          <textarea
-                            id={ids.reason}
-                            className="text-input"
-                            rows={2}
-                            maxLength={MAX_DECISION_REASON}
-                            value={reason}
-                            onChange={(event) => setReason(event.target.value)}
-                          />
+                                <option value="">{t('treasury.imputation_placeholder')}</option>
+                                {imputationOptions(transfer).map((choice) => (
+                                  <option
+                                    key={choice.option}
+                                    value={choice.option}
+                                    disabled={choice.disabled}
+                                  >
+                                    {t(`treasury.imputation.${choice.option}`)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </Field>
+                          <Field label={t('treasury.decision_reason')}>
+                            {(control) => (
+                              <Textarea
+                                {...control}
+                                rows={2}
+                                maxLength={MAX_DECISION_REASON}
+                                value={reason}
+                                onChange={(event) => setReason(event.target.value)}
+                              />
+                            )}
+                          </Field>
                           <div className="result-actions">
-                            <button
-                              type="button"
+                            <Button
                               disabled={blocked || !option || reason.trim() === ''}
                               onClick={() => decide(transfer)}
                             >
                               {t('treasury.decide_submit')}
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary"
-                              onClick={() => toggle(transfer.id, 'decide')}
-                            >
+                            </Button>
+                            <Button variant="ghost" onClick={() => toggle(transfer.id, 'decide')}>
                               {t('cash_transfer.close_form')}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          className="secondary"
-                          ref={opener('decide', transfer.id)}
-                          disabled={blocked}
-                          onClick={() => toggle(transfer.id, 'decide')}
-                        >
-                          {t('treasury.decide_open', { doc: transfer.docNumber })}
-                        </button>
+                        <div className="result-actions">
+                          <Button
+                            variant="tonal"
+                            size="sm"
+                            ref={opener('decide', transfer.id)}
+                            disabled={blocked}
+                            onClick={() => toggle(transfer.id, 'decide')}
+                          >
+                            {t('treasury.decide_open', { doc: transfer.docNumber })}
+                          </Button>
+                        </div>
                       )}
                     </li>
                   );
                 })}
               </ul>
             )}
-          </section>
+          </Section>
 
-          <section className="sale-block" aria-labelledby="treasury-transit-title">
-            <h2 id="treasury-transit-title">{t('treasury.transit_title')}</h2>
+          <Section title={t('treasury.transit_title')}>
             {data.inTransitMore ? (
               <p className="text-warn" role="status">
                 {t('treasury.partial', { count: data.inTransit.length })}
               </p>
             ) : null}
             {data.inTransit.length === 0 ? (
-              <p className="home-muted">{t('treasury.transit_empty')}</p>
+              <EmptyLine icon="truck" title={t('treasury.transit_empty')} />
             ) : (
               <ul className="line-list">
                 {data.inTransit.map((transfer) => {
                   const expanded = open?.id === transfer.id && open.kind === 'receive';
                   const receivable = mayReceive && transfer.sentBy !== userId;
                   return (
-                    <li key={transfer.id} className="line-card" aria-label={transfer.docNumber}>
+                    <li
+                      key={transfer.id}
+                      className="line-card fin-card"
+                      aria-label={transfer.docNumber}
+                    >
                       {transferLines(transfer)}
                       {!receivable ? null : expanded ? (
                         <TransferReceiveForm
@@ -539,76 +598,102 @@ export function TreasuryScreen() {
                           onClose={() => setOpen(null)}
                         />
                       ) : (
-                        <button
-                          type="button"
-                          className="secondary"
-                          ref={opener('receive', transfer.id)}
-                          disabled={blocked}
-                          onClick={() => toggle(transfer.id, 'receive')}
-                        >
-                          {t('cash_transfer.receive_open', { label: transfer.docNumber })}
-                        </button>
+                        <div className="result-actions">
+                          <Button
+                            variant="tonal"
+                            size="sm"
+                            ref={opener('receive', transfer.id)}
+                            disabled={blocked}
+                            onClick={() => toggle(transfer.id, 'receive')}
+                          >
+                            {t('cash_transfer.receive_open', { label: transfer.docNumber })}
+                          </Button>
+                        </div>
                       )}
                     </li>
                   );
                 })}
               </ul>
             )}
-          </section>
+          </Section>
 
-          <section className="sale-block" aria-labelledby="treasury-accounts-title">
-            <h2 id="treasury-accounts-title">{t('treasury.accounts_title')}</h2>
+          <Section title={t('treasury.accounts_title')}>
             {data.accounts.length === 0 ? (
-              <p className="home-muted">{t('treasury.accounts_empty')}</p>
+              <EmptyLine icon="cash" title={t('treasury.accounts_empty')} />
             ) : (
-              <ul className="line-list">
+              <DataList
+                className="tre-accounts fin-table"
+                template="minmax(0, 2fr) minmax(0, 1.6fr) minmax(8rem, 1.2fr) minmax(0, 1.4fr)"
+                columns={[
+                  { label: t('treasury.col_account') },
+                  { label: t('treasury.col_type') },
+                  { label: t('treasury.col_balance'), numeric: true },
+                  { label: '' },
+                ]}
+              >
                 {data.accounts.map((account) => {
                   const expanded = open?.id === account.id && open.kind === 'account';
                   return (
-                    <li key={account.id} className="line-card" aria-label={account.name}>
-                      <p>
-                        <strong>{account.name}</strong> ·{' '}
+                    <DataRow key={account.id} aria-label={account.name}>
+                      <DataCell primary>
+                        <strong>{account.name}</strong>
+                      </DataCell>
+                      <DataCell label={t('treasury.col_type')}>
                         {t(`treasury.account_type.${account.accountType}`, {
                           defaultValue: account.accountType,
                         })}
                         {account.status !== 'ACTIVE' ? ` · ${t('treasury.inactive')}` : ''}
-                      </p>
-                      <p>{t('treasury.balance', { amount: formatMoney(account.balanceXaf) })}</p>
-                      <button
-                        type="button"
-                        className="secondary"
-                        ref={opener('account', account.id)}
-                        aria-expanded={expanded}
-                        onClick={() => toggle(account.id, 'account')}
-                      >
-                        {t(expanded ? 'treasury.movements_close' : 'treasury.movements_open', {
-                          name: account.name,
-                        })}
-                      </button>
+                      </DataCell>
+                      <DataCell label={t('treasury.col_balance')} numeric>
+                        {formatMoney(account.balanceXaf)}
+                      </DataCell>
+                      <DataCell actions>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          iconEnd={expanded ? 'chevron-up' : 'chevron-down'}
+                          ref={opener('account', account.id)}
+                          aria-expanded={expanded}
+                          aria-label={t(
+                            expanded ? 'treasury.movements_close' : 'treasury.movements_open',
+                            { name: account.name },
+                          )}
+                          onClick={() => toggle(account.id, 'account')}
+                        >
+                          {t(
+                            expanded
+                              ? 'treasury.movements_close_short'
+                              : 'treasury.movements_short',
+                          )}
+                        </Button>
+                      </DataCell>
                       {expanded ? (
-                        <AccountMovements
-                          accountId={account.id}
-                          online={online}
-                          reloadKey={reloadKey}
-                        />
+                        <DataCell wide>
+                          <AccountMovements
+                            accountId={account.id}
+                            online={online}
+                            reloadKey={reloadKey}
+                          />
+                        </DataCell>
                       ) : null}
-                    </li>
+                    </DataRow>
                   );
                 })}
-              </ul>
+              </DataList>
             )}
-          </section>
+          </Section>
         </>
       )}
 
       {/* Lectures indépendantes de la trésorerie : affichées même si celle-ci échoue (revue de P8E-04). */}
-      <section className="sale-block" aria-labelledby="treasury-expenses-title">
-        <h2 id="treasury-expenses-title">{t('treasury.expenses_title')}</h2>
+      <Section title={t('treasury.expenses_title')}>
         <ExpenseFollowUp userId={userId} fixedGroup="TO_PAY" />
-        <Link to={`${ROUTES.expenses}?vue=suivi`} className="action action-compact">
-          <span className="action-label">{t('treasury.expenses_follow_link')}</span>
-        </Link>
-      </section>
+        <div className="chip-row">
+          <LinkButton to={`${ROUTES.expenses}?vue=suivi`} variant="tonal" size="sm" icon="receipt">
+            {t('treasury.expenses_follow_link')}
+          </LinkButton>
+        </div>
+      </Section>
 
       <PendingSupplierPayments
         userId={userId}

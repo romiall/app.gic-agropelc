@@ -265,8 +265,12 @@ const list = () => screen.getByRole('region', { name: 'Liste des créances' });
 const groupNames = () =>
   within(list())
     .getAllByRole('listitem')
-    .filter((item) => item.classList.contains('line-card'))
+    .filter((item) => item.classList.contains('data-row'))
     .map((item) => item.getAttribute('aria-label'));
+
+/** Tuile d'indicateur de l'encours, retrouvée par son libellé. */
+const tileOf = (summary: HTMLElement, label: string) =>
+  within(summary).getByText(label).closest('.tile') as HTMLElement;
 
 describe('Créances (ECR-FIN-01, P8E-09)', () => {
   beforeEach(async () => {
@@ -296,11 +300,15 @@ describe('Créances (ECR-FIN-01, P8E-09)', () => {
     renderScreen();
     const summary = await screen.findByRole('region', { name: 'Encours' });
     expect(await within(summary).findByText('Situation au 10 octobre 2026')).toBeInTheDocument();
-    expect(
-      within(summary).getByText(/^Dû par les clients : 84\s000 F CFA \(5 ventes\)$/),
-    ).toBeInTheDocument();
-    expect(within(summary).getByText(/^Échu : 79\s000 F CFA$/)).toHaveClass('text-warn');
-    expect(within(summary).getByText(/^À échoir : 5\s000 F CFA$/)).toBeInTheDocument();
+    // Trois tuiles (libellé, valeur, précision) à la place des trois phrases d'avant.
+    const total = tileOf(summary, 'Dû par les clients');
+    expect(within(total).getByText(/^84\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(total).getByText('5 ventes')).toBeInTheDocument();
+    const overdue = tileOf(summary, 'Échu');
+    expect(overdue).toHaveClass('tile-bad');
+    expect(within(overdue).getByText(/^79\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(overdue).getByText(/^94\s% de l’encours$/)).toBeInTheDocument();
+    expect(within(tileOf(summary, 'À échoir')).getByText(/^5\s000 F CFA$/)).toBeInTheDocument();
     const buckets = within(summary).getByRole('list', { name: 'Échu par retard' });
     expect(
       within(buckets)
@@ -316,7 +324,7 @@ describe('Créances (ECR-FIN-01, P8E-09)', () => {
     // Le compte absorbé est réuni au compte conservé ; le plus en retard d'abord.
     const mado = await within(list()).findByRole('listitem', { name: 'Restaurant Chez Mado' });
     expect(groupNames()).toEqual(['Restaurant Chez Mado', 'Boutique Mvog-Mbi', 'client …08a3']);
-    expect(within(mado).getByText(/^· 58\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(mado).getByText(/^58\s000 F CFA$/)).toBeInTheDocument();
     expect(
       within(mado).getByText(/^Échu 58\s000 F CFA · jusqu’à 131 jours de retard$/),
     ).toBeInTheDocument();
@@ -475,11 +483,11 @@ describe('Créances (ECR-FIN-01, P8E-09)', () => {
     await user.selectOptions(screen.getByLabelText('Regrouper par'), 'owner');
     const alice = await within(list()).findByRole('listitem', { name: 'Alice Mballa' });
     expect(groupNames()).toEqual(['Alice Mballa', 'Mes créances']);
-    expect(within(alice).getByText(/^· 50\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(alice).getByText(/^50\s000 F CFA$/)).toBeInTheDocument();
     expect(within(alice).queryByRole('link', { name: /^Encaisser auprès/ })).toBeNull();
     expect(within(alice).queryByRole('link', { name: /^Appeler/ })).toBeNull();
     const mine = within(list()).getByRole('listitem', { name: 'Mes créances' });
-    expect(within(mine).getByText(/^· 34\s000 F CFA$/)).toBeInTheDocument();
+    expect(within(mine).getByText(/^34\s000 F CFA$/)).toBeInTheDocument();
     await user.click(within(mine).getByRole('button', { name: 'Voir mes ventes' }));
     expect(within(mine).getByRole('button', { name: 'Masquer mes ventes' })).toHaveAttribute(
       'aria-expanded',
@@ -959,8 +967,13 @@ describe('Créances (ECR-FIN-01, P8E-09)', () => {
     });
     renderScreen();
     expect(await screen.findByText('Aucune créance ouverte.')).toBeInTheDocument();
-    expect(screen.getByText(/^Échu : 0 F CFA$/)).not.toHaveClass('text-warn');
-    expect(screen.getByText(/^Dû par les clients : 0 F CFA \(0 vente\)$/)).toBeInTheDocument();
+    const summary = screen.getByRole('region', { name: 'Encours' });
+    const overdue = tileOf(summary, 'Échu');
+    expect(overdue).not.toHaveClass('tile-bad');
+    expect(within(overdue).getByText(/^0 F CFA$/)).toBeInTheDocument();
+    const total = tileOf(summary, 'Dû par les clients');
+    expect(within(total).getByText(/^0 F CFA$/)).toBeInTheDocument();
+    expect(within(total).getByText('0 vente')).toBeInTheDocument();
   });
 
   it('refus sans relance ; panne avec relance', async () => {

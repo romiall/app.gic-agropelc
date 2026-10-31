@@ -1,0 +1,393 @@
+/* Écrans de la finance (ADR-049, lot L8) : tuiles d'indicateurs, vieillissement des créances, tableaux des
+   créances, des factures et des paiements. Les composants viennent de `components/ui` ; cette feuille ne
+   garde que ce qui est propre au domaine. Aucune couleur en dur : jetons seulement. */
+
+/* --- Tuiles d'indicateurs ------------------------------------------------------------------------ */
+
+.fin-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+/* La première tuile (le total) prend toute la largeur sur téléphone, les deux autres se partagent la ligne. */
+.fin-kpis-lead > :first-child {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 40rem) {
+  .fin-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fin-kpis-lead > :first-child {
+    grid-column: auto;
+  }
+
+  .fin-kpis-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* --- Vieillissement : barre empilée ordinale et légende ---------------------------------------------- */
+
+/* Un seul ton (l'alerte) dilué dans la surface : plus le retard s'allonge, plus il est soutenu. Les quatre
+   pas (50, 66, 82 et 100 %) ont été validés pour les deux thèmes (pas de clarté d'au moins 0,06, extrémité
+   claire à plus de 2 : 1 de la surface). */
+.fin-age-1 {
+  --seg: var(--bad);
+  --seg: color-mix(in srgb, var(--bad) 50%, var(--surface));
+}
+
+.fin-age-2 {
+  --seg: var(--bad);
+  --seg: color-mix(in srgb, var(--bad) 66%, var(--surface));
+}
+
+.fin-age-3 {
+  --seg: var(--bad);
+  --seg: color-mix(in srgb, var(--bad) 82%, var(--surface));
+}
+
+.fin-age-4 {
+  --seg: var(--bad);
+}
+
+.fin-age {
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.fin-age-title {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-2);
+  font: 600 var(--text-sm) / 1.2 var(--font-ui);
+}
+
+/* Barre fine (12 px), segments séparés par un intervalle de 2 px de la couleur de la surface, bout de
+   donnée arrondi de 4 px, origine à gauche. */
+.fin-age-bar {
+  display: flex;
+  gap: 2px;
+  height: 0.75rem;
+  overflow: hidden;
+  border-radius: 0 4px 4px 0;
+}
+
+.fin-age-seg {
+  flex: 1 1 0;
+  min-width: 4px;
+  background: var(--seg);
+}
+
+/* Légende : une colonne sur téléphone, deux sur écran large (les quatre tranches se lisent dans l'ordre). */
+.fin-age-legend {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 40rem) {
+  .fin-age-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.fin-age-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.fin-age-legend li::before {
+  content: '';
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 3px;
+  background: var(--seg);
+}
+
+/* --- Tableaux ---------------------------------------------------------------------------------------- */
+
+.fin-selection {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.fin-group-meta {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+/* Actions d'une ligne de tableau : à gauche sous la carte sur téléphone, à droite de la ligne en colonnes ;
+   elles passent à la ligne plutôt que de pousser le tableau. */
+.fin-table .data-cell.is-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+@media (min-width: 56.25rem) {
+  .fin-table .data-cell.is-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* --- Pages : sections empilées qui respirent, état vide compact ------------------------------------- */
+
+.fin-page .section + .section {
+  margin-top: var(--space-6);
+}
+
+.fin-page > .section + p {
+  margin-top: var(--space-5);
+}
+
+/* État vide d'une section : une ligne (icône et texte), pas un bloc centré. Plusieurs files de travail vides
+   s'empilent sur la trésorerie sans prendre l'écran. */
+.fin-compact .empty {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  text-align: left;
+}
+
+.fin-compact .empty-icon {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+}
+
+.fin-compact .empty h3 {
+  margin: 0;
+  color: var(--ink-2);
+  font: 600 var(--text-md) / 1.3 var(--font-ui);
+}
+
+/* Retard : un point et un texte, le ton suit la gravité (jamais la couleur seule). */
+.fin-status {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.fin-status::before {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.4em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.fin-status.is-warn {
+  color: var(--warn);
+}
+
+.fin-status.is-bad {
+  color: var(--bad);
+}
+
+.fin-status.is-ok {
+  color: var(--ok);
+}
+
+.fin-status.is-info {
+  color: var(--info);
+}
+
+.fin-status.is-muted {
+  color: var(--ink-2);
+}
+
+.fin-meta {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+/* Détail d'une ligne de tableau (factures, paiements) : sous les colonnes, sur toute la largeur. */
+.fin-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+  border-top: 1px dashed var(--line);
+}
+
+.fin-detail > p {
+  margin: 0;
+}
+
+/* Écarts de rapprochement : une boîte d'avertissement, un point par écart. */
+.fin-mismatch {
+  align-self: stretch;
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--radius-md);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.fin-mismatch li + li {
+  margin-top: var(--space-1);
+}
+
+/* Formulaire de décision (motif, affectation) ouvert dans la ligne. */
+.fin-decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-self: stretch;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.fin-decision legend {
+  padding: 0 var(--space-1);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.fin-decision .field {
+  margin-bottom: 0;
+}
+
+.fin-invoice-lines {
+  align-self: stretch;
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Coûts et marges : sous-titres, détails chiffrés, fiche de lot ------------------------------------ */
+
+.fin-sub {
+  margin: var(--space-4) 0 var(--space-1);
+  color: var(--ink);
+  font: 700 var(--text-md) / 1.3 var(--font-ui);
+}
+
+.fin-breakdown {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.fin-total {
+  margin: var(--space-2) 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fin-lot {
+  margin-top: var(--space-3);
+}
+
+.fin-lot > p {
+  margin: 0 0 var(--space-2);
+}
+
+/* --- Fiches de dépense (saisies et suivi) : titre et montant sur une ligne ----------------------------- */
+
+.fin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.fin-card > p {
+  margin: 0;
+}
+
+.fin-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-self: stretch;
+}
+
+.fin-amount {
+  font: 700 var(--text-lg) / 1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Plusieurs mentions dans l'aide d'un champ : une par ligne. */
+.field-hint .text-warn {
+  display: block;
+}
+
+/* --- Formulaires de saisie (facture, paiement, dépense) ---------------------------------------------- */
+
+.fin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fin-form .field {
+  margin-bottom: 0;
+}
+
+/* Deux champs côte à côte dès que la place le permet. */
+.fin-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  align-items: start;
+  gap: var(--space-3) var(--space-4);
+}
+
+.fin-lines {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fin-lines > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.fin-lines .line-list {
+  margin-bottom: var(--space-3);
+}
+
+/* Ventes d'un groupe : un retrait dans la ligne du tableau. */
+.fin-sales {
+  margin-top: var(--space-1);
+  box-shadow: none;
+  background: var(--surface-2);
+}
