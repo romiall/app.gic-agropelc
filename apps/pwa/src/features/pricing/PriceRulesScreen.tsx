@@ -7,6 +7,23 @@
  */
 import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Checkbox,
+  DataCell,
+  DataList,
+  DataRow,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -46,6 +63,7 @@ import {
   type RuleView,
 } from './rules.js';
 import { describeScope } from './scope.js';
+import './pricing.css';
 
 const ACTIVATION_TOLERANCE_MS = 5 * 60 * 1000;
 
@@ -141,18 +159,14 @@ function RuleEditor({
         ? formFrom(superseded, supersedeValidFrom(superseded, clock.now()))
         : emptyForm(product)),
   );
+  // Préfixes des messages d'anomalie reliés aux champs (`aria-describedby`).
   const ids = {
     code: useId(),
     price: useId(),
     site: useId(),
-    zone: useId(),
-    category: useId(),
-    channel: useId(),
     min: useId(),
     priority: useId(),
     from: useId(),
-    to: useId(),
-    notes: useId(),
   };
   const newLineage = superseded === null;
   // La règle remplacée est relue dans la dernière liste : elle doit être encore active, la dernière
@@ -247,245 +261,258 @@ function RuleEditor({
   };
 
   const select = (
-    id: string,
     label: string,
     value: string,
     onChange: (value: string) => void,
     options: readonly { readonly value: string; readonly label: string }[],
     invalidBy?: string,
   ) => (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        className="text-input"
-        value={value}
-        aria-invalid={invalidBy ? true : undefined}
-        aria-describedby={invalidBy}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">{t('price_rules.any')}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Field label={label}>
+      {(control) => (
+        <Select
+          {...control}
+          value={value}
+          aria-invalid={invalidBy ? true : undefined}
+          aria-describedby={invalidBy}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">{t('price_rules.any')}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
   );
 
   return (
-    <section className="sale-block" aria-labelledby="price-rule-editor-title">
-      <h2 id="price-rule-editor-title">
-        {superseded
+    <Section
+      title={
+        superseded
           ? t('price_rules.supersede_title', { code: superseded.code, version: superseded.version })
-          : t('price_rules.draft_title')}
-      </h2>
-      {newLineage ? (
-        <div className="field">
-          <label htmlFor={ids.code}>{t('price_rules.code_label')}</label>
-          <input
-            id={ids.code}
-            className="text-input"
-            maxLength={40}
-            value={form.code}
-            aria-invalid={has('CODE_REQUIRED', 'CODE_TAKEN') || undefined}
-            aria-describedby={
-              [
-                has('CODE_REQUIRED', 'CODE_TAKEN') ? issueIds.code : null,
-                takenCodes === null ? issueIds.codes : null,
-              ]
-                .filter(Boolean)
-                .join(' ') || undefined
-            }
-            onChange={(event) => update({ code: event.target.value })}
-          />
-          {takenCodes === undefined ? (
-            <p className="home-muted">{t('price_rules.codes_loading')}</p>
-          ) : takenCodes === null ? (
-            <div id={issueIds.codes} className="error-message">
-              <p>{t('price_rules.codes_unavailable')}</p>
-              <button type="button" className="secondary" onClick={onRetryCodes}>
-                {t('ledger.retry')}
-              </button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {form.commercialCampaignId ? (
-        <p className="home-muted">{t('price_rules.campaign_kept')}</p>
-      ) : null}
-      {supersededStale ? (
-        <p className="error-message" role="alert">
-          {t('price_rules.superseded_changed')}
-        </p>
-      ) : null}
-      <div className="field">
-        <label htmlFor={ids.price}>
-          {t('price_rules.price_label', { unit: unitLabel(form.pricingUnitCode) })}
-        </label>
-        <input
-          id={ids.price}
-          className="text-input"
-          inputMode="numeric"
-          value={form.unitPriceText}
-          aria-invalid={has('PRICE_INVALID') || undefined}
-          aria-describedby={has('PRICE_INVALID') ? issueIds.price : undefined}
-          onChange={(event) => update({ unitPriceText: event.target.value })}
-        />
-      </div>
-      {select(
-        ids.site,
-        t('price_sim.site_label'),
-        form.siteId,
-        (siteId) => update({ siteId }),
-        withCurrent(
-          [...refs.sites.values()]
-            .filter((site) => site.status === 'ACTIVE')
-            .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-            .map((site) => ({ value: site.id, label: site.name })),
-          form.siteId,
-          refs.sites.get(form.siteId)
-            ? t('price_rules.inactive_option', { name: refs.sites.get(form.siteId)?.name ?? '' })
-            : t('price_rules.unknown_option', { name: form.siteId }),
-        ),
-        has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
-      )}
-      {select(
-        ids.zone,
-        t('price_sim.zone_label'),
-        form.zoneId,
-        (zoneId) => update({ zoneId }),
-        withCurrent(
-          prospectZoneOptions(refs.zones).map((zone) => ({ value: zone.id, label: zone.label })),
-          form.zoneId,
-          refs.zones.get(form.zoneId)
-            ? t('price_rules.inactive_option', { name: refs.zones.get(form.zoneId)?.name ?? '' })
-            : t('price_rules.unknown_option', { name: form.zoneId }),
-        ),
-        has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
-      )}
-      {select(
-        ids.category,
-        t('price_sim.category_label'),
-        form.customerCategoryId,
-        (customerCategoryId) => update({ customerCategoryId }),
-        withCurrent(
-          refs.customerCategories.map((category) => ({ value: category.id, label: category.name })),
-          form.customerCategoryId,
-          refs.customerCategoryById.get(form.customerCategoryId)
-            ? t('price_rules.inactive_option', {
-                name: refs.customerCategoryById.get(form.customerCategoryId)?.name ?? '',
-              })
-            : t('price_rules.unknown_option', { name: form.customerCategoryId }),
-        ),
-      )}
-      {select(
-        ids.channel,
-        t('price_sim.channel_label'),
-        form.channelCode,
-        (channelCode) => update({ channelCode }),
-        withCurrent(
-          SIM_CHANNELS.map((code) => ({ value: code, label: t(`price_sim.channel.${code}`) })),
-          form.channelCode,
-          t('price_rules.unknown_option', { name: form.channelCode }),
-        ),
-      )}
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.min}>
-            {t('price_rules.min_quantity_label', { unit: unitLabel(form.pricingUnitCode) })}
-          </label>
-          <input
-            id={ids.min}
-            className="text-input"
-            inputMode="decimal"
-            value={form.minQuantityText}
-            aria-invalid={has('MIN_QUANTITY_INVALID') || undefined}
-            aria-describedby={has('MIN_QUANTITY_INVALID') ? issueIds.min : undefined}
-            onChange={(event) => update({ minQuantityText: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={ids.priority}>{t('price_rules.priority_label')}</label>
-          <input
-            id={ids.priority}
-            className="text-input"
-            inputMode="numeric"
-            value={form.priorityText}
-            aria-invalid={has('PRIORITY_INVALID') || undefined}
-            aria-describedby={has('PRIORITY_INVALID') ? issueIds.priority : undefined}
-            onChange={(event) => update({ priorityText: event.target.value })}
-          />
-        </div>
-      </div>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.from}>{t('price_rules.valid_from_label')}</label>
-          <input
-            id={ids.from}
-            type="datetime-local"
-            className="text-input"
-            value={form.validFrom}
-            aria-invalid={
-              has('VALID_FROM_INVALID', 'VALID_FROM_PAST', 'OUTSIDE_SUPERSEDED') || undefined
-            }
-            aria-describedby={
-              has('VALID_FROM_INVALID', 'VALID_FROM_PAST', 'OUTSIDE_SUPERSEDED')
-                ? issueIds.dates
-                : undefined
-            }
-            onChange={(event) => update({ validFrom: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={ids.to}>{t('price_rules.valid_to_label')}</label>
-          <input
-            id={ids.to}
-            type="datetime-local"
-            className="text-input"
-            value={form.validTo}
-            aria-invalid={has('VALID_TO_INVALID') || undefined}
-            aria-describedby={has('VALID_TO_INVALID') ? issueIds.dates : undefined}
-            onChange={(event) => update({ validTo: event.target.value })}
-          />
-        </div>
-      </div>
-      <p className="home-muted">{t('price_rules.activation_hint')}</p>
-      <div className="field">
-        <label htmlFor={ids.notes}>{t('price_rules.notes_label')}</label>
-        <input
-          id={ids.notes}
-          className="text-input"
-          maxLength={2000}
-          value={form.notes}
-          onChange={(event) => update({ notes: event.target.value })}
-        />
-      </div>
-      <div role="status" aria-live="polite">
-        {[...new Set(check.issues.map((issue) => issueField[issue] ?? issue))].map((fieldId) => (
-          <p key={fieldId} id={fieldId} className="error-message">
-            {check.issues
-              .filter((issue) => (issueField[issue] ?? issue) === fieldId)
-              .map((issue) => t(`price_rules.issue.${issue}`))
-              .join(' ')}
+          : t('price_rules.draft_title')
+      }
+    >
+      <Card padded className="pr-form">
+        {newLineage ? (
+          <>
+            <Field
+              label={t('price_rules.code_label')}
+              hint={takenCodes === undefined ? t('price_rules.codes_loading') : undefined}
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  maxLength={40}
+                  value={form.code}
+                  aria-invalid={has('CODE_REQUIRED', 'CODE_TAKEN') || undefined}
+                  aria-describedby={
+                    [
+                      has('CODE_REQUIRED', 'CODE_TAKEN') ? issueIds.code : null,
+                      takenCodes === null ? issueIds.codes : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || undefined
+                  }
+                  onChange={(event) => update({ code: event.target.value })}
+                />
+              )}
+            </Field>
+            {takenCodes === null ? (
+              <div id={issueIds.codes} className="pr-codes-error">
+                <p className="field-error">{t('price_rules.codes_unavailable')}</p>
+                <Button variant="outline" size="sm" onClick={onRetryCodes}>
+                  {t('ledger.retry')}
+                </Button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        {form.commercialCampaignId ? (
+          <p className="muted">{t('price_rules.campaign_kept')}</p>
+        ) : null}
+        {supersededStale ? (
+          <p className="field-error" role="alert">
+            {t('price_rules.superseded_changed')}
           </p>
-        ))}
-      </div>
-      {conflicts.length > 0 ? (
-        <p className="text-warn" role="status">
-          {t('price_rules.conflict_warning', { count: conflicts.length })}
-        </p>
-      ) : null}
-      <div className="result-actions">
-        <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
-          {superseded ? t('price_rules.submit_supersede') : t('price_rules.submit_draft')}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        ) : null}
+        <Field label={t('price_rules.price_label', { unit: unitLabel(form.pricingUnitCode) })}>
+          {(control) => (
+            <Input
+              {...control}
+              inputMode="numeric"
+              value={form.unitPriceText}
+              aria-invalid={has('PRICE_INVALID') || undefined}
+              aria-describedby={has('PRICE_INVALID') ? issueIds.price : undefined}
+              onChange={(event) => update({ unitPriceText: event.target.value })}
+            />
+          )}
+        </Field>
+        <div className="pr-pair">
+          {select(
+            t('price_sim.site_label'),
+            form.siteId,
+            (siteId) => update({ siteId }),
+            withCurrent(
+              [...refs.sites.values()]
+                .filter((site) => site.status === 'ACTIVE')
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((site) => ({ value: site.id, label: site.name })),
+              form.siteId,
+              refs.sites.get(form.siteId)
+                ? t('price_rules.inactive_option', {
+                    name: refs.sites.get(form.siteId)?.name ?? '',
+                  })
+                : t('price_rules.unknown_option', { name: form.siteId }),
+            ),
+            has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
+          )}
+          {select(
+            t('price_sim.zone_label'),
+            form.zoneId,
+            (zoneId) => update({ zoneId }),
+            withCurrent(
+              prospectZoneOptions(refs.zones).map((zone) => ({
+                value: zone.id,
+                label: zone.label,
+              })),
+              form.zoneId,
+              refs.zones.get(form.zoneId)
+                ? t('price_rules.inactive_option', {
+                    name: refs.zones.get(form.zoneId)?.name ?? '',
+                  })
+                : t('price_rules.unknown_option', { name: form.zoneId }),
+            ),
+            has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
+          )}
+        </div>
+        <div className="pr-pair">
+          {select(
+            t('price_sim.category_label'),
+            form.customerCategoryId,
+            (customerCategoryId) => update({ customerCategoryId }),
+            withCurrent(
+              refs.customerCategories.map((category) => ({
+                value: category.id,
+                label: category.name,
+              })),
+              form.customerCategoryId,
+              refs.customerCategoryById.get(form.customerCategoryId)
+                ? t('price_rules.inactive_option', {
+                    name: refs.customerCategoryById.get(form.customerCategoryId)?.name ?? '',
+                  })
+                : t('price_rules.unknown_option', { name: form.customerCategoryId }),
+            ),
+          )}
+          {select(
+            t('price_sim.channel_label'),
+            form.channelCode,
+            (channelCode) => update({ channelCode }),
+            withCurrent(
+              SIM_CHANNELS.map((code) => ({ value: code, label: t(`price_sim.channel.${code}`) })),
+              form.channelCode,
+              t('price_rules.unknown_option', { name: form.channelCode }),
+            ),
+          )}
+        </div>
+        <div className="pr-pair">
+          <Field
+            label={t('price_rules.min_quantity_label', { unit: unitLabel(form.pricingUnitCode) })}
+          >
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="decimal"
+                value={form.minQuantityText}
+                aria-invalid={has('MIN_QUANTITY_INVALID') || undefined}
+                aria-describedby={has('MIN_QUANTITY_INVALID') ? issueIds.min : undefined}
+                onChange={(event) => update({ minQuantityText: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t('price_rules.priority_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                value={form.priorityText}
+                aria-invalid={has('PRIORITY_INVALID') || undefined}
+                aria-describedby={has('PRIORITY_INVALID') ? issueIds.priority : undefined}
+                onChange={(event) => update({ priorityText: event.target.value })}
+              />
+            )}
+          </Field>
+        </div>
+        <div className="pr-pair">
+          <Field label={t('price_rules.valid_from_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                type="datetime-local"
+                value={form.validFrom}
+                aria-invalid={
+                  has('VALID_FROM_INVALID', 'VALID_FROM_PAST', 'OUTSIDE_SUPERSEDED') || undefined
+                }
+                aria-describedby={
+                  has('VALID_FROM_INVALID', 'VALID_FROM_PAST', 'OUTSIDE_SUPERSEDED')
+                    ? issueIds.dates
+                    : undefined
+                }
+                onChange={(event) => update({ validFrom: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t('price_rules.valid_to_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                type="datetime-local"
+                value={form.validTo}
+                aria-invalid={has('VALID_TO_INVALID') || undefined}
+                aria-describedby={has('VALID_TO_INVALID') ? issueIds.dates : undefined}
+                onChange={(event) => update({ validTo: event.target.value })}
+              />
+            )}
+          </Field>
+        </div>
+        <p className="muted">{t('price_rules.activation_hint')}</p>
+        <Field label={t('price_rules.notes_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              maxLength={2000}
+              value={form.notes}
+              onChange={(event) => update({ notes: event.target.value })}
+            />
+          )}
+        </Field>
+        <div role="status" aria-live="polite">
+          {[...new Set(check.issues.map((issue) => issueField[issue] ?? issue))].map((fieldId) => (
+            <p key={fieldId} id={fieldId} className="field-error">
+              {check.issues
+                .filter((issue) => (issueField[issue] ?? issue) === fieldId)
+                .map((issue) => t(`price_rules.issue.${issue}`))
+                .join(' ')}
+            </p>
+          ))}
+        </div>
+        {conflicts.length > 0 ? (
+          <Banner tone="warn" role="status">
+            {t('price_rules.conflict_warning', { count: conflicts.length })}
+          </Banner>
+        ) : null}
+      </Card>
+      <ActionBar>
+        <Button variant="outline" onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
-      </div>
-    </section>
+        </Button>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={submit}>
+          {superseded ? t('price_rules.submit_supersede') : t('price_rules.submit_draft')}
+        </Button>
+      </ActionBar>
+    </Section>
   );
 }
 
@@ -506,7 +533,6 @@ export function PriceRulesScreen() {
   const [last, setLast] = useState<{ commandId: string; editing?: Editing }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const productSelectId = useId();
   const endId = useId();
   const lastCommand = refs?.outbox.find((command) => command.command_id === last?.commandId);
   // Opérations tarifaires de l'utilisateur encore sans réponse, même d'une visite précédente : elles
@@ -536,9 +562,9 @@ export function PriceRulesScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.price_rules')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale pr-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.price_rules')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -612,37 +638,55 @@ export function PriceRulesScreen() {
         })
       : t('price_rules.period_open', { from: formatRuleInstant(rule.validFrom) });
 
+  const ruleColumns = [
+    { label: t('price_rules.col.price') },
+    { label: t('price_rules.col.scope') },
+    { label: t('price_rules.col.period') },
+    { label: t('price_rules.col.rule') },
+  ];
+  const RULE_TEMPLATE = 'minmax(0, 1.5fr) minmax(0, 2.5fr) minmax(0, 2fr) 9rem';
+
   const ruleRow = (rule: RuleView, actions: ReactNode) => (
-    <li key={rule.id} className="line-card" aria-label={`${rule.code} v${rule.version}`}>
-      <div className="line-head">
+    <DataRow key={rule.id} aria-label={`${rule.code} v${rule.version}`}>
+      <DataCell primary>
         <strong>
           {t('price_rules.price', {
             price: formatMoney(rule.unitPriceXaf),
             unit: unitLabel(rule.pricingUnitCode),
           })}
         </strong>
-        <span className="badge badge-info">
+      </DataCell>
+      <DataCell>
+        <span className="pr-text">{describe(rule)}</span>
+      </DataCell>
+      <DataCell>
+        <span className="pr-text">{period(rule)}</span>
+      </DataCell>
+      <DataCell>
+        <Badge tone="info" plain>
           {rule.code} v{rule.version}
-        </span>
-      </div>
-      <p className="home-muted">{describe(rule)}</p>
-      <p className="home-muted">{period(rule)}</p>
-      {actions}
-    </li>
+        </Badge>
+      </DataCell>
+      {actions ? (
+        <DataCell wide>
+          <div className="pr-actions">{actions}</div>
+        </DataCell>
+      ) : null}
+    </DataRow>
   );
 
   const endControls = (rule: RuleView) => {
     if (!director || !rules) return null;
     if (ending?.ruleId !== rule.id) {
       return (
-        <button
-          type="button"
-          className="secondary"
+        <Button
+          variant="outline"
+          size="sm"
           disabled={!online || blocked}
           onClick={() => setEnding({ ruleId: rule.id, value: doualaLocal(minimumEnd(rule, now)) })}
         >
           {t('price_rules.end')}
-        </button>
+        </Button>
       );
     }
     const allowed = endAllowed(ending.value, rule, now);
@@ -660,41 +704,40 @@ export function PriceRulesScreen() {
       endInstant !== null &&
       endInstant < new Date(successor.validFrom).toISOString();
     return (
-      <div className="field">
-        <label htmlFor={endId}>{t('price_rules.end_label')}</label>
-        <input
-          id={endId}
-          type="datetime-local"
-          className="text-input"
-          min={doualaLocal(minimumEnd(rule, now))}
-          value={ending.value}
-          aria-invalid={!allowed || undefined}
-          aria-describedby={!allowed ? `${endId}-issue` : undefined}
-          onChange={(event) => setEnding({ ruleId: rule.id, value: event.target.value })}
-        />
+      <div className="pr-end">
+        <Field label={t('price_rules.end_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="datetime-local"
+              min={doualaLocal(minimumEnd(rule, now))}
+              value={ending.value}
+              aria-invalid={!allowed || undefined}
+              aria-describedby={!allowed ? `${endId}-issue` : undefined}
+              onChange={(event) => setEnding({ ruleId: rule.id, value: event.target.value })}
+            />
+          )}
+        </Field>
         {!allowed ? (
-          <p id={`${endId}-issue`} className="error-message">
+          <p id={`${endId}-issue`} className="field-error">
             {t('price_rules.end_invalid')}
           </p>
         ) : null}
         {breaksSuccessor ? (
           <>
-            <p className="text-warn" role="alert">
+            <Banner tone="warn" role="alert">
               {t('price_rules.end_before_successor', { version: successor.version })}
-            </p>
-            <label className="choice">
-              <input
-                type="checkbox"
-                checked={ending.confirmed === true}
-                onChange={(event) => setEnding({ ...ending, confirmed: event.target.checked })}
-              />
-              {t('price_rules.end_confirm_successor')}
-            </label>
+            </Banner>
+            <Checkbox
+              label={t('price_rules.end_confirm_successor')}
+              checked={ending.confirmed === true}
+              onChange={(event) => setEnding({ ...ending, confirmed: event.target.checked })}
+            />
           </>
         ) : null}
-        <button
-          type="button"
-          className="secondary"
+        <Button
+          variant="outline"
+          size="sm"
           disabled={
             !online || blocked || !allowed || (breaksSuccessor && ending.confirmed !== true)
           }
@@ -709,68 +752,78 @@ export function PriceRulesScreen() {
           }
         >
           {t('price_rules.end_confirm')}
-        </button>
+        </Button>
       </div>
     );
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.price_rules')}</h1>
-      {!online ? (
-        <p className="alert alert-error" role="alert">
-          {t('price_rules.online_only')}
-        </p>
-      ) : null}
+    <section className="sale pr-screen">
+      <PageHeader
+        title={t('nav.screens.price_rules')}
+        actions={
+          product && rules && grouped && !editing && canDraft(product) ? (
+            <Button
+              disabled={!online || blocked}
+              onClick={() => setEditing({ superseded: null, productId: product.id })}
+            >
+              {t('price_rules.new_rule')}
+            </Button>
+          ) : undefined
+        }
+      />
+      {!online ? <Banner tone="bad">{t('price_rules.online_only')}</Banner> : null}
       {shownCommandId ? (
         <CommandResult commandId={shownCommandId} messages="price_rules.result">
           {rejected && last?.editing && last.editing.productId === productId && !editing ? (
-            <button type="button" onClick={() => last?.editing && setEditing(last.editing)}>
+            <Button variant="outline" onClick={() => last?.editing && setEditing(last.editing)}>
               {t('price_rules.resume')}
-            </button>
+            </Button>
           ) : null}
         </CommandResult>
       ) : null}
-      <div className="field">
-        <label htmlFor={productSelectId}>{t('price_sim.product_label')}</label>
-        <select
-          id={productSelectId}
-          className="text-input"
-          value={productId}
-          onChange={(event) => {
-            setProductId(event.target.value);
-            setEditing(null);
-            setEnding(null);
-          }}
-        >
-          <option value="">{t('loss.product_placeholder')}</option>
-          {products.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {canDraft(candidate)
-                ? candidate.name
-                : t('price_rules.product_read_only', { name: candidate.name })}
-            </option>
-          ))}
-        </select>
-      </div>
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
+      <Field label={t('price_sim.product_label')}>
+        {(control) => (
+          <Select
+            {...control}
+            value={productId}
+            onChange={(event) => {
+              setProductId(event.target.value);
+              setEditing(null);
+              setEnding(null);
+            }}
+          >
+            <option value="">{t('loss.product_placeholder')}</option>
+            {products.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {canDraft(candidate)
+                  ? candidate.name
+                  : t('price_rules.product_read_only', { name: candidate.name })}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      {product && online && rules === undefined ? (
+        <p className="muted" aria-busy="true">
+          {t('price_rules.loading')}
         </p>
       ) : null}
-      {product && online && rules === undefined ? (
-        <p className="home-muted">{t('price_rules.loading')}</p>
-      ) : null}
       {product && online && productRules.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{t('price_rules.unavailable')}</p>
-          <button type="button" className="secondary" onClick={productRules.retry}>
-            {t('ledger.retry')}
-          </button>
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            <Button variant="outline" size="sm" onClick={productRules.retry}>
+              {t('ledger.retry')}
+            </Button>
+          }
+        >
+          {t('price_rules.unavailable')}
+        </Banner>
       ) : null}
       {product && rules && productRules.stale && online && !productRules.failed ? (
-        <p className="home-muted" role="status">
+        <p className="muted" role="status">
           {t('price_rules.refreshing')}
         </p>
       ) : null}
@@ -793,39 +846,31 @@ export function PriceRulesScreen() {
       ) : null}
       {product && rules && grouped && !editing ? (
         <>
-          {canDraft(product) ? (
-            <button
-              type="button"
-              className="btn-block"
-              disabled={!online || blocked}
-              onClick={() => setEditing({ superseded: null, productId: product.id })}
-            >
-              {t('price_rules.new_rule')}
-            </button>
-          ) : (
-            <p className="home-muted">{t('price_rules.read_only_hint')}</p>
-          )}
-          <section className="sale-block" aria-labelledby="price-rules-active-title">
-            <h2 id="price-rules-active-title">{t('price_rules.active_title')}</h2>
+          {!canDraft(product) ? <p className="muted">{t('price_rules.read_only_hint')}</p> : null}
+          <Section title={t('price_rules.active_title')}>
             {grouped.active.length === 0 ? (
-              <p className="home-muted">{t('price_rules.none')}</p>
+              <p className="muted">{t('price_rules.none')}</p>
             ) : (
-              <ul className="line-list">
+              <DataList
+                aria-label={t('price_rules.active_title')}
+                columns={ruleColumns}
+                template={RULE_TEMPLATE}
+              >
                 {grouped.active.map((rule) =>
                   ruleRow(
                     rule,
-                    <div className="result-actions">
+                    <>
                       {canDraft(product) && !isLatestVersion(rule, rules) ? (
                         // Version plus récente relue : un remplacement de l'appareil encore en
                         // attente ne pourra pas être enregistré.
-                        <p className="home-muted">
+                        <p className="muted">
                           {t('price_rules.newer_version_exists')}
                           {pendingSupersede.get(rule.id)?.mine
                             ? ` ${t('price_rules.supersede_blocked')}`
                             : ''}
                         </p>
                       ) : canDraft(product) && pendingSupersede.has(rule.id) ? (
-                        <p className="home-muted">
+                        <p className="muted">
                           {pendingSupersede.get(rule.id)?.mine
                             ? pendingSupersede.get(rule.id)?.repeated
                               ? t('price_rules.supersede_retrying')
@@ -833,28 +878,31 @@ export function PriceRulesScreen() {
                             : t('price_rules.supersede_pending_other')}
                         </p>
                       ) : canDraft(product) ? (
-                        <button
-                          type="button"
-                          className="secondary"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           disabled={!online || blocked}
                           onClick={() => setEditing({ superseded: rule, productId: product.id })}
                         >
                           {t('price_rules.supersede')}
-                        </button>
+                        </Button>
                       ) : null}
                       {endControls(rule)}
-                    </div>,
+                    </>,
                   ),
                 )}
-              </ul>
+              </DataList>
             )}
-          </section>
-          <section className="sale-block" aria-labelledby="price-rules-drafts-title">
-            <h2 id="price-rules-drafts-title">{t('price_rules.drafts_title')}</h2>
+          </Section>
+          <Section title={t('price_rules.drafts_title')}>
             {grouped.drafts.length === 0 ? (
-              <p className="home-muted">{t('price_rules.none')}</p>
+              <p className="muted">{t('price_rules.none')}</p>
             ) : (
-              <ul className="line-list">
+              <DataList
+                aria-label={t('price_rules.drafts_title')}
+                columns={ruleColumns}
+                template={RULE_TEMPLATE}
+              >
                 {grouped.drafts.map((rule) => {
                   const predecessor = predecessorOf(rule, rules);
                   const conflicts = conflictsOf(rule, rules, refs.zones, predecessor?.id ?? null);
@@ -871,41 +919,46 @@ export function PriceRulesScreen() {
                     rule,
                     <>
                       {conflicts.length > 0 ? (
-                        <p className="text-warn">
+                        <p className="pr-warn">
                           {t('price_rules.conflict_warning', { count: conflicts.length })}
                         </p>
                       ) : null}
                       {retroactive ? (
-                        <p className="text-warn">{t('price_rules.retroactive')}</p>
+                        <p className="pr-warn">{t('price_rules.retroactive')}</p>
                       ) : null}
                       {outside ? (
-                        <p className="text-warn">{t('price_rules.outside_superseded')}</p>
+                        <p className="pr-warn">{t('price_rules.outside_superseded')}</p>
                       ) : null}
                       {director ? (
-                        <button
-                          type="button"
-                          className="secondary"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           disabled={
                             !online || blocked || conflicts.length > 0 || retroactive || outside
                           }
                           onClick={() => activate(rule)}
                         >
                           {t('price_rules.activate')}
-                        </button>
+                        </Button>
                       ) : (
-                        <p className="home-muted">{t('price_rules.activation_by_direction')}</p>
+                        <p className="muted">{t('price_rules.activation_by_direction')}</p>
                       )}
                     </>,
                   );
                 })}
-              </ul>
+              </DataList>
             )}
-          </section>
+          </Section>
           {grouped.history.length > 0 ? (
-            <section className="sale-block" aria-labelledby="price-rules-history-title">
-              <h2 id="price-rules-history-title">{t('price_rules.history_title')}</h2>
-              <ul className="line-list">{grouped.history.map((rule) => ruleRow(rule, null))}</ul>
-            </section>
+            <Section title={t('price_rules.history_title')}>
+              <DataList
+                aria-label={t('price_rules.history_title')}
+                columns={ruleColumns}
+                template={RULE_TEMPLATE}
+              >
+                {grouped.history.map((rule) => ruleRow(rule, null))}
+              </DataList>
+            </Section>
           ) : null}
         </>
       ) : null}

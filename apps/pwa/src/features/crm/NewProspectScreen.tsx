@@ -7,8 +7,20 @@
  * création.
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  Segmented,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -30,6 +42,7 @@ import {
   type Position,
   type ProspectDraft,
 } from './prospect.js';
+import './crm.css';
 
 const GPS_TIMEOUT_MS = 15_000;
 
@@ -56,9 +69,9 @@ function SellToProspect({ commandId, customerId }: { commandId: string; customer
   const phase = phaseOf(command);
   if (phase === 'REJECTED' || phase === 'CONFLICT') return null;
   return (
-    <Link to={ROUTES.newSaleFor(customerId)} className="action action-compact">
-      <span className="action-label">{t('prospect.to_sale')}</span>
-    </Link>
+    <LinkButton to={ROUTES.newSaleFor(customerId)} icon="cart">
+      {t('prospect.to_sale')}
+    </LinkButton>
   );
 }
 
@@ -77,28 +90,28 @@ export function NewProspectScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.new_prospect')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale crm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.new_prospect')} />
+        <SkeletonRows rows={4} />
       </section>
     );
   }
 
   if (submitted) {
     return (
-      <section className="sale">
-        <h1>{t('nav.screens.new_prospect')}</h1>
+      <section className="sale crm-screen">
+        <PageHeader title={t('nav.screens.new_prospect')} />
         <CommandResult commandId={submitted.commandId} messages="prospect.result">
-          <button
-            type="button"
+          <SellToProspect commandId={submitted.commandId} customerId={submitted.customerId} />
+          <Button
+            variant="outline"
             onClick={() => {
               setDraft(EMPTY);
               setSubmitted(undefined);
             }}
           >
             {t('prospect.another')}
-          </button>
-          <SellToProspect commandId={submitted.commandId} customerId={submitted.customerId} />
+          </Button>
         </CommandResult>
       </section>
     );
@@ -183,190 +196,198 @@ export function NewProspectScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.new_prospect')}</h1>
+    <section className="sale crm-screen">
+      <PageHeader title={t('nav.screens.new_prospect')} />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('prospect.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
-      <div className="field">
-        <label htmlFor="prospect-name">{t('prospect.name_label')}</label>
-        <input
-          id="prospect-name"
-          className="text-input"
-          maxLength={200}
-          value={draft.displayName}
-          onChange={(event) => update({ displayName: event.target.value })}
-          autoComplete="off"
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="prospect-phone">{t('prospect.phone_label')}</label>
-        <input
-          id="prospect-phone"
-          className="text-input"
-          type="tel"
-          inputMode="tel"
-          maxLength={30}
-          value={draft.phone}
-          onChange={(event) => update({ phone: event.target.value })}
-          autoComplete="off"
-        />
-        {check.normalizedPhone ? (
-          <p className="home-muted">
-            {t('prospect.phone_normalized', { phone: check.normalizedPhone })}
-          </p>
-        ) : null}
-      </div>
+      <Field label={t('prospect.name_label')}>
+        {(control) => (
+          <Input
+            {...control}
+            maxLength={200}
+            value={draft.displayName}
+            onChange={(event) => update({ displayName: event.target.value })}
+            autoComplete="off"
+          />
+        )}
+      </Field>
+      <Field
+        label={t('prospect.phone_label')}
+        hint={
+          check.normalizedPhone
+            ? t('prospect.phone_normalized', { phone: check.normalizedPhone })
+            : undefined
+        }
+      >
+        {(control) => (
+          <Input
+            {...control}
+            type="tel"
+            inputMode="tel"
+            maxLength={30}
+            value={draft.phone}
+            onChange={(event) => update({ phone: event.target.value })}
+            autoComplete="off"
+          />
+        )}
+      </Field>
       <div className="field">
         <span className="field-label">{t('prospect.position_label')}</span>
-        {draft.position ? (
-          <p className="home-muted">
-            {t('prospect.position_value', {
-              lat: draft.position.lat.toFixed(5),
-              lng: draft.position.lng.toFixed(5),
-              accuracy: draft.position.accuracyM ?? '?',
-            })}
-          </p>
+        <div className="crm-locate">
+          {draft.position ? (
+            <p>
+              {t('prospect.position_value', {
+                lat: draft.position.lat.toFixed(5),
+                lng: draft.position.lng.toFixed(5),
+                accuracy: draft.position.accuracyM ?? '?',
+              })}
+            </p>
+          ) : null}
+          <Button variant="outline" onClick={locate} disabled={gps === 'locating'}>
+            {gps === 'locating' ? t('prospect.locating') : t('prospect.locate')}
+          </Button>
+        </div>
+        {gps === 'denied' ? (
+          <Banner tone="warn" role="status">
+            {t('prospect.gps_denied')}
+          </Banner>
         ) : null}
-        <button type="button" className="secondary" onClick={locate} disabled={gps === 'locating'}>
-          {gps === 'locating' ? t('prospect.locating') : t('prospect.locate')}
-        </button>
-        {gps === 'denied' ? <p className="text-warn">{t('prospect.gps_denied')}</p> : null}
       </div>
-      <div className="field">
-        <label htmlFor="prospect-zone">{t('prospect.zone_label')}</label>
-        <select
-          id="prospect-zone"
-          className="text-input"
-          value={zoneId}
-          onChange={(event) => update({ zoneId: event.target.value })}
-        >
-          <option value="">{t('prospect.zone_placeholder')}</option>
-          {zones.map((zone) => (
-            <option key={zone.id} value={zone.id}>
-              {zone.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="prospect-source">{t('prospect.source_label')}</label>
-        <select
-          id="prospect-source"
-          className="text-input"
-          value={sourceCode}
-          onChange={(event) => update({ sourceCode: event.target.value })}
-        >
-          {LEAD_SOURCES.map((code) => (
-            <option key={code} value={code}>
-              {t(`prospect.sources.${code}`)}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <details className="sale-block">
-        <summary>{t('prospect.more')}</summary>
-        <div className="field">
-          <label htmlFor="prospect-type">{t('prospect.type_label')}</label>
-          <select
-            id="prospect-type"
-            className="text-input"
-            value={draft.customerType}
-            onChange={(event) =>
-              update({ customerType: event.target.value as ProspectDraft['customerType'] })
-            }
-          >
-            {CUSTOMER_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {t(`prospect.types.${type}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="prospect-contact">{t('prospect.contact_label')}</label>
-          <input
-            id="prospect-contact"
-            className="text-input"
-            maxLength={200}
-            value={draft.contactName}
-            onChange={(event) => update({ contactName: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="prospect-activity">{t('prospect.activity_label')}</label>
-          <input
-            id="prospect-activity"
-            className="text-input"
-            maxLength={200}
-            value={draft.businessActivity}
-            onChange={(event) => update({ businessActivity: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="prospect-address">{t('prospect.address_label')}</label>
-          <textarea
-            id="prospect-address"
-            className="text-input"
-            rows={2}
-            maxLength={2000}
-            value={draft.addressText}
-            onChange={(event) => update({ addressText: event.target.value })}
-          />
-        </div>
-        {categories.length > 0 ? (
-          <div className="field">
-            <label htmlFor="prospect-category">{t('prospect.category_label')}</label>
-            <select
-              id="prospect-category"
-              className="text-input"
-              value={draft.categoryId}
-              onChange={(event) => update({ categoryId: event.target.value })}
+      <div className="crm-pair">
+        <Field label={t('prospect.zone_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={zoneId}
+              onChange={(event) => update({ zoneId: event.target.value })}
             >
-              <option value="">{t('prospect.category_none')}</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+              <option value="">{t('prospect.zone_placeholder')}</option>
+              {zones.map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {zone.label}
                 </option>
               ))}
-            </select>
+            </Select>
+          )}
+        </Field>
+        <Field label={t('prospect.source_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={sourceCode}
+              onChange={(event) => update({ sourceCode: event.target.value })}
+            >
+              {LEAD_SOURCES.map((code) => (
+                <option key={code} value={code}>
+                  {t(`prospect.sources.${code}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </div>
+
+      <details className="crm-more">
+        <summary>{t('prospect.more')}</summary>
+        <div className="crm-more-body">
+          <div className="field">
+            <span className="field-label">{t('prospect.type_label')}</span>
+            <Segmented
+              label={t('prospect.type_label')}
+              value={draft.customerType}
+              onChange={(customerType) => update({ customerType })}
+              options={CUSTOMER_TYPES.map((type) => ({
+                value: type,
+                label: t(`prospect.types.${type}`),
+              }))}
+            />
           </div>
-        ) : null}
+          <Field label={t('prospect.contact_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={200}
+                value={draft.contactName}
+                onChange={(event) => update({ contactName: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t('prospect.activity_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={200}
+                value={draft.businessActivity}
+                onChange={(event) => update({ businessActivity: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t('prospect.address_label')}>
+            {(control) => (
+              <Textarea
+                {...control}
+                rows={2}
+                maxLength={2000}
+                value={draft.addressText}
+                onChange={(event) => update({ addressText: event.target.value })}
+              />
+            )}
+          </Field>
+          {categories.length > 0 ? (
+            <Field label={t('prospect.category_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={draft.categoryId}
+                  onChange={(event) => update({ categoryId: event.target.value })}
+                >
+                  <option value="">{t('prospect.category_none')}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+        </div>
       </details>
 
       {check.duplicateOf ? (
-        <p className={online ? 'error-message' : 'text-warn'} role="alert">
+        <Banner tone={online ? 'bad' : 'warn'} role="alert">
           {t(online ? 'prospect.duplicate_online' : 'prospect.duplicate_offline', {
             name: check.duplicateOf.display_name,
           })}
-        </p>
+        </Banner>
       ) : null}
       {draft.displayName || draft.phone
         ? check.issues.map((issue) => (
-            <p key={issue} className="error-message">
+            <p key={issue} className="field-error">
               {t(`prospect.issue.${issue}`)}
             </p>
           ))
         : null}
       {!holdsAnyRole(roles, ROLE_SETS.customerCreate) ? (
-        <p className="text-warn">{t('prospect.role_hint')}</p>
+        <Banner tone="warn" role="status">
+          {t('prospect.role_hint')}
+        </Banner>
       ) : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('prospect.submit')}
-      </button>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      <ActionBar>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          loading={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('sales.submitting') : t('prospect.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

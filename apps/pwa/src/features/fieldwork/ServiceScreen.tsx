@@ -7,10 +7,23 @@
  * répétés, une dérogation motivée ouvre une session en attente de validation
  * (`fieldwork.checkin.request_override`).
  */
-import { useId, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf, type CheckinResult } from '@gic/domain';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Field,
+  LinkButton,
+  List,
+  ListRow,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useGeolocation } from '../../platform/useGeolocation.js';
@@ -36,6 +49,7 @@ import {
   todayAttempts,
   zoneAt,
 } from './service.js';
+import './fieldwork.css';
 
 type LastAction = 'START' | 'ATTEMPT' | 'END' | 'OVERRIDE';
 
@@ -60,14 +74,12 @@ export function ServiceScreen() {
   const [last, setLast] = useState<{ commandId: string; action: LastAction }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const zoneSelectId = useId();
-  const reasonId = useId();
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.service')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale fw-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.service')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -187,184 +199,187 @@ export function ServiceScreen() {
   };
 
   const locateButton = (
-    <button type="button" className="secondary" onClick={geo.locate} disabled={locating}>
+    <Button variant="outline" onClick={geo.locate} disabled={locating}>
       {locating ? t('service.locating') : t('service.locate')}
-    </button>
+    </Button>
   );
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.service')}</h1>
+    <section className="sale fw-screen">
+      <PageHeader title={t('nav.screens.service')} />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('service.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
       {last ? (
         <CommandResult commandId={last.commandId} messages={`service.result_${last.action}`} />
       ) : null}
 
       {session ? (
-        <section className="sale-block" aria-labelledby="service-session-title">
-          <h2 id="service-session-title">{t('service.in_service_title')}</h2>
-          <p>
-            {t('service.in_service', {
-              zone: zoneName(session.declared_zone_id),
-              time: formatClockTime(session.started_at),
-            })}
-          </p>
+        <Section title={t('service.in_service_title')}>
+          <div className="status-card">
+            <div className="status-card-text">
+              <p>
+                {t('service.in_service', {
+                  zone: zoneName(session.declared_zone_id),
+                  time: formatClockTime(session.started_at),
+                })}
+              </p>
+              {session.auto_close && session.ended_at ? (
+                <p className="muted">
+                  {t('service.auto_close', { time: formatClockTime(session.ended_at) })}
+                </p>
+              ) : null}
+            </div>
+            <Button variant="outline" disabled={blocked || locating} onClick={end}>
+              {busy ? t('sales.submitting') : t('service.end')}
+            </Button>
+          </div>
           {session.override_status === 'PENDING' ? (
-            <p className="text-warn">{t('service.override_pending')}</p>
+            <Banner tone="warn" role="status">
+              {t('service.override_pending')}
+            </Banner>
           ) : null}
           {session.override_status === 'REJECTED' ? (
-            <p className="text-warn">{t('service.override_rejected')}</p>
+            <Banner tone="warn" role="status">
+              {t('service.override_rejected')}
+            </Banner>
           ) : null}
-          {session.auto_close && session.ended_at ? (
-            <p className="home-muted">
-              {t('service.auto_close', { time: formatClockTime(session.ended_at) })}
-            </p>
-          ) : null}
-          <p className="home-muted">
+          <p className="muted">
             {locating
               ? t('service.locating')
               : position
                 ? t('service.position_value', { accuracy: meters(position.accuracyM) })
                 : t('service.gps_unavailable_end')}
           </p>
-          {locateButton}
           <div className="result-actions">
+            {locateButton}
             {holdsAnyRole(roles, ROLE_SETS.visitRecord) ? (
-              <Link to={ROUTES.newVisit} className="action action-compact">
-                <span className="action-label">{t('nav.screens.new_visit')}</span>
-              </Link>
+              <LinkButton to={ROUTES.newVisit} variant="tonal" icon="store">
+                {t('nav.screens.new_visit')}
+              </LinkButton>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="btn-block submit-sale"
-            disabled={blocked || locating}
-            onClick={end}
-          >
-            {busy ? t('sales.submitting') : t('service.end')}
-          </button>
-        </section>
+        </Section>
       ) : null}
 
-      <section className="sale-block" aria-labelledby="service-start-title">
-        <h2 id="service-start-title">
-          {session ? t('service.change_zone_title') : t('service.start_title')}
-        </h2>
+      <Section title={session ? t('service.change_zone_title') : t('service.start_title')}>
         {session ? (
-          <p className="home-muted">
+          <p className="muted">
             {t('service.start_supersedes', { zone: zoneName(session.declared_zone_id) })}
           </p>
         ) : null}
         {zones.length === 0 ? (
-          <p className="alert alert-error" role="alert">
-            {t('service.no_zone')}
-          </p>
+          <Banner tone="bad">{t('service.no_zone')}</Banner>
         ) : (
-          <div className="field">
-            <label htmlFor={zoneSelectId}>{t('service.zone_label')}</label>
-            <select
-              id={zoneSelectId}
-              className="text-input"
-              value={zoneId}
-              onChange={(event) => setZoneChoice(event.target.value || null)}
-            >
-              <option value="">{t('service.zone_placeholder')}</option>
-              {zones.map((candidate) => (
-                <option key={candidate.zone.id} value={candidate.zone.id}>
-                  {zonePathLabel(refs.zones, candidate.zone)}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Field label={t('service.zone_label')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={zoneId}
+                onChange={(event) => setZoneChoice(event.target.value || null)}
+              >
+                <option value="">{t('service.zone_placeholder')}</option>
+                {zones.map((candidate) => (
+                  <option key={candidate.zone.id} value={candidate.zone.id}>
+                    {zonePathLabel(refs.zones, candidate.zone)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         )}
         <div className="field">
           <span className="field-label">{t('service.position_label')}</span>
-          {locating ? (
-            <p className="home-muted">{t('service.locating')}</p>
-          ) : evaluation && zone ? (
-            <p
-              className={evaluation.result === 'ACCEPTED' ? 'home-muted' : 'text-warn'}
-              role="status"
-            >
-              {t(`service.evaluation.${evaluation.result}`, {
-                distance: Math.round(evaluation.distanceM ?? 0),
-                radius: zone.geofence.radiusM,
-                accuracy: meters(position?.accuracyM),
-                max: zone.maxAccuracyM,
-              })}
-            </p>
-          ) : !position ? (
-            <p className="text-warn">{t('service.gps_unavailable')}</p>
-          ) : null}
-          {locateButton}
+          <div className="fw-locate">
+            {locating ? (
+              <p>{t('service.locating')}</p>
+            ) : evaluation && zone ? (
+              <p className={evaluation.result === 'ACCEPTED' ? undefined : 'is-warn'} role="status">
+                {t(`service.evaluation.${evaluation.result}`, {
+                  distance: Math.round(evaluation.distanceM ?? 0),
+                  radius: zone.geofence.radiusM,
+                  accuracy: meters(position?.accuracyM),
+                  max: zone.maxAccuracyM,
+                })}
+              </p>
+            ) : !position ? (
+              <p className="is-warn">{t('service.gps_unavailable')}</p>
+            ) : null}
+            {locateButton}
+          </div>
         </div>
         {!holdsAnyRole(roles, ROLE_SETS.fieldwork) ? (
-          <p className="text-warn">{t('service.role_hint')}</p>
+          <Banner tone="warn" role="status">
+            {t('service.role_hint')}
+          </Banner>
         ) : null}
-        <button
-          type="button"
-          className={session ? 'btn-block' : 'btn-block submit-sale'}
-          disabled={!zone || blocked || locating}
-          onClick={start}
-        >
-          {busy ? t('sales.submitting') : session ? t('service.change_zone') : t('service.start')}
-        </button>
-
         {canOverride && zone ? (
-          <div className="field">
-            <label htmlFor={reasonId}>{t('service.override_label')}</label>
-            <p className="home-muted">{t('service.override_hint')}</p>
-            <textarea
-              id={reasonId}
-              className="text-input"
-              rows={2}
-              maxLength={MAX_OVERRIDE_REASON_LENGTH}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-            <button
-              type="button"
-              className="secondary"
+          <div className="fw-override">
+            <Field label={t('service.override_label')} hint={t('service.override_hint')}>
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={2}
+                  maxLength={MAX_OVERRIDE_REASON_LENGTH}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                />
+              )}
+            </Field>
+            <Button
+              variant="outline"
               disabled={!reason.trim() || blocked}
               onClick={requestOverride}
             >
               {t('service.override_submit')}
-            </button>
+            </Button>
           </div>
         ) : null}
-      </section>
-
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-
-      <section className="sale-block" aria-labelledby="service-attempts-title">
-        <h2 id="service-attempts-title">{t('service.attempts_title')}</h2>
-        {attempts.length === 0 ? (
-          <p className="home-muted">{t('service.no_attempt')}</p>
+        {session ? (
+          <Button variant="outline" block disabled={!zone || blocked || locating} onClick={start}>
+            {busy ? t('sales.submitting') : t('service.change_zone')}
+          </Button>
         ) : (
-          <ul className="receipt-lines">
+          <ActionBar>
+            <Button
+              size="lg"
+              className="submit-sale"
+              disabled={!zone || blocked || locating}
+              loading={busy}
+              onClick={start}
+            >
+              {busy ? t('sales.submitting') : t('service.start')}
+            </Button>
+          </ActionBar>
+        )}
+      </Section>
+
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+
+      <Section title={t('service.attempts_title')}>
+        {attempts.length === 0 ? (
+          <p className="muted">{t('service.no_attempt')}</p>
+        ) : (
+          <List>
             {attempts.map((attempt) => (
-              <li key={attempt.commandId}>
-                <span>
-                  <strong>{t(`service.type.${attempt.type}`)}</strong>
-                  <small>
+              <ListRow
+                key={attempt.commandId}
+                icon={attempt.type === 'START_SERVICE' ? 'clock' : 'check-circle'}
+                title={t(`service.type.${attempt.type}`)}
+                subtitle={
+                  <>
                     {zoneName(attempt.zoneId)} ·{' '}
                     {t(`service.attempt_result.${attempt.clientResult}`)}
-                  </small>
-                </span>
-                <span>{formatClockTime(attempt.occurredAt)}</span>
-              </li>
+                  </>
+                }
+                value={formatClockTime(attempt.occurredAt)}
+              />
             ))}
-          </ul>
+          </List>
         )}
-      </section>
+      </Section>
     </section>
   );
 }

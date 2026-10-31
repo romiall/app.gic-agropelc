@@ -262,9 +262,10 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     const rows = () => within(screen.getByRole('list')).getAllByRole('link');
     expect(rows()).toHaveLength(2);
 
-    await user.selectOptions(screen.getByLabelText('Stade'), 'PROSPECT');
+    // Filtre par stade : contrôle segmenté (même comportement qu'avec la liste déroulante d'avant).
+    await user.click(screen.getByRole('radio', { name: 'Prospects' }));
     expect(rows()).toHaveLength(1);
-    await user.selectOptions(screen.getByLabelText('Stade'), 'ALL');
+    await user.click(screen.getByRole('radio', { name: 'Tous' }));
 
     await user.click(screen.getByRole('link', { name: /Boutique Mvog-Mbi/ }));
     expect(await screen.findByRole('heading', { name: 'Boutique Mvog-Mbi' })).toBeInTheDocument();

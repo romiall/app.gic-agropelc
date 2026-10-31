@@ -614,6 +614,13 @@ export const fr = {
   },
   portfolio: {
     stage_label: 'Stade',
+    stage_all_short: 'Tous',
+    col: {
+      customer: 'Client',
+      stage: 'Stade',
+      next_action: 'Prochaine action',
+      outstanding: 'Encours',
+    },
     stage_filter: {
       ALL: 'Tous les comptes',
       PROSPECT: 'Prospects',
@@ -1047,6 +1054,12 @@ export const fr = {
       'La demande ne se modifie plus une fois soumise ; un valideur autre que vous l’approuve ou la refuse.',
     submit: 'Soumettre la demande',
     mine_title: 'Mes demandes',
+    col: {
+      number: 'Numéro',
+      justification: 'Justification',
+      status: 'Statut',
+      date: 'Date',
+    },
     none: 'Aucune demande.',
     status: {
       PENDING: 'En attente d’envoi',
@@ -1081,6 +1094,14 @@ export const fr = {
       PARTIALLY_RECEIVED: 'Reçu en partie',
     },
     recent_title: 'Réceptions des 30 derniers jours',
+    col: {
+      order: 'Bon de commande',
+      supplier: 'Fournisseur',
+      expected: 'Livraison prévue',
+      status: 'Statut',
+      receipt: 'Réception',
+      date: 'Date',
+    },
     no_receipt: 'Aucune réception récente.',
     status: {
       POSTED: 'Comptabilisée',
@@ -1161,6 +1182,14 @@ export const fr = {
     },
     status_filter: 'Statut',
     all_statuses: 'Tous',
+    col: {
+      order: 'Bon de commande',
+      supplier: 'Fournisseur et lieu',
+      delivery: 'Livraison',
+      total: 'Montant',
+      status: 'Statut',
+    },
+    summary_total: 'Total du bon',
     status: {
       DRAFT: 'Brouillon',
       PENDING_APPROVAL: 'En validation',
@@ -1265,6 +1294,12 @@ export const fr = {
     unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
     denied: 'Lecture des fournisseurs refusée : droit insuffisant.',
     refreshing: 'Relecture des fournisseurs après la dernière opération…',
+    col: {
+      supplier: 'Fournisseur',
+      contact: 'Contact',
+      terms: 'Paiement',
+      status: 'Statut',
+    },
     none: 'Aucun fournisseur.',
     new: 'Nouveau fournisseur',
     new_title: 'Nouveau fournisseur',
@@ -1764,6 +1799,14 @@ export const fr = {
       'Écran en ligne seulement : le catalogue se lit et se gère sur le serveur. Reconnectez-vous pour continuer.',
     unavailable: 'Catalogue indisponible : réessayez quand le serveur répond.',
     refreshing: 'Relecture du catalogue après la dernière opération…',
+    col: {
+      product: 'Produit',
+      family: 'Famille',
+      unit: 'Unité',
+      status: 'Statut',
+      reason: 'Motif',
+      comment: 'Commentaire',
+    },
     section_label: 'Rubrique',
     section: {
       PRODUCTS: 'Produits',
@@ -1900,6 +1943,12 @@ export const fr = {
   price_rules: {
     online_only: 'Écran en ligne seulement : les règles se lisent et se gèrent sur le serveur.',
     loading: 'Lecture des règles…',
+    col: {
+      price: 'Prix',
+      scope: 'Portée',
+      period: 'Période',
+      rule: 'Règle',
+    },
     unavailable: 'Règles indisponibles : réessayez quand le serveur répond.',
     new_rule: 'Nouvelle règle',
     active_title: 'En vigueur ou à venir',
@@ -3299,6 +3348,12 @@ export const fr = {
     offline_banner: 'Hors ligne : les bons affichés peuvent être périmés.',
     online_only: 'Rapprochement en ligne seulement : reconnectez-vous pour le lire.',
     list_title: 'Bons de commande',
+    col: {
+      order: 'Bon',
+      supplier: 'Fournisseur',
+      dates: 'Dates et montant',
+      gaps: 'Écarts',
+    },
     group_label: 'Bons à afficher',
     group: {
       OPEN: 'Attendus (envoyés ou reçus en partie)',

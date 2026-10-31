@@ -2,10 +2,27 @@
  * ECR-APP-02 « Demande d'achat » (tous les demandeurs ; création hors ligne). Site bénéficiaire, date
  * souhaitée, justification, lignes de produits achetables (unité d'achat, quantité, prix estimé,
  * note). Commande `procurement.request.submit` (agrégat `PURCHASE_REQUEST`) ; le numéro `DA-…` revient
- * avec la réponse. Mes demandes listées avec leur statut (validation et commande en ligne, hors écran).
+ * avec la réponse. Mes demandes listées avec leur statut (validation et commande en ligne, hors écran) :
+ * cartes sur téléphone, colonnes sur ordinateur.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  DataCell,
+  DataList,
+  DataRow,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeDemandeAchat } from '../pieces/adaptateurs-achats.js';
 import { businessDayOf } from '@gic/domain';
@@ -29,6 +46,8 @@ import {
   purchaseUnitsOf,
   requestPayload,
 } from './request.js';
+import { requestStatusTone } from './tones.js';
+import './procurement.css';
 
 interface LineDraft {
   readonly key: string;
@@ -61,13 +80,12 @@ export function RequestScreen() {
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const ids = { site: useId(), date: useId(), justification: useId() };
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.purchase_request')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale proc-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.purchase_request')} />
+        <SkeletonRows rows={4} />
       </section>
     );
   }
@@ -157,248 +175,279 @@ export function RequestScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.purchase_request')}</h1>
+    <section className="sale proc-screen">
+      <PageHeader title={t('nav.screens.purchase_request')} />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('purchase_request.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
       {last ? <CommandResult commandId={last} messages="purchase_request.result" /> : null}
-      <section className="sale-block" aria-labelledby="purchase-request-new-title">
-        <h2 id="purchase-request-new-title">{t('purchase_request.new_title')}</h2>
-        <div className="line-fields">
-          <div className="field">
-            <label htmlFor={ids.site}>{t('purchase_request.site_label')}</label>
-            <select
-              id={ids.site}
-              className="text-input"
-              value={siteId}
-              onChange={(event) => setSiteChoice(event.target.value)}
-            >
-              {siteId === '' ? (
-                <option value="">{t('purchase_request.site_placeholder')}</option>
-              ) : null}
-              {scoped.length > 0 && others.length > 0 ? (
-                <>
-                  <optgroup label={t('purchase_request.scope_sites')}>
-                    {scoped.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label={t('purchase_request.other_sites')}>
-                    {others.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </>
-              ) : (
-                sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor={ids.date}>{t('purchase_request.needed_by_label')}</label>
-            <input
-              id={ids.date}
-              type="date"
-              className="text-input"
-              min={today}
-              value={neededBy}
-              onChange={(event) => setNeededBy(event.target.value)}
-            />
-          </div>
-        </div>
-        <div className="field">
-          <label htmlFor={ids.justification}>{t('purchase_request.justification_label')}</label>
-          <textarea
-            id={ids.justification}
-            className="text-input"
-            rows={2}
-            maxLength={MAX_JUSTIFICATION}
-            value={justification}
-            onChange={(event) => setJustification(event.target.value)}
-          />
-        </div>
-        {products.length === 0 ? (
-          <p className="alert alert-error">{t('purchase_request.no_product')}</p>
-        ) : null}
-        <ul className="line-list">
-          {rows.map((row, index) => {
-            const { line } = row;
-            return (
-              <li
-                key={line.key}
-                className="line-card"
-                aria-label={t('transfer.line_label', { index: index + 1 })}
-              >
-                <div className="field">
-                  <label htmlFor={`${line.key}-product`}>{t('loss.product_label')}</label>
-                  <select
-                    id={`${line.key}-product`}
-                    className="text-input"
-                    value={line.productId}
-                    onChange={(event) =>
-                      update(line.key, { productId: event.target.value, unitCode: '' })
-                    }
-                  >
-                    <option value="">{t('loss.product_placeholder')}</option>
-                    {products.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="line-fields">
-                  <div className="field">
-                    <label htmlFor={`${line.key}-quantity`}>{t('sales.quantity_label')}</label>
-                    <input
-                      id={`${line.key}-quantity`}
-                      className="text-input"
-                      inputMode="decimal"
-                      value={line.quantityText}
-                      onChange={(event) => update(line.key, { quantityText: event.target.value })}
-                    />
-                  </div>
-                  {row.units.length > 1 ? (
-                    <div className="field">
-                      <label htmlFor={`${line.key}-unit`}>{t('sales.unit_label')}</label>
-                      <select
-                        id={`${line.key}-unit`}
-                        className="text-input"
-                        value={row.unitCode}
-                        onChange={(event) => update(line.key, { unitCode: event.target.value })}
-                      >
-                        {row.units.map((unit) => (
-                          <option key={unit.unitCode} value={unit.unitCode}>
-                            {unitLabel(unit.unitCode)}
+      <Section title={t('purchase_request.new_title')}>
+        <div className="proc-form">
+          <div className="proc-pair">
+            <Field label={t('purchase_request.site_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={siteId}
+                  onChange={(event) => setSiteChoice(event.target.value)}
+                >
+                  {siteId === '' ? (
+                    <option value="">{t('purchase_request.site_placeholder')}</option>
+                  ) : null}
+                  {scoped.length > 0 && others.length > 0 ? (
+                    <>
+                      <optgroup label={t('purchase_request.scope_sites')}>
+                        {scoped.map((site) => (
+                          <option key={site.id} value={site.id}>
+                            {site.name}
                           </option>
                         ))}
-                      </select>
+                      </optgroup>
+                      <optgroup label={t('purchase_request.other_sites')}>
+                        {others.map((site) => (
+                          <option key={site.id} value={site.id}>
+                            {site.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  ) : (
+                    sites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name}
+                      </option>
+                    ))
+                  )}
+                </Select>
+              )}
+            </Field>
+            <Field label={t('purchase_request.needed_by_label')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="date"
+                  min={today}
+                  value={neededBy}
+                  onChange={(event) => setNeededBy(event.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+          <Field label={t('purchase_request.justification_label')}>
+            {(control) => (
+              <Textarea
+                {...control}
+                rows={2}
+                maxLength={MAX_JUSTIFICATION}
+                value={justification}
+                onChange={(event) => setJustification(event.target.value)}
+              />
+            )}
+          </Field>
+          {products.length === 0 ? (
+            <Banner tone="bad">{t('purchase_request.no_product')}</Banner>
+          ) : null}
+          <ul className="line-list">
+            {rows.map((row, index) => {
+              const { line } = row;
+              return (
+                <li
+                  key={line.key}
+                  className="line-card"
+                  aria-label={t('transfer.line_label', { index: index + 1 })}
+                >
+                  <div className="proc-line">
+                    <Field label={t('loss.product_label')}>
+                      {(control) => (
+                        <Select
+                          {...control}
+                          value={line.productId}
+                          onChange={(event) =>
+                            update(line.key, { productId: event.target.value, unitCode: '' })
+                          }
+                        >
+                          <option value="">{t('loss.product_placeholder')}</option>
+                          {products.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.name}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                    <div className="line-fields">
+                      <Field label={t('sales.quantity_label')}>
+                        {(control) => (
+                          <Input
+                            {...control}
+                            inputMode="decimal"
+                            value={line.quantityText}
+                            onChange={(event) =>
+                              update(line.key, { quantityText: event.target.value })
+                            }
+                          />
+                        )}
+                      </Field>
+                      {row.units.length > 1 ? (
+                        <Field label={t('sales.unit_label')}>
+                          {(control) => (
+                            <Select
+                              {...control}
+                              value={row.unitCode}
+                              onChange={(event) =>
+                                update(line.key, { unitCode: event.target.value })
+                              }
+                            >
+                              {row.units.map((unit) => (
+                                <option key={unit.unitCode} value={unit.unitCode}>
+                                  {unitLabel(unit.unitCode)}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                        </Field>
+                      ) : null}
+                      <Field
+                        label={t('purchase_request.price_label', {
+                          unit: unitLabel(row.product?.base_unit_code ?? '', 1, refs.units),
+                        })}
+                      >
+                        {(control) => (
+                          <Input
+                            {...control}
+                            inputMode="numeric"
+                            value={line.priceText}
+                            onChange={(event) =>
+                              update(line.key, { priceText: event.target.value })
+                            }
+                          />
+                        )}
+                      </Field>
                     </div>
-                  ) : null}
-                  <div className="field">
-                    <label htmlFor={`${line.key}-price`}>
-                      {t('purchase_request.price_label', {
-                        unit: unitLabel(row.product?.base_unit_code ?? '', 1, refs.units),
-                      })}
-                    </label>
-                    <input
-                      id={`${line.key}-price`}
-                      className="text-input"
-                      inputMode="numeric"
-                      value={line.priceText}
-                      onChange={(event) => update(line.key, { priceText: event.target.value })}
-                    />
+                    <Field label={t('purchase_request.notes_label')}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          maxLength={MAX_LINE_NOTES}
+                          value={line.notes}
+                          onChange={(event) => update(line.key, { notes: event.target.value })}
+                        />
+                      )}
+                    </Field>
+                    {line.quantityText && row.check.issue === 'QUANTITY_INVALID' ? (
+                      <p className="field-error">{t('loss.issue.QUANTITY_INVALID')}</p>
+                    ) : null}
+                    {row.price === null ? (
+                      <p className="field-error">{t('purchase_request.price_invalid')}</p>
+                    ) : null}
+                    {rows.length > 1 ? (
+                      <div className="proc-line-actions">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="trash"
+                          onClick={() =>
+                            setLines((current) =>
+                              current.filter((candidate) => candidate.key !== line.key),
+                            )
+                          }
+                        >
+                          {t('transfer.remove_line', { index: index + 1 })}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className="field">
-                  <label htmlFor={`${line.key}-notes`}>{t('purchase_request.notes_label')}</label>
-                  <input
-                    id={`${line.key}-notes`}
-                    className="text-input"
-                    maxLength={MAX_LINE_NOTES}
-                    value={line.notes}
-                    onChange={(event) => update(line.key, { notes: event.target.value })}
-                  />
-                </div>
-                {line.quantityText && row.check.issue === 'QUANTITY_INVALID' ? (
-                  <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
-                ) : null}
-                {row.price === null ? (
-                  <p className="error-message">{t('purchase_request.price_invalid')}</p>
-                ) : null}
-                {rows.length > 1 ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() =>
-                      setLines((current) =>
-                        current.filter((candidate) => candidate.key !== line.key),
-                      )
-                    }
-                  >
-                    {t('transfer.remove_line', { index: index + 1 })}
-                  </button>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setLines((current) => [...current, newLine()])}
-        >
-          {t('transfer.add_line')}
-        </button>
-        {issues
-          .filter((issue) => issue !== 'SITE_REQUIRED' || sites.length === 0)
-          .filter(
-            (issue) => issue !== 'JUSTIFICATION_REQUIRED' || lines.some((line) => line.productId),
-          )
-          .map((issue) => (
-            <p key={issue} className="error-message">
-              {t(`purchase_request.issue.${issue}`)}
-            </p>
-          ))}
-        <p className="home-muted">{t('purchase_request.validation_hint')}</p>
-        {saveError ? (
-          <p className="alert alert-error" role="alert">
-            {t('sales.error_local_save')}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!ready}
-          onClick={() => void submit()}
-        >
-          {busy ? t('sales.submitting') : t('purchase_request.submit')}
-        </button>
-      </section>
+                </li>
+              );
+            })}
+          </ul>
+          <Button
+            variant="outline"
+            block
+            className="btn-dashed"
+            icon="plus"
+            onClick={() => setLines((current) => [...current, newLine()])}
+          >
+            {t('transfer.add_line')}
+          </Button>
+          {issues
+            .filter((issue) => issue !== 'SITE_REQUIRED' || sites.length === 0)
+            .filter(
+              (issue) => issue !== 'JUSTIFICATION_REQUIRED' || lines.some((line) => line.productId),
+            )
+            .map((issue) => (
+              <p key={issue} className="field-error">
+                {t(`purchase_request.issue.${issue}`)}
+              </p>
+            ))}
+          <p className="muted">{t('purchase_request.validation_hint')}</p>
+          {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+        </div>
+        <ActionBar>
+          <Button
+            size="lg"
+            className="submit-sale"
+            disabled={!ready}
+            loading={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? t('sales.submitting') : t('purchase_request.submit')}
+          </Button>
+        </ActionBar>
+      </Section>
 
-      <section className="sale-block" aria-labelledby="purchase-request-mine-title">
-        <h2 id="purchase-request-mine-title">{t('purchase_request.mine_title')}</h2>
+      <Section title={t('purchase_request.mine_title')}>
         {requests.length === 0 ? (
-          <p className="home-muted">{t('purchase_request.none')}</p>
+          <p className="muted">{t('purchase_request.none')}</p>
         ) : (
-          <ul className="receipt-lines">
+          <DataList
+            aria-label={t('purchase_request.mine_title')}
+            columns={[
+              { label: t('purchase_request.col.number') },
+              { label: t('purchase_request.col.justification') },
+              { label: t('purchase_request.col.status') },
+              { label: t('purchase_request.col.date') },
+            ]}
+            template="minmax(10rem, 1.5fr) minmax(0, 3fr) 11rem 9rem"
+          >
             {requests.map((request) => (
-              <li key={request.id}>
-                <span>
+              <DataRow key={request.id}>
+                <DataCell primary>
                   <strong>{request.docNumber ?? t('count.pending_number')}</strong>
-                  <small>{request.justification}</small>
-                </span>
-                <span>
-                  {t(`purchase_request.status.${request.status}`, { defaultValue: request.status })}
-                  <small>{formatMoment(request.occurredAt, today)}</small>
-                </span>
+                </DataCell>
+                <DataCell>
+                  <span className="proc-text">{request.justification}</span>
+                </DataCell>
+                <DataCell>
+                  <Badge tone={requestStatusTone(request.status)}>
+                    {t(`purchase_request.status.${request.status}`, {
+                      defaultValue: request.status,
+                    })}
+                  </Badge>
+                </DataCell>
+                <DataCell>
+                  <span className="proc-text">{formatMoment(request.occurredAt, today)}</span>
+                </DataCell>
                 {/* Demande d'achat (lot PP) : une demande servie par le serveur. */}
                 {refs.purchaseRequests.some((da) => da.id === request.id) ? (
-                  <PieceAction
-                    cle={`DA:${request.id}`}
-                    annulee={request.status === 'CANCELLED'}
-                    demande={() => {
-                      const da = refs.purchaseRequests.find((item) => item.id === request.id);
-                      return da ? demandeDemandeAchat(da, refs) : null;
-                    }}
-                  />
+                  <DataCell wide>
+                    <PieceAction
+                      cle={`DA:${request.id}`}
+                      annulee={request.status === 'CANCELLED'}
+                      demande={() => {
+                        const da = refs.purchaseRequests.find((item) => item.id === request.id);
+                        return da ? demandeDemandeAchat(da, refs) : null;
+                      }}
+                    />
+                  </DataCell>
                 ) : null}
-              </li>
+              </DataRow>
             ))}
-          </ul>
+          </DataList>
         )}
-      </section>
+      </Section>
     </section>
   );
 }

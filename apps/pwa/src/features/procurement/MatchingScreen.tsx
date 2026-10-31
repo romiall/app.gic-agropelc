@@ -11,10 +11,24 @@
  *   (`GET /supplier-invoices`, lien vers ECR-FIN-03). Chaque lecture a son échec et sa relance.
  * Resp. achats, Finance, Direction (AV-302) ; le serveur revérifie.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { businessDayOf } from '@gic/domain';
+import {
+  Banner,
+  Button,
+  Checkbox,
+  DataCell,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  LinkButton,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -48,6 +62,7 @@ import {
   type MatchingOrder,
   type ReceiptItem,
 } from './matching.js';
+import './procurement.css';
 
 interface OrdersRead {
   readonly items: readonly MatchingOrder[];
@@ -97,23 +112,28 @@ export function MatchingScreen() {
   );
   if (!userId || navigation === undefined) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.order_matching')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale proc-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.order_matching')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
   const roles = navigation?.roles ?? [];
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.order_matching')}</h1>
+    <section className="sale proc-screen">
+      <PageHeader title={t('nav.screens.order_matching')} />
       {suppliers.failed && !suppliers.denied ? (
-        <p className="text-warn" role="status">
-          {t('supplier_invoice.suppliers_failed')}{' '}
-          <button type="button" className="secondary" onClick={suppliers.retry}>
-            {t('supplier_invoice.retry_suppliers')}
-          </button>
-        </p>
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <Button variant="outline" size="sm" onClick={suppliers.retry}>
+              {t('supplier_invoice.retry_suppliers')}
+            </Button>
+          }
+        >
+          {t('supplier_invoice.suppliers_failed')}
+        </Banner>
       ) : null}
       <OrderList
         suppliers={suppliers.data?.suppliers ?? []}
@@ -139,7 +159,6 @@ function OrderList({
   const [supplierId, setSupplierId] = useState('');
   const [gapsOnly, setGapsOnly] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
-  const ids = { group: useId(), supplier: useId(), gaps: useId() };
   const text = useQuantityText();
   const today = businessDayOf(clock.now());
   const read = useOnlineRead<OrdersRead>(
@@ -164,7 +183,7 @@ function OrderList({
         </li>
       ) : null,
       indicators.remainingLines > 0 ? (
-        <li key="remaining" className="home-muted">
+        <li key="remaining" className="is-muted">
           {t('order_matching.indicator.remaining', { count: indicators.remainingLines })}
         </li>
       ) : null,
@@ -179,158 +198,177 @@ function OrderList({
     ].filter((item) => item !== null);
 
   const card = ({ order, indicators }: (typeof orders)[number]) => (
-    <li key={order.id} className="line-card" aria-label={order.docNumber}>
-      <p>
-        <strong>{order.docNumber}</strong> ·{' '}
-        {t(`orders_po.status.${order.status}`, { defaultValue: order.status })}
-      </p>
-      <p>{nameOf(order.supplierId)}</p>
-      <p className="home-muted">
-        {t('order_matching.card_dates', {
-          date: formatBusinessDate(businessDayOf(new Date(order.occurredAt))),
-        })}
-        {order.expectedDeliveryDate
-          ? ` · ${t('order_matching.expected', { date: formatBusinessDate(order.expectedDeliveryDate) })}`
-          : ''}
-        {order.totalXaf !== null
-          ? ` · ${t('order_matching.total', { amount: formatMoney(order.totalXaf) })}`
-          : ''}
-      </p>
-      {indicatorItems(indicators).length > 0 ? (
-        <ul className="text-warn">{indicatorItems(indicators)}</ul>
-      ) : null}
-      <ul className="home-muted">
-        {order.lines
-          .filter((line) => line.status !== 'CANCELLED')
-          .map((line) => (
-            <li key={line.id}>
-              {t('order_matching.line_summary', {
-                product: text.productName(line.productId),
-                ordered: text.quantity(line.productId, line.orderedQtyBase),
-                accepted: text.quantity(line.productId, line.acceptedQtyBase),
-                remaining: text.quantity(line.productId, line.remainingQtyBase),
+    <DataRow key={order.id} aria-label={order.docNumber}>
+      <DataCell primary>
+        <p>
+          <strong>{order.docNumber}</strong> ·{' '}
+          {t(`orders_po.status.${order.status}`, { defaultValue: order.status })}
+        </p>
+      </DataCell>
+      <DataCell>
+        <p>{nameOf(order.supplierId)}</p>
+      </DataCell>
+      <DataCell>
+        <p className="proc-text">
+          {t('order_matching.card_dates', {
+            date: formatBusinessDate(businessDayOf(new Date(order.occurredAt))),
+          })}
+          {order.expectedDeliveryDate
+            ? ` · ${t('order_matching.expected', { date: formatBusinessDate(order.expectedDeliveryDate) })}`
+            : ''}
+          {order.totalXaf !== null
+            ? ` · ${t('order_matching.total', { amount: formatMoney(order.totalXaf) })}`
+            : ''}
+        </p>
+      </DataCell>
+      <DataCell>
+        {indicatorItems(indicators).length > 0 ? (
+          <ul className="proc-flags">{indicatorItems(indicators)}</ul>
+        ) : null}
+      </DataCell>
+      <DataCell wide>
+        <div className="proc-order-body">
+          <ul className="proc-summary">
+            {order.lines
+              .filter((line) => line.status !== 'CANCELLED')
+              .map((line) => (
+                <li key={line.id}>
+                  {t('order_matching.line_summary', {
+                    product: text.productName(line.productId),
+                    ordered: text.quantity(line.productId, line.orderedQtyBase),
+                    accepted: text.quantity(line.productId, line.acceptedQtyBase),
+                    remaining: text.quantity(line.productId, line.remainingQtyBase),
+                  })}
+                </li>
+              ))}
+          </ul>
+          <div className="proc-actions">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={shown === order.id}
+              onClick={() => setShown((current) => (current === order.id ? null : order.id))}
+            >
+              {t(shown === order.id ? 'order_matching.detail_hide' : 'order_matching.detail_show', {
+                doc: order.docNumber,
               })}
-            </li>
-          ))}
-      </ul>
-      <button
-        type="button"
-        className="secondary"
-        aria-expanded={shown === order.id}
-        onClick={() => setShown((current) => (current === order.id ? null : order.id))}
-      >
-        {t(shown === order.id ? 'order_matching.detail_hide' : 'order_matching.detail_show', {
-          doc: order.docNumber,
-        })}
-      </button>
-      {shown === order.id ? (
-        <OrderDetail order={order} online={online} mayReadInvoices={mayReadInvoices} />
-      ) : null}
-    </li>
+            </Button>
+          </div>
+          {shown === order.id ? (
+            <OrderDetail order={order} online={online} mayReadInvoices={mayReadInvoices} />
+          ) : null}
+        </div>
+      </DataCell>
+    </DataRow>
   );
 
   return (
-    <section className="sale-block" aria-labelledby="po-matching-title">
-      <h2 id="po-matching-title">{t('order_matching.list_title')}</h2>
+    <Section title={t('order_matching.list_title')}>
       {online ? null : (
-        <p className="text-warn" role="status">
+        <Banner tone="warn" role="status">
           {t(data ? 'order_matching.offline_banner' : 'order_matching.online_only')}
-        </p>
+        </Banner>
       )}
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.group}>{t('order_matching.group_label')}</label>
-          <select
-            id={ids.group}
-            className="text-input"
-            value={group}
-            onChange={(event) => {
-              setGroup(event.target.value as MatchingGroup);
-              setShown(null);
-            }}
-          >
-            {MATCHING_GROUP_ORDER.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {t(`order_matching.group.${candidate}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={ids.supplier}>{t('order_matching.filter_supplier')}</label>
-          <select
-            id={ids.supplier}
-            className="text-input"
-            value={supplierId}
-            onChange={(event) => {
-              setSupplierId(event.target.value);
-              setShown(null);
-            }}
-          >
-            <option value="">{t('supplier_invoice.all_suppliers')}</option>
-            {[...suppliers]
-              .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-              .map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
+      <div className="filter-bar">
+        <Field label={t('order_matching.group_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={group}
+              onChange={(event) => {
+                setGroup(event.target.value as MatchingGroup);
+                setShown(null);
+              }}
+            >
+              {MATCHING_GROUP_ORDER.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {t(`order_matching.group.${candidate}`)}
                 </option>
               ))}
-          </select>
-        </div>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.gaps}>
-          <input
-            id={ids.gaps}
-            type="checkbox"
-            checked={gapsOnly}
-            onChange={(event) => setGapsOnly(event.target.checked)}
-          />{' '}
-          {t('order_matching.gaps_only')}
-        </label>
+            </Select>
+          )}
+        </Field>
+        <Field label={t('order_matching.filter_supplier')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={supplierId}
+              onChange={(event) => {
+                setSupplierId(event.target.value);
+                setShown(null);
+              }}
+            >
+              <option value="">{t('supplier_invoice.all_suppliers')}</option>
+              {[...suppliers]
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
+        <Checkbox
+          label={t('order_matching.gaps_only')}
+          checked={gapsOnly}
+          onChange={(event) => setGapsOnly(event.target.checked)}
+        />
       </div>
       {read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>
-            {read.denied
-              ? t('order_matching.denied')
-              : t(data ? 'order_matching.failed_stale' : 'order_matching.failed')}
-          </p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('order_matching.retry_list')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            read.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={read.retry}>
+                {t('order_matching.retry_list')}
+              </Button>
+            )
+          }
+        >
+          {read.denied
+            ? t('order_matching.denied')
+            : t(data ? 'order_matching.failed_stale' : 'order_matching.failed')}
+        </Banner>
       ) : null}
       {!data ? (
         read.failed || !online ? null : (
-          <p className="home-muted" aria-busy="true">
-            {t('sales.loading')}
-          </p>
+          <SkeletonRows rows={3} />
         )
       ) : (
         <>
           {online && read.stale && !read.failed ? (
-            <p className="home-muted" role="status">
+            <p className="muted" role="status">
               {t('order_matching.refreshing')}
             </p>
           ) : null}
           {orders.length === 0 ? (
-            <p className="home-muted">
-              {t(
+            <EmptyState
+              icon="clipboard"
+              title={t(
                 gapsOnly && data.items.length > 0
                   ? 'order_matching.no_gap'
                   : 'order_matching.empty',
               )}
-            </p>
+            />
           ) : (
-            <ul className="line-list">{orders.map(card)}</ul>
+            <DataList
+              aria-label={t('order_matching.list_title')}
+              columns={[
+                { label: t('order_matching.col.order') },
+                { label: t('order_matching.col.supplier') },
+                { label: t('order_matching.col.dates') },
+                { label: t('order_matching.col.gaps') },
+              ]}
+              template="minmax(14rem, 1.8fr) minmax(0, 1.8fr) minmax(0, 2.6fr) minmax(0, 2.4fr)"
+            >
+              {orders.map(card)}
+            </DataList>
           )}
-          {data.more ? <p className="home-muted">{t('order_matching.truncated')}</p> : null}
+          {data.more ? <p className="muted">{t('order_matching.truncated')}</p> : null}
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -374,7 +412,7 @@ function OrderDetail({
     value === null ? t('order_matching.not_available') : formatMoney(value);
   /** Section sans lecture : hors ligne, en ligne seulement ; sinon en cours. */
   const waiting = () => (
-    <p className="home-muted">{t(online ? 'sales.loading' : 'order_matching.online_only')}</p>
+    <p className="muted">{t(online ? 'sales.loading' : 'order_matching.online_only')}</p>
   );
   const refreshing =
     online &&
@@ -387,20 +425,25 @@ function OrderDetail({
     retryKey: string,
   ) =>
     read.failed ? (
-      <p className="text-warn" role="alert">
-        {read.denied ? t('order_matching.section_denied') : t(failedKey)}{' '}
-        {read.denied ? null : (
-          <button type="button" className="secondary" onClick={read.retry}>
-            {t(retryKey, { doc: order.docNumber })}
-          </button>
-        )}
-      </p>
+      <Banner
+        tone="warn"
+        role="alert"
+        action={
+          read.denied ? undefined : (
+            <Button variant="outline" size="sm" onClick={read.retry}>
+              {t(retryKey, { doc: order.docNumber })}
+            </Button>
+          )
+        }
+      >
+        {read.denied ? t('order_matching.section_denied') : t(failedKey)}
+      </Banner>
     ) : null;
   const detail = matching.data?.matching;
   return (
-    <div className="sale-block">
+    <div className="proc-detail">
       {refreshing ? (
-        <p className="home-muted" role="status">
+        <p className="muted" role="status">
           {t('order_matching.refreshing')}
         </p>
       ) : null}
@@ -437,7 +480,7 @@ function OrderDetail({
                         accepted: q(line.acceptedQtyBase),
                       })}
                     </p>
-                    <p className="home-muted">
+                    <p className="muted">
                       {t('order_matching.line_rest', {
                         remaining: q(line.remainingQtyBase),
                         closed: q(line.closedQtyBase),
@@ -445,19 +488,19 @@ function OrderDetail({
                       })}
                     </p>
                     {gaps.includes('QUARANTINED') ? (
-                      <p className="text-warn">
+                      <p className="proc-warn">
                         {t('order_matching.line_quarantined', {
                           quantity: q(line.quarantinedQtyBase),
                         })}
                       </p>
                     ) : null}
                     {gaps.includes('EXCESS') ? (
-                      <p className="text-warn">
+                      <p className="proc-warn">
                         {t('order_matching.line_excess', { quantity: q(line.excessQtyBase) })}
                       </p>
                     ) : null}
                     {gaps.includes('OVER_INVOICED') ? (
-                      <p className="text-warn">
+                      <p className="proc-warn">
                         {t('order_matching.line_over_invoiced', {
                           invoiced: q(line.invoicedQtyBase),
                           accepted: q(line.acceptedQtyBase),
@@ -465,7 +508,7 @@ function OrderDetail({
                       </p>
                     ) : null}
                     {line.orderedValueXaf !== null ? (
-                      <p className="home-muted">
+                      <p className="muted">
                         {t('order_matching.line_values', {
                           ordered: money(line.orderedValueXaf),
                           accepted: money(line.acceptedValueXaf),
@@ -494,7 +537,7 @@ function OrderDetail({
           waiting()
         )
       ) : receipts.data.items.length === 0 ? (
-        <p className="home-muted">{t('order_matching.no_receipt')}</p>
+        <p className="muted">{t('order_matching.no_receipt')}</p>
       ) : (
         <ul className="line-list">
           {sortReceipts(receipts.data.items).map((receipt) => (
@@ -503,13 +546,13 @@ function OrderDetail({
                 <strong>{receipt.docNumber}</strong> ·{' '}
                 {t(`purchase_receipt.status.${receipt.status}`, { defaultValue: receipt.status })}
               </p>
-              <p className="home-muted">
+              <p className="muted">
                 {formatBusinessDate(businessDayOf(new Date(receipt.occurredAt)))}
                 {receipt.supplierDeliveryNoteRef
                   ? ` · ${t('order_matching.delivery_note', { ref: receipt.supplierDeliveryNoteRef })}`
                   : ''}
               </p>
-              <ul className="home-muted">
+              <ul className="proc-summary">
                 {receipt.lines.map((line) => (
                   <li key={line.id}>
                     {t('order_matching.receipt_line', {
@@ -522,7 +565,7 @@ function OrderDetail({
                 ))}
               </ul>
               {receipt.cancelComment ? (
-                <p className="home-muted">
+                <p className="muted">
                   {t('order_matching.cancel_comment', { comment: receipt.cancelComment })}
                 </p>
               ) : null}
@@ -530,7 +573,7 @@ function OrderDetail({
           ))}
         </ul>
       )}
-      {receipts.data?.more ? <p className="home-muted">{t('order_matching.truncated')}</p> : null}
+      {receipts.data?.more ? <p className="muted">{t('order_matching.truncated')}</p> : null}
       {mayReadInvoices ? (
         <>
           <h3>{t('order_matching.invoices_title')}</h3>
@@ -540,7 +583,7 @@ function OrderDetail({
               waiting()
             )
           ) : invoices.data.items.length === 0 ? (
-            <p className="home-muted">{t('order_matching.no_invoice')}</p>
+            <p className="muted">{t('order_matching.no_invoice')}</p>
           ) : (
             <ul className="line-list">
               {invoices.data.items.map((invoice) => (
@@ -551,7 +594,7 @@ function OrderDetail({
                       defaultValue: invoice.status,
                     })}
                   </p>
-                  <p className="home-muted">
+                  <p className="muted">
                     {t('order_matching.invoice_line', {
                       ref: invoice.supplierInvoiceRef,
                       total: formatMoney(invoice.totalXaf),
@@ -562,9 +605,11 @@ function OrderDetail({
               ))}
             </ul>
           )}
-          <Link to={ROUTES.supplierInvoices} className="action action-compact">
-            <span className="action-label">{t('order_matching.invoices_link')}</span>
-          </Link>
+          <div className="proc-actions">
+            <LinkButton to={ROUTES.supplierInvoices} variant="outline" size="sm">
+              {t('order_matching.invoices_link')}
+            </LinkButton>
+          </div>
         </>
       ) : null}
     </div>

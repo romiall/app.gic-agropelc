@@ -1,0 +1,279 @@
+/* Achats (ADR-049, lot L7) : demandes, fournisseurs, bons de commande, réceptions, rapprochement. Feuille
+   de domaine : ce qui n'existe pas dans les composants communs (`components/ui`) ni dans
+   `styles/screens.css`. Aucune couleur en dur : jetons seulement. */
+
+/* Rythme vertical : ni `Section` ni `Banner` n'ont de marge, l'écran leur donne la leur. */
+.proc-screen > .section {
+  margin-top: var(--space-5);
+}
+
+.proc-screen > .banner {
+  margin-bottom: var(--space-3);
+}
+
+/* --- Formulaires ------------------------------------------------------------------------------------ */
+
+.proc-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.proc-form .field,
+.proc-pair > .field,
+.proc-line .field,
+.proc-panel .field,
+.proc-add .field {
+  margin-bottom: 0;
+}
+
+.proc-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+}
+
+.proc-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.proc-line-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Ajout d'une ligne : un choix puis son bouton, côte à côte dès que la place le permet. */
+.proc-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@media (min-width: 40rem) {
+  .proc-add {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .proc-add > .field {
+    flex: 1;
+  }
+}
+
+.proc-total {
+  margin: 0;
+  font: 700 var(--text-lg) / 1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cases d'usage ou de catégories : un cadre sous une légende, les cases en grille. */
+.proc-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0 var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.proc-checks > legend {
+  padding: 0 var(--space-1);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.proc-checks > .line-fields,
+.proc-checks > .proc-pair {
+  grid-column: 1 / -1;
+}
+
+/* --- Rubriques et listes ------------------------------------------------------------------------------ */
+
+.proc-sections {
+  margin-bottom: var(--space-4);
+}
+
+.proc-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.proc-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.proc-more > p {
+  margin: 0;
+}
+
+.proc-text {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.proc-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.proc-name small {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.proc-money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.proc-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Ligne cliquable (bons à recevoir) : tout le rang est le lien ; son nom accessible vient de `aria-label`. */
+.proc-row {
+  color: inherit;
+  text-decoration: none;
+}
+
+.proc-row:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.proc-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Cellule vide : sur téléphone elle ne prend aucune place, sur ordinateur elle garde sa colonne. */
+@media (max-width: 56.24rem) {
+  .proc-row .data-cell:empty,
+  .proc-screen .data-row > .data-cell:empty {
+    display: none;
+  }
+}
+
+/* Corps d'une ligne de liste (lignes du bon, actions, panneaux) : sous les colonnes, séparé par un filet. */
+.proc-order-body,
+.proc-extras {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.proc-order-body {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+/* « Voir la pièce » (composant des pièces papier) : un bouton de sa largeur, pas une barre pleine. */
+.proc-order-body .piece-action,
+.proc-extras .piece-action {
+  justify-items: start;
+  margin: 0;
+}
+
+.proc-order-lines,
+.proc-summary,
+.proc-flags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proc-order-lines > li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.proc-summary > li {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+/* Écarts d'un bon : une ligne par constat, un point d'attention devant. */
+.proc-flags > li {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--warn);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.proc-flags > li::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 0.5em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.proc-flags > li.is-muted {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.proc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* Panneau ouvert dans une ligne (modifier, annuler, clôturer le reliquat). */
+.proc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+/* Détail du rapprochement d'un bon : lignes, réceptions et factures, lus à la demande. */
+.proc-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.proc-detail > h3 {
+  margin: var(--space-2) 0 0;
+  font: 700 var(--text-md) / 1.2 var(--font-display);
+}
+
+.proc-detail p,
+.proc-detail .line-list {
+  margin: 0;
+}
+
+.proc-detail .line-list {
+  margin-bottom: var(--space-1);
+}
