@@ -7,16 +7,35 @@
  * nuls sans droit de valorisation (RC-05). Les lots clôturés (sortis du jeu `production`) se lisent en
  * ligne ; un lot demandé absent de l'appareil se lit directement, sans retomber sur un autre lot.
  * Dates avec l'année (un lot de pondeuses dure plus d'un an). Aucune écriture.
+ *
+ * Refonte (ADR-049, lot L6) : effectif et indicateurs en tuiles (`dl` : le libellé précède sa valeur),
+ * coûts, ventes, résultat mensuel, entrées et pesées en cartes, sur deux colonnes sur ordinateur.
  */
-import { Fragment, useId, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  List,
+  ListRow,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  type BadgeTone,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { formatBusinessDate, formatDateTime, formatMonthPeriod } from '../home/format-home.js';
 import { formatMoney, formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { rearingHeadcount } from './daily.js';
+import './production.css';
 
 /** Fiche renvoyée par `GET /api/v1/production/lots/{id}` (montants nuls sans droit). */
 interface LotSheet {
@@ -107,13 +126,41 @@ const percent = (rate: number | null): string | null =>
 const money = (value: number | null | undefined): string | null =>
   value === null || value === undefined ? null : formatMoney(value);
 
+/** Ton de la pastille de situation d'un lot. */
+const lotStatusTone = (status: string): BadgeTone =>
+  status === 'ACTIVE'
+    ? 'ok'
+    : status === 'SELLING'
+      ? 'info'
+      : status === 'CANCELLED'
+        ? 'bad'
+        : 'muted';
+
+/** Un chiffre et son libellé (`dt` puis `dd`) ; rien si la valeur manque. */
+function Figure({
+  label,
+  value,
+  warn = false,
+}: {
+  readonly label: string;
+  readonly value: string | null;
+  readonly warn?: boolean;
+}) {
+  if (value === null) return null;
+  return (
+    <div className={warn ? 'is-warn' : undefined}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
 export function LotSheetScreen() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const refs = useSalesReferences();
   const online = useOnline();
   const [lotChoice, setLotChoice] = useState<string | null>(searchParams.get('lot'));
-  const lotId = useId();
   // Première page lue en ligne ; les suivantes, une à la fois, ajoutées sans relire les précédentes.
   const closed = useOnlineRead<ClosedPage>(CLOSED_LOTS_PATH, readPath, online, '');
   const [more, setMore] = useState<{
@@ -179,8 +226,8 @@ export function LotSheetScreen() {
   if (!refs) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.lot_sheet')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.lot_sheet')} />
+        <SkeletonRows />
       </section>
     );
   }
@@ -199,291 +246,341 @@ export function LotSheetScreen() {
   const choice = lots.find((candidate) => candidate.id === id);
   const amountsHidden = current?.costs.netXaf === null;
   const unit = product?.base_unit_code ?? '';
-  const row = (label: string, value: string | null) =>
-    value === null ? null : (
-      <Fragment key={label}>
-        <dt>{label}</dt>
-        <dd>{value}</dd>
-      </Fragment>
-    );
+  const lotLabel = (candidate: LotChoice) =>
+    `${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`, {
+      defaultValue: candidate.lotType,
+    })}`;
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.lot_sheet')}</h1>
+      <PageHeader title={t('nav.screens.lot_sheet')} />
       {online && closed.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{t('lot_sheet.closed_unavailable')}</p>
-          <button type="button" className="secondary" onClick={closed.retry}>
-            {t('ledger.retry')}
-          </button>
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            <Button variant="tonal" size="sm" onClick={closed.retry}>
+              {t('ledger.retry')}
+            </Button>
+          }
+        >
+          {t('lot_sheet.closed_unavailable')}
+        </Banner>
       ) : null}
       {!id ? (
         online && closed.data === undefined && !closed.failed ? (
-          <p className="home-muted">{t('sales.loading')}</p>
+          <SkeletonRows rows={2} />
         ) : (
-          <p className="home-muted">{t('lot_sheet.no_lot')}</p>
+          <EmptyState icon="leaf" title={t('lot_sheet.no_lot')} />
         )
       ) : (
         <>
-          <div className="field">
-            <label htmlFor={lotId}>{t('lot_sheet.lot_label')}</label>
-            <select
-              id={lotId}
-              className="text-input"
-              value={id}
-              onChange={(event) => setLotChoice(event.target.value)}
-            >
-              {choice ? null : (
-                <option value={id}>{current?.lotCode ?? t('lot_sheet.requested_lot')}</option>
-              )}
-              {openLots.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {`${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`, {
-                    defaultValue: candidate.lotType,
-                  })}`}
-                </option>
-              ))}
-              {closedLots.length > 0 ? (
-                <optgroup label={t('lot_sheet.closed_group')}>
-                  {closedLots.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {`${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`, {
-                        defaultValue: candidate.lotType,
-                      })}`}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-            {online && more.status === 'FAILED' ? (
-              <p className="error-message" role="alert">
-                {t('lot_sheet.more_failed')}
-              </p>
-            ) : null}
-            {online && nextCursor ? (
-              <button
-                type="button"
-                className="secondary"
-                disabled={more.status === 'LOADING'}
-                onClick={() => void loadMore()}
+          <Field label={t('lot_sheet.lot_label')} className="prd-narrow">
+            {(control) => (
+              <Select
+                {...control}
+                value={id}
+                onChange={(event) => setLotChoice(event.target.value)}
               >
-                {t('lot_sheet.more_closed')}
-              </button>
-            ) : null}
-          </div>
-          <p className="home-muted">
-            {[
-              product?.name,
-              status ? t(`lot_sheet.status.${status}`, { defaultValue: status }) : null,
-              startDate ? t('lot_sheet.started', { date: formatBusinessDate(startDate) }) : null,
-              current?.closedAt
-                ? t('lot_sheet.closed_on', { date: formatDateTime(current.closedAt) })
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-          {!online ? (
-            <p className="home-banner" role="status">
-              {lot ? t('lot_sheet.offline') : t('lot_sheet.not_on_device')}
+                {choice ? null : (
+                  <option value={id}>{current?.lotCode ?? t('lot_sheet.requested_lot')}</option>
+                )}
+                {openLots.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {lotLabel(candidate)}
+                  </option>
+                ))}
+                {closedLots.length > 0 ? (
+                  <optgroup label={t('lot_sheet.closed_group')}>
+                    {closedLots.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {lotLabel(candidate)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </Select>
+            )}
+          </Field>
+          {online && more.status === 'FAILED' ? (
+            <p className="prd-note is-bad" role="alert">
+              {t('lot_sheet.more_failed')}
             </p>
           ) : null}
-          {online && current === undefined && !sheet.failed ? (
-            <p className="home-muted">{t('sales.loading')}</p>
+          {online && nextCursor ? (
+            <Button
+              variant="tonal"
+              size="sm"
+              className="prd-self-start"
+              disabled={more.status === 'LOADING'}
+              onClick={() => void loadMore()}
+            >
+              {t('lot_sheet.more_closed')}
+            </Button>
           ) : null}
+          <div className="prd-status">
+            {status ? (
+              <Badge tone={lotStatusTone(status)}>
+                {t(`lot_sheet.status.${status}`, { defaultValue: status })}
+              </Badge>
+            ) : null}
+            <span>
+              {[
+                product?.name,
+                startDate ? t('lot_sheet.started', { date: formatBusinessDate(startDate) }) : null,
+                current?.closedAt
+                  ? t('lot_sheet.closed_on', { date: formatDateTime(current.closedAt) })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </div>
+          {!online ? (
+            <Banner tone="warn" role="status">
+              {lot ? t('lot_sheet.offline') : t('lot_sheet.not_on_device')}
+            </Banner>
+          ) : null}
+          {online && current === undefined && !sheet.failed ? <SkeletonRows rows={2} /> : null}
           {online && sheet.failed ? (
-            <div className="alert alert-error" role="alert">
-              <p>{sheet.denied ? t('lot_sheet.not_found') : t('lot_sheet.unavailable')}</p>
-              {sheet.denied ? null : (
-                <button type="button" className="secondary" onClick={sheet.retry}>
-                  {t('ledger.retry')}
-                </button>
-              )}
-            </div>
+            <Banner
+              tone="bad"
+              {...(sheet.denied
+                ? {}
+                : {
+                    action: (
+                      <Button variant="tonal" size="sm" onClick={sheet.retry}>
+                        {t('ledger.retry')}
+                      </Button>
+                    ),
+                  })}
+            >
+              {sheet.denied ? t('lot_sheet.not_found') : t('lot_sheet.unavailable')}
+            </Banner>
           ) : null}
 
-          <section className="sale-block" aria-labelledby="lot-sheet-heads">
-            <h2 id="lot-sheet-heads">{t('lot_sheet.heads_title')}</h2>
-            <dl className="receipt-totals">
-              {current
-                ? [
-                    row(
-                      t('lot_sheet.initial'),
-                      current.initialQuantity === null
-                        ? null
-                        : formatQuantityUnit(current.initialQuantity, unit),
-                    ),
-                    row(t('lot_sheet.unsold'), formatQuantityUnit(current.headcount.unsold, unit)),
-                    row(
-                      t('lot_sheet.rearing'),
-                      formatQuantityUnit(current.headcount.rearing, unit),
-                    ),
-                    row(
-                      t('lot_sheet.deaths'),
-                      formatQuantityUnit(current.mortality.countedQuantity, unit),
-                    ),
-                    current.mortality.pendingQuantity > 0
-                      ? row(
-                          t('lot_sheet.deaths_pending'),
-                          formatQuantityUnit(current.mortality.pendingQuantity, unit),
-                        )
-                      : null,
-                    row(
-                      t('lot_sheet.lost'),
-                      formatQuantityUnit(current.mortality.lostQuantity, unit),
-                    ),
-                  ]
-                : lot
-                  ? [
-                      row(
-                        t('lot_sheet.rearing_device'),
-                        localHeads === null
-                          ? t('production.headcount_unknown')
-                          : formatQuantityUnit(localHeads, unit),
-                      ),
-                    ]
-                  : null}
-            </dl>
-          </section>
-
-          {current ? (
-            <>
-              <section className="sale-block" aria-labelledby="lot-sheet-indicators">
-                <h2 id="lot-sheet-indicators">{t('lot_sheet.indicators_title')}</h2>
-                <dl className="receipt-totals">
-                  {row(t('lot_sheet.mortality_rate'), percent(current.indicators.mortalityRate))}
-                  {row(
-                    t('lot_sheet.adg'),
-                    current.indicators.averageDailyGainG === null
-                      ? null
-                      : t('lot_sheet.grams_per_day', {
-                          value: formatQuantity(current.indicators.averageDailyGainG),
-                        }),
-                  )}
-                  {row(
-                    t('lot_sheet.fcr'),
-                    current.indicators.feedConversionRatio === null
-                      ? null
-                      : formatQuantity(current.indicators.feedConversionRatio),
-                  )}
-                  {row(t('lot_sheet.laying_rate'), percent(current.indicators.layingRate))}
-                  {row(
-                    t('lot_sheet.eggs'),
-                    current.indicators.eggsCollected === null
-                      ? null
-                      : formatQuantity(current.indicators.eggsCollected),
-                  )}
-                </dl>
-              </section>
-
-              <section className="sale-block" aria-labelledby="lot-sheet-costs">
-                <h2 id="lot-sheet-costs">{t('lot_sheet.costs_title')}</h2>
-                {current.costs.netXaf === null ? (
-                  <p className="home-muted">{t('lot_sheet.amounts_hidden')}</p>
-                ) : (
+          <div className="prd-sheet">
+            <Section title={t('lot_sheet.heads_title')} className="is-wide">
+              <dl className="prd-figures">
+                {current ? (
                   <>
-                    <ul className="receipt-lines">
-                      {current.costs.breakdown.map((line) => (
-                        <li key={line.costType}>
-                          <span>
-                            {t(`lot_sheet.cost_type.${line.costType}`, {
-                              defaultValue: line.costType,
-                            })}
-                          </span>
-                          <span>{money(line.netXaf)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <dl className="receipt-totals">
-                      {row(t('lot_sheet.cost_total'), money(current.costs.netXaf))}
-                      {row(t('lot_sheet.cost_remaining'), money(current.costs.remainingXaf))}
-                      {row(t('lot_sheet.cost_per_head'), money(current.costs.costPerHeadXaf))}
-                    </dl>
+                    <Figure
+                      label={t('lot_sheet.initial')}
+                      value={
+                        current.initialQuantity === null
+                          ? null
+                          : formatQuantityUnit(current.initialQuantity, unit)
+                      }
+                    />
+                    <Figure
+                      label={t('lot_sheet.unsold')}
+                      value={formatQuantityUnit(current.headcount.unsold, unit)}
+                    />
+                    <Figure
+                      label={t('lot_sheet.rearing')}
+                      value={formatQuantityUnit(current.headcount.rearing, unit)}
+                    />
+                    <Figure
+                      label={t('lot_sheet.deaths')}
+                      value={formatQuantityUnit(current.mortality.countedQuantity, unit)}
+                    />
+                    {current.mortality.pendingQuantity > 0 ? (
+                      <Figure
+                        warn
+                        label={t('lot_sheet.deaths_pending')}
+                        value={formatQuantityUnit(current.mortality.pendingQuantity, unit)}
+                      />
+                    ) : null}
+                    <Figure
+                      label={t('lot_sheet.lost')}
+                      value={formatQuantityUnit(current.mortality.lostQuantity, unit)}
+                    />
                   </>
-                )}
-              </section>
+                ) : lot ? (
+                  <Figure
+                    label={t('lot_sheet.rearing_device')}
+                    value={
+                      localHeads === null
+                        ? t('production.headcount_unknown')
+                        : formatQuantityUnit(localHeads, unit)
+                    }
+                  />
+                ) : null}
+              </dl>
+            </Section>
 
-              {current.sales ? (
-                <section className="sale-block" aria-labelledby="lot-sheet-sales">
-                  <h2 id="lot-sheet-sales">{t('lot_sheet.sales_title')}</h2>
-                  {current.sales.netRevenueXaf === null ? (
-                    <p className="home-muted">{t('lot_sheet.amounts_hidden')}</p>
-                  ) : null}
-                  <dl className="receipt-totals">
-                    {row(t('lot_sheet.sold'), formatQuantityUnit(current.sales.soldQuantity, unit))}
-                    {row(t('lot_sheet.revenue'), money(current.sales.netRevenueXaf))}
-                    {row(t('lot_sheet.cost_of_sales'), money(current.sales.costOfSalesXaf))}
-                    {row(t('lot_sheet.lot_margin'), money(current.sales.lotMarginXaf))}
-                    {row(t('lot_sheet.gross_margin'), money(current.sales.grossMarginXaf))}
+            {current ? (
+              <>
+                <Section title={t('lot_sheet.indicators_title')} className="is-wide">
+                  <dl className="prd-figures">
+                    <Figure
+                      label={t('lot_sheet.mortality_rate')}
+                      value={percent(current.indicators.mortalityRate)}
+                    />
+                    <Figure
+                      label={t('lot_sheet.adg')}
+                      value={
+                        current.indicators.averageDailyGainG === null
+                          ? null
+                          : t('lot_sheet.grams_per_day', {
+                              value: formatQuantity(current.indicators.averageDailyGainG),
+                            })
+                      }
+                    />
+                    <Figure
+                      label={t('lot_sheet.fcr')}
+                      value={
+                        current.indicators.feedConversionRatio === null
+                          ? null
+                          : formatQuantity(current.indicators.feedConversionRatio)
+                      }
+                    />
+                    <Figure
+                      label={t('lot_sheet.laying_rate')}
+                      value={percent(current.indicators.layingRate)}
+                    />
+                    <Figure
+                      label={t('lot_sheet.eggs')}
+                      value={
+                        current.indicators.eggsCollected === null
+                          ? null
+                          : formatQuantity(current.indicators.eggsCollected)
+                      }
+                    />
                   </dl>
-                </section>
-              ) : null}
+                </Section>
 
-              {current.costs.monthly.length > 0 && !amountsHidden ? (
-                <section className="sale-block" aria-labelledby="lot-sheet-monthly">
-                  <h2 id="lot-sheet-monthly">{t('lot_sheet.monthly_title')}</h2>
-                  <ul className="receipt-lines">
-                    {current.costs.monthly.map((month) => (
-                      <li key={month.period}>
-                        <span>{formatMonthPeriod(month.period)}</span>
-                        <span>
-                          {t('lot_sheet.month', {
+                <Section title={t('lot_sheet.costs_title')}>
+                  {current.costs.netXaf === null ? (
+                    <p className="prd-note">{t('lot_sheet.amounts_hidden')}</p>
+                  ) : (
+                    <>
+                      <Card>
+                        <ul className="prd-lines">
+                          {current.costs.breakdown.map((line) => (
+                            <li key={line.costType}>
+                              <span>
+                                {t(`lot_sheet.cost_type.${line.costType}`, {
+                                  defaultValue: line.costType,
+                                })}
+                              </span>
+                              <span>{money(line.netXaf)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </Card>
+                      <Card>
+                        <dl className="prd-totals">
+                          <Figure
+                            label={t('lot_sheet.cost_total')}
+                            value={money(current.costs.netXaf)}
+                          />
+                          <Figure
+                            label={t('lot_sheet.cost_remaining')}
+                            value={money(current.costs.remainingXaf)}
+                          />
+                          <Figure
+                            label={t('lot_sheet.cost_per_head')}
+                            value={money(current.costs.costPerHeadXaf)}
+                          />
+                        </dl>
+                      </Card>
+                    </>
+                  )}
+                </Section>
+
+                {current.sales ? (
+                  <Section title={t('lot_sheet.sales_title')}>
+                    {current.sales.netRevenueXaf === null ? (
+                      <p className="prd-note">{t('lot_sheet.amounts_hidden')}</p>
+                    ) : null}
+                    <Card>
+                      <dl className="prd-totals">
+                        <Figure
+                          label={t('lot_sheet.sold')}
+                          value={formatQuantityUnit(current.sales.soldQuantity, unit)}
+                        />
+                        <Figure
+                          label={t('lot_sheet.revenue')}
+                          value={money(current.sales.netRevenueXaf)}
+                        />
+                        <Figure
+                          label={t('lot_sheet.cost_of_sales')}
+                          value={money(current.sales.costOfSalesXaf)}
+                        />
+                        <Figure
+                          label={t('lot_sheet.lot_margin')}
+                          value={money(current.sales.lotMarginXaf)}
+                        />
+                        <Figure
+                          label={t('lot_sheet.gross_margin')}
+                          value={money(current.sales.grossMarginXaf)}
+                        />
+                      </dl>
+                    </Card>
+                  </Section>
+                ) : null}
+
+                {current.costs.monthly.length > 0 && !amountsHidden ? (
+                  <Section title={t('lot_sheet.monthly_title')}>
+                    <List>
+                      {current.costs.monthly.map((month) => (
+                        <ListRow
+                          key={month.period}
+                          title={formatMonthPeriod(month.period)}
+                          subtitle={t('lot_sheet.month', {
                             cost: money(month.netXaf) ?? '—',
                             revenue: money(month.revenueXaf) ?? '—',
                           })}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
+                        />
+                      ))}
+                    </List>
+                  </Section>
+                ) : null}
 
-              <section className="sale-block" aria-labelledby="lot-sheet-entries">
-                <h2 id="lot-sheet-entries">{t('lot_sheet.entries_title')}</h2>
-                {current.entries.length === 0 ? (
-                  <p className="home-muted">{t('lot_sheet.none')}</p>
-                ) : (
-                  <ul className="receipt-lines">
-                    {current.entries.map((entry) => (
-                      <li key={entry.id}>
-                        <span>
-                          {t(`lot_setup.kind.${entry.sourceKind}`, {
+                <Section title={t('lot_sheet.entries_title')}>
+                  {current.entries.length === 0 ? (
+                    <p className="prd-note">{t('lot_sheet.none')}</p>
+                  ) : (
+                    <List>
+                      {current.entries.map((entry) => (
+                        <ListRow
+                          key={entry.id}
+                          title={t(`lot_setup.kind.${entry.sourceKind}`, {
                             defaultValue: entry.sourceKind,
                           })}
-                          {entry.status === 'CANCELLED' ? (
-                            <small>{t('lot_sheet.cancelled')}</small>
-                          ) : null}
-                        </span>
-                        <span>{formatQuantityUnit(entry.quantity, unit)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+                          value={formatQuantityUnit(entry.quantity, unit)}
+                          badge={
+                            entry.status === 'CANCELLED' ? (
+                              <Badge tone="muted">{t('lot_sheet.cancelled')}</Badge>
+                            ) : undefined
+                          }
+                        />
+                      ))}
+                    </List>
+                  )}
+                </Section>
 
-              {current.weighings.length > 0 ? (
-                <section className="sale-block" aria-labelledby="lot-sheet-weighings">
-                  <h2 id="lot-sheet-weighings">{t('lot_sheet.weighings_title')}</h2>
-                  <ul className="receipt-lines">
-                    {current.weighings
-                      .filter((weighing) => weighing.status !== 'CANCELLED')
-                      .map((weighing) => (
-                        <li key={weighing.id}>
-                          <span>{formatDateTime(weighing.occurredAt)}</span>
-                          <span>
-                            {t('lot_sheet.weighing', {
+                {current.weighings.length > 0 ? (
+                  <Section title={t('lot_sheet.weighings_title')}>
+                    <List>
+                      {current.weighings
+                        .filter((weighing) => weighing.status !== 'CANCELLED')
+                        .map((weighing) => (
+                          <ListRow
+                            key={weighing.id}
+                            title={formatDateTime(weighing.occurredAt)}
+                            subtitle={t('lot_sheet.weighing', {
                               weight: formatQuantity(weighing.avgWeightG),
                               sample: weighing.sampleSize,
                             })}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
-                </section>
-              ) : null}
-            </>
-          ) : null}
+                          />
+                        ))}
+                    </List>
+                  </Section>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </>
       )}
     </section>

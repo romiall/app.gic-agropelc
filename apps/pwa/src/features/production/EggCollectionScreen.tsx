@@ -5,11 +5,23 @@
  * `production.egg_collection.record` (agrégat `EGG_COLLECTION`), utilisable hors ligne ; les œufs
  * commercialisables entrent aussitôt au disponible local.
  */
-import { useId, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import { ROUTES } from '../../app/screens.js';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -18,6 +30,7 @@ import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import { eggStorageLocations, isDailyLot, laysEggs } from './daily.js';
 import { checkEggs, EMPTY_EGGS, eggCollectionPayload, eggSetup, type EggDraft } from './eggs.js';
+import './production.css';
 
 const COUNTERS = ['collected', 'broken', 'nonconforming', 'hatching'] as const;
 
@@ -35,13 +48,12 @@ export function EggCollectionScreen() {
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const ids = { lot: useId(), day: useId(), storage: useId() };
 
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.egg_collection')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.egg_collection')} />
+        <SkeletonRows />
       </section>
     );
   }
@@ -95,139 +107,158 @@ export function EggCollectionScreen() {
   };
 
   const counter = (key: (typeof COUNTERS)[number]) => (
-    <div className="field" key={key}>
-      <label htmlFor={`eggs-${key}`}>{t(`eggs.${key}_label`)}</label>
-      <input
-        id={`eggs-${key}`}
-        className="text-input"
-        inputMode="numeric"
-        value={draft[key]}
-        onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-      />
-    </div>
+    <Field key={key} label={t(`eggs.${key}_label`)}>
+      {(control) => (
+        <Input
+          {...control}
+          inputMode="numeric"
+          value={draft[key]}
+          onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
+        />
+      )}
+    </Field>
   );
+
+  // Ce qui reste à répartir suit la saisie dans la barre d'action : le bilan doit tomber juste.
+  const remaining = check?.remaining ?? null;
+  const balance =
+    remaining !== null && draft.collected ? (
+      <>
+        <span className="action-bar-label">{t('eggs.remaining_label')}</span>
+        <strong
+          className={`action-bar-value prd-remaining ${remaining === 0 ? 'is-ok' : 'is-warn'}`}
+        >
+          {remaining}
+        </strong>
+      </>
+    ) : undefined;
 
   return (
     <section className="sale">
-      {lot ? (
-        <Link to={ROUTES.dailyEntry(lot.id)} className="back-link">
-          {t('eggs.back', { code: lot.lot_code })}
-        </Link>
-      ) : null}
-      <h1>{t('nav.screens.egg_collection')}</h1>
-      {!online ? (
-        <p className="home-banner" role="status">
-          {t('eggs.offline_banner')}
-        </p>
-      ) : null}
-      {last ? <CommandResult commandId={last} messages="eggs.result" /> : null}
-      {lots.length === 0 || !lot || !setup || !check ? (
-        <p className="home-muted">{t('eggs.no_lot')}</p>
-      ) : (
-        <>
-          <div className="field">
-            <label htmlFor={ids.lot}>{t('eggs.lot_label')}</label>
-            <select
-              id={ids.lot}
-              className="text-input"
-              value={lot.id}
-              onChange={(event) => {
-                setLotChoice(event.target.value);
-                setStorageChoice(null);
-              }}
-            >
-              {lots.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.lot_code}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="line-fields">
-            <div className="field">
-              <label htmlFor={ids.day}>{t('eggs.day_label')}</label>
-              <input
-                id={ids.day}
-                type="date"
-                className="text-input"
-                max={today}
-                value={day}
-                onChange={(event) => setDay(event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={ids.storage}>{t('eggs.storage_label')}</label>
-              <select
-                id={ids.storage}
-                className="text-input"
-                value={storage?.id ?? ''}
-                onChange={(event) => setStorageChoice(event.target.value)}
+      <PageHeader
+        {...(lot
+          ? {
+              backTo: ROUTES.dailyEntry(lot.id),
+              backLabel: t('eggs.back', { code: lot.lot_code }),
+            }
+          : {})}
+        title={t('nav.screens.egg_collection')}
+      />
+      <div className="prd-narrow">
+        {!online ? (
+          <Banner tone="warn" role="status">
+            {t('eggs.offline_banner')}
+          </Banner>
+        ) : null}
+        {last ? <CommandResult commandId={last} messages="eggs.result" /> : null}
+        {lots.length === 0 || !lot || !setup || !check ? (
+          <EmptyState icon="leaf" title={t('eggs.no_lot')} />
+        ) : (
+          <>
+            <div className="prd-form">
+              <Field label={t('eggs.lot_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={lot.id}
+                    onChange={(event) => {
+                      setLotChoice(event.target.value);
+                      setStorageChoice(null);
+                    }}
+                  >
+                    {lots.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.lot_code}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field
+                label={t('eggs.day_label')}
+                error={!dayValid ? t('eggs.day_invalid') : undefined}
               >
-                {storages.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </option>
-                ))}
-              </select>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    max={today}
+                    value={day}
+                    onChange={(event) => setDay(event.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label={t('eggs.storage_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={storage?.id ?? ''}
+                    onChange={(event) => setStorageChoice(event.target.value)}
+                  >
+                    {storages.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <div className="prd-pair">{COUNTERS.map(counter)}</div>
             </div>
-          </div>
-          {!dayValid ? <p className="error-message">{t('eggs.day_invalid')}</p> : null}
-          <div className="line-fields">{COUNTERS.map(counter)}</div>
-          <section className="sale-block" aria-labelledby="eggs-grades-title">
-            <h2 id="eggs-grades-title">{t('eggs.grades_title')}</h2>
-            {!setup.gradesConfigured ? (
-              <p className="text-warn">{t('eggs.grades_not_configured')}</p>
+            <Section title={t('eggs.grades_title')} className="prd-after">
+              {!setup.gradesConfigured ? (
+                <p className="prd-note is-warn">{t('eggs.grades_not_configured')}</p>
+              ) : null}
+              {setup.grades.length === 0 ? (
+                <p className="prd-note">{t('eggs.no_grade')}</p>
+              ) : (
+                <div className="prd-grid">
+                  {setup.grades.map((product) => (
+                    <Field key={product.id} label={product.name}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          inputMode="numeric"
+                          value={draft.grades[product.id] ?? ''}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              grades: { ...current.grades, [product.id]: event.target.value },
+                            }))
+                          }
+                        />
+                      )}
+                    </Field>
+                  ))}
+                </div>
+              )}
+            </Section>
+            {check.issues.includes('COUNT_INVALID') ? (
+              <p className="prd-note is-bad">{t('eggs.count_invalid')}</p>
             ) : null}
-            {setup.grades.length === 0 ? (
-              <p className="home-muted">{t('eggs.no_grade')}</p>
-            ) : (
-              <div className="line-fields">
-                {setup.grades.map((product) => (
-                  <div className="field" key={product.id}>
-                    <label htmlFor={`grade-${product.id}`}>{product.name}</label>
-                    <input
-                      id={`grade-${product.id}`}
-                      className="text-input"
-                      inputMode="numeric"
-                      value={draft.grades[product.id] ?? ''}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          grades: { ...current.grades, [product.id]: event.target.value },
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-          {check.issues.includes('COUNT_INVALID') ? (
-            <p className="error-message">{t('eggs.count_invalid')}</p>
-          ) : null}
-          {check.remaining !== null && check.remaining !== 0 && draft.collected ? (
-            <p className="text-warn" role="status">
-              {t('eggs.remaining', { count: check.remaining })}
-            </p>
-          ) : null}
-          {check.issues.includes('HATCHING_PRODUCT_MISSING') ? (
-            <p className="error-message">{t('eggs.hatching_missing')}</p>
-          ) : null}
-          {saveError ? (
-            <p className="alert alert-error" role="alert">
-              {t('sales.error_local_save')}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            className="btn-block submit-sale"
-            disabled={!ready}
-            onClick={() => void submit()}
-          >
-            {busy ? t('sales.submitting') : t('eggs.submit')}
-          </button>
-        </>
-      )}
+            {check.remaining !== null && check.remaining !== 0 && draft.collected ? (
+              <p className="prd-note is-warn" role="status">
+                {t('eggs.remaining', { count: check.remaining })}
+              </p>
+            ) : null}
+            {check.issues.includes('HATCHING_PRODUCT_MISSING') ? (
+              <p className="prd-note is-bad">{t('eggs.hatching_missing')}</p>
+            ) : null}
+            {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+            <ActionBar summary={balance}>
+              <Button
+                size="lg"
+                className="submit-sale"
+                disabled={!ready}
+                loading={busy}
+                onClick={() => void submit()}
+              >
+                {busy ? t('sales.submitting') : t('eggs.submit')}
+              </Button>
+            </ActionBar>
+          </>
+        )}
+      </div>
     </section>
   );
 }

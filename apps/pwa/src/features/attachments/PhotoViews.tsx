@@ -1,9 +1,13 @@
 /**
  * Affichages des photos (MP-10) : état d'envoi des photos d'un document, photo jointe après coup,
  * photo lue sur le serveur pour le valideur (AV-286).
+ *
+ * Refonte (ADR-049, lot L9) : boutons teintés avec icône, anomalies en bandeau avec « Réessayer » ;
+ * les textes, rôles et noms accessibles ne changent pas.
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, Button } from '../../components/ui/index.js';
 import { getDb } from '../../storage/db.js';
 import { fetchAttachmentContent } from '../../sync/attachment-content.js';
 import { saveErrorKey } from '../sales/submit.js';
@@ -15,6 +19,7 @@ import {
 } from './attachments.js';
 import type { PreparedPhoto } from './photo.js';
 import { PhotoField } from './PhotoField.js';
+import './attachments.css';
 
 /** État des photos d'un document : sur ce téléphone, en cours d'envoi, reçue, refusée. */
 export function PhotoStatus({
@@ -28,9 +33,9 @@ export function PhotoStatus({
   const photos = useOwnerPhotos(ownerId, userId);
   if (!photos || photos.length === 0) return null;
   return (
-    <ul className="photo-status">
+    <ul className="ph-status">
       {photos.map((photo) => (
-        <li key={photo.id} className={photo.state === 'REFUSED' ? 'text-warn' : 'home-muted'}>
+        <li key={photo.id} className={photo.state === 'REFUSED' ? 'ph-state is-warn' : 'ph-state'}>
           {t(`photo.state.${photo.state}`, { percent: photo.percent })}
         </li>
       ))}
@@ -63,12 +68,12 @@ export function AttachPhoto({
   if (hasUsablePhoto(photos)) return <PhotoStatus ownerId={target.ownerId} userId={userId} />;
   if (!open) {
     return (
-      <>
+      <div className="ph-attach">
         <PhotoStatus ownerId={target.ownerId} userId={userId} />
-        <button type="button" className="secondary" onClick={() => setOpen(true)}>
+        <Button variant="tonal" size="sm" icon="camera" onClick={() => setOpen(true)}>
           {label}
-        </button>
-      </>
+        </Button>
+      </div>
     );
   }
   const send = async () => {
@@ -86,27 +91,22 @@ export function AttachPhoto({
     }
   };
   return (
-    <div className="attach-photo">
+    <div className="ph-attach">
       <PhotoField label={label} value={photo} onChange={setPhoto} onBusyChange={setPreparing} />
-      {error ? (
-        <p className="alert alert-error" role="alert">
-          {t(error)}
-        </p>
-      ) : null}
-      <div className="result-actions">
-        <button type="button" disabled={!photo || preparing || busy} onClick={() => void send()}>
+      {error ? <Banner tone="bad">{t(error)}</Banner> : null}
+      <div className="ph-buttons">
+        <Button disabled={!photo || preparing || busy} onClick={() => void send()}>
           {t('photo.send')}
-        </button>
-        <button
-          type="button"
-          className="secondary"
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => {
             setPhoto(null);
             setOpen(false);
           }}
         >
           {t('photo.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -156,34 +156,39 @@ export function ServerPhoto({
 
   if (!shown) {
     return (
-      <button type="button" className="secondary" onClick={() => setShown(true)}>
+      <Button variant="tonal" size="sm" icon="eye" onClick={() => setShown(true)}>
         {label ?? t('photo.view')}
-      </button>
+      </Button>
     );
   }
   if (failure) {
     return (
-      <p className="text-warn">
-        {t(`photo.view_error.${failure}`)}{' '}
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            setFailure(undefined);
-            setAttempt((value) => value + 1);
-          }}
-        >
-          {t('photo.retry')}
-        </button>
-      </p>
+      <Banner
+        tone="warn"
+        role="status"
+        action={
+          <Button
+            variant="tonal"
+            size="sm"
+            onClick={() => {
+              setFailure(undefined);
+              setAttempt((value) => value + 1);
+            }}
+          >
+            {t('photo.retry')}
+          </Button>
+        }
+      >
+        {t(`photo.view_error.${failure}`)}
+      </Banner>
     );
   }
   if (!url) {
     return (
-      <p className="home-muted" role="status">
+      <p className="ph-hint" role="status">
         {t('photo.loading')}
       </p>
     );
   }
-  return <img className="server-photo" src={url} alt={alt} />;
+  return <img className="ph-image" src={url} alt={alt} />;
 }

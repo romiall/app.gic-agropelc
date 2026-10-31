@@ -1,0 +1,420 @@
+/* Production (ADR-049, lot L6) : ce qui est propre au domaine ; le reste vient de `components/ui` et du
+   vocabulaire commun des écrans. Aucune couleur en dur : tout passe par les jetons. */
+
+/* --- Formulaires : une colonne, deux champs côte à côte quand ils sont courts ------------------------- */
+
+.sale .prd-form {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+}
+
+.sale .prd-form .field,
+.sale .prd-pair .field,
+.sale .prd-grid .field {
+  margin-bottom: 0;
+}
+
+.prd-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.prd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* Messages en ligne d'un formulaire (avertissement qui n'empêche rien, aide, anomalie du bilan). */
+.prd-note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.prd-note.is-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.prd-note.is-bad {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+/* Bouton seul dans une colonne : garde sa largeur au lieu de s'étirer. */
+.prd-self-start {
+  align-self: flex-start;
+}
+
+/* Choix d'une rubrique ou de la nature d'une saisie : tuiles 2 x 2 sur téléphone (icône, texte, cible de
+   56 px), une seule rangée dès que la place le permet. */
+.prd-kinds.segmented {
+  grid-auto-columns: auto;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: visible;
+}
+
+.prd-kinds.segmented span {
+  gap: var(--space-1);
+  min-height: 3.5rem;
+  padding: var(--space-2);
+  white-space: normal;
+}
+
+@media (min-width: 40rem) {
+  .prd-kinds.segmented {
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+  }
+}
+
+/* Choix d'une origine : une carte de lignes à cocher, chaque ligne se touche en entier. */
+.prd-choices {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.prd-choices legend {
+  padding: 0 var(--space-1);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.prd-choices .check + .check {
+  border-top: 1px solid var(--line);
+}
+
+/* Informations facultatives repliées : le titre se touche, le contenu s'ouvre dessous. */
+.prd-more {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.prd-more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--field-h);
+  padding: 0 var(--space-4);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.prd-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prd-more > summary .icon {
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.prd-more[open] > summary .icon {
+  transform: rotate(180deg);
+}
+
+.prd-more > .prd-form {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+/* Bilan dans la barre d'action (collecte d'œufs) : ce qui reste à répartir reste sous les yeux. */
+.prd-remaining.is-warn {
+  color: var(--warn);
+}
+
+.prd-remaining.is-ok {
+  color: var(--ok);
+}
+
+/* --- Lots actifs : ligne cliquable en entier --------------------------------------------------------- */
+
+/* La ligne est le lien (`a.data-row`) : sa grille vient de `DataList`, le texte du lien porte tout. */
+a.data-row.prd-link-row {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.data-row.prd-link-row:hover {
+  background: var(--surface-2);
+}
+
+.prd-link-row .data-cell.is-primary strong {
+  font-weight: 700;
+}
+
+/* Téléphone : une flèche à droite de la carte dit qu'elle s'ouvre ; en colonnes, elle disparaît. */
+.prd-chev {
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  color: var(--ink-3);
+  transform: translateY(-50%);
+}
+
+@media (max-width: 56.1875rem) {
+  a.data-row.prd-link-row {
+    position: relative;
+    padding-right: 2.5rem;
+  }
+}
+
+@media (min-width: 56.25rem) {
+  .prd-chev {
+    display: none;
+  }
+}
+
+.prd-sub {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.prd-heads {
+  font: 700 var(--text-lg) / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Chiffres : tuiles pour l'effectif et les indicateurs, lignes pour les totaux --------------------- */
+
+.prd-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.prd-figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.prd-figures dt {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.prd-figures dd {
+  margin: 0;
+  font: 700 var(--text-xl) / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.prd-figures > .is-warn dd {
+  color: var(--warn);
+}
+
+@media (min-width: 40rem) {
+  .prd-figures {
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  }
+}
+
+.prd-totals {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+}
+
+.prd-totals > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.prd-totals > div + div {
+  border-top: 1px solid var(--line);
+}
+
+.prd-totals dt {
+  color: var(--ink-2);
+}
+
+.prd-totals dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+
+.prd-lines {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  list-style: none;
+}
+
+.prd-lines > li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.prd-lines > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.prd-lines > li > span:last-child {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.prd-lines small {
+  margin-left: var(--space-2);
+  color: var(--ink-3);
+}
+
+/* Fiche d'un lot : une colonne sur téléphone, deux colonnes sur ordinateur. */
+.prd-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+@media (min-width: 56.25rem) {
+  .prd-sheet {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--space-5) var(--space-6);
+  }
+
+  .prd-sheet > .is-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.prd-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-4);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+/* --- Journal et mortalités en attente --------------------------------------------------------------- */
+
+.prd-time {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.prd-await {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.prd-await > span {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.prd-await strong {
+  font-weight: 600;
+}
+
+.prd-after {
+  margin-top: var(--space-5);
+}
+
+/* Formulaires et saisies : une colonne d'une largeur lisible sur ordinateur, pleine largeur sur téléphone. */
+.prd-narrow {
+  max-width: 40rem;
+}
+
+.prd-lot-code {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Le bouton de la pièce papier (module des pièces) ne s'étire pas sur toute la largeur. */
+.prd-after .piece-action > button {
+  justify-self: start;
+}
+
+/* Retour d'une opération : ramené sous la barre du haut quand une nouvelle saisie vient d'être faite. */
+.prd-result {
+  scroll-margin-top: calc(var(--bar-h) + var(--space-3));
+}
+
+/* --- Incubation : lots en cours ----------------------------------------------------------------------- */
+
+.prd-batches {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.prd-batch .line-head strong {
+  font: 700 var(--text-lg) / 1.2 var(--font-display);
+}
+
+.prd-batch p {
+  margin: var(--space-2) 0 0;
+}
+
+.prd-batch .prd-counters {
+  font-size: var(--text-sm);
+}
+
+.prd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.prd-panel {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+@media (min-width: 56.25rem) {
+  .prd-batches {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}

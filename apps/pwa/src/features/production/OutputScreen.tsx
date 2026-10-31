@@ -6,10 +6,23 @@
  * responsable de production déclare en ligne le lot prêt à la vente depuis l'élevage, ou l'y ramène
  * (`production.lot.set_status`).
  */
-import { useId, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { holdsAnyRole, ROUTES } from '../../app/screens.js';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
@@ -30,6 +43,7 @@ import {
   MAX_OUTPUT_NOTES,
   outputPayload,
 } from './output.js';
+import './production.css';
 
 const LOT_MANAGERS: readonly string[] = ['RESP_PRODUCTION'];
 
@@ -50,20 +64,12 @@ export function OutputScreen() {
   const [last, setLast] = useState<{ commandId: string; kind: 'DISPATCH' | 'STATUS' }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const ids = {
-    lot: useId(),
-    source: useId(),
-    destination: useId(),
-    quantity: useId(),
-    carrier: useId(),
-    notes: useId(),
-  };
 
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.production_output')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.production_output')} />
+        <SkeletonRows />
       </section>
     );
   }
@@ -150,192 +156,198 @@ export function OutputScreen() {
     });
   };
 
+  const quantityError =
+    quantityText && quantity === null
+      ? t('production.count_invalid')
+      : over && online
+        ? t('output.over_online')
+        : undefined;
+
   return (
     <section className="sale">
-      {lot ? (
-        <Link to={ROUTES.dailyEntry(lot.id)} className="back-link">
-          {t('output.back', { code: lot.lot_code })}
-        </Link>
-      ) : null}
-      <h1>{t('nav.screens.production_output')}</h1>
-      {!online ? (
-        <p className="home-banner" role="status">
-          {t('output.offline_banner')}
-        </p>
-      ) : null}
-      {last ? (
-        <CommandResult
-          commandId={last.commandId}
-          messages={last.kind === 'DISPATCH' ? 'output.result' : 'output.status_result'}
-        />
-      ) : null}
-      {!lot ? (
-        <p className="home-muted">{t('output.no_lot')}</p>
-      ) : (
-        <>
-          <div className="field">
-            <label htmlFor={ids.lot}>{t('output.lot_label')}</label>
-            <select
-              id={ids.lot}
-              className="text-input"
-              value={lot.id}
-              onChange={(event) => {
-                setLotChoice(event.target.value);
-                setSourceChoice(null);
-              }}
+      <PageHeader
+        {...(lot
+          ? {
+              backTo: ROUTES.dailyEntry(lot.id),
+              backLabel: t('output.back', { code: lot.lot_code }),
+            }
+          : {})}
+        title={t('nav.screens.production_output')}
+      />
+      <div className="prd-narrow">
+        {!online ? (
+          <Banner tone="warn" role="status">
+            {t('output.offline_banner')}
+          </Banner>
+        ) : null}
+        {last ? (
+          <CommandResult
+            commandId={last.commandId}
+            messages={last.kind === 'DISPATCH' ? 'output.result' : 'output.status_result'}
+          />
+        ) : null}
+        {!lot ? (
+          <EmptyState icon="truck" title={t('output.no_lot')} />
+        ) : (
+          <>
+            <Field
+              label={t('output.lot_label')}
+              hint={`${t(`output.lot_status.${lot.status}`, { defaultValue: lot.status })} · ${
+                lotHeads === null
+                  ? t('production.headcount_unknown')
+                  : t('production.headcount', { heads: formatQuantityUnit(lotHeads, 'TETE') })
+              }`}
             >
-              {lots.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.lot_code}
-                </option>
-              ))}
-            </select>
-            <p className="home-muted">
-              {t(`output.lot_status.${lot.status}`, { defaultValue: lot.status })} ·{' '}
-              {lotHeads === null
-                ? t('production.headcount_unknown')
-                : t('production.headcount', { heads: formatQuantityUnit(lotHeads, 'TETE') })}
-            </p>
-          </div>
-
-          {manager ? (
-            <section className="sale-block" aria-labelledby="output-status-title">
-              <h2 id="output-status-title">{t('output.status_title')}</h2>
-              <p className="home-muted">{t('output.status_hint')}</p>
-              {!online ? (
-                <p className="text-warn">{t('output.status_online_only')}</p>
-              ) : lot.status === 'SELLING' ? (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={blocked}
-                  onClick={() => setStatus('ACTIVE')}
+              {(control) => (
+                <Select
+                  {...control}
+                  value={lot.id}
+                  onChange={(event) => {
+                    setLotChoice(event.target.value);
+                    setSourceChoice(null);
+                  }}
                 >
-                  {t('output.back_to_rearing')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={blocked || lotHeads === 0}
-                  onClick={() => setStatus('SELLING')}
-                >
-                  {t('output.ready_to_sell')}
-                </button>
-              )}
-            </section>
-          ) : null}
-
-          <section className="sale-block" aria-labelledby="output-dispatch-title">
-            <h2 id="output-dispatch-title">{t('output.dispatch_title')}</h2>
-            {sources.length === 0 ? (
-              <p className="alert alert-error">{t('production.no_rearing_location')}</p>
-            ) : (
-              <div className="field">
-                <label htmlFor={ids.source}>{t('output.source_label')}</label>
-                <select
-                  id={ids.source}
-                  className="text-input"
-                  value={source?.id ?? ''}
-                  onChange={(event) => setSourceChoice(event.target.value)}
-                >
-                  {sources.map((candidate) => (
+                  {lots.map((candidate) => (
                     <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
+                      {candidate.lot_code}
                     </option>
                   ))}
-                </select>
-                {heads !== null ? (
-                  <p className="home-muted">
-                    {t('production.location_headcount', {
-                      heads: formatQuantityUnit(heads, 'TETE'),
-                    })}
-                  </p>
+                </Select>
+              )}
+            </Field>
+
+            {manager ? (
+              <Section title={t('output.status_title')} className="prd-after">
+                <p className="prd-note">{t('output.status_hint')}</p>
+                {!online ? (
+                  <p className="prd-note is-warn">{t('output.status_online_only')}</p>
+                ) : lot.status === 'SELLING' ? (
+                  <Button
+                    variant="tonal"
+                    disabled={blocked}
+                    onClick={() => setStatus('ACTIVE')}
+                    className="prd-self-start"
+                  >
+                    {t('output.back_to_rearing')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="tonal"
+                    disabled={blocked || lotHeads === 0}
+                    onClick={() => setStatus('SELLING')}
+                    className="prd-self-start"
+                  >
+                    {t('output.ready_to_sell')}
+                  </Button>
+                )}
+              </Section>
+            ) : null}
+
+            <Section title={t('output.dispatch_title')} className="prd-after">
+              <div className="prd-form">
+                {sources.length === 0 ? (
+                  <Banner tone="bad">{t('production.no_rearing_location')}</Banner>
+                ) : (
+                  <Field
+                    label={t('output.source_label')}
+                    hint={
+                      heads !== null
+                        ? t('production.location_headcount', {
+                            heads: formatQuantityUnit(heads, 'TETE'),
+                          })
+                        : undefined
+                    }
+                  >
+                    {(control) => (
+                      <Select
+                        {...control}
+                        value={source?.id ?? ''}
+                        onChange={(event) => setSourceChoice(event.target.value)}
+                      >
+                        {sources.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                )}
+                {destinations.length === 0 ? (
+                  <Banner tone="bad">{t('output.no_destination')}</Banner>
+                ) : (
+                  <Field label={t('output.destination_label')}>
+                    {(control) => (
+                      <Select
+                        {...control}
+                        value={destinationId}
+                        onChange={(event) => setDestinationId(event.target.value)}
+                      >
+                        <option value="">{t('output.destination_placeholder')}</option>
+                        {destinations.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                )}
+                <Field
+                  label={t('output.quantity_label', { unit: unitLabel(unit) })}
+                  error={quantityError}
+                >
+                  {(control) => (
+                    <Input
+                      {...control}
+                      inputMode="numeric"
+                      value={quantityText}
+                      onChange={(event) => setQuantityText(event.target.value)}
+                    />
+                  )}
+                </Field>
+                {over && !online ? (
+                  <p className="prd-note is-warn">{t('output.over_offline')}</p>
                 ) : null}
+                <Field label={t('output.carrier_label')}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      maxLength={MAX_CARRIER_NAME}
+                      value={carrierName}
+                      onChange={(event) => setCarrierName(event.target.value)}
+                    />
+                  )}
+                </Field>
+                <Field label={t('output.notes_label')}>
+                  {(control) => (
+                    <Textarea
+                      {...control}
+                      rows={2}
+                      maxLength={MAX_OUTPUT_NOTES}
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                    />
+                  )}
+                </Field>
+                <p className="prd-note">{t('output.receive_hint')}</p>
+                {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
               </div>
-            )}
-            <div className="field">
-              <label htmlFor={ids.destination}>{t('output.destination_label')}</label>
-              {destinations.length === 0 ? (
-                <p className="alert alert-error">{t('output.no_destination')}</p>
-              ) : (
-                <select
-                  id={ids.destination}
-                  className="text-input"
-                  value={destinationId}
-                  onChange={(event) => setDestinationId(event.target.value)}
+              <ActionBar>
+                <Button
+                  size="lg"
+                  className="submit-sale"
+                  disabled={!ready}
+                  loading={busy}
+                  onClick={dispatch}
                 >
-                  <option value="">{t('output.destination_placeholder')}</option>
-                  {destinations.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="field">
-              <label htmlFor={ids.quantity}>
-                {t('output.quantity_label', { unit: unitLabel(unit) })}
-              </label>
-              <input
-                id={ids.quantity}
-                className="text-input"
-                inputMode="numeric"
-                value={quantityText}
-                onChange={(event) => setQuantityText(event.target.value)}
-              />
-              {quantityText && quantity === null ? (
-                <p className="error-message">{t('production.count_invalid')}</p>
-              ) : null}
-            </div>
-            {over ? (
-              online ? (
-                <p className="error-message" role="alert">
-                  {t('output.over_online')}
-                </p>
-              ) : (
-                <p className="text-warn">{t('output.over_offline')}</p>
-              )
-            ) : null}
-            <div className="field">
-              <label htmlFor={ids.carrier}>{t('output.carrier_label')}</label>
-              <input
-                id={ids.carrier}
-                className="text-input"
-                maxLength={MAX_CARRIER_NAME}
-                value={carrierName}
-                onChange={(event) => setCarrierName(event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={ids.notes}>{t('output.notes_label')}</label>
-              <textarea
-                id={ids.notes}
-                className="text-input"
-                rows={2}
-                maxLength={MAX_OUTPUT_NOTES}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </div>
-            <p className="home-muted">{t('output.receive_hint')}</p>
-            {saveError ? (
-              <p className="alert alert-error" role="alert">
-                {t('sales.error_local_save')}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              className="btn-block submit-sale"
-              disabled={!ready}
-              onClick={dispatch}
-            >
-              {busy ? t('sales.submitting') : t('output.submit')}
-            </button>
-          </section>
-        </>
-      )}
+                  {busy ? t('sales.submitting') : t('output.submit')}
+                </Button>
+              </ActionBar>
+            </Section>
+          </>
+        )}
+      </div>
     </section>
   );
 }

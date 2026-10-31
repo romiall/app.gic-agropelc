@@ -7,11 +7,24 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import {
+  Badge,
+  DataCell,
+  DataList,
+  EmptyState,
+  Icon,
+  List,
+  ListRow,
+  PageHeader,
+  Section,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { formatQuantityUnit } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { ageDays, lotsOfDevice, rearingHeadcount, todayJournal } from './daily.js';
+import './production.css';
 
 export function LotsScreen() {
   const { t } = useTranslation();
@@ -20,8 +33,8 @@ export function LotsScreen() {
   if (!refs) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.production_lots')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.production_lots')} />
+        <SkeletonRows />
       </section>
     );
   }
@@ -32,11 +45,21 @@ export function LotsScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.production_lots')}</h1>
+      <PageHeader title={t('nav.screens.production_lots')} />
       {daily.length === 0 ? (
-        <p className="home-muted">{t('production.no_lot')}</p>
+        <EmptyState icon="leaf" title={t('production.no_lot')} />
       ) : (
-        <ul className="doc-list">
+        <DataList
+          aria-label={t('nav.screens.production_lots')}
+          template="minmax(0, 2fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 2.8fr) minmax(0, 0.9fr)"
+          columns={[
+            { label: t('production.col.lot') },
+            { label: t('production.col.age') },
+            { label: t('production.col.heads'), numeric: true },
+            { label: t('production.col.today') },
+            { label: t('production.col.status') },
+          ]}
+        >
           {daily.map((lot) => {
             const heads = rearingHeadcount(refs, lot);
             const age = ageDays(lot, today);
@@ -44,60 +67,62 @@ export function LotsScreen() {
             const deaths = journal
               .filter((entry) => entry.kind === 'MORTALITY')
               .reduce((sum, entry) => sum + Number(entry.values.quantity ?? 0), 0);
+            // Toute la ligne est le lien : le nom accessible porte le code, l'effectif et l'âge.
             return (
               <li key={lot.id}>
-                <Link to={ROUTES.dailyEntry(lot.id)} className="doc-row">
-                  <span className="doc-main">
+                <Link to={ROUTES.dailyEntry(lot.id)} className="data-row prd-link-row">
+                  <DataCell primary>
                     <strong>{lot.lot_code}</strong>
-                    <small>
+                    <span className="prd-sub">
                       {[
                         t(`production.lot_type.${lot.lot_type}`, { defaultValue: lot.lot_type }),
                         sites.get(lot.site_id)?.name,
-                        age !== null ? t('production.age', { count: age }) : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
-                    </small>
-                    <small>
-                      {t('production.today_summary', {
-                        deaths,
-                        entries: journal.length,
-                      })}
-                    </small>
-                  </span>
-                  <span className="doc-side">
-                    <strong>
+                    </span>
+                  </DataCell>
+                  <DataCell>{age !== null ? t('production.age', { count: age }) : '—'}</DataCell>
+                  <DataCell numeric>
+                    <span className="prd-heads">
                       {heads === null
                         ? t('production.headcount_unknown')
                         : t('production.headcount', { heads: formatQuantityUnit(heads, 'TETE') })}
-                    </strong>
+                    </span>
+                  </DataCell>
+                  <DataCell>
+                    {t('production.today_summary', {
+                      deaths,
+                      entries: journal.length,
+                    })}
+                  </DataCell>
+                  <DataCell>
                     {lot.status === 'SELLING' ? (
-                      <span className="badge badge-info">{t('production.status.SELLING')}</span>
-                    ) : null}
-                  </span>
+                      <Badge tone="info">{t('production.status.SELLING')}</Badge>
+                    ) : (
+                      <Badge tone="ok">{t('production.status.ACTIVE')}</Badge>
+                    )}
+                  </DataCell>
+                  <Icon name="chevron-right" size={18} className="prd-chev" />
                 </Link>
               </li>
             );
           })}
-        </ul>
+        </DataList>
       )}
       {planned.length > 0 ? (
-        <section className="sale-block" aria-labelledby="production-planned-title">
-          <h2 id="production-planned-title">{t('production.planned_title')}</h2>
-          <ul className="receipt-lines">
+        <Section title={t('production.planned_title')} className="prd-after">
+          <List>
             {planned.map((lot) => (
-              <li key={lot.id}>
-                <span>
-                  <strong>{lot.lot_code}</strong>
-                  <small>
-                    {t(`production.lot_type.${lot.lot_type}`, { defaultValue: lot.lot_type })}
-                  </small>
-                </span>
-                <span>{t('production.status.PLANNED')}</span>
-              </li>
+              <ListRow
+                key={lot.id}
+                title={lot.lot_code}
+                subtitle={t(`production.lot_type.${lot.lot_type}`, { defaultValue: lot.lot_type })}
+                badge={<Badge tone="muted">{t('production.status.PLANNED')}</Badge>}
+              />
             ))}
-          </ul>
-        </section>
+          </List>
+        </Section>
       ) : null}
     </section>
   );

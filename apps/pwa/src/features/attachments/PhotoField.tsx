@@ -3,12 +3,17 @@
  * une photo (caméra arrière) ou choisir une image ; la photo est recodée sur l'appareil (ADR-012),
  * puis gardée jusqu'à l'enregistrement de l'opération. Jamais bloquante : une opération part sans
  * photo si l'image est illisible ou si l'espace des photos en attente est plein (AV-291).
+ *
+ * Refonte (ADR-049, lot L9) : les deux gestes ont l'apparence d'un bouton teinté avec son icône (l'entrée
+ * fichier reste masquée et porte le nom accessible), la photo prête est un bandeau avec « Retirer ».
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Banner, Button, Icon } from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { fitsPendingBudget } from './attachments.js';
 import { browserPhotoCodec, PhotoError, preparePhoto, type PreparedPhoto } from './photo.js';
+import './attachments.css';
 
 interface PhotoFieldProps {
   readonly label: string;
@@ -50,24 +55,30 @@ export function PhotoField({ label, hint, value, onChange, onBusyChange }: Photo
   };
 
   return (
-    <fieldset className="field photo-field" aria-describedby={hint ? `${id}-hint` : undefined}>
+    <fieldset className="ph-field" aria-describedby={hint ? `${id}-hint` : undefined}>
       <legend>{label}</legend>
       {hint ? (
-        <p id={`${id}-hint`} className="home-muted">
+        <p id={`${id}-hint`} className="ph-hint">
           {hint}
         </p>
       ) : null}
       {value ? (
-        <p className="photo-ready" role="status">
-          {t('photo.ready', { size: Math.max(1, Math.round(value.sizeBytes / 1024)) })}{' '}
-          <button type="button" className="secondary" onClick={() => onChange(null)}>
-            {t('photo.remove')}
-          </button>
-        </p>
+        <Banner
+          tone="ok"
+          role="status"
+          action={
+            <Button variant="tonal" size="sm" onClick={() => onChange(null)}>
+              {t('photo.remove')}
+            </Button>
+          }
+        >
+          {t('photo.ready', { size: Math.max(1, Math.round(value.sizeBytes / 1024)) })}
+        </Banner>
       ) : (
-        <div className="photo-actions">
-          <label className="action action-compact">
-            <span className="action-label">{t('photo.take')}</span>
+        <div className="ph-actions">
+          <label className="btn btn-tonal btn-sm">
+            <Icon name="camera" size={18} />
+            <span>{t('photo.take')}</span>
             <input
               type="file"
               accept="image/*"
@@ -81,8 +92,9 @@ export function PhotoField({ label, hint, value, onChange, onBusyChange }: Photo
               }}
             />
           </label>
-          <label className="action action-compact">
-            <span className="action-label">{t('photo.choose')}</span>
+          <label className="btn btn-tonal btn-sm">
+            <Icon name="file" size={18} />
+            <span>{t('photo.choose')}</span>
             <input
               type="file"
               accept="image/*"
@@ -98,15 +110,11 @@ export function PhotoField({ label, hint, value, onChange, onBusyChange }: Photo
         </div>
       )}
       {busy ? (
-        <p className="home-muted" role="status">
+        <p className="ph-hint" role="status">
           {t('photo.preparing')}
         </p>
       ) : null}
-      {error ? (
-        <p className="error-message" role="alert">
-          {t(`photo.error.${error}`)}
-        </p>
-      ) : null}
+      {error ? <Banner tone="bad">{t(`photo.error.${error}`)}</Banner> : null}
     </fieldset>
   );
 }

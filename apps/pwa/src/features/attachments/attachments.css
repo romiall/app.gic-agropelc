@@ -1,0 +1,101 @@
+/* Photo jointe (ADR-049, lot L9) : champ photo des formulaires, état d'envoi, photo jointe après coup, photo
+   lue sur le serveur. Aucune couleur en dur : tout passe par les jetons. Les anciennes règles `photo-*` de
+   `app/app.css` ne s'appliquent plus (nouveaux noms de classes) ; elles partent avec elle au lot L10. */
+
+/* --- Champ photo : légende, aide, deux gestes (prendre, choisir) --------------------------------------- */
+
+.ph-field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ph-field legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.ph-hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.ph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Le geste est un libellé qui porte l'apparence d'un bouton ; l'entrée fichier masquée prend le focus. */
+.ph-actions .btn {
+  flex: 1 1 auto;
+  gap: 6px;
+  padding-inline: var(--space-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ph-actions .btn:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* --- État d'envoi des photos d'un document ------------------------------------------------------------ */
+
+.ph-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ph-state {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.ph-state.is-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* --- Joindre une photo à un document déjà enregistré ------------------------------------------------- */
+
+.ph-attach {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ph-attach > .ph-field,
+.ph-attach > .banner {
+  align-self: stretch;
+}
+
+.ph-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- Photo lue sur le serveur ------------------------------------------------------------------------- */
+
+.ph-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: var(--space-2) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}

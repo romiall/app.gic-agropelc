@@ -3,12 +3,27 @@
  * rubriques, utilisables hors ligne : création d'un lot (`production.lot.create`) et entrée d'animaux
  * dans un lot planifié, actif ou en vente (`production.lot.record_entry`), y compris un lot créé sur
  * ce téléphone et pas encore envoyé (l'entrée attend sa création). La première entrée démarre le lot.
+ *
+ * Refonte (ADR-049, lot L6) : rubriques en contrôle segmenté, informations facultatives de la création
+ * repliées, origine des animaux en lignes à cocher, bouton principal dans la barre d'action collée.
  */
-import { useId, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LotEntrySourceKind, ProductionLotType } from '@gic/domain';
 import { ROUTES } from '../../app/screens.js';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Field,
+  Icon,
+  Input,
+  PageHeader,
+  Radio,
+  Segmented,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -42,6 +57,8 @@ import {
   type EntryLot,
   type LotDraft,
 } from './lot-setup.js';
+import { SelectField } from './SelectField.js';
+import './production.css';
 
 type Section = 'CREATE' | 'ENTRY';
 
@@ -69,41 +86,6 @@ const EMPTY_LOT: LotDraft = {
   notes: '',
 };
 
-function Select({
-  id,
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  readonly id: string;
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  readonly options: readonly { readonly value: string; readonly label: string }[];
-  readonly placeholder?: string;
-}) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        className="text-input"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 function CreateLot({
   refs,
   userId,
@@ -113,18 +95,6 @@ function CreateLot({
 }: SectionProps & { readonly onCreated: (lotId: string) => void }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<LotDraft>(EMPTY_LOT);
-  const ids = {
-    farm: useId(),
-    type: useId(),
-    product: useId(),
-    location: useId(),
-    parent: useId(),
-    supplier: useId(),
-    strain: useId(),
-    start: useId(),
-    end: useId(),
-    notes: useId(),
-  };
   const farmList = farms(refs.sites.values());
   const siteId = draft.siteId || farmList[0]?.id || '';
   const products = lotProducts(refs.products, draft.lotType);
@@ -158,129 +128,135 @@ function CreateLot({
   };
 
   if (farmList.length === 0) {
-    return <p className="home-muted">{t('lot_setup.no_farm')}</p>;
+    return <p className="prd-note">{t('lot_setup.no_farm')}</p>;
   }
 
   return (
     <>
-      <Select
-        id={ids.farm}
-        label={t('lot_setup.farm_label')}
-        value={siteId}
-        onChange={(value) => update({ siteId: value, mainLocationId: '', parentLotId: '' })}
-        options={farmList.map((site) => ({ value: site.id, label: site.name }))}
-      />
-      <Select
-        id={ids.type}
-        label={t('lot_setup.type_label')}
-        value={draft.lotType}
-        onChange={(value) => update({ lotType: value as ProductionLotType, productId: '' })}
-        options={PRODUCTION_LOT_TYPES.map((type) => ({
-          value: type,
-          label: t(`production.lot_type.${type}`),
-        }))}
-      />
-      {products.length === 0 ? (
-        <p className="alert alert-error">{t('lot_setup.no_product')}</p>
-      ) : (
-        <Select
-          id={ids.product}
-          label={t('lot_setup.product_label')}
-          value={effective.productId}
-          onChange={(value) => update({ productId: value })}
-          options={products.map((product) => ({ value: product.id, label: product.name }))}
-          placeholder={t('lot_setup.choose')}
+      <div className="prd-form">
+        <SelectField
+          label={t('lot_setup.farm_label')}
+          value={siteId}
+          onChange={(value) => update({ siteId: value, mainLocationId: '', parentLotId: '' })}
+          options={farmList.map((site) => ({ value: site.id, label: site.name }))}
         />
-      )}
-      {locations.length === 0 ? (
-        <p className="alert alert-error">{t('production.no_rearing_location')}</p>
-      ) : (
-        <Select
-          id={ids.location}
-          label={t('lot_setup.location_label')}
-          value={effective.mainLocationId}
-          onChange={(value) => update({ mainLocationId: value })}
-          options={locations.map((location) => ({ value: location.id, label: location.name }))}
+        <SelectField
+          label={t('lot_setup.type_label')}
+          value={draft.lotType}
+          onChange={(value) => update({ lotType: value as ProductionLotType, productId: '' })}
+          options={PRODUCTION_LOT_TYPES.map((type) => ({
+            value: type,
+            label: t(`production.lot_type.${type}`),
+          }))}
         />
-      )}
-      {parents.length > 0 ? (
-        <Select
-          id={ids.parent}
-          label={t('lot_setup.parent_label')}
-          value={effective.parentLotId}
-          onChange={(value) => update({ parentLotId: value })}
-          options={parents.map((lot) => ({ value: lot.id, label: lot.lot_code }))}
-          placeholder={t('lot_setup.no_parent')}
-        />
-      ) : null}
-      <Select
-        id={ids.supplier}
-        label={t('lot_setup.supplier_label')}
-        value={draft.supplierId}
-        onChange={(value) => update({ supplierId: value })}
-        options={[...refs.suppliers.values()]
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-          .map((supplier) => ({ value: supplier.id, label: supplier.name }))}
-        placeholder={t('lot_setup.no_supplier')}
-      />
-      <div className="field">
-        <label htmlFor={ids.strain}>{t('lot_setup.strain_label')}</label>
-        <input
-          id={ids.strain}
-          className="text-input"
-          maxLength={MAX_STRAIN}
-          value={draft.strain}
-          onChange={(event) => update({ strain: event.target.value })}
-        />
-      </div>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.start}>{t('lot_setup.start_label')}</label>
-          <input
-            id={ids.start}
-            type="date"
-            className="text-input"
-            value={draft.plannedStartDate}
-            onChange={(event) => update({ plannedStartDate: event.target.value })}
+        {products.length === 0 ? (
+          <Banner tone="bad">{t('lot_setup.no_product')}</Banner>
+        ) : (
+          <SelectField
+            label={t('lot_setup.product_label')}
+            value={effective.productId}
+            onChange={(value) => update({ productId: value })}
+            options={products.map((product) => ({ value: product.id, label: product.name }))}
+            placeholder={t('lot_setup.choose')}
           />
-        </div>
-        <div className="field">
-          <label htmlFor={ids.end}>{t('lot_setup.end_label')}</label>
-          <input
-            id={ids.end}
-            type="date"
-            className="text-input"
-            value={draft.plannedEndDate}
-            onChange={(event) => update({ plannedEndDate: event.target.value })}
+        )}
+        {locations.length === 0 ? (
+          <Banner tone="bad">{t('production.no_rearing_location')}</Banner>
+        ) : (
+          <SelectField
+            label={t('lot_setup.location_label')}
+            value={effective.mainLocationId}
+            onChange={(value) => update({ mainLocationId: value })}
+            options={locations.map((location) => ({ value: location.id, label: location.name }))}
           />
-        </div>
+        )}
+        <details className="prd-more">
+          <summary>
+            {t('lot_setup.more_title')}
+            <Icon name="chevron-down" size={18} />
+          </summary>
+          <div className="prd-form">
+            {parents.length > 0 ? (
+              <SelectField
+                label={t('lot_setup.parent_label')}
+                value={effective.parentLotId}
+                onChange={(value) => update({ parentLotId: value })}
+                options={parents.map((lot) => ({ value: lot.id, label: lot.lot_code }))}
+                placeholder={t('lot_setup.no_parent')}
+              />
+            ) : null}
+            <SelectField
+              label={t('lot_setup.supplier_label')}
+              value={draft.supplierId}
+              onChange={(value) => update({ supplierId: value })}
+              options={[...refs.suppliers.values()]
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((supplier) => ({ value: supplier.id, label: supplier.name }))}
+              placeholder={t('lot_setup.no_supplier')}
+            />
+            <Field label={t('lot_setup.strain_label')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  maxLength={MAX_STRAIN}
+                  value={draft.strain}
+                  onChange={(event) => update({ strain: event.target.value })}
+                />
+              )}
+            </Field>
+            <div className="prd-pair">
+              <Field label={t('lot_setup.start_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={draft.plannedStartDate}
+                    onChange={(event) => update({ plannedStartDate: event.target.value })}
+                  />
+                )}
+              </Field>
+              <Field label={t('lot_setup.end_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={draft.plannedEndDate}
+                    onChange={(event) => update({ plannedEndDate: event.target.value })}
+                  />
+                )}
+              </Field>
+            </div>
+            <Field label={t('lot_setup.notes_label')}>
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={2}
+                  maxLength={MAX_LOT_NOTES}
+                  value={draft.notes}
+                  onChange={(event) => update({ notes: event.target.value })}
+                />
+              )}
+            </Field>
+          </div>
+        </details>
+        {issues
+          .filter((issue) => issue === 'DATES_INVALID')
+          .map((issue) => (
+            <p key={issue} className="prd-note is-bad">
+              {t(`lot_setup.issue.${issue}`)}
+            </p>
+          ))}
       </div>
-      <div className="field">
-        <label htmlFor={ids.notes}>{t('lot_setup.notes_label')}</label>
-        <textarea
-          id={ids.notes}
-          className="text-input"
-          rows={2}
-          maxLength={MAX_LOT_NOTES}
-          value={draft.notes}
-          onChange={(event) => update({ notes: event.target.value })}
-        />
-      </div>
-      {issues
-        .filter((issue) => issue === 'DATES_INVALID')
-        .map((issue) => (
-          <p key={issue} className="error-message">
-            {t(`lot_setup.issue.${issue}`)}
-          </p>
-        ))}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={issues.length > 0 || blocked}
-        onClick={submit}
-      >
-        {t('lot_setup.create')}
-      </button>
+      <ActionBar>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={issues.length > 0 || blocked}
+          onClick={submit}
+        >
+          {t('lot_setup.create')}
+        </Button>
+      </ActionBar>
     </>
   );
 }
@@ -299,22 +275,9 @@ function RecordEntry({
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<EntryDraft>(EMPTY_ENTRY);
-  const ids = {
-    lot: useId(),
-    to: useId(),
-    stock: useId(),
-    stockLot: useId(),
-    receipt: useId(),
-    receiptProduct: useId(),
-    sourceLot: useId(),
-    sourceLocation: useId(),
-    quantity: useId(),
-    stillborn: useId(),
-    weight: useId(),
-  };
   const lots = entryLots(refs, userId);
   const lot: EntryLot | undefined = lots.find((candidate) => candidate.id === lotChoice) ?? lots[0];
-  if (!lot) return <p className="home-muted">{t('lot_setup.no_entry_lot')}</p>;
+  if (!lot) return <p className="prd-note">{t('lot_setup.no_entry_lot')}</p>;
 
   const kinds = allowedKinds(lot, refs.productionLots, online);
   const kind: LotEntrySourceKind = kinds.includes(draft.kind)
@@ -406,229 +369,226 @@ function RecordEntry({
       ? `${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`)}`
       : t('lot_setup.pending_lot', { type: t(`production.lot_type.${candidate.lotType}`) });
 
+  const quantityError =
+    draft.quantityText && check.issues.includes('QUANTITY_INVALID')
+      ? t('lot_setup.issue.QUANTITY_INVALID')
+      : over && online
+        ? t('lot_setup.over_online')
+        : undefined;
+
   return (
     <>
-      <Select
-        id={ids.lot}
-        label={t('lot_setup.entry_lot_label')}
-        value={lot.id}
-        onChange={(value) => {
-          setLotChoice(value);
-          // Destination et origines d'un autre lot ne valent plus pour celui-ci.
-          setDraft((current) => ({
-            ...current,
-            toLocationId: '',
-            sourceProductionLotId: '',
-            sourceLocationId: '',
-          }));
-        }}
-        options={lots.map((candidate) => ({ value: candidate.id, label: lotLabel(candidate) }))}
-      />
-      {lot.createCommandId ? <p className="home-muted">{t('lot_setup.pending_lot_hint')}</p> : null}
-      <fieldset className="choice-group">
-        <legend>{t('lot_setup.kind_label')}</legend>
-        {kinds.map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
+      <div className="prd-form">
+        <SelectField
+          label={t('lot_setup.entry_lot_label')}
+          value={lot.id}
+          onChange={(value) => {
+            setLotChoice(value);
+            // Destination et origines d'un autre lot ne valent plus pour celui-ci.
+            setDraft((current) => ({
+              ...current,
+              toLocationId: '',
+              sourceProductionLotId: '',
+              sourceLocationId: '',
+            }));
+          }}
+          options={lots.map((candidate) => ({ value: candidate.id, label: lotLabel(candidate) }))}
+        />
+        {lot.createCommandId ? <p className="prd-note">{t('lot_setup.pending_lot_hint')}</p> : null}
+        <fieldset className="prd-choices">
+          <legend>{t('lot_setup.kind_label')}</legend>
+          {kinds.map((value) => (
+            <Radio
+              key={value}
               name="entry-kind"
               value={value}
               checked={kind === value}
               onChange={() => update({ kind: value })}
+              label={t(`lot_setup.kind.${value}`)}
             />
-            {t(`lot_setup.kind.${value}`)}
-          </label>
-        ))}
-      </fieldset>
+          ))}
+        </fieldset>
 
-      {kind === 'INTERNAL_STOCK' ? (
-        stock.length === 0 ? (
-          <p className="alert alert-error">{t('lot_setup.no_stock_source')}</p>
-        ) : (
-          <>
-            <Select
-              id={ids.stock}
-              label={t('lot_setup.stock_source_label')}
-              value={effective.stockSource}
-              onChange={(value) => update({ stockSource: value, sourceStockLotId: '' })}
-              options={stock.map((source) => ({
-                value: `${source.locationId}|${source.productId}`,
-                label: t('lot_setup.stock_source', {
-                  product: products.get(source.productId)?.name ?? '',
-                  place: locationNames.get(source.locationId) ?? '',
-                  quantity: formatQuantity(source.quantity),
-                }),
-              }))}
-              placeholder={t('lot_setup.choose')}
-            />
-            {chosenStock && chosenStock.lots.length > 0 ? (
-              <Select
-                id={ids.stockLot}
-                label={t('lot_setup.stock_lot_label')}
-                value={effective.sourceStockLotId}
-                onChange={(value) => update({ sourceStockLotId: value })}
-                options={chosenStock.lots.map((stockLot) => ({
-                  value: stockLot.lotId,
-                  label: `${stockLot.lotCode} (${formatQuantity(stockLot.quantity)})`,
+        {kind === 'INTERNAL_STOCK' ? (
+          stock.length === 0 ? (
+            <Banner tone="bad">{t('lot_setup.no_stock_source')}</Banner>
+          ) : (
+            <>
+              <SelectField
+                label={t('lot_setup.stock_source_label')}
+                value={effective.stockSource}
+                onChange={(value) => update({ stockSource: value, sourceStockLotId: '' })}
+                options={stock.map((source) => ({
+                  value: `${source.locationId}|${source.productId}`,
+                  label: t('lot_setup.stock_source', {
+                    product: products.get(source.productId)?.name ?? '',
+                    place: locationNames.get(source.locationId) ?? '',
+                    quantity: formatQuantity(source.quantity),
+                  }),
                 }))}
-                placeholder={chosenStock.fifo ? t('lot_setup.fifo') : t('lot_setup.choose')}
+                placeholder={t('lot_setup.choose')}
               />
-            ) : null}
-            {chosenStock && !chosenStock.fifo ? (
-              <p className="home-muted">{t('lot_setup.stock_lot_required')}</p>
-            ) : null}
-          </>
-        )
-      ) : null}
+              {chosenStock && chosenStock.lots.length > 0 ? (
+                <SelectField
+                  label={t('lot_setup.stock_lot_label')}
+                  value={effective.sourceStockLotId}
+                  onChange={(value) => update({ sourceStockLotId: value })}
+                  options={chosenStock.lots.map((stockLot) => ({
+                    value: stockLot.lotId,
+                    label: `${stockLot.lotCode} (${formatQuantity(stockLot.quantity)})`,
+                  }))}
+                  placeholder={chosenStock.fifo ? t('lot_setup.fifo') : t('lot_setup.choose')}
+                />
+              ) : null}
+              {chosenStock && !chosenStock.fifo ? (
+                <p className="prd-note">{t('lot_setup.stock_lot_required')}</p>
+              ) : null}
+            </>
+          )
+        ) : null}
 
-      {kind === 'PURCHASE' ? (
-        receipts.length === 0 ? (
-          <p className="alert alert-error">{t('lot_setup.no_receipt')}</p>
-        ) : (
+        {kind === 'PURCHASE' ? (
+          receipts.length === 0 ? (
+            <Banner tone="bad">{t('lot_setup.no_receipt')}</Banner>
+          ) : (
+            <>
+              <SelectField
+                label={t('lot_setup.receipt_label')}
+                value={effective.goodsReceiptId}
+                onChange={(value) => update({ goodsReceiptId: value, receiptProductId: '' })}
+                options={receipts.map((candidate) => ({
+                  value: candidate.id,
+                  label: candidate.doc_number,
+                }))}
+                placeholder={t('lot_setup.choose')}
+              />
+              {receipt ? (
+                <SelectField
+                  label={t('lot_setup.receipt_product_label')}
+                  value={effective.receiptProductId}
+                  onChange={(value) => update({ receiptProductId: value })}
+                  options={receiptChoices.map((id) => ({
+                    value: id,
+                    label: products.get(id)?.name ?? id,
+                  }))}
+                  placeholder={t('lot_setup.choose')}
+                />
+              ) : null}
+            </>
+          )
+        ) : null}
+
+        {kind === 'TRANSFER' || kind === 'WEANING' ? (
           <>
-            <Select
-              id={ids.receipt}
-              label={t('lot_setup.receipt_label')}
-              value={effective.goodsReceiptId}
-              onChange={(value) => update({ goodsReceiptId: value, receiptProductId: '' })}
-              options={receipts.map((candidate) => ({
+            <SelectField
+              label={t('lot_setup.source_lot_label')}
+              value={effective.sourceProductionLotId}
+              onChange={(value) => update({ sourceProductionLotId: value, sourceLocationId: '' })}
+              options={fromLots.map((candidate) => ({
                 value: candidate.id,
-                label: candidate.doc_number,
+                label: `${candidate.lot_code} · ${t(`production.lot_type.${candidate.lot_type}`)}`,
               }))}
               placeholder={t('lot_setup.choose')}
             />
-            {receipt ? (
-              <Select
-                id={ids.receiptProduct}
-                label={t('lot_setup.receipt_product_label')}
-                value={effective.receiptProductId}
-                onChange={(value) => update({ receiptProductId: value })}
-                options={receiptChoices.map((id) => ({
-                  value: id,
-                  label: products.get(id)?.name ?? id,
+            {fromLot && fromLocations.length === 0 ? (
+              <Banner tone="bad">{t('lot_setup.no_source_heads')}</Banner>
+            ) : null}
+            {fromLot && fromLocations.length > 0 ? (
+              <SelectField
+                label={t('lot_setup.source_location_label')}
+                value={effective.sourceLocationId}
+                onChange={(value) => update({ sourceLocationId: value })}
+                options={fromLocations.map((entry) => ({
+                  value: entry.location.id,
+                  label:
+                    entry.heads === null
+                      ? entry.location.name
+                      : t('lot_setup.source_location', {
+                          name: entry.location.name,
+                          heads: formatQuantityUnit(entry.heads, 'TETE'),
+                        }),
                 }))}
                 placeholder={t('lot_setup.choose')}
               />
             ) : null}
           </>
-        )
-      ) : null}
+        ) : null}
 
-      {kind === 'TRANSFER' || kind === 'WEANING' ? (
-        <>
-          <Select
-            id={ids.sourceLot}
-            label={t('lot_setup.source_lot_label')}
-            value={effective.sourceProductionLotId}
-            onChange={(value) => update({ sourceProductionLotId: value, sourceLocationId: '' })}
-            options={fromLots.map((candidate) => ({
-              value: candidate.id,
-              label: `${candidate.lot_code} · ${t(`production.lot_type.${candidate.lot_type}`)}`,
-            }))}
-            placeholder={t('lot_setup.choose')}
+        {rearing.length > 0 ? (
+          <SelectField
+            label={t('lot_setup.to_label')}
+            value={effective.toLocationId}
+            onChange={(value) => update({ toLocationId: value })}
+            options={rearing.map((location) => ({ value: location.id, label: location.name }))}
+            placeholder={t('lot_setup.main_location', {
+              name: locationNames.get(lot.mainLocationId) ?? '',
+            })}
           />
-          {fromLot && fromLocations.length === 0 ? (
-            <p className="alert alert-error">{t('lot_setup.no_source_heads')}</p>
-          ) : null}
-          {fromLot && fromLocations.length > 0 ? (
-            <Select
-              id={ids.sourceLocation}
-              label={t('lot_setup.source_location_label')}
-              value={effective.sourceLocationId}
-              onChange={(value) => update({ sourceLocationId: value })}
-              options={fromLocations.map((entry) => ({
-                value: entry.location.id,
-                label:
-                  entry.heads === null
-                    ? entry.location.name
-                    : t('lot_setup.source_location', {
-                        name: entry.location.name,
-                        heads: formatQuantityUnit(entry.heads, 'TETE'),
-                      }),
-              }))}
-              placeholder={t('lot_setup.choose')}
-            />
-          ) : null}
-        </>
-      ) : null}
-
-      {rearing.length > 0 ? (
-        <Select
-          id={ids.to}
-          label={t('lot_setup.to_label')}
-          value={effective.toLocationId}
-          onChange={(value) => update({ toLocationId: value })}
-          options={rearing.map((location) => ({ value: location.id, label: location.name }))}
-          placeholder={t('lot_setup.main_location', {
-            name: locationNames.get(lot.mainLocationId) ?? '',
-          })}
-        />
-      ) : null}
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.quantity}>{t('lot_setup.quantity_label')}</label>
-          <input
-            id={ids.quantity}
-            className="text-input"
-            inputMode="numeric"
-            value={draft.quantityText}
-            onChange={(event) => update({ quantityText: event.target.value })}
-          />
+        ) : null}
+        <div className="prd-pair">
+          <Field label={t('lot_setup.quantity_label')} error={quantityError}>
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                value={draft.quantityText}
+                onChange={(event) => update({ quantityText: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field
+            label={t('lot_setup.weight_label')}
+            error={
+              check.issues.includes('WEIGHT_INVALID')
+                ? t('lot_setup.issue.WEIGHT_INVALID')
+                : undefined
+            }
+          >
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="decimal"
+                value={draft.avgWeightText}
+                onChange={(event) => update({ avgWeightText: event.target.value })}
+              />
+            )}
+          </Field>
         </div>
-        <div className="field">
-          <label htmlFor={ids.weight}>{t('lot_setup.weight_label')}</label>
-          <input
-            id={ids.weight}
-            className="text-input"
-            inputMode="decimal"
-            value={draft.avgWeightText}
-            onChange={(event) => update({ avgWeightText: event.target.value })}
-          />
-        </div>
+        {parentInactive ? (
+          <p className="prd-note is-warn">{t('lot_setup.parent_inactive_offline')}</p>
+        ) : null}
+        {kind === 'BIRTH' ? (
+          <Field
+            label={t('lot_setup.stillborn_label')}
+            error={
+              check.issues.includes('STILLBORN_INVALID')
+                ? t('lot_setup.issue.STILLBORN_INVALID')
+                : undefined
+            }
+          >
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                value={draft.stillbornText}
+                onChange={(event) => update({ stillbornText: event.target.value })}
+              />
+            )}
+          </Field>
+        ) : null}
+        {available !== null ? (
+          <p className="prd-note">
+            {t('lot_setup.available', { quantity: formatQuantity(available) })}
+          </p>
+        ) : null}
+        {over && !online ? <p className="prd-note is-warn">{t('lot_setup.over_offline')}</p> : null}
+        {lotRisk ? <p className="prd-note is-warn">{t('lot_setup.lot_fifo_risk')}</p> : null}
       </div>
-      {parentInactive ? (
-        <p className="text-warn">{t('lot_setup.parent_inactive_offline')}</p>
-      ) : null}
-      {kind === 'BIRTH' ? (
-        <div className="field">
-          <label htmlFor={ids.stillborn}>{t('lot_setup.stillborn_label')}</label>
-          <input
-            id={ids.stillborn}
-            className="text-input"
-            inputMode="numeric"
-            value={draft.stillbornText}
-            onChange={(event) => update({ stillbornText: event.target.value })}
-          />
-        </div>
-      ) : null}
-      {available !== null ? (
-        <p className="home-muted">
-          {t('lot_setup.available', { quantity: formatQuantity(available) })}
-        </p>
-      ) : null}
-      {check.issues
-        .filter(
-          (issue) =>
-            issue !== 'SOURCE_REQUIRED' && (issue !== 'QUANTITY_INVALID' || draft.quantityText),
-        )
-        .map((issue) => (
-          <p key={issue} className="error-message">
-            {t(`lot_setup.issue.${issue}`)}
-          </p>
-        ))}
-      {over ? (
-        online ? (
-          <p className="error-message" role="alert">
-            {t('lot_setup.over_online')}
-          </p>
-        ) : (
-          <p className="text-warn">{t('lot_setup.over_offline')}</p>
-        )
-      ) : null}
-      {lotRisk ? <p className="text-warn">{t('lot_setup.lot_fifo_risk')}</p> : null}
-      <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
-        {t('lot_setup.record_entry')}
-      </button>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={submit}>
+          {t('lot_setup.record_entry')}
+        </Button>
+      </ActionBar>
     </>
   );
 }
@@ -648,8 +608,8 @@ export function LotSetupScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.lot_setup')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+        <PageHeader title={t('nav.screens.lot_setup')} />
+        <SkeletonRows />
       </section>
     );
   }
@@ -679,56 +639,49 @@ export function LotSetupScreen() {
 
   return (
     <section className="sale">
-      <Link to={ROUTES.productionLots} className="back-link">
-        {t('production.back')}
-      </Link>
-      <h1>{t('nav.screens.lot_setup')}</h1>
-      {!online ? (
-        <p className="home-banner" role="status">
-          {t('lot_setup.offline_banner')}
-        </p>
-      ) : null}
-      {last ? (
-        <CommandResult
-          commandId={last.commandId}
-          messages={
-            last.section === 'CREATE' ? 'lot_setup.create_result' : 'lot_setup.entry_result'
-          }
-        />
-      ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('lot_setup.section_label')}</legend>
-        {(['CREATE', 'ENTRY'] as const).map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
-              name="lot-setup-section"
-              value={value}
-              checked={section === value}
-              onChange={() => setSection(value)}
-            />
-            {t(`lot_setup.section.${value}`)}
-          </label>
-        ))}
-      </fieldset>
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <section className="sale-block" aria-label={t(`lot_setup.section.${section}`)}>
-        {section === 'CREATE' ? (
-          <CreateLot
-            {...props}
-            onCreated={(lotId) => {
-              setLotChoice(lotId);
-              setSection('ENTRY');
-            }}
+      <PageHeader
+        backTo={ROUTES.productionLots}
+        backLabel={t('production.back')}
+        title={t('nav.screens.lot_setup')}
+      />
+      <div className="prd-narrow">
+        {!online ? (
+          <Banner tone="warn" role="status">
+            {t('lot_setup.offline_banner')}
+          </Banner>
+        ) : null}
+        {last ? (
+          <CommandResult
+            commandId={last.commandId}
+            messages={
+              last.section === 'CREATE' ? 'lot_setup.create_result' : 'lot_setup.entry_result'
+            }
           />
-        ) : (
-          <RecordEntry {...props} lotChoice={lotChoice} setLotChoice={setLotChoice} />
-        )}
-      </section>
+        ) : null}
+        <Segmented
+          label={t('lot_setup.section_label')}
+          value={section}
+          onChange={setSection}
+          options={(['CREATE', 'ENTRY'] as const).map((value) => ({
+            value,
+            label: t(`lot_setup.section.${value}`),
+          }))}
+        />
+        {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+        <section className="sale-block" aria-label={t(`lot_setup.section.${section}`)}>
+          {section === 'CREATE' ? (
+            <CreateLot
+              {...props}
+              onCreated={(lotId) => {
+                setLotChoice(lotId);
+                setSection('ENTRY');
+              }}
+            />
+          ) : (
+            <RecordEntry {...props} lotChoice={lotChoice} setLotChoice={setLotChoice} />
+          )}
+        </section>
+      </div>
     </section>
   );
 }
