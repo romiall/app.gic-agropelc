@@ -11,12 +11,32 @@
  * Les mots de passe saisis ne sont conservés nulle part (ni file d'envoi, ni base locale) : le champ est
  * vidé dès la réponse. Le compte doit changer son mot de passe provisoire à sa première connexion
  * (AV-251). Les rôles sont figés (AV-257) ; les périmètres proposés sont `GLOBAL` et `SITE` (AV-326).
+ *
+ * Refonte (ADR-049, lot L9) : action « Nouveau compte » dans l'en-tête, filtre d'état en contrôle segmenté,
+ * explications repliées, comptes en cartes (personne, rôles et périmètres, état), formulaires sous la carte.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import { PASSWORD_MAX_LENGTH } from '@gic/domain';
+import {
+  Avatar,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Checkbox,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Segmented,
+  Select,
+  SkeletonRows,
+  Textarea,
+  type BadgeTone,
+} from '../../components/ui/index.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
@@ -42,6 +62,7 @@ import {
   waitingCommands,
   waitingIds,
 } from '../sales/submit.js';
+import { HelpDisclosure } from './HelpDisclosure.js';
 import {
   alreadyAssigned,
   assignmentProblem,
@@ -77,16 +98,17 @@ import {
   type UserFilter,
   type UserView,
 } from './users.js';
+import './admin.css';
 
 /** Pages lues au plus pour un filtre (200 comptes chacune). */
 const MAX_PAGES = 5;
 /** Commandes de la file d'envoi suivies par cet écran : pas celles des appareils (ECR-ADM-05). */
 const PREFIX = ['identity.user.', 'identity.role_assignment.'] as const;
 
-const STATUS_BADGE: Record<string, string> = {
-  ACTIVE: 'badge-ok',
-  SUSPENDED: 'badge-warn',
-  DEACTIVATED: 'badge-muted',
+const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
+  ACTIVE: 'ok',
+  SUSPENDED: 'warn',
+  DEACTIVATED: 'muted',
 };
 
 interface SiteOption {
@@ -120,44 +142,44 @@ function PasswordFields({
   onConfirmation,
 }: PasswordFieldsProps) {
   const { t } = useTranslation();
-  const ids = { password: useId(), confirm: useId() };
   const [show, setShow] = useState(false);
   const problem = resetProblem(password, confirmation);
   const type = show ? 'text' : 'password';
   return (
     <>
-      <div className="field">
-        <label htmlFor={ids.password}>{t('users.reset_password')}</label>
-        <input
-          id={ids.password}
-          className="text-input"
-          autoFocus={autoFocus}
-          type={type}
-          autoComplete="new-password"
-          maxLength={PASSWORD_MAX_LENGTH}
-          value={password}
-          onChange={(event) => onPassword(event.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor={ids.confirm}>{t('users.reset_confirm')}</label>
-        <input
-          id={ids.confirm}
-          className="text-input"
-          type={type}
-          autoComplete="new-password"
-          maxLength={PASSWORD_MAX_LENGTH}
-          value={confirmation}
-          onChange={(event) => onConfirmation(event.target.value)}
-        />
-      </div>
-      <label className="choice">
-        <input type="checkbox" checked={show} onChange={(event) => setShow(event.target.checked)} />
-        {t('users.reset_show')}
-      </label>
+      <Field label={t('users.reset_password')}>
+        {(control) => (
+          <Input
+            {...control}
+            autoFocus={autoFocus}
+            type={type}
+            autoComplete="new-password"
+            maxLength={PASSWORD_MAX_LENGTH}
+            value={password}
+            onChange={(event) => onPassword(event.target.value)}
+          />
+        )}
+      </Field>
+      <Field label={t('users.reset_confirm')}>
+        {(control) => (
+          <Input
+            {...control}
+            type={type}
+            autoComplete="new-password"
+            maxLength={PASSWORD_MAX_LENGTH}
+            value={confirmation}
+            onChange={(event) => onConfirmation(event.target.value)}
+          />
+        )}
+      </Field>
+      <Checkbox
+        checked={show}
+        onChange={(event) => setShow(event.target.checked)}
+        label={t('users.reset_show')}
+      />
       {/* La différence des deux saisies ne se signale qu'une fois la confirmation commencée (MP-11). */}
       {password && problem && (problem !== 'MISMATCH' || confirmation !== '') ? (
-        <p className="text-warn">
+        <p className="adm-note is-warn">
           {problem === 'MISMATCH'
             ? t('users.reset_mismatch')
             : t(`auth.password_change_error.${problem}`)}
@@ -207,11 +229,11 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
 
   return (
     <div
-      className="sale-block"
+      className="adm-panel"
       role="group"
       aria-label={t('users.reset_title', { name: user.fullName })}
     >
-      <p className="home-muted">{t('users.reset_help')}</p>
+      <p className="adm-note">{t('users.reset_help')}</p>
       <PasswordFields
         autoFocus
         password={password}
@@ -219,19 +241,14 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
         onPassword={setPassword}
         onConfirmation={setConfirm}
       />
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={problem !== null || sending}
-          onClick={() => void send()}
-        >
+      <div className="adm-actions">
+        <Button disabled={problem !== null || sending} onClick={() => void send()}>
           {sending ? t('users.reset_sending') : t('users.reset_submit', { name: user.fullName })}
-        </button>
+        </Button>
         {/* Pendant l'envoi, la requête part quand même : « Annuler » ne l'arrêterait pas. */}
-        <button type="button" className="secondary" disabled={sending} onClick={onCancel}>
+        <Button variant="ghost" disabled={sending} onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -257,7 +274,6 @@ function AssignmentFields({
   onChange,
 }: AssignmentFieldsProps) {
   const { t } = useTranslation();
-  const ids = { role: useId(), scope: useId(), site: useId() };
   const role = roles.find((candidate) => candidate.id === choice.roleId);
   const scopes = scopeTypesFor(role);
   const pick = (roleId: string) => {
@@ -271,64 +287,64 @@ function AssignmentFields({
   };
   return (
     <>
-      <div className="field">
-        <label htmlFor={ids.role}>{t('users.role_label')}</label>
-        <select
-          id={ids.role}
-          className="text-input"
-          autoFocus={autoFocus}
-          value={choice.roleId}
-          onChange={(event) => pick(event.target.value)}
-        >
-          <option value="">{optional ? t('users.no_role_option') : t('users.choose_role')}</option>
-          {roles.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {t(`users.role.${candidate.code}`, { defaultValue: candidate.name })}
-            </option>
-          ))}
-        </select>
-      </div>
-      {role ? (
-        <div className="field">
-          <label htmlFor={ids.scope}>{t('users.scope_label')}</label>
-          <select
-            id={ids.scope}
-            className="text-input"
-            value={choice.scopeType}
-            onChange={(event) =>
-              onChange({ ...choice, scopeType: event.target.value as ScopeType })
-            }
+      <Field label={t('users.role_label')}>
+        {(control) => (
+          <Select
+            {...control}
+            autoFocus={autoFocus}
+            value={choice.roleId}
+            onChange={(event) => pick(event.target.value)}
           >
-            {scopes.map((scope) => (
-              <option key={scope} value={scope}>
-                {t(`users.scope.${scope}`)}
+            <option value="">
+              {optional ? t('users.no_role_option') : t('users.choose_role')}
+            </option>
+            {roles.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {t(`users.role.${candidate.code}`, { defaultValue: candidate.name })}
               </option>
             ))}
-          </select>
-          {scopes.length === 0 ? (
-            <p className="text-warn" role="alert">
-              {t('users.scope_unavailable')}
-            </p>
-          ) : null}
-        </div>
+          </Select>
+        )}
+      </Field>
+      {role ? (
+        <Field
+          label={t('users.scope_label')}
+          error={scopes.length === 0 ? t('users.scope_unavailable') : undefined}
+        >
+          {(control) => (
+            <Select
+              {...control}
+              value={choice.scopeType}
+              onChange={(event) =>
+                onChange({ ...choice, scopeType: event.target.value as ScopeType })
+              }
+            >
+              {scopes.map((scope) => (
+                <option key={scope} value={scope}>
+                  {t(`users.scope.${scope}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       ) : null}
       {role && choice.scopeType === 'SITE' ? (
-        <div className="field">
-          <label htmlFor={ids.site}>{t('users.site_label')}</label>
-          <select
-            id={ids.site}
-            className="text-input"
-            value={choice.siteId}
-            onChange={(event) => onChange({ ...choice, siteId: event.target.value })}
-          >
-            <option value="">{t('users.choose_site')}</option>
-            {sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Field label={t('users.site_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={choice.siteId}
+              onChange={(event) => onChange({ ...choice, siteId: event.target.value })}
+            >
+              <option value="">{t('users.choose_site')}</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       ) : null}
     </>
   );
@@ -347,7 +363,6 @@ interface CreateFormProps {
 
 function CreateForm({ countryCode, onSending, roles, sites, onCancel, onDone }: CreateFormProps) {
   const { t } = useTranslation();
-  const ids = { name: useId(), phone: useId(), email: useId() };
   const [form, setForm] = useState<NewUserForm>(EMPTY_NEW_USER);
   const [sending, setSending] = useState(false);
   const problem = newUserProblem(form, roles, countryCode);
@@ -379,79 +394,78 @@ function CreateForm({ countryCode, onSending, roles, sites, onCancel, onDone }: 
   };
 
   return (
-    <div className="sale-block" role="group" aria-label={t('users.create_title')}>
+    <Card padded className="adm-create" role="group" aria-label={t('users.create_title')}>
       <h2>{t('users.create_title')}</h2>
-      <p className="home-muted">{t('users.create_help')}</p>
-      <div className="field">
-        <label htmlFor={ids.name}>{t('users.name_label')}</label>
-        <input
-          id={ids.name}
-          className="text-input"
-          autoFocus
-          autoComplete="off"
-          maxLength={200}
-          value={form.fullName}
-          onChange={(event) => set({ fullName: event.target.value })}
+      <HelpDisclosure title={t('users.create_help_title')}>
+        <p>{t('users.create_help')}</p>
+      </HelpDisclosure>
+      <div className="adm-form">
+        <Field label={t('users.name_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              autoFocus
+              autoComplete="off"
+              maxLength={200}
+              value={form.fullName}
+              onChange={(event) => set({ fullName: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={t('users.phone_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="tel"
+              autoComplete="off"
+              placeholder="+237 6XX XX XX XX"
+              value={form.phone}
+              onChange={(event) => set({ phone: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={t('users.email_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="email"
+              autoComplete="off"
+              maxLength={200}
+              value={form.email}
+              onChange={(event) => set({ email: event.target.value })}
+            />
+          )}
+        </Field>
+        <AssignmentFields
+          choice={form}
+          roles={roles}
+          sites={sites}
+          optional
+          onChange={(choice) => set(choice)}
         />
-      </div>
-      <div className="field">
-        <label htmlFor={ids.phone}>{t('users.phone_label')}</label>
-        <input
-          id={ids.phone}
-          className="text-input"
-          type="tel"
-          autoComplete="off"
-          placeholder="+237 6XX XX XX XX"
-          value={form.phone}
-          onChange={(event) => set({ phone: event.target.value })}
+        <PasswordFields
+          password={form.password}
+          confirmation={form.confirmation}
+          onPassword={(value) => set({ password: value })}
+          onConfirmation={(value) => set({ confirmation: value })}
         />
+        {/* Un défaut ne se signale que sur un champ commencé ; un rôle sans périmètre proposable l'est déjà
+            sous son choix (`scope_unavailable`). */}
+        {(problem === 'PHONE' && form.phone.trim() !== '') ||
+        (problem === 'EMAIL' && form.email.trim() !== '') ||
+        problem === 'SITE' ? (
+          <p className="adm-note is-warn">{t(`users.create_problem.${problem}`)}</p>
+        ) : null}
       </div>
-      <div className="field">
-        <label htmlFor={ids.email}>{t('users.email_label')}</label>
-        <input
-          id={ids.email}
-          className="text-input"
-          type="email"
-          autoComplete="off"
-          maxLength={200}
-          value={form.email}
-          onChange={(event) => set({ email: event.target.value })}
-        />
-      </div>
-      <AssignmentFields
-        choice={form}
-        roles={roles}
-        sites={sites}
-        optional
-        onChange={(choice) => set(choice)}
-      />
-      <PasswordFields
-        password={form.password}
-        confirmation={form.confirmation}
-        onPassword={(value) => set({ password: value })}
-        onConfirmation={(value) => set({ confirmation: value })}
-      />
-      {/* Un défaut ne se signale que sur un champ commencé ; un rôle sans périmètre proposable l'est déjà
-          sous son choix (`scope_unavailable`). */}
-      {(problem === 'PHONE' && form.phone.trim() !== '') ||
-      (problem === 'EMAIL' && form.email.trim() !== '') ||
-      problem === 'SITE' ? (
-        <p className="text-warn">{t(`users.create_problem.${problem}`)}</p>
-      ) : null}
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={problem !== null || sending}
-          onClick={() => void send()}
-        >
+      <div className="adm-actions">
+        <Button disabled={problem !== null || sending} onClick={() => void send()}>
           {sending ? t('users.create_sending') : t('users.create_submit')}
-        </button>
-        <button type="button" className="secondary" disabled={sending} onClick={onCancel}>
+        </Button>
+        <Button variant="ghost" disabled={sending} onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -468,37 +482,29 @@ interface ReasonFormProps {
 
 function ReasonForm({ label, confirm, required, blocked, onCancel, onConfirm }: ReasonFormProps) {
   const { t } = useTranslation();
-  const id = useId();
   const [reason, setReason] = useState('');
   const trimmed = reason.trim();
   const ready = !blocked && trimmed.length <= REASON_MAX && (!required || trimmed.length > 0);
   return (
-    <div className="sale-block" role="group" aria-label={label}>
-      <div className="field">
-        <label htmlFor={id}>
-          {required ? t('users.reason_required') : t('users.reason_optional')}
-        </label>
-        <textarea
-          id={id}
-          className="text-input"
-          autoFocus
-          maxLength={REASON_MAX}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-        />
-      </div>
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!ready}
-          onClick={() => onConfirm(reason)}
-        >
+    <div className="adm-panel" role="group" aria-label={label}>
+      <Field label={required ? t('users.reason_required') : t('users.reason_optional')}>
+        {(control) => (
+          <Textarea
+            {...control}
+            autoFocus
+            maxLength={REASON_MAX}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        )}
+      </Field>
+      <div className="adm-actions">
+        <Button disabled={!ready} onClick={() => onConfirm(reason)}>
           {confirm}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -538,7 +544,6 @@ export function UsersScreen() {
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const online = useOnline();
   const refs = useSalesReferences();
-  const searchId = useId();
   const [filter, setFilter] = useState<UserFilter>('ACTIVE');
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Open | null>(null);
@@ -578,17 +583,19 @@ export function UsersScreen() {
 
   if (!userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.users')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale adm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.users')} />
+        <SkeletonRows />
       </section>
     );
   }
   if (!online) {
     return (
-      <section className="sale">
-        <h1>{t('nav.screens.users')}</h1>
-        <p className="home-muted">{t('users.online_only')}</p>
+      <section className="sale adm-screen">
+        <PageHeader title={t('nav.screens.users')} />
+        <Banner tone="muted" role="status">
+          {t('users.online_only')}
+        </Banner>
       </section>
     );
   }
@@ -642,11 +649,11 @@ export function UsersScreen() {
     if (!outcome) return null;
     if (outcome.kind === 'RESET') {
       return outcome.result.kind === 'DONE' ? (
-        <p className="alert" role="status">
+        <Banner tone="ok" role="status">
           {t('users.reset_done', { name: outcome.name })}
-        </p>
+        </Banner>
       ) : (
-        <p className="alert alert-error" role="alert">
+        <Banner tone="bad">
           {outcome.result.kind === 'OFFLINE'
             ? t('users.reset_offline')
             : outcome.result.kind === 'SESSION'
@@ -654,57 +661,60 @@ export function UsersScreen() {
               : t('users.reset_refused', {
                   reason: outcome.result.message ?? outcome.result.code,
                 })}
-        </p>
+        </Banner>
       );
     }
     return outcome.result.kind === 'CREATED' ? (
-      <p className="alert" role="status">
+      <Banner tone="ok" role="status">
         {t('users.create_done', { name: outcome.name })}
-      </p>
+      </Banner>
     ) : (
-      <p className="alert alert-error" role="alert">
+      <Banner tone="bad">
         {outcome.result.kind === 'OFFLINE'
           ? t('users.create_offline')
           : outcome.result.kind === 'SESSION'
             ? t('users.create_session')
             : t('users.create_refused', { reason: outcome.result.message ?? outcome.result.code })}
-      </p>
+      </Banner>
     );
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.users')}</h1>
-      <p className="home-muted">{t('users.intro')}</p>
+    <section className="sale adm-screen">
+      <PageHeader
+        title={t('nav.screens.users')}
+        actions={
+          roles && !creating ? (
+            <Button
+              icon="plus"
+              onClick={() => {
+                setOutcome(null);
+                setOpen(null);
+                setCreating(true);
+              }}
+            >
+              {t('users.create_action')}
+            </Button>
+          ) : undefined
+        }
+      />
+      <HelpDisclosure title={t('users.help_title')}>
+        <p>{t('users.intro')}</p>
+      </HelpDisclosure>
       {last ? <CommandResult commandId={last} messages="users.result" /> : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t(saveError)}
-        </p>
-      ) : null}
+      {saveError ? <Banner tone="bad">{t(saveError)}</Banner> : null}
       {outcomeNotice()}
       {rolesRead.failed && !rolesRead.denied ? (
-        <div className="alert alert-error" role="alert">
-          <p>{t('users.roles_unavailable')}</p>
-          <button type="button" className="secondary" onClick={rolesRead.retry}>
-            {t('ledger.retry')}
-          </button>
-        </div>
-      ) : null}
-      {roles && !creating ? (
-        <div className="result-actions">
-          <button
-            type="button"
-            className="btn-block submit-sale"
-            onClick={() => {
-              setOutcome(null);
-              setOpen(null);
-              setCreating(true);
-            }}
-          >
-            {t('users.create_action')}
-          </button>
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            <Button variant="tonal" size="sm" onClick={rolesRead.retry}>
+              {t('ledger.retry')}
+            </Button>
+          }
+        >
+          {t('users.roles_unavailable')}
+        </Banner>
       ) : null}
       {roles && creating ? (
         <CreateForm
@@ -723,90 +733,95 @@ export function UsersScreen() {
           }}
         />
       ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('users.filter_label')}</legend>
-        {USER_FILTERS.map((option) => (
-          <label key={option} className="choice">
-            <input
-              type="radio"
-              name="user-filter"
-              checked={filter === option}
-              onChange={() => {
-                setFilter(option);
-                setOpen(null);
-              }}
-            />
-            {t(`users.filter.${option}`)}
-          </label>
-        ))}
-      </fieldset>
-      <div className="field">
-        <label htmlFor={searchId}>{t('users.search_label')}</label>
-        <input
-          id={searchId}
-          className="text-input"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+      <div className="adm-toolbar">
+        <Segmented
+          label={t('users.filter_label')}
+          value={filter}
+          onChange={(option) => {
+            setFilter(option);
+            setOpen(null);
+          }}
+          options={USER_FILTERS.map((option) => ({
+            value: option,
+            label: t(`users.filter.${option}`),
+          }))}
         />
-      </div>
-      {users === undefined && !read.failed ? (
-        <p className="home-muted">{t('sales.loading')}</p>
-      ) : null}
-      {read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{read.denied ? t('users.denied') : t('users.unavailable')}</p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('ledger.retry')}
-            </button>
+        <Field label={t('users.search_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              inputMode="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           )}
-        </div>
+        </Field>
+      </div>
+      {users === undefined && !read.failed ? <SkeletonRows /> : null}
+      {read.failed ? (
+        <Banner
+          tone="bad"
+          action={
+            read.denied ? undefined : (
+              <Button variant="tonal" size="sm" onClick={read.retry}>
+                {t('ledger.retry')}
+              </Button>
+            )
+          }
+        >
+          {read.denied ? t('users.denied') : t('users.unavailable')}
+        </Banner>
       ) : null}
       {users && read.stale && !read.failed ? (
-        <p className="home-muted" role="status">
+        <p className="adm-note" role="status">
           {t('users.refreshing')}
         </p>
       ) : null}
-      {read.data?.more ? <p className="home-muted">{t('users.truncated')}</p> : null}
+      {read.data?.more ? <p className="adm-note">{t('users.truncated')}</p> : null}
       {users && users.length === 0 ? (
-        <p className="home-muted">{t(`users.none.${filter}`)}</p>
+        <EmptyState icon="users" title={t(`users.none.${filter}`)} />
       ) : null}
       {users && users.length > 0 ? (
-        <ul className="line-list">
+        <ul className="adm-cards">
           {users.map((user) => {
             const mine = open?.userId === user.id ? open : null;
             return (
               <li key={user.id} className="line-card" aria-label={user.fullName}>
-                <div className="line-head">
-                  <strong>{user.fullName}</strong>
-                  <span className={`badge ${STATUS_BADGE[user.status] ?? 'badge-muted'}`}>
-                    {t(`users.status.${user.status}`, { defaultValue: user.status })}
+                <div className="adm-card-head">
+                  <Avatar name={user.fullName} />
+                  <span className="adm-card-title">
+                    <strong>{user.fullName}</strong>
+                    <span className="adm-sub">{user.phone}</span>
                   </span>
+                  <Badge tone={STATUS_TONE[user.status] ?? 'muted'}>
+                    {t(`users.status.${user.status}`, { defaultValue: user.status })}
+                  </Badge>
                 </div>
-                <p className="home-muted">{user.phone}</p>
                 {user.assignments.length === 0 && user.roles.length > 0 ? (
                   // Lecteur sans droit d'affecter : codes des rôles seulement, sans leurs périmètres.
-                  <p className="home-muted">
+                  <p className="adm-note">
                     {user.roles
                       .map((code) => t(`users.role.${code}`, { defaultValue: code }))
                       .join(', ')}
                   </p>
                 ) : user.assignments.length > 0 ? (
                   <ul
-                    className="line-list"
+                    className="adm-roles"
                     aria-label={t('users.assignments_label', { name: user.fullName })}
                   >
                     {user.assignments.map((assignment) => (
-                      <li key={assignment.id} className="home-muted">
-                        {t(`users.role.${assignment.roleCode}`, {
-                          defaultValue: assignment.roleName,
-                        })}
-                        {' · '}
-                        {scopeText(assignment, siteName, t)}
+                      <li key={assignment.id}>
+                        <span>
+                          {t(`users.role.${assignment.roleCode}`, {
+                            defaultValue: assignment.roleName,
+                          })}
+                          {' · '}
+                          {scopeText(assignment, siteName, t)}
+                        </span>
                         {user.actions.revokeRoles ? (
-                          <button
-                            type="button"
-                            className="secondary"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             aria-label={t('users.revoke_open', {
                               role: t(`users.role.${assignment.roleCode}`, {
                                 defaultValue: assignment.roleName,
@@ -824,21 +839,21 @@ export function UsersScreen() {
                             }}
                           >
                             {t('users.revoke_action')}
-                          </button>
+                          </Button>
                         ) : null}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="home-muted">{t('users.no_role')}</p>
+                  <p className="adm-note">{t('users.no_role')}</p>
                 )}
-                <p className="home-muted">
+                <p className="adm-note">
                   {user.lastLoginAt
                     ? t('users.last_login', { date: formatDateTime(user.lastLoginAt) })
                     : t('users.never_logged_in')}
                 </p>
                 {user.mustChangePassword ? (
-                  <p className="text-warn">{t('users.must_change')}</p>
+                  <p className="adm-note is-warn">{t('users.must_change')}</p>
                 ) : null}
                 {mine?.kind === 'RESET' ? (
                   <ResetForm
@@ -915,11 +930,10 @@ export function UsersScreen() {
                   />
                 ) : null}
                 {!mine ? (
-                  <div className="result-actions">
+                  <div className="adm-actions">
                     {user.actions.resetPassword ? (
-                      <button
-                        type="button"
-                        className="secondary"
+                      <Button
+                        variant="tonal"
                         aria-label={t('users.reset_open', { name: user.fullName })}
                         onClick={() => {
                           setOutcome(null);
@@ -928,12 +942,11 @@ export function UsersScreen() {
                         }}
                       >
                         {t('users.reset_action')}
-                      </button>
+                      </Button>
                     ) : null}
                     {user.actions.manageRoles && roles ? (
-                      <button
-                        type="button"
-                        className="secondary"
+                      <Button
+                        variant="tonal"
                         aria-label={t('users.assign_open', { name: user.fullName })}
                         onClick={() => {
                           setOutcome(null);
@@ -942,13 +955,12 @@ export function UsersScreen() {
                         }}
                       >
                         {t('users.assign_action')}
-                      </button>
+                      </Button>
                     ) : null}
                     {statusActionsFor(user).map((action) => (
-                      <button
+                      <Button
                         key={action}
-                        type="button"
-                        className="secondary"
+                        variant={action === 'REACTIVATE' ? 'tonal' : 'outline'}
                         aria-label={t(`users.status_action.${action}`, { name: user.fullName })}
                         onClick={() => {
                           setOutcome(null);
@@ -957,7 +969,7 @@ export function UsersScreen() {
                         }}
                       >
                         {t(`users.status_short.${action}`)}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 ) : null}
@@ -993,7 +1005,7 @@ function AssignForm({ user, roles, sites, blocked, onCancel, onConfirm }: Assign
   const ready = !blocked && problem === null && !duplicate;
   return (
     <div
-      className="sale-block"
+      className="adm-panel"
       role="group"
       aria-label={t('users.assign_title', { name: user.fullName })}
     >
@@ -1005,19 +1017,14 @@ function AssignForm({ user, roles, sites, blocked, onCancel, onConfirm }: Assign
         optional={false}
         onChange={setChoice}
       />
-      {duplicate ? <p className="text-warn">{t('users.assign_duplicate')}</p> : null}
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={!ready}
-          onClick={() => onConfirm(choice)}
-        >
+      {duplicate ? <p className="adm-note is-warn">{t('users.assign_duplicate')}</p> : null}
+      <div className="adm-actions">
+        <Button disabled={!ready} onClick={() => onConfirm(choice)}>
           {t('users.assign_confirm', { name: user.fullName })}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   );

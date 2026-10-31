@@ -2472,6 +2472,7 @@ export const fr = {
     intro:
       'Téléphones et tablettes de votre portée : approuvez un appareil neuf, bloquez ou retirez un appareil perdu ou inutilisé.',
     online_only: 'Écran en ligne seulement : reconnectez-vous pour gérer les appareils.',
+    help_title: 'À quoi sert cet écran ?',
     denied: 'Lecture des appareils refusée : droit insuffisant.',
     unavailable: 'Appareils indisponibles : réessayez quand le serveur répond.',
     refreshing: 'Relecture des appareils après la dernière décision…',
@@ -2553,6 +2554,7 @@ export const fr = {
     intro:
       'Comptes de votre portée. L’administrateur crée un compte avec un mot de passe provisoire, y ajoute ou retire des rôles, suspend ou désactive un compte, et réinitialise le mot de passe d’une personne qui l’a oublié : elle devra le changer à sa prochaine connexion.',
     online_only: 'Écran en ligne seulement : reconnectez-vous pour gérer les comptes.',
+    help_title: 'À quoi sert cet écran ?',
     refreshing: 'Relecture des comptes après la dernière opération…',
     denied: 'Lecture des comptes refusée : droit insuffisant.',
     unavailable: 'Comptes indisponibles : réessayez quand le serveur répond.',
@@ -2613,6 +2615,7 @@ export const fr = {
     reset_refused: 'Réinitialisation refusée : {{reason}}',
     create_action: 'Nouveau compte',
     create_title: 'Nouveau compte',
+    create_help_title: 'Comment saisir un compte ?',
     create_help:
       'Saisissez le nom, le numéro de téléphone (avec +237 ou sans) et un mot de passe provisoire de 8 caractères au moins, à communiquer de vive voix : il n’est enregistré nulle part sur ce téléphone et la personne devra le changer à sa première connexion. Le rôle peut être ajouté tout de suite ou plus tard.',
     name_label: 'Nom complet',
@@ -2692,6 +2695,7 @@ export const fr = {
     intro:
       'Opérations qui attendent votre décision, la plus ancienne d’abord. Seules celles de votre portée sont affichées.',
     online_only: 'Écran en ligne seulement : reconnectez-vous pour décider les validations.',
+    help_title: 'À quoi sert cet écran ?',
     denied: 'Lecture des validations refusée : droit insuffisant.',
     unavailable: 'Validations indisponibles : réessayez quand le serveur répond.',
     refreshing: 'Relecture de la file après la dernière décision…',
@@ -4330,6 +4334,7 @@ export const fr = {
     photos_refused_other:
       '{{count}} photos refusées par le serveur : reprenez-les depuis leur document (réception, mortalité).',
     acknowledge: 'Classer',
+    help_title: 'Que veut dire « classer » ?',
     acknowledge_label: 'Classer : {{operation}}',
     acknowledge_help:
       'Classer une opération la retire de cette liste, sans l’effacer. Refusée, elle n’a pas été appliquée par le serveur : ressaisissez-la si besoin, ou voyez votre responsable.',

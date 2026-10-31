@@ -5,10 +5,28 @@
  * le serveur déclare permises au lecteur (auto-approbation exclue, AV-258). Relue après chaque décision ;
  * la suivante attend la réponse définitive de la précédente. Relue aussi par « Actualiser » et au retour
  * sur l'onglet (MP-11) : l'appareil attendu apparaît sans quitter l'écran.
+ *
+ * Refonte (ADR-049, lot L9) : filtre d'état en contrôle segmenté, explication repliée, appareils en cartes
+ * avec pastille d'état, décision dans un formulaire sous la carte. `DeviceApprovalBanner` est du lot L2.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
+import {
+  Badge,
+  Banner,
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Segmented,
+  Select,
+  SkeletonRows,
+  Textarea,
+  type BadgeTone,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -25,6 +43,7 @@ import {
   waitingCommands,
   waitingIds,
 } from '../sales/submit.js';
+import { HelpDisclosure } from '../users/HelpDisclosure.js';
 import {
   actionsFor,
   canSend,
@@ -39,17 +58,18 @@ import {
   type DeviceFilter,
   type DeviceView,
 } from './devices.js';
+import '../users/admin.css';
 
 const PREFIX = 'identity.device.';
 /** Pages lues au plus pour un filtre (200 appareils chacune). */
 const MAX_PAGES = 5;
 
-const STATUS_BADGE: Record<string, string> = {
-  PENDING: 'badge-warn',
-  ACTIVE: 'badge-ok',
-  BLOCKED: 'badge-warn',
-  LOST: 'badge-muted',
-  RETIRED: 'badge-muted',
+const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
+  PENDING: 'warn',
+  ACTIVE: 'ok',
+  BLOCKED: 'bad',
+  LOST: 'muted',
+  RETIRED: 'muted',
 };
 
 interface DecisionProps {
@@ -72,7 +92,6 @@ function DecisionForm({
   onConfirm,
 }: DecisionProps) {
   const { t } = useTranslation();
-  const ids = { reason: useId(), site: useId() };
   const [reason, setReason] = useState('');
   const [designation, setDesignation] = useState<DesignationForm>({
     isShared: device.isShared,
@@ -84,73 +103,64 @@ function DecisionForm({
     thisDevice && (action === 'BLOCK' || action === 'LOST' || action === 'RETIRE');
   return (
     <div
-      className="sale-block"
+      className="adm-panel"
       role="group"
       aria-label={t(`devices.action.${action}`, { code: device.shortCode })}
     >
-      {loosesThisDevice ? (
-        <p className="text-warn" role="alert">
-          {t('devices.this_device_warning')}
-        </p>
-      ) : null}
+      {loosesThisDevice ? <Banner tone="warn">{t('devices.this_device_warning')}</Banner> : null}
       {action === 'DESIGNATE' ? (
         <>
-          <label className="choice">
-            <input
-              type="checkbox"
-              checked={designation.isShared}
-              onChange={(event) =>
-                setDesignation((current) => ({ ...current, isShared: event.target.checked }))
-              }
-            />
-            {t('devices.shared_label')}
-          </label>
-          <div className="field">
-            <label htmlFor={ids.site}>{t('devices.site_label')}</label>
-            <select
-              id={ids.site}
-              className="text-input"
-              value={designation.siteId}
-              onChange={(event) =>
-                setDesignation((current) => ({ ...current, siteId: event.target.value }))
-              }
-            >
-              <option value="">{t('devices.no_site')}</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Checkbox
+            checked={designation.isShared}
+            onChange={(event) =>
+              setDesignation((current) => ({ ...current, isShared: event.target.checked }))
+            }
+            label={t('devices.shared_label')}
+          />
+          <Field label={t('devices.site_label')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={designation.siteId}
+                onChange={(event) =>
+                  setDesignation((current) => ({ ...current, siteId: event.target.value }))
+                }
+              >
+                <option value="">{t('devices.no_site')}</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </>
       ) : null}
       {rule !== 'NONE' ? (
-        <div className="field">
-          <label htmlFor={ids.reason}>
-            {rule === 'REQUIRED' ? t('devices.reason_required') : t('devices.reason_optional')}
-          </label>
-          <textarea
-            id={ids.reason}
-            className="text-input"
-            maxLength={REASON_MAX}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </div>
+        <Field
+          label={rule === 'REQUIRED' ? t('devices.reason_required') : t('devices.reason_optional')}
+        >
+          {(control) => (
+            <Textarea
+              {...control}
+              maxLength={REASON_MAX}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          )}
+        </Field>
       ) : null}
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
+      <div className="adm-actions">
+        <Button
           disabled={!ready}
           onClick={() => onConfirm({ reason, ...(action === 'DESIGNATE' ? { designation } : {}) })}
         >
           {t(`devices.confirm.${action}`, { code: device.shortCode })}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -162,7 +172,6 @@ export function DevicesScreen() {
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const online = useOnline();
   const refs = useSalesReferences();
-  const searchId = useId();
   const [filter, setFilter] = useState<DeviceFilter>('PENDING');
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<{ deviceId: string; action: DeviceAction } | null>(null);
@@ -183,17 +192,19 @@ export function DevicesScreen() {
 
   if (!userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.devices')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale adm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.devices')} />
+        <SkeletonRows />
       </section>
     );
   }
   if (!online) {
     return (
-      <section className="sale">
-        <h1>{t('nav.screens.devices')}</h1>
-        <p className="home-muted">{t('devices.online_only')}</p>
+      <section className="sale adm-screen">
+        <PageHeader title={t('nav.screens.devices')} />
+        <Banner tone="muted" role="status">
+          {t('devices.online_only')}
+        </Banner>
       </section>
     );
   }
@@ -241,70 +252,72 @@ export function DevicesScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.devices')}</h1>
-      <p className="home-muted">{t('devices.intro')}</p>
+    <section className="sale adm-screen">
+      <PageHeader
+        title={t('nav.screens.devices')}
+        actions={
+          devices && !read.failed ? (
+            <Button variant="tonal" icon="sync" onClick={read.retry} disabled={read.stale}>
+              {t('devices.refresh')}
+            </Button>
+          ) : undefined
+        }
+      />
+      <HelpDisclosure title={t('devices.help_title')}>
+        <p>{t('devices.intro')}</p>
+      </HelpDisclosure>
       {last ? <CommandResult commandId={last} messages="devices.result" /> : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t(saveError)}
-        </p>
-      ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('devices.filter_label')}</legend>
-        {DEVICE_FILTERS.map((option) => (
-          <label key={option} className="choice">
-            <input
-              type="radio"
-              name="device-filter"
-              checked={filter === option}
-              onChange={() => {
-                setFilter(option);
-                setOpen(null);
-              }}
-            />
-            {t(`devices.filter.${option}`)}
-          </label>
-        ))}
-      </fieldset>
-      <div className="field">
-        <label htmlFor={searchId}>{t('devices.search_label')}</label>
-        <input
-          id={searchId}
-          className="text-input"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+      {saveError ? <Banner tone="bad">{t(saveError)}</Banner> : null}
+      <div className="adm-toolbar">
+        <Segmented
+          label={t('devices.filter_label')}
+          value={filter}
+          onChange={(option) => {
+            setFilter(option);
+            setOpen(null);
+          }}
+          options={DEVICE_FILTERS.map((option) => ({
+            value: option,
+            label: t(`devices.filter.${option}`),
+          }))}
         />
-      </div>
-      {devices === undefined && !read.failed ? (
-        <p className="home-muted">{t('sales.loading')}</p>
-      ) : null}
-      {read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{read.denied ? t('devices.denied') : t('devices.unavailable')}</p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('ledger.retry')}
-            </button>
+        <Field label={t('devices.search_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              inputMode="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           )}
-        </div>
+        </Field>
+      </div>
+      {devices === undefined && !read.failed ? <SkeletonRows /> : null}
+      {read.failed ? (
+        <Banner
+          tone="bad"
+          action={
+            read.denied ? undefined : (
+              <Button variant="tonal" size="sm" onClick={read.retry}>
+                {t('ledger.retry')}
+              </Button>
+            )
+          }
+        >
+          {read.denied ? t('devices.denied') : t('devices.unavailable')}
+        </Banner>
       ) : null}
       {devices && read.stale && !read.failed ? (
-        <p className="home-muted" role="status">
+        <p className="adm-note" role="status">
           {t('devices.refreshing')}
         </p>
       ) : null}
-      {devices && !read.failed ? (
-        <button type="button" className="secondary" onClick={read.retry} disabled={read.stale}>
-          {t('devices.refresh')}
-        </button>
-      ) : null}
-      {read.data?.more ? <p className="home-muted">{t('devices.truncated')}</p> : null}
+      {read.data?.more ? <p className="adm-note">{t('devices.truncated')}</p> : null}
       {devices && devices.length === 0 ? (
-        <p className="home-muted">{t(`devices.none.${filter}`)}</p>
+        <EmptyState icon="phone" title={t(`devices.none.${filter}`)} />
       ) : null}
       {devices && devices.length > 0 ? (
-        <ul className="line-list">
+        <ul className="adm-cards">
           {devices.map((device) => {
             const thisDevice = device.id === thisDeviceId;
             const actions = actionsFor(device);
@@ -319,25 +332,29 @@ export function DevicesScreen() {
                 className="line-card"
                 aria-label={t('devices.card_label', { code: device.shortCode })}
               >
-                <div className="line-head">
-                  <strong>{t('devices.card_label', { code: device.shortCode })}</strong>
-                  <span className={`badge ${STATUS_BADGE[device.status] ?? 'badge-muted'}`}>
-                    {t(`devices.status.${device.status}`, { defaultValue: device.status })}
+                <div className="adm-card-head">
+                  <span className="adm-card-title">
+                    <span className="adm-title-line">
+                      <strong>{t('devices.card_label', { code: device.shortCode })}</strong>
+                      {thisDevice ? <Badge tone="brand">{t('devices.this_device')}</Badge> : null}
+                    </span>
+                    <span className="adm-sub">
+                      {[
+                        device.platform,
+                        t('devices.enrolled', {
+                          name: device.enrolledByName ?? t('devices.unknown_user'),
+                          date: formatDateTime(device.createdAt),
+                        }),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
                   </span>
+                  <Badge tone={STATUS_TONE[device.status] ?? 'muted'}>
+                    {t(`devices.status.${device.status}`, { defaultValue: device.status })}
+                  </Badge>
                 </div>
-                {thisDevice ? <p className="home-muted">{t('devices.this_device')}</p> : null}
-                <p className="home-muted">
-                  {[
-                    device.platform,
-                    t('devices.enrolled', {
-                      name: device.enrolledByName ?? t('devices.unknown_user'),
-                      date: formatDateTime(device.createdAt),
-                    }),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-                <p className={device.stale ? 'text-warn' : 'home-muted'}>
+                <p className={device.stale ? 'adm-note is-warn' : 'adm-note'}>
                   {device.lastContactAt
                     ? t(device.stale ? 'devices.contact_stale' : 'devices.contact', {
                         date: formatDateTime(device.lastContactAt),
@@ -345,7 +362,7 @@ export function DevicesScreen() {
                     : t('devices.contact_never')}
                 </p>
                 {device.isShared || site ? (
-                  <p className="home-muted">
+                  <p className="adm-note">
                     {[
                       device.isShared ? t('devices.shared') : null,
                       site ? t('devices.site', { name: site }) : null,
@@ -355,11 +372,9 @@ export function DevicesScreen() {
                   </p>
                 ) : null}
                 {device.statusReason && device.status !== 'ACTIVE' ? (
-                  <p className="home-muted">
-                    {t('devices.reason', { reason: device.statusReason })}
-                  </p>
+                  <p className="adm-note">{t('devices.reason', { reason: device.statusReason })}</p>
                 ) : null}
-                {selfPending ? <p className="home-muted">{t('devices.self_pending')}</p> : null}
+                {selfPending ? <p className="adm-note">{t('devices.self_pending')}</p> : null}
                 {open?.deviceId === device.id ? (
                   <DecisionForm
                     device={device}
@@ -371,29 +386,27 @@ export function DevicesScreen() {
                     onConfirm={(input) => void send(device, open.action, input)}
                   />
                 ) : actions.length > 0 ? (
-                  <div className="result-actions">
+                  <div className="adm-actions">
                     {actions.map((action) =>
                       action === 'APPROVE' || action === 'UNBLOCK' ? (
-                        <button
+                        <Button
                           key={action}
-                          type="button"
-                          className="secondary"
+                          variant="tonal"
                           disabled={blocked}
                           onClick={() => void send(device, action, { reason: '' })}
                         >
                           {t(`devices.action.${action}`, { code: device.shortCode })}
-                        </button>
+                        </Button>
                       ) : (
-                        <button
+                        <Button
                           key={action}
-                          type="button"
-                          className="secondary"
+                          variant="outline"
                           aria-expanded={false}
                           disabled={blocked}
                           onClick={() => setOpen({ deviceId: device.id, action })}
                         >
                           {t(`devices.action.${action}`, { code: device.shortCode })}
-                        </button>
+                        </Button>
                       ),
                     )}
                   </div>

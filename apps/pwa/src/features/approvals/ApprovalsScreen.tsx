@@ -6,12 +6,28 @@
  * de caisse et de remise se décident dans la trésorerie (acceptation seule). Relue après chaque
  * décision ; la suivante attend la réponse définitive de la précédente. Relue aussi par « Actualiser »
  * et au retour sur l'onglet (MP-11) : un justificatif reçu entre-temps rend l'approbation possible.
+ *
+ * Refonte (ADR-049, lot L9) : en-tête avec l'action d'actualisation, explication repliée, demandes en
+ * cartes (type, demandeur, montant, ce qu'on décide), décision dans un formulaire sous la carte.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { ROUTES } from '../../app/screens.js';
+import {
+  Banner,
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  Radio,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -29,6 +45,7 @@ import {
   waitingCommands,
   waitingIds,
 } from '../sales/submit.js';
+import { HelpDisclosure } from '../users/HelpDisclosure.js';
 import {
   actionsFor,
   blockReason,
@@ -45,6 +62,7 @@ import {
   type ApprovalView,
   type DecisionInput,
 } from './approvals.js';
+import '../users/admin.css';
 
 const PREFIX = 'approvals.request.';
 /** Pages lues au plus (200 demandes chacune). */
@@ -60,107 +78,99 @@ interface DecisionProps {
 
 function DecisionForm({ view, action, blocked, onCancel, onConfirm }: DecisionProps) {
   const { t } = useTranslation();
-  const ids = { comment: useId(), self: useId() };
   const [input, setInput] = useState<DecisionInput>(EMPTY_DECISION);
   const options = optionsFor(view, action);
   const fields = dataFieldsFor(view, action);
   const reason = blockReason(view, action, input);
   const legendKey = `approvals.option_legend.${view.operationType}_${action}`;
   return (
-    <div className="sale-block" role="group" aria-label={t(`approvals.action.${action}`)}>
+    <div className="adm-panel" role="group" aria-label={t(`approvals.action.${action}`)}>
       {options ? (
-        <fieldset className="choice-group">
+        <fieldset className="adm-choices">
           <legend>{t(legendKey, { defaultValue: t('approvals.option_legend.default') })}</legend>
           {options.required ? null : (
-            <label className="choice">
-              <input
-                type="radio"
-                name={`option-${view.id}`}
-                checked={input.option === ''}
-                onChange={() => setInput((current) => ({ ...current, option: '' }))}
-              />
-              {options.defaultValue
-                ? t(`approvals.option.${options.defaultValue}`)
-                : t('approvals.option_none')}
-            </label>
+            <Radio
+              name={`option-${view.id}`}
+              checked={input.option === ''}
+              onChange={() => setInput((current) => ({ ...current, option: '' }))}
+              label={
+                options.defaultValue
+                  ? t(`approvals.option.${options.defaultValue}`)
+                  : t('approvals.option_none')
+              }
+            />
           )}
           {options.values
             .filter((value) => value !== options.defaultValue)
             .map((value) => (
-              <label key={value} className="choice">
-                <input
-                  type="radio"
-                  name={`option-${view.id}`}
-                  checked={input.option === value}
-                  onChange={() => setInput((current) => ({ ...current, option: value }))}
-                />
-                {t(`approvals.option.${value}`, { defaultValue: value })}
-              </label>
+              <Radio
+                key={value}
+                name={`option-${view.id}`}
+                checked={input.option === value}
+                onChange={() => setInput((current) => ({ ...current, option: value }))}
+                label={t(`approvals.option.${value}`, { defaultValue: value })}
+              />
             ))}
         </fieldset>
       ) : null}
       {fields.map((field) => (
-        <div key={field.key} className="field">
-          <label htmlFor={`${ids.comment}-${field.key}`}>
-            {t(`approvals.data.${field.key}`, { defaultValue: field.key })}
-          </label>
-          <input
-            id={`${ids.comment}-${field.key}`}
-            className="text-input"
-            value={input.data[field.key] ?? ''}
-            onChange={(event) =>
-              setInput((current) => ({
-                ...current,
-                data: { ...current.data, [field.key]: event.target.value },
-              }))
-            }
-          />
-        </div>
+        <Field
+          key={field.key}
+          label={t(`approvals.data.${field.key}`, { defaultValue: field.key })}
+        >
+          {(control) => (
+            <Input
+              {...control}
+              value={input.data[field.key] ?? ''}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  data: { ...current.data, [field.key]: event.target.value },
+                }))
+              }
+            />
+          )}
+        </Field>
       ))}
-      <div className="field">
-        <label htmlFor={ids.comment}>
-          {commentRule(view, action) === 'OPTIONAL'
+      <Field
+        label={
+          commentRule(view, action) === 'OPTIONAL'
             ? t('approvals.comment_optional')
             : action === 'REJECT'
               ? t('approvals.comment_required')
-              : t('approvals.reason_required')}
-        </label>
-        <textarea
-          id={ids.comment}
-          className="text-input"
-          maxLength={commentMax(view, action)}
-          value={input.comment}
-          onChange={(event) => setInput((current) => ({ ...current, comment: event.target.value }))}
-        />
-      </div>
-      {view.selfRequest ? (
-        <label className="choice">
-          <input
-            id={ids.self}
-            type="checkbox"
-            checked={input.selfApproved}
+              : t('approvals.reason_required')
+        }
+      >
+        {(control) => (
+          <Textarea
+            {...control}
+            maxLength={commentMax(view, action)}
+            value={input.comment}
             onChange={(event) =>
-              setInput((current) => ({ ...current, selfApproved: event.target.checked }))
+              setInput((current) => ({ ...current, comment: event.target.value }))
             }
           />
-          {t(`approvals.self_confirm.${action}`)}
-        </label>
+        )}
+      </Field>
+      {view.selfRequest ? (
+        <Checkbox
+          checked={input.selfApproved}
+          onChange={(event) =>
+            setInput((current) => ({ ...current, selfApproved: event.target.checked }))
+          }
+          label={t(`approvals.self_confirm.${action}`)}
+        />
       ) : null}
       {reason && reason !== 'COMMENT_REQUIRED' && reason !== 'SELF_CONFIRM' ? (
-        <p className="text-warn">{t(`approvals.block.${reason}`)}</p>
+        <p className="adm-note is-warn">{t(`approvals.block.${reason}`)}</p>
       ) : null}
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
-          disabled={blocked || reason !== null}
-          onClick={() => onConfirm(input)}
-        >
+      <div className="adm-actions">
+        <Button disabled={blocked || reason !== null} onClick={() => onConfirm(input)}>
           {t(`approvals.confirm.${action}`)}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
           {t('price_rules.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -192,17 +202,19 @@ export function ApprovalsScreen() {
 
   if (!userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.approvals')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale adm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.approvals')} />
+        <SkeletonRows />
       </section>
     );
   }
   if (!online) {
     return (
-      <section className="sale">
-        <h1>{t('nav.screens.approvals')}</h1>
-        <p className="home-muted">{t('approvals.online_only')}</p>
+      <section className="sale adm-screen">
+        <PageHeader title={t('nav.screens.approvals')} />
+        <Banner tone="muted" role="status">
+          {t('approvals.online_only')}
+        </Banner>
       </section>
     );
   }
@@ -240,56 +252,70 @@ export function ApprovalsScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.approvals')}</h1>
-      <p className="home-muted">{t('approvals.intro')}</p>
+    <section className="sale adm-screen">
+      <PageHeader
+        title={t('nav.screens.approvals')}
+        actions={
+          requests && !read.failed ? (
+            <Button variant="tonal" icon="sync" onClick={read.retry} disabled={read.stale}>
+              {t('approvals.refresh')}
+            </Button>
+          ) : undefined
+        }
+      />
+      <HelpDisclosure title={t('approvals.help_title')}>
+        <p>{t('approvals.intro')}</p>
+      </HelpDisclosure>
       {types.length > 0 ? (
-        <p className="home-muted">
-          {t('approvals.filtered', { types: types.map(typeLabel).join(', ') })} ·{' '}
-          <Link to={ROUTES.approvals}>{t('approvals.show_all')}</Link>
-        </p>
+        <Banner
+          tone="info"
+          action={
+            <LinkButton to={ROUTES.approvals} variant="tonal" size="sm">
+              {t('approvals.show_all')}
+            </LinkButton>
+          }
+        >
+          {t('approvals.filtered', { types: types.map(typeLabel).join(', ') })}
+        </Banner>
       ) : null}
       {last ? <CommandResult commandId={last} messages="approvals.result" /> : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t(saveError)}
-        </p>
-      ) : null}
-      {requests === undefined && !read.failed ? (
-        <p className="home-muted">{t('sales.loading')}</p>
-      ) : null}
+      {saveError ? <Banner tone="bad">{t(saveError)}</Banner> : null}
+      {requests === undefined && !read.failed ? <SkeletonRows /> : null}
       {read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{read.denied ? t('approvals.denied') : t('approvals.unavailable')}</p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('ledger.retry')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            read.denied ? undefined : (
+              <Button variant="tonal" size="sm" onClick={read.retry}>
+                {t('ledger.retry')}
+              </Button>
+            )
+          }
+        >
+          {read.denied ? t('approvals.denied') : t('approvals.unavailable')}
+        </Banner>
       ) : null}
       {requests && read.stale && !read.failed ? (
-        <p className="home-muted" role="status">
+        <p className="adm-note" role="status">
           {t('approvals.refreshing')}
         </p>
       ) : null}
-      {requests && !read.failed ? (
-        <button type="button" className="secondary" onClick={read.retry} disabled={read.stale}>
-          {t('approvals.refresh')}
-        </button>
-      ) : null}
-      {read.data?.more ? <p className="home-muted">{t('approvals.truncated')}</p> : null}
+      {read.data?.more ? <p className="adm-note">{t('approvals.truncated')}</p> : null}
       {requests && requests.length === 0 ? (
-        <p className="home-muted">
-          {types.length > 0 ? t('approvals.none_filtered') : t('approvals.none')}
-        </p>
+        <EmptyState
+          icon="check-circle"
+          title={types.length > 0 ? t('approvals.none_filtered') : t('approvals.none')}
+        />
       ) : null}
       {requests && requests.length > 0 ? (
-        <ul className="line-list">
+        <ul className="adm-cards">
           {requests.map((view) => {
             const spec = specOf(view);
             const actions = actionsFor(view);
             const site = siteName(view.siteId);
+            const photos = (view.attachments ?? []).filter(
+              (attachment) => attachment.uploadStatus === 'AVAILABLE',
+            );
             return (
               <li
                 key={view.id}
@@ -299,48 +325,50 @@ export function ApprovalsScreen() {
                   summary: view.subjectSummary,
                 })}
               >
-                <div className="line-head">
-                  <strong>{typeLabel(view.operationType)}</strong>
+                <div className="adm-card-head">
+                  <span className="adm-card-title">
+                    <strong>{typeLabel(view.operationType)}</strong>
+                    <span className="adm-sub">
+                      {[
+                        t('approvals.requested', {
+                          name: view.requestedByName ?? t('approvals.unknown_user'),
+                          date: formatDateTime(view.requestedAt),
+                        }),
+                        site ? t('approvals.site', { name: site }) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </span>
                   {view.amountXaf !== null ? (
-                    <span>{formatKpiValue(view.amountXaf, 'XAF')}</span>
+                    <span className="adm-card-value">{formatKpiValue(view.amountXaf, 'XAF')}</span>
                   ) : null}
                 </div>
-                <p>{view.subjectSummary}</p>
-                <p className="home-muted">
-                  {[
-                    t('approvals.requested', {
-                      name: view.requestedByName ?? t('approvals.unknown_user'),
-                      date: formatDateTime(view.requestedAt),
-                    }),
-                    site ? t('approvals.site', { name: site }) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
+                <p className="adm-summary">{view.subjectSummary}</p>
                 {view.amountMasked ? (
-                  <p className="home-muted">{t('approvals.amount_masked')}</p>
+                  <p className="adm-note">{t('approvals.amount_masked')}</p>
                 ) : null}
                 {view.attachmentsPending ? (
-                  <p className="text-warn">{t('approvals.attachment_pending')}</p>
+                  <p className="adm-note is-warn">{t('approvals.attachment_pending')}</p>
                 ) : null}
                 {/* Photos reçues du document décidé : vues avant de décider (AV-286). */}
-                {(view.attachments ?? [])
-                  .filter((attachment) => attachment.uploadStatus === 'AVAILABLE')
-                  .map((attachment) => (
-                    <ServerPhoto
-                      key={attachment.id}
-                      attachmentId={attachment.id}
-                      alt={t('photo.approval_alt', { summary: view.subjectSummary })}
-                    />
-                  ))}
+                {photos.length > 0 ? (
+                  <div className="adm-photos">
+                    {photos.map((attachment) => (
+                      <ServerPhoto
+                        key={attachment.id}
+                        attachmentId={attachment.id}
+                        alt={t('photo.approval_alt', { summary: view.subjectSummary })}
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 {view.selfRequest ? (
-                  <p className="home-muted">{t('approvals.self_request')}</p>
+                  <p className="adm-note">{t('approvals.self_request')}</p>
                 ) : null}
-                {spec.recordOnly ? (
-                  <p className="home-muted">{t('approvals.record_only')}</p>
-                ) : null}
+                {spec.recordOnly ? <p className="adm-note">{t('approvals.record_only')}</p> : null}
                 {spec.approveReasonRequired ? (
-                  <p className="home-muted">
+                  <p className="adm-note">
                     {spec.rejectable
                       ? t(`approvals.reason_note.${view.operationType}`, {
                           defaultValue: t('approvals.reason_note.default'),
@@ -357,12 +385,11 @@ export function ApprovalsScreen() {
                     onConfirm={(input) => void send(view, open.action, input)}
                   />
                 ) : actions.length > 0 ? (
-                  <div className="result-actions">
+                  <div className="adm-actions">
                     {actions.map((action) => (
-                      <button
+                      <Button
                         key={action}
-                        type="button"
-                        className="secondary"
+                        variant={action === 'APPROVE' ? 'tonal' : 'outline'}
                         aria-label={t(`approvals.action_label.${action}`, {
                           summary: view.subjectSummary,
                         })}
@@ -370,7 +397,7 @@ export function ApprovalsScreen() {
                         onClick={() => setOpen({ id: view.id, action })}
                       >
                         {t(`approvals.action.${action}`)}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 ) : null}
