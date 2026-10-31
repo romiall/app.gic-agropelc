@@ -10,5 +10,9 @@ docs/**/*.md
 apps/server/src/platform/kysely/schema.generated.ts
 # Fichiers du porteur versionnés tels quels (CLAUDE.md, « Reprise ») : ne pas les reformater.
 pieces-papier/
+# Module des pièces papier (ADR-048) : charte.css est la copie exacte de pieces-papier/charte/pieces.css
+# (vérifiée par un test) et valeurs.css la complète ; ni l'un ni l'autre n'est reformaté.
+apps/pwa/src/features/pieces/charte.css
+apps/pwa/src/features/pieces/valeurs.css
 scratch/
 .claude/
