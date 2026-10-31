@@ -30,7 +30,7 @@ Les lots L4 à L9 de la refonte graphique ([`24-refonte-graphique.md`](../10-dev
 
 - Quatre essais lisent désormais le nom du lien de retour sans flèche ; un essai suit la table des onglets de la ferme ; deux essais sont ajoutés (« Appeler », ligne « À échoir »). Aucun comportement n'est modifié.
 - Le dossier `features/pieces/` n'a pas été touché (ADR-048).
-- Rien n'est déployé : la refonte reste sur la branche du chantier tant que le porteur ne la fusionne pas.
+- La refonte a été fusionnée dans `main`, poussée et mise en ligne le 31/10/2026, à la demande du porteur (livraison `20261031-102020`).
 
 ## Risques
 
