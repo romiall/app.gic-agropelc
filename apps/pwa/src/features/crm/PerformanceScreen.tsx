@@ -5,9 +5,17 @@
  * échanges et prospects créés ; le chiffre d'affaires, les quantités vendues et les nouveaux clients
  * se lisent en ligne.
  */
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import {
+  Banner,
+  Button,
+  PageHeader,
+  Section,
+  Segmented,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
@@ -27,6 +35,7 @@ import {
   type ServerPerformance,
   type TargetView,
 } from './performance.js';
+import './crm.css';
 
 const PERIODS: readonly PeriodKind[] = ['MONTH', 'TODAY'];
 const EFFORT_KEYS: readonly (keyof Effort)[] = [
@@ -88,9 +97,9 @@ export function PerformanceScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.performance')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale crm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.performance')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -110,97 +119,118 @@ export function PerformanceScreen() {
     return formatQuantity(value);
   };
 
-  return (
-    <section className="sale">
-      <h1>{t('nav.screens.performance')}</h1>
-      <fieldset className="choice-group">
-        <legend>{t('performance.period_label')}</legend>
-        {PERIODS.map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
-              name="performance-period"
-              value={value}
-              checked={kind === value}
-              onChange={() => setKind(value)}
-            />
-            {t(`performance.period.${value}`)}
-          </label>
-        ))}
-      </fieldset>
-      <p className="home-muted" role="status">
-        {server
-          ? t('performance.source_server', {
-              from: formatBusinessDay(period.from),
-              to: formatBusinessDay(period.to),
-            })
-          : serverState.status === 'LOADING'
-            ? t('performance.loading')
-            : serverState.status === 'ERROR'
-              ? t('performance.source_error')
-              : t('performance.source_device')}
-      </p>
-      {serverState.status === 'ERROR' ? (
-        <button type="button" className="secondary" onClick={retry}>
-          {t('performance.retry')}
-        </button>
-      ) : null}
+  const sourceText = server
+    ? t('performance.source_server', {
+        from: formatBusinessDay(period.from),
+        to: formatBusinessDay(period.to),
+      })
+    : serverState.status === 'LOADING'
+      ? t('performance.loading')
+      : serverState.status === 'ERROR'
+        ? t('performance.source_error')
+        : t('performance.source_device');
 
-      <section className="sale-block" aria-labelledby="performance-effort-title">
-        <h2 id="performance-effort-title">{t('performance.effort_title')}</h2>
-        <dl className="receipt-totals">
+  return (
+    <section className="sale crm-screen">
+      <PageHeader title={t('nav.screens.performance')} />
+      <div className="crm-period">
+        <span className="field-label">{t('performance.period_label')}</span>
+        <Segmented
+          label={t('performance.period_label')}
+          value={kind}
+          onChange={setKind}
+          options={PERIODS.map((value) => ({ value, label: t(`performance.period.${value}`) }))}
+        />
+      </div>
+      {server || serverState.status === 'LOADING' ? (
+        <p className="muted" role="status">
+          {sourceText}
+        </p>
+      ) : serverState.status === 'ERROR' ? (
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <Button variant="outline" size="sm" onClick={retry}>
+              {t('performance.retry')}
+            </Button>
+          }
+        >
+          {sourceText}
+        </Banner>
+      ) : (
+        <Banner tone="info" role="status">
+          {sourceText}
+        </Banner>
+      )}
+
+      <Section title={t('performance.effort_title')}>
+        <dl className="crm-tiles">
           {EFFORT_KEYS.map((key) => {
             const value = effort[key];
             return (
-              <Fragment key={key}>
-                <dt>{t(`performance.effort.${key}`)}</dt>
-                <dd>{value === null ? t('performance.online_only') : formatQuantity(value)}</dd>
-              </Fragment>
+              <div key={key} className={value === null ? 'tile is-text' : 'tile'}>
+                <dt className="tile-head">{t(`performance.effort.${key}`)}</dt>
+                <dd className="tile-value">
+                  {value === null ? t('performance.online_only') : formatQuantity(value)}
+                </dd>
+              </div>
             );
           })}
         </dl>
-      </section>
+      </Section>
 
-      <section className="sale-block" aria-labelledby="performance-targets-title">
-        <h2 id="performance-targets-title">{t('performance.targets_title')}</h2>
+      <Section title={t('performance.targets_title')}>
         {targets.length === 0 ? (
-          <p className="home-muted">{t('performance.no_target')}</p>
+          <p className="muted">{t('performance.no_target')}</p>
         ) : (
-          <ul className="receipt-lines">
+          <ul className="crm-cards">
             {targets.map((target) => {
               const rate = attainment(target);
               const product = target.productId ? products.get(target.productId) : undefined;
               return (
-                <li key={target.id}>
-                  <span>
-                    <strong>
+                <li key={target.id} className="crm-target">
+                  <div className="crm-target-head">
+                    <span className="crm-target-title">
                       {t(`performance.metric.${target.metric}`, { defaultValue: target.metric })}
                       {product ? ` · ${product.name}` : ''}
-                    </strong>
-                    <small>
-                      {t('performance.target_period', {
-                        from: formatBusinessDay(target.periodStart),
-                        to: formatBusinessDay(target.periodEnd),
-                      })}
-                    </small>
+                    </span>
+                    {rate !== null ? (
+                      <span className="crm-target-rate">{t('performance.rate', { rate })}</span>
+                    ) : null}
+                  </div>
+                  <span className="crm-target-period">
+                    {t('performance.target_period', {
+                      from: formatBusinessDay(target.periodStart),
+                      to: formatBusinessDay(target.periodEnd),
+                    })}
                   </span>
-                  <span>
-                    {target.realized === null
-                      ? t('performance.realized_online', {
-                          target: valueOf(target.metric, target.targetValue, target.productId),
-                        })
-                      : t('performance.realized', {
-                          realized: valueOf(target.metric, target.realized, target.productId),
-                          target: valueOf(target.metric, target.targetValue, target.productId),
-                        })}
-                    {rate !== null ? <small>{t('performance.rate', { rate })}</small> : null}
-                  </span>
+                  <div className="crm-target-values">
+                    <span>
+                      {target.realized === null
+                        ? t('performance.realized_online', {
+                            target: valueOf(target.metric, target.targetValue, target.productId),
+                          })
+                        : t('performance.realized', {
+                            realized: valueOf(target.metric, target.realized, target.productId),
+                            target: valueOf(target.metric, target.targetValue, target.productId),
+                          })}
+                    </span>
+                  </div>
+                  {rate !== null ? (
+                    <div
+                      className={rate >= 100 ? 'crm-meter is-done' : 'crm-meter'}
+                      aria-hidden="true"
+                    >
+                      <span style={{ width: `${Math.min(rate, 100)}%` }} />
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
         )}
-      </section>
+      </Section>
     </section>
   );
 }

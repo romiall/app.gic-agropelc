@@ -4,10 +4,23 @@
  * jours, commandes ouvertes, visites et interactions des 90 derniers jours. Raccourcis vers la vente,
  * la commande et l'encaissement, le client déjà choisi. L'historique complet (plus ancien) se lit en
  * ligne par la Finance et les responsables ; il n'est pas repris ici.
+ * Disposition : en-tête et actions, puis, sur ordinateur, coordonnées et chiffres à gauche, listes à
+ * droite ; sur téléphone, tout s'empile dans le même ordre.
  */
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import {
+  Badge,
+  Banner,
+  Card,
+  List,
+  ListRow,
+  LinkButton,
+  PageHeader,
+  Section,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -15,10 +28,12 @@ import { formatBusinessDay, formatMoment } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { localOutstanding } from '../sales/credit.js';
 import { formatMoney } from '../sales/format.js';
-import { openOrders } from '../sales/open-orders.js';
-import { recentSales, saleStatusTone } from '../sales/recent-sales.js';
+import { openOrders, orderStatusTone } from '../sales/open-orders.js';
+import { recentSales, saleListBadge } from '../sales/recent-sales.js';
 import { useSalesReferences } from '../sales/references.js';
 import { activityOf } from './portfolio.js';
+import { stageTone } from './stage.js';
+import './crm.css';
 
 export function CustomerScreen() {
   const { t } = useTranslation();
@@ -30,8 +45,8 @@ export function CustomerScreen() {
 
   if (!refs) {
     return (
-      <section className="sale" aria-busy="true">
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale crm-screen" aria-busy="true">
+        <SkeletonRows rows={4} />
       </section>
     );
   }
@@ -44,9 +59,9 @@ export function CustomerScreen() {
   const customer = refs.customers.find((candidate) => candidate.id === customerId);
   if (!customer) {
     return (
-      <section className="sale">
+      <section className="sale crm-screen">
         {back}
-        <p className="alert alert-error">{t('customer.not_found')}</p>
+        <Banner tone="bad">{t('customer.not_found')}</Banner>
       </section>
     );
   }
@@ -67,189 +82,217 @@ export function CustomerScreen() {
   const activity = activityOf(refs, customer.id);
   const reasons = new Map(refs.reasonCodes.map((reason) => [reason.id, reason.label]));
   const zone = refs.zones.get(customer.zone_id);
+  const creditText = customer.credit_allowed
+    ? customer.credit_limit_xaf === null
+      ? t('customer.credit_no_limit')
+      : t('customer.credit_limit', { amount: formatMoney(customer.credit_limit_xaf) })
+    : t('customer.credit_none');
+  const hasDetails = Boolean(
+    customer.contact_name || customer.phone_primary || customer.address_text || zone,
+  );
 
   return (
-    <section className="sale">
+    <section className="sale crm-screen">
       {back}
-      <header className="receipt-head">
-        <h1>{customer.display_name}</h1>
-        <span className="badge badge-info">
-          {t(`portfolio.stage.${customer.stage}`, { defaultValue: customer.stage })}
-        </span>
-      </header>
-      {customer.pending_command_id ? <p className="home-banner">{t('customer.pending')}</p> : null}
-      <dl className="receipt-totals">
-        {customer.contact_name ? (
-          <>
-            <dt>{t('customer.contact')}</dt>
-            <dd>{customer.contact_name}</dd>
-          </>
-        ) : null}
-        {customer.phone_primary ? (
-          <>
-            <dt>{t('customer.phone')}</dt>
-            <dd>
-              <a href={`tel:${customer.phone_primary.replace(/\s/g, '')}`}>
-                {customer.phone_primary}
-              </a>
-            </dd>
-          </>
-        ) : null}
-        {customer.address_text ? (
-          <>
-            <dt>{t('customer.address')}</dt>
-            <dd>{customer.address_text}</dd>
-          </>
-        ) : null}
-        {zone ? (
-          <>
-            <dt>{t('customer.zone')}</dt>
-            <dd>{zone.name}</dd>
-          </>
-        ) : null}
-        <dt>{t('customer.outstanding')}</dt>
-        <dd>{formatMoney(outstanding)}</dd>
-        <dt>{t('customer.credit')}</dt>
-        <dd>
-          {customer.credit_allowed
-            ? customer.credit_limit_xaf === null
-              ? t('customer.credit_no_limit')
-              : t('customer.credit_limit', { amount: formatMoney(customer.credit_limit_xaf) })
-            : t('customer.credit_none')}
-        </dd>
-      </dl>
+      <PageHeader
+        title={customer.display_name}
+        subtitle={
+          <Badge tone={stageTone(customer.stage)}>
+            {t(`portfolio.stage.${customer.stage}`, { defaultValue: customer.stage })}
+          </Badge>
+        }
+      />
+      {customer.pending_command_id ? (
+        <Banner tone="info" role="status">
+          {t('customer.pending')}
+        </Banner>
+      ) : null}
 
-      <div className="result-actions">
+      <div className="chip-row">
         {holdsAnyRole(roles, ROLE_SETS.saleRecord) ? (
-          <Link
-            to={ROUTES.newSaleFor(customer.id)}
-            className="action action-primary action-compact"
-          >
-            <span className="action-label">{t('customer.sell')}</span>
-          </Link>
+          <LinkButton to={ROUTES.newSaleFor(customer.id)} icon="cart">
+            {t('customer.sell')}
+          </LinkButton>
         ) : null}
         {holdsAnyRole(roles, ROLE_SETS.visitRecord) ? (
-          <Link to={ROUTES.newVisitFor(customer.id)} className="action action-compact">
-            <span className="action-label">{t('customer.visit_action')}</span>
-          </Link>
+          <LinkButton to={ROUTES.newVisitFor(customer.id)} variant="tonal" icon="store">
+            {t('customer.visit_action')}
+          </LinkButton>
         ) : null}
         {holdsAnyRole(roles, ROLE_SETS.interactionRecord) ? (
-          <Link to={ROUTES.interaction(customer.id)} className="action action-compact">
-            <span className="action-label">{t('customer.interaction_action')}</span>
-          </Link>
+          <LinkButton to={ROUTES.interaction(customer.id)} variant="tonal" icon="phone">
+            {t('customer.interaction_action')}
+          </LinkButton>
         ) : null}
         {holdsAnyRole(roles, ROLE_SETS.orderCreate) ? (
-          <Link to={ROUTES.newOrderFor(customer.id)} className="action action-compact">
-            <span className="action-label">{t('customer.order')}</span>
-          </Link>
+          <LinkButton to={ROUTES.newOrderFor(customer.id)} variant="tonal" icon="clipboard">
+            {t('customer.order')}
+          </LinkButton>
         ) : null}
         {outstanding > 0 && holdsAnyRole(roles, ROLE_SETS.paymentRecord) ? (
-          <Link to={ROUTES.collectFor(customer.id)} className="action action-compact">
-            <span className="action-label">{t('customer.collect')}</span>
-          </Link>
+          <LinkButton to={ROUTES.collectFor(customer.id)} variant="tonal" icon="cash">
+            {t('customer.collect')}
+          </LinkButton>
         ) : null}
       </div>
 
-      <section className="sale-block" aria-labelledby="customer-orders-title">
-        <h2 id="customer-orders-title">{t('customer.orders_title')}</h2>
-        {orders.length === 0 ? (
-          <p className="home-muted">{t('customer.none')}</p>
-        ) : (
-          <ul className="doc-list">
-            {orders.map((order) => (
-              <li key={order.id}>
-                <Link to={ROUTES.order(order.id)} className="doc-row">
-                  <span className="doc-main">
-                    <strong>{order.docNumber ?? t('sales.pending_number')}</strong>
-                    <small>{formatMoment(order.occurredAt, today)}</small>
-                  </span>
-                  <span className="doc-side">
-                    <strong>{formatMoney(order.totalEstimatedXaf)}</strong>
-                    <span className="badge badge-info">{t(`orders.status.${order.status}`)}</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="crm-split">
+        <div className="crm-side">
+          <dl className="crm-tiles">
+            <div className={outstanding > 0 ? 'tile is-warn' : 'tile'}>
+              <dt className="tile-head">{t('customer.outstanding')}</dt>
+              <dd className="tile-value">{formatMoney(outstanding)}</dd>
+            </div>
+            <div className="tile is-text">
+              <dt className="tile-head">{t('customer.credit')}</dt>
+              <dd className="tile-value">{creditText}</dd>
+            </div>
+          </dl>
+          {hasDetails ? (
+            <Card padded>
+              <dl className="crm-details">
+                {customer.contact_name ? (
+                  <>
+                    <dt>{t('customer.contact')}</dt>
+                    <dd>{customer.contact_name}</dd>
+                  </>
+                ) : null}
+                {customer.phone_primary ? (
+                  <>
+                    <dt>{t('customer.phone')}</dt>
+                    <dd>
+                      <a href={`tel:${customer.phone_primary.replace(/\s/g, '')}`}>
+                        {customer.phone_primary}
+                      </a>
+                    </dd>
+                  </>
+                ) : null}
+                {customer.address_text ? (
+                  <>
+                    <dt>{t('customer.address')}</dt>
+                    <dd>{customer.address_text}</dd>
+                  </>
+                ) : null}
+                {zone ? (
+                  <>
+                    <dt>{t('customer.zone')}</dt>
+                    <dd>{zone.name}</dd>
+                  </>
+                ) : null}
+              </dl>
+            </Card>
+          ) : null}
+        </div>
 
-      <section className="sale-block" aria-labelledby="customer-sales-title">
-        <h2 id="customer-sales-title">{t('customer.sales_title')}</h2>
-        {sales.length === 0 ? (
-          <p className="home-muted">{t('customer.none')}</p>
-        ) : (
-          <ul className="doc-list">
-            {sales.map((sale) => (
-              <li key={sale.id}>
-                <Link to={ROUTES.sale(sale.id)} className="doc-row">
-                  <span className="doc-main">
-                    <strong>{sale.docNumber ?? t('sales.pending_number')}</strong>
-                    <small>{formatMoment(sale.occurredAt, today)}</small>
-                  </span>
-                  <span className="doc-side">
-                    <strong>{formatMoney(sale.netTotalXaf)}</strong>
-                    <span className={`badge badge-${saleStatusTone(sale.status)}`}>
-                      {sale.status === 'CONFIRMED' && sale.paymentStatus
-                        ? t(`sales.payment_status.${sale.paymentStatus}`)
-                        : t(`sales.status.${sale.status}`)}
-                    </span>
-                    {sale.balanceDueXaf > 0 &&
-                    (sale.status === 'CONFIRMED' || sale.status === 'PENDING') ? (
-                      <small>
-                        {t('customer.balance_due', { amount: formatMoney(sale.balanceDueXaf) })}
-                      </small>
-                    ) : null}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        <div className="crm-main">
+          <Section title={t('customer.orders_title')}>
+            {orders.length === 0 ? (
+              <p className="muted">{t('customer.none')}</p>
+            ) : (
+              <List>
+                {orders.map((order) => (
+                  <ListRow
+                    key={order.id}
+                    to={ROUTES.order(order.id)}
+                    title={order.docNumber ?? t('sales.pending_number')}
+                    subtitle={formatMoment(order.occurredAt, today)}
+                    value={formatMoney(order.totalEstimatedXaf)}
+                    badge={
+                      <Badge tone={orderStatusTone(order.status)}>
+                        {t(`orders.status.${order.status}`)}
+                      </Badge>
+                    }
+                  />
+                ))}
+              </List>
+            )}
+          </Section>
 
-      <section className="sale-block" aria-labelledby="customer-activity-title">
-        <h2 id="customer-activity-title">{t('customer.activity_title')}</h2>
-        {activity.length === 0 ? (
-          <p className="home-muted">{t('customer.none')}</p>
-        ) : (
-          <ul className="receipt-lines">
-            {activity.map((item) => {
-              const entry = item.kind === 'VISIT' ? item.visit : item.interaction;
-              const label =
-                item.kind === 'VISIT'
-                  ? t('customer.visit', {
-                      outcome: item.visit.outcome_reason_code_id
-                        ? (reasons.get(item.visit.outcome_reason_code_id) ?? '')
-                        : '',
-                    })
-                  : t(`customer.channel.${item.interaction.channel}`);
-              const note = item.kind === 'VISIT' ? item.visit.notes : item.interaction.summary;
-              const pending = entry.pending_command_id !== undefined;
-              return (
-                <li key={entry.id}>
-                  <span>
-                    <strong>{label}</strong>
-                    {note ? <small>{note}</small> : null}
-                    {entry.next_action_at ? (
-                      <small>
-                        {t('portfolio.next_action', {
-                          date: formatBusinessDay(entry.next_action_at),
-                          note: entry.next_action_note ?? '',
-                        })}
-                      </small>
-                    ) : null}
-                  </span>
-                  <span>
-                    {formatMoment(item.at, today)}
-                    {pending ? <small>{t('portfolio.pending')}</small> : null}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+          <Section title={t('customer.sales_title')}>
+            {sales.length === 0 ? (
+              <p className="muted">{t('customer.none')}</p>
+            ) : (
+              <List>
+                {sales.map((sale) => {
+                  const badge = saleListBadge(sale);
+                  return (
+                    <ListRow
+                      key={sale.id}
+                      to={ROUTES.sale(sale.id)}
+                      title={sale.docNumber ?? t('sales.pending_number')}
+                      subtitle={formatMoment(sale.occurredAt, today)}
+                      value={formatMoney(sale.netTotalXaf)}
+                      badge={
+                        <>
+                          <Badge tone={badge.tone}>{t(badge.labelKey)}</Badge>
+                          {sale.balanceDueXaf > 0 &&
+                          (sale.status === 'CONFIRMED' || sale.status === 'PENDING') ? (
+                            <small className="muted">
+                              {t('customer.balance_due', {
+                                amount: formatMoney(sale.balanceDueXaf),
+                              })}
+                            </small>
+                          ) : null}
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </List>
+            )}
+          </Section>
+
+          <Section title={t('customer.activity_title')}>
+            {activity.length === 0 ? (
+              <p className="muted">{t('customer.none')}</p>
+            ) : (
+              <List>
+                {activity.map((item) => {
+                  const entry = item.kind === 'VISIT' ? item.visit : item.interaction;
+                  const label =
+                    item.kind === 'VISIT'
+                      ? t('customer.visit', {
+                          outcome: item.visit.outcome_reason_code_id
+                            ? (reasons.get(item.visit.outcome_reason_code_id) ?? '')
+                            : '',
+                        })
+                      : t(`customer.channel.${item.interaction.channel}`);
+                  const note = item.kind === 'VISIT' ? item.visit.notes : item.interaction.summary;
+                  const pending = entry.pending_command_id !== undefined;
+                  return (
+                    <ListRow
+                      key={entry.id}
+                      icon={item.kind === 'VISIT' ? 'store' : 'phone'}
+                      title={label}
+                      subtitle={
+                        note || entry.next_action_at ? (
+                          <span className="crm-lines">
+                            {note ? <span>{note}</span> : null}
+                            {entry.next_action_at ? (
+                              <span>
+                                {t('portfolio.next_action', {
+                                  date: formatBusinessDay(entry.next_action_at),
+                                  note: entry.next_action_note ?? '',
+                                })}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : undefined
+                      }
+                      badge={
+                        <span className="crm-when">
+                          <span>{formatMoment(item.at, today)}</span>
+                          {pending ? <Badge tone="warn">{t('portfolio.pending')}</Badge> : null}
+                        </span>
+                      }
+                    />
+                  );
+                })}
+              </List>
+            )}
+          </Section>
+        </div>
+      </div>
     </section>
   );
 }

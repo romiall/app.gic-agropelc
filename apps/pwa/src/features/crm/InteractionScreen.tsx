@@ -4,10 +4,21 @@
  * résumé et prochaine action. Commande `crm.interaction.record` (agrégat `INTERACTION`, identifiant
  * choisi par l'appareil), utilisable hors ligne ; non modifiable ensuite (BR-CRM-016).
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Field,
+  Input,
+  PageHeader,
+  Segmented,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -25,6 +36,9 @@ import {
   type InteractionDraft,
 } from './interaction.js';
 import { MAX_NEXT_ACTION_NOTE } from './visit.js';
+import './crm.css';
+
+const DIRECTIONS = ['SORTANT', 'ENTRANT'] as const;
 
 export function InteractionScreen() {
   const { t } = useTranslation();
@@ -38,15 +52,12 @@ export function InteractionScreen() {
   const [submitted, setSubmitted] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const summaryId = useId();
-  const nextAtId = useId();
-  const nextNoteId = useId();
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('interaction.title')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale crm-screen" aria-busy="true">
+        <PageHeader title={t('interaction.title')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -63,28 +74,28 @@ export function InteractionScreen() {
   );
   if (!customer || customer.stage === 'MERGED') {
     return (
-      <section className="sale">
+      <section className="sale crm-screen">
         {back}
-        <p className="alert alert-error">{t('customer.not_found')}</p>
+        <Banner tone="bad">{t('customer.not_found')}</Banner>
       </section>
     );
   }
 
   if (submitted) {
     return (
-      <section className="sale">
+      <section className="sale crm-screen">
         {back}
-        <h1>{t('interaction.title')}</h1>
+        <PageHeader title={t('interaction.title')} subtitle={customer.display_name} />
         <CommandResult commandId={submitted} messages="interaction.result">
-          <button
-            type="button"
+          <Button
+            variant="outline"
             onClick={() => {
               setDraft(EMPTY_INTERACTION);
               setSubmitted(undefined);
             }}
           >
             {t('interaction.another')}
-          </button>
+          </Button>
         </CommandResult>
       </section>
     );
@@ -118,99 +129,95 @@ export function InteractionScreen() {
   };
 
   return (
-    <section className="sale">
+    <section className="sale crm-screen">
       {back}
-      <h1>{t('interaction.title')}</h1>
-      <p className="home-muted">{customer.display_name}</p>
+      <PageHeader title={t('interaction.title')} subtitle={customer.display_name} />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('interaction.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('interaction.channel_label')}</legend>
-        {INTERACTION_CHANNELS.map((channel) => (
-          <label key={channel} className="choice">
-            <input
-              type="radio"
-              name="interaction-channel"
-              value={channel}
-              checked={draft.channel === channel}
-              onChange={() => update({ channel })}
-            />
-            {t(`customer.channel.${channel}`)}
-          </label>
-        ))}
-      </fieldset>
-      <fieldset className="choice-group">
-        <legend>{t('interaction.direction_label')}</legend>
-        {(['SORTANT', 'ENTRANT'] as const).map((direction) => (
-          <label key={direction} className="choice">
-            <input
-              type="radio"
-              name="interaction-direction"
-              value={direction}
-              checked={draft.direction === direction}
-              onChange={() => update({ direction })}
-            />
-            {t(`interaction.direction.${direction}`)}
-          </label>
-        ))}
-      </fieldset>
       <div className="field">
-        <label htmlFor={summaryId}>{t('interaction.summary_label')}</label>
-        <textarea
-          id={summaryId}
-          className="text-input"
-          rows={3}
-          maxLength={MAX_INTERACTION_SUMMARY}
-          value={draft.summary}
-          onChange={(event) => update({ summary: event.target.value })}
+        <span className="field-label">{t('interaction.channel_label')}</span>
+        <Segmented
+          label={t('interaction.channel_label')}
+          value={draft.channel}
+          onChange={(channel) => update({ channel })}
+          options={INTERACTION_CHANNELS.map((channel) => ({
+            value: channel,
+            label: t(`customer.channel.${channel}`),
+          }))}
         />
       </div>
       <div className="field">
-        <label htmlFor={nextAtId}>{t('visit.next_action_at_label')}</label>
-        <input
-          id={nextAtId}
-          type="date"
-          className="text-input"
-          min={today}
-          value={draft.nextActionAt}
-          onChange={(event) => update({ nextActionAt: event.target.value })}
+        <span className="field-label">{t('interaction.direction_label')}</span>
+        <Segmented
+          label={t('interaction.direction_label')}
+          value={draft.direction}
+          onChange={(direction) => update({ direction })}
+          options={DIRECTIONS.map((direction) => ({
+            value: direction,
+            label: t(`interaction.direction.${direction}`),
+          }))}
         />
       </div>
-      <div className="field">
-        <label htmlFor={nextNoteId}>{t('visit.next_action_note_label')}</label>
-        <input
-          id={nextNoteId}
-          className="text-input"
-          maxLength={MAX_NEXT_ACTION_NOTE}
-          value={draft.nextActionNote}
-          onChange={(event) => update({ nextActionNote: event.target.value })}
-        />
+      <Field label={t('interaction.summary_label')}>
+        {(control) => (
+          <Textarea
+            {...control}
+            rows={3}
+            maxLength={MAX_INTERACTION_SUMMARY}
+            value={draft.summary}
+            onChange={(event) => update({ summary: event.target.value })}
+          />
+        )}
+      </Field>
+      <div className="crm-pair">
+        <Field label={t('visit.next_action_at_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="date"
+              min={today}
+              value={draft.nextActionAt}
+              onChange={(event) => update({ nextActionAt: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={t('visit.next_action_note_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              maxLength={MAX_NEXT_ACTION_NOTE}
+              value={draft.nextActionNote}
+              onChange={(event) => update({ nextActionNote: event.target.value })}
+            />
+          )}
+        </Field>
       </div>
       {issues.includes('CHANNEL_REQUIRED') && draft.summary ? (
-        <p className="error-message">{t('interaction.issue.CHANNEL_REQUIRED')}</p>
+        <p className="field-error">{t('interaction.issue.CHANNEL_REQUIRED')}</p>
       ) : null}
       {issues.includes('NEXT_ACTION_PAST') ? (
-        <p className="error-message">{t('visit.issue.NEXT_ACTION_PAST')}</p>
+        <p className="field-error">{t('visit.issue.NEXT_ACTION_PAST')}</p>
       ) : null}
       {!holdsAnyRole(roles, ROLE_SETS.interactionRecord) ? (
-        <p className="text-warn">{t('interaction.role_hint')}</p>
+        <Banner tone="warn" role="status">
+          {t('interaction.role_hint')}
+        </Banner>
       ) : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('interaction.submit')}
-      </button>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      <ActionBar>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          loading={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('sales.submitting') : t('interaction.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }

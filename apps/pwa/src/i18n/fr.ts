@@ -614,6 +614,13 @@ export const fr = {
   },
   portfolio: {
     stage_label: 'Stade',
+    stage_all_short: 'Tous',
+    col: {
+      customer: 'Client',
+      stage: 'Stade',
+      next_action: 'Prochaine action',
+      outstanding: 'Encours',
+    },
     stage_filter: {
       ALL: 'Tous les comptes',
       PROSPECT: 'Prospects',
@@ -1759,6 +1766,14 @@ export const fr = {
       'Écran en ligne seulement : le catalogue se lit et se gère sur le serveur. Reconnectez-vous pour continuer.',
     unavailable: 'Catalogue indisponible : réessayez quand le serveur répond.',
     refreshing: 'Relecture du catalogue après la dernière opération…',
+    col: {
+      product: 'Produit',
+      family: 'Famille',
+      unit: 'Unité',
+      status: 'Statut',
+      reason: 'Motif',
+      comment: 'Commentaire',
+    },
     section_label: 'Rubrique',
     section: {
       PRODUCTS: 'Produits',
@@ -1895,6 +1910,12 @@ export const fr = {
   price_rules: {
     online_only: 'Écran en ligne seulement : les règles se lisent et se gèrent sur le serveur.',
     loading: 'Lecture des règles…',
+    col: {
+      price: 'Prix',
+      scope: 'Portée',
+      period: 'Période',
+      rule: 'Règle',
+    },
     unavailable: 'Règles indisponibles : réessayez quand le serveur répond.',
     new_rule: 'Nouvelle règle',
     active_title: 'En vigueur ou à venir',

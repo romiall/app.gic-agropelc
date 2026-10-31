@@ -1,0 +1,49 @@
+/* Prise de service (ADR-049, lot L5) : état de la position, dérogation. Feuille de domaine ; aucune
+   couleur en dur, jetons seulement. */
+
+/* Rythme vertical : ni `Section` ni `Banner` n'ont de marge, l'écran leur donne la leur. */
+.fw-screen > .section {
+  margin-top: var(--space-5);
+}
+
+.fw-screen > .banner {
+  margin-bottom: var(--space-3);
+}
+
+/* Position : l'état relevé puis le bouton, dans un cadre lisible sur deux lignes. */
+.fw-locate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.fw-locate > p {
+  flex: 1 1 12rem;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.fw-locate > p.is-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* Demande de dérogation : explication, saisie, puis bouton, alignés à gauche. */
+.fw-override {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.fw-override > .field {
+  align-self: stretch;
+  margin-bottom: 0;
+}

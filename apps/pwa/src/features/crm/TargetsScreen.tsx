@@ -13,6 +13,21 @@
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -41,6 +56,7 @@ import {
   type TargetType,
   type TargetView,
 } from './targets.js';
+import './crm.css';
 
 /** Objectifs de plusieurs lectures (chemins séparés par `|`), réunis sans doublon. */
 async function readTargets(key: string): Promise<ReadResult<readonly TargetView[]>> {
@@ -71,7 +87,6 @@ function TargetCard({
   const { t } = useTranslation();
   const [cancelling, setCancelling] = useState(false);
   const [comment, setComment] = useState('');
-  const commentId = useId();
   const product = target.productId
     ? refs.products.find((candidate) => candidate.id === target.productId)
     : undefined;
@@ -88,36 +103,38 @@ function TargetCard({
   });
   return (
     <li
-      className="line-card"
+      className="crm-target"
       aria-label={`${label} · ${t(`performance.metric.${target.metric}`, { defaultValue: target.metric })} · ${period}`}
     >
-      <div className="line-head">
-        <strong>{label}</strong>
-        <span className={`badge ${target.status === 'ACTIVE' ? 'badge-ok' : 'badge-muted'}`}>
+      <div className="crm-target-head">
+        <span className="crm-target-title">{label}</span>
+        <Badge tone={target.status === 'ACTIVE' ? 'ok' : 'muted'}>
           {t(`targets.status.${target.status}`, { defaultValue: target.status })}
-        </span>
+        </Badge>
       </div>
       <p>
         {t(`performance.metric.${target.metric}`, { defaultValue: target.metric })}
         {product ? ` · ${product.name}` : ''} : <strong>{value}</strong>
       </p>
-      <p className="home-muted">{period}</p>
+      <span className="crm-target-period">{period}</span>
       {target.status === 'ACTIVE' ? (
         cancelling ? (
-          <div className="field">
-            <label htmlFor={commentId}>{t('targets.cancel_comment_label')}</label>
-            <textarea
-              id={commentId}
-              className="text-input"
-              rows={2}
-              maxLength={2000}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-            />
+          <div className="crm-inline-form">
+            <Field label={t('targets.cancel_comment_label')}>
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={2}
+                  maxLength={2000}
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                />
+              )}
+            </Field>
             <div className="result-actions">
-              <button
-                type="button"
-                className="secondary"
+              <Button
+                variant="danger"
+                size="sm"
                 disabled={blocked}
                 onClick={() => {
                   onCancel(comment);
@@ -125,21 +142,23 @@ function TargetCard({
                 }}
               >
                 {t('targets.cancel_confirm')}
-              </button>
-              <button type="button" className="secondary" onClick={() => setCancelling(false)}>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setCancelling(false)}>
                 {t('price_rules.cancel')}
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            className="secondary"
-            disabled={blocked}
-            onClick={() => setCancelling(true)}
-          >
-            {t('targets.cancel')}
-          </button>
+          <div className="result-actions">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={blocked}
+              onClick={() => setCancelling(true)}
+            >
+              {t('targets.cancel')}
+            </Button>
+          </div>
         )
       ) : null}
     </li>
@@ -167,16 +186,7 @@ export function TargetsScreen() {
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const ids = {
-    type: useId(),
-    target: useId(),
-    metric: useId(),
-    product: useId(),
-    start: useId(),
-    end: useId(),
-    value: useId(),
-    issues: useId(),
-  };
+  const issuesPrefix = useId();
   const navigation = useRememberedNavigation(userId);
   // Portée ALL de `crm.target.manage` : aucun repli permissif tant que les rôles ne sont pas connus.
   const director = navigation?.roles.includes('DIRECTION') === true;
@@ -218,9 +228,9 @@ export function TargetsScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.targets')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale crm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.targets')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -277,7 +287,7 @@ export function TargetsScreen() {
       (issue !== 'TARGET_REQUIRED' && issue !== 'VALUE_INVALID') ||
       (issue === 'VALUE_INVALID' && form.valueText !== ''),
   );
-  const issueId = (issue: string) => `${ids.issues}-${issue}`;
+  const issueId = (issue: string) => `${issuesPrefix}-${issue}`;
   const describedBy = (...codes: string[]) => {
     const list = shown.filter((issue) => codes.includes(issue)).map(issueId);
     return list.length > 0 ? list.join(' ') : undefined;
@@ -300,170 +310,189 @@ export function TargetsScreen() {
     }
   };
 
+  const creatingForm = creating && targetType !== undefined;
+
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.targets')}</h1>
-      {!online ? (
-        <p className="alert alert-error" role="alert">
-          {t('targets.online_only')}
-        </p>
-      ) : null}
+    <section className="sale crm-screen">
+      <PageHeader
+        title={t('nav.screens.targets')}
+        actions={
+          !creatingForm && types.length > 0 ? (
+            <Button disabled={blocked} onClick={() => setCreating(true)}>
+              {t('targets.new')}
+            </Button>
+          ) : undefined
+        }
+      />
+      {!online ? <Banner tone="bad">{t('targets.online_only')}</Banner> : null}
       {shownCommandId ? (
         <CommandResult commandId={shownCommandId} messages="targets.result" />
       ) : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
       {online && read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{read.denied ? t('targets.denied') : t('targets.unavailable')}</p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('ledger.retry')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            read.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={read.retry}>
+                {t('ledger.retry')}
+              </Button>
+            )
+          }
+        >
+          {read.denied ? t('targets.denied') : t('targets.unavailable')}
+        </Banner>
       ) : null}
       {director && users.length === 0 && teams.length === 0 ? (
-        <p className="home-muted">{t('targets.sites_only')}</p>
+        <p className="muted">{t('targets.sites_only')}</p>
       ) : null}
       {types.length === 0 ? (
-        <p className="home-muted">
+        <p className="muted">
           {navigation ? t('targets.no_target_for_role') : t('targets.roles_unknown')}
         </p>
       ) : null}
 
       {creating && targetType ? (
-        <section className="sale-block" aria-labelledby="target-new-title">
-          <h2 id="target-new-title">{t('targets.new_title')}</h2>
-          <div className="field">
-            <label htmlFor={ids.type}>{t('targets.type_label')}</label>
-            <select
-              id={ids.type}
-              className="text-input"
-              value={targetType}
-              onChange={(event) =>
-                update({ targetType: event.target.value as TargetType, targetId: '' })
-              }
-            >
-              {types.map((type) => (
-                <option key={type} value={type}>
-                  {t(`targets.type.${type}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor={ids.target}>{t(`targets.target_label.${targetType}`)}</label>
-            <select
-              id={ids.target}
-              className="text-input"
-              value={targetId}
-              onChange={(event) => update({ targetId: event.target.value })}
-            >
-              <option value="">{t('lot_setup.choose')}</option>
-              {targetOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor={ids.metric}>{t('targets.metric_label')}</label>
-            <select
-              id={ids.metric}
-              className="text-input"
-              value={form.metric}
-              onChange={(event) =>
-                update({ metric: event.target.value as TargetMetric, productId: '', valueText: '' })
-              }
-            >
-              {TARGET_METRICS.map((metric) => (
-                <option key={metric} value={metric}>
-                  {t(`performance.metric.${metric}`, { defaultValue: metric })}
-                </option>
-              ))}
-            </select>
-          </div>
-          {form.metric === 'QTE_PRODUIT' ? (
-            <div className="field">
-              <label htmlFor={ids.product}>{t('targets.product_label')}</label>
-              <select
-                id={ids.product}
-                className="text-input"
-                value={form.productId}
-                aria-invalid={describedBy('PRODUCT_REQUIRED') ? true : undefined}
-                aria-describedby={describedBy('PRODUCT_REQUIRED')}
-                onChange={(event) => update({ productId: event.target.value })}
-              >
-                <option value="">{t('lot_setup.choose')}</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
+        <Section title={t('targets.new_title')}>
+          <Card padded>
+            <div className="crm-pair">
+              <Field label={t('targets.type_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={targetType}
+                    onChange={(event) =>
+                      update({ targetType: event.target.value as TargetType, targetId: '' })
+                    }
+                  >
+                    {types.map((type) => (
+                      <option key={type} value={type}>
+                        {t(`targets.type.${type}`)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label={t(`targets.target_label.${targetType}`)}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={targetId}
+                    onChange={(event) => update({ targetId: event.target.value })}
+                  >
+                    <option value="">{t('lot_setup.choose')}</option>
+                    {targetOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
             </div>
-          ) : null}
-          <div className="line-fields">
-            <div className="field">
-              <label htmlFor={ids.start}>{t('targets.start_label')}</label>
-              <input
-                id={ids.start}
-                type="date"
-                className="text-input"
-                value={form.periodStart}
-                aria-invalid={describedBy('PERIOD_INVALID', 'OVERLAP') ? true : undefined}
-                aria-describedby={describedBy('PERIOD_INVALID', 'OVERLAP')}
-                onChange={(event) => update({ periodStart: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={ids.end}>{t('targets.end_label')}</label>
-              <input
-                id={ids.end}
-                type="date"
-                className="text-input"
-                value={form.periodEnd}
-                aria-invalid={describedBy('PERIOD_INVALID', 'OVERLAP') ? true : undefined}
-                aria-describedby={describedBy('PERIOD_INVALID', 'OVERLAP')}
-                onChange={(event) => update({ periodEnd: event.target.value })}
-              />
-            </div>
-          </div>
-          <div className="field">
-            <label htmlFor={ids.value}>
-              {form.metric === 'QTE_PRODUIT' && product
-                ? t('targets.value_label_unit', { unit: unitLabel(product.base_unit_code) })
-                : t(`targets.value_label.${form.metric}`)}
-            </label>
-            <input
-              id={ids.value}
-              className="text-input"
-              inputMode={form.metric === 'QTE_PRODUIT' ? 'decimal' : 'numeric'}
-              value={form.valueText}
-              aria-invalid={describedBy('VALUE_INVALID') ? true : undefined}
-              aria-describedby={describedBy('VALUE_INVALID')}
-              onChange={(event) => update({ valueText: event.target.value })}
-            />
-          </div>
-          <div role="status" aria-live="polite">
-            {shown.map((issue) => (
-              <p key={issue} id={issueId(issue)} className="error-message">
-                {t(`targets.issue.${issue}`)}
-              </p>
-            ))}
-            {targets === undefined && !read.failed ? (
-              <p className="home-muted">{t('targets.overlap_pending')}</p>
+            <Field label={t('targets.metric_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={form.metric}
+                  onChange={(event) =>
+                    update({
+                      metric: event.target.value as TargetMetric,
+                      productId: '',
+                      valueText: '',
+                    })
+                  }
+                >
+                  {TARGET_METRICS.map((metric) => (
+                    <option key={metric} value={metric}>
+                      {t(`performance.metric.${metric}`, { defaultValue: metric })}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            {form.metric === 'QTE_PRODUIT' ? (
+              <Field label={t('targets.product_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={form.productId}
+                    aria-invalid={describedBy('PRODUCT_REQUIRED') ? true : undefined}
+                    aria-describedby={describedBy('PRODUCT_REQUIRED')}
+                    onChange={(event) => update({ productId: event.target.value })}
+                  >
+                    <option value="">{t('lot_setup.choose')}</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
             ) : null}
-          </div>
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
+            <div className="crm-pair">
+              <Field label={t('targets.start_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={form.periodStart}
+                    aria-invalid={describedBy('PERIOD_INVALID', 'OVERLAP') ? true : undefined}
+                    aria-describedby={describedBy('PERIOD_INVALID', 'OVERLAP')}
+                    onChange={(event) => update({ periodStart: event.target.value })}
+                  />
+                )}
+              </Field>
+              <Field label={t('targets.end_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={form.periodEnd}
+                    aria-invalid={describedBy('PERIOD_INVALID', 'OVERLAP') ? true : undefined}
+                    aria-describedby={describedBy('PERIOD_INVALID', 'OVERLAP')}
+                    onChange={(event) => update({ periodEnd: event.target.value })}
+                  />
+                )}
+              </Field>
+            </div>
+            <Field
+              label={
+                form.metric === 'QTE_PRODUIT' && product
+                  ? t('targets.value_label_unit', { unit: unitLabel(product.base_unit_code) })
+                  : t(`targets.value_label.${form.metric}`)
+              }
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  inputMode={form.metric === 'QTE_PRODUIT' ? 'decimal' : 'numeric'}
+                  value={form.valueText}
+                  aria-invalid={describedBy('VALUE_INVALID') ? true : undefined}
+                  aria-describedby={describedBy('VALUE_INVALID')}
+                  onChange={(event) => update({ valueText: event.target.value })}
+                />
+              )}
+            </Field>
+            <div role="status" aria-live="polite">
+              {shown.map((issue) => (
+                <p key={issue} id={issueId(issue)} className="field-error">
+                  {t(`targets.issue.${issue}`)}
+                </p>
+              ))}
+              {targets === undefined && !read.failed ? (
+                <p className="muted">{t('targets.overlap_pending')}</p>
+              ) : null}
+            </div>
+          </Card>
+          <ActionBar>
+            <Button variant="outline" onClick={() => setCreating(false)}>
+              {t('price_rules.cancel')}
+            </Button>
+            <Button
+              size="lg"
+              className="submit-sale"
               disabled={issues.length > 0 || blocked || targets === undefined}
               onClick={() =>
                 void send({
@@ -480,36 +509,22 @@ export function TargetsScreen() {
               }
             >
               {t('targets.save')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setCreating(false)}>
-              {t('price_rules.cancel')}
-            </button>
-          </div>
-        </section>
-      ) : types.length > 0 ? (
-        <button
-          type="button"
-          className="btn-block"
-          disabled={blocked}
-          onClick={() => setCreating(true)}
-        >
-          {t('targets.new')}
-        </button>
+            </Button>
+          </ActionBar>
+        </Section>
       ) : null}
 
-      {online && targets === undefined && !read.failed ? (
-        <p className="home-muted">{t('sales.loading')}</p>
-      ) : null}
+      {online && targets === undefined && !read.failed ? <SkeletonRows rows={3} /> : null}
       {online && targets && read.stale && !read.failed ? (
-        <p className="home-muted" role="status">
+        <p className="muted" role="status">
           {t('targets.refreshing')}
         </p>
       ) : null}
       {targets ? (
         targets.length === 0 ? (
-          <p className="home-muted">{t('targets.none')}</p>
+          <EmptyState icon="chart" title={t('targets.none')} />
         ) : (
-          <ul className="line-list">
+          <ul className="crm-cards">
             {targets.map((target) => (
               <TargetCard
                 key={target.id}

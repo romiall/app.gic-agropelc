@@ -7,9 +7,29 @@
  * reste affichée pendant une coupure (saisie conservée, envoi bloqué). Un code déjà pris ou encore en
  * attente d'envoi est refusé (la base lèverait une violation d'unicité, S-31) ; l'opération suivante
  * attend la réponse définitive de la précédente, même après un retour sur l'écran.
+ * Rubriques en contrôle segmenté ; produits et motifs en colonnes sur ordinateur.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Checkbox,
+  DataCell,
+  DataList,
+  DataRow,
+  Field,
+  Input,
+  List,
+  ListRow,
+  PageHeader,
+  Segmented,
+  Select,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -47,6 +67,7 @@ import {
   type ReasonView,
   type UnitView,
 } from './catalog.js';
+import './catalog.css';
 
 type Section = 'PRODUCTS' | 'UNITS' | 'CATEGORIES' | 'PACKAGING' | 'REASONS';
 const SECTIONS: readonly Section[] = ['PRODUCTS', 'UNITS', 'CATEGORIES', 'PACKAGING', 'REASONS'];
@@ -85,7 +106,7 @@ function Issues({ issues, prefix }: { issues: readonly string[]; prefix: string 
   return (
     <>
       {issues.map((issue) => (
-        <p key={issue} className="error-message">
+        <p key={issue} className="field-error">
           {t(`${prefix}.${issue}`)}
         </p>
       ))}
@@ -96,7 +117,6 @@ function Issues({ issues, prefix }: { issues: readonly string[]; prefix: string 
 function UnitsSection({ units, send, blocked, userId, pending }: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState({ code: '', name: '', isCount: true });
-  const ids = { code: useId(), name: useId() };
   const issues = checkUnit(form, [
     ...units,
     ...pending.units.map((code) => ({ code, name: '', isCount: true, isActive: true })),
@@ -113,59 +133,64 @@ function UnitsSection({ units, send, blocked, userId, pending }: SectionProps) {
     });
   return (
     <>
-      <ul className="receipt-lines">
-        {units.map((unit) => (
-          <li key={unit.code}>
-            <span>
-              <strong>{unit.code}</strong>
-              <small>{unit.name}</small>
-            </span>
-            <span>{unit.isCount ? t('catalog.count_unit') : t('catalog.measure_unit')}</span>
-          </li>
-        ))}
-      </ul>
-      <h3>{t('catalog.new_unit')}</h3>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.code}>{t('catalog.code_label')}</label>
-          <input
-            id={ids.code}
-            className="text-input"
-            maxLength={20}
-            value={form.code}
-            onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-          />
+      {units.length > 0 ? (
+        <List>
+          {units.map((unit) => (
+            <ListRow
+              key={unit.code}
+              title={unit.code}
+              subtitle={unit.name}
+              badge={
+                <Badge tone="muted" plain>
+                  {unit.isCount ? t('catalog.count_unit') : t('catalog.measure_unit')}
+                </Badge>
+              }
+            />
+          ))}
+        </List>
+      ) : null}
+      <Card padded className="cat-form">
+        <h3>{t('catalog.new_unit')}</h3>
+        <div className="cat-pair">
+          <Field label={t('catalog.code_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={20}
+                value={form.code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, code: event.target.value }))
+                }
+              />
+            )}
+          </Field>
+          <Field label={t('catalog.name_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={60}
+                value={form.name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+            )}
+          </Field>
         </div>
-        <div className="field">
-          <label htmlFor={ids.name}>{t('catalog.name_label')}</label>
-          <input
-            id={ids.name}
-            className="text-input"
-            maxLength={60}
-            value={form.name}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-          />
-        </div>
-      </div>
-      <label className="choice">
-        <input
-          type="checkbox"
+        <Checkbox
+          label={t('catalog.is_count_label')}
           checked={form.isCount}
           onChange={(event) =>
             setForm((current) => ({ ...current, isCount: event.target.checked }))
           }
         />
-        {t('catalog.is_count_label')}
-      </label>
-      {touched ? <Issues issues={issues} prefix="catalog.issue" /> : null}
-      <button
-        type="button"
-        className="btn-block"
-        disabled={issues.length > 0 || blocked}
-        onClick={submit}
-      >
-        {t('catalog.create_unit')}
-      </button>
+        {touched ? <Issues issues={issues} prefix="catalog.issue" /> : null}
+        <div className="cat-submit">
+          <Button disabled={issues.length > 0 || blocked} onClick={submit}>
+            {t('catalog.create_unit')}
+          </Button>
+        </div>
+      </Card>
     </>
   );
 }
@@ -173,7 +198,6 @@ function UnitsSection({ units, send, blocked, userId, pending }: SectionProps) {
 function CategoriesSection({ refs, send, blocked, userId, pending }: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState({ code: '', name: '', parentId: '' });
-  const ids = { code: useId(), name: useId(), parent: useId() };
   const known = new Set(refs.productCategories.map((category) => category.code));
   // Catégories créées et pas encore tirées : affichées « en attente », leur code est pris.
   const waiting = pending.categories.filter((code) => !known.has(code));
@@ -192,80 +216,89 @@ function CategoriesSection({ refs, send, blocked, userId, pending }: SectionProp
   return (
     <>
       {refs.productCategories.length === 0 && waiting.length === 0 ? (
-        <p className="home-muted">{t('catalog.none')}</p>
+        <p className="muted">{t('catalog.none')}</p>
       ) : (
-        <ul className="receipt-lines">
+        <List>
           {refs.productCategories.map((category) => (
-            <li key={category.id}>
-              <span>
-                <strong>{category.name}</strong>
-                <small>{category.code}</small>
-              </span>
-              <span>{category.parent_id ? (names.get(category.parent_id) ?? '') : ''}</span>
-            </li>
+            <ListRow
+              key={category.id}
+              title={category.name}
+              subtitle={category.code}
+              badge={
+                category.parent_id ? (
+                  <span className="list-sub">{names.get(category.parent_id) ?? ''}</span>
+                ) : undefined
+              }
+            />
           ))}
           {waiting.map((code) => (
-            <li key={`attente-${code}`}>
-              <span>
-                <strong>{code}</strong>
-              </span>
-              <span>
-                {pending.acceptedCategories.includes(code)
-                  ? t('catalog.created_pending_pull')
-                  : t('catalog.pending')}
-              </span>
-            </li>
+            <ListRow
+              key={`attente-${code}`}
+              title={code}
+              badge={
+                <Badge tone="warn">
+                  {pending.acceptedCategories.includes(code)
+                    ? t('catalog.created_pending_pull')
+                    : t('catalog.pending')}
+                </Badge>
+              }
+            />
           ))}
-        </ul>
+        </List>
       )}
-      <h3>{t('catalog.new_category')}</h3>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.code}>{t('catalog.code_label')}</label>
-          <input
-            id={ids.code}
-            className="text-input"
-            maxLength={40}
-            value={form.code}
-            onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-          />
+      <Card padded className="cat-form">
+        <h3>{t('catalog.new_category')}</h3>
+        <div className="cat-pair">
+          <Field label={t('catalog.code_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={40}
+                value={form.code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, code: event.target.value }))
+                }
+              />
+            )}
+          </Field>
+          <Field label={t('catalog.name_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={200}
+                value={form.name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+            )}
+          </Field>
         </div>
-        <div className="field">
-          <label htmlFor={ids.name}>{t('catalog.name_label')}</label>
-          <input
-            id={ids.name}
-            className="text-input"
-            maxLength={200}
-            value={form.name}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-          />
+        <Field label={t('catalog.parent_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={form.parentId}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, parentId: event.target.value }))
+              }
+            >
+              <option value="">{t('catalog.no_parent')}</option>
+              {refs.productCategories.filter(isActiveCategory).map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        {touched ? <Issues issues={issues} prefix="catalog.issue" /> : null}
+        <div className="cat-submit">
+          <Button disabled={issues.length > 0 || blocked} onClick={submit}>
+            {t('catalog.create_category')}
+          </Button>
         </div>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.parent}>{t('catalog.parent_label')}</label>
-        <select
-          id={ids.parent}
-          className="text-input"
-          value={form.parentId}
-          onChange={(event) => setForm((current) => ({ ...current, parentId: event.target.value }))}
-        >
-          <option value="">{t('catalog.no_parent')}</option>
-          {refs.productCategories.filter(isActiveCategory).map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {touched ? <Issues issues={issues} prefix="catalog.issue" /> : null}
-      <button
-        type="button"
-        className="btn-block"
-        disabled={issues.length > 0 || blocked}
-        onClick={submit}
-      >
-        {t('catalog.create_category')}
-      </button>
+      </Card>
     </>
   );
 }
@@ -274,16 +307,6 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
   const { t } = useTranslation();
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT);
   const [creating, setCreating] = useState(false);
-  const ids = {
-    code: useId(),
-    name: useId(),
-    category: useId(),
-    family: useId(),
-    unit: useId(),
-    lot: useId(),
-    mode: useId(),
-    species: useId(),
-  };
   const issues = checkProduct(form, [
     ...products,
     ...pending.products.map((code) => ({ code }) as ProductView),
@@ -313,61 +336,202 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
   const flag = (
     key: 'isSellable' | 'isPurchasable' | 'isProducible' | 'isConsumable' | 'expiryTracking',
   ) => (
-    <label className="choice" key={key}>
-      <input
-        type="checkbox"
-        checked={form[key]}
-        onChange={(event) => update({ [key]: event.target.checked } as Partial<ProductForm>)}
-      />
-      {t(`catalog.flag.${key}`)}
-    </label>
+    <Checkbox
+      key={key}
+      label={t(`catalog.flag.${key}`)}
+      checked={form[key]}
+      onChange={(event) => update({ [key]: event.target.checked } as Partial<ProductForm>)}
+    />
   );
   const select = (
-    id: string,
     label: string,
     value: string,
     options: readonly { readonly value: string; readonly label: string }[],
     onChange: (value: string) => void,
     placeholder?: string,
   ) => (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        className="text-input"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Field label={label}>
+      {(control) => (
+        <Select {...control} value={value} onChange={(event) => onChange(event.target.value)}>
+          {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
   );
 
   return (
     <>
-      {products.length === 0 ? (
-        <p className="home-muted">{t('catalog.none')}</p>
+      {!creating ? (
+        <div className="cat-toolbar">
+          <Button icon="plus" onClick={() => setCreating(true)}>
+            {t('catalog.new_product')}
+          </Button>
+        </div>
       ) : (
-        <ul className="receipt-lines">
+        <>
+          <Card padded className="cat-form">
+            <h3>{t('catalog.new_product')}</h3>
+            <div className="cat-pair">
+              <Field label={t('catalog.code_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    maxLength={40}
+                    value={form.code}
+                    onChange={(event) => update({ code: event.target.value })}
+                  />
+                )}
+              </Field>
+              <Field label={t('catalog.name_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    maxLength={200}
+                    value={form.name}
+                    onChange={(event) => update({ name: event.target.value })}
+                  />
+                )}
+              </Field>
+            </div>
+            <div className="cat-pair">
+              {select(
+                t('catalog.category_label'),
+                form.categoryId,
+                refs.productCategories.filter(isActiveCategory).map((category) => ({
+                  value: category.id,
+                  label: category.name,
+                })),
+                (categoryId) => update({ categoryId }),
+                t('catalog.choose'),
+              )}
+              {select(
+                t('catalog.family_label'),
+                form.stockFamily,
+                STOCK_FAMILIES.map((family) => ({
+                  value: family,
+                  label: t(`catalog.family.${family}`),
+                })),
+                (stockFamily) =>
+                  // Un produit biologique se suit par lot (lots de production, BR-PRD-001), un
+                  // service jamais (BR-CAT-005) : le suivi est réglé avec la famille.
+                  update({
+                    stockFamily: stockFamily as ProductForm['stockFamily'],
+                    ...(stockFamily === 'BIOLOGIQUE'
+                      ? { lotTracking: 'REQUIRED' as const }
+                      : stockFamily === 'SERVICE'
+                        ? { lotTracking: 'NONE' as const }
+                        : {}),
+                  }),
+              )}
+            </div>
+            <div className="cat-pair">
+              {select(
+                t('catalog.base_unit_label'),
+                form.baseUnitCode,
+                units
+                  .filter((unit) => unit.isActive)
+                  .map((unit) => ({ value: unit.code, label: `${unit.code} — ${unit.name}` })),
+                (baseUnitCode) => update({ baseUnitCode }),
+                t('catalog.choose'),
+              )}
+              {select(
+                t('catalog.pricing_mode_label'),
+                form.pricingMode,
+                PRICING_MODES.map((value) => ({
+                  value,
+                  label: t(`catalog.pricing_mode.${value}`),
+                })),
+                (pricingMode) => update({ pricingMode: pricingMode as ProductForm['pricingMode'] }),
+              )}
+            </div>
+            <div className="cat-pair">
+              {form.stockFamily !== 'SERVICE'
+                ? select(
+                    t('catalog.lot_label'),
+                    form.lotTracking,
+                    LOT_TRACKINGS.map((value) => ({ value, label: t(`catalog.lot.${value}`) })),
+                    (lotTracking) =>
+                      update({ lotTracking: lotTracking as ProductForm['lotTracking'] }),
+                  )
+                : null}
+              {form.stockFamily === 'BIOLOGIQUE'
+                ? select(
+                    t('catalog.species_label'),
+                    form.species,
+                    SPECIES.map((value) => ({ value, label: t(`catalog.species.${value}`) })),
+                    (species) => update({ species }),
+                    t('catalog.choose'),
+                  )
+                : null}
+            </div>
+            <fieldset className="cat-flags">
+              <legend>{t('catalog.flags_label')}</legend>
+              {(
+                [
+                  'isSellable',
+                  'isPurchasable',
+                  'isProducible',
+                  'isConsumable',
+                  'expiryTracking',
+                ] as const
+              ).map(flag)}
+            </fieldset>
+            <p className="muted">{t('catalog.immutable_hint')}</p>
+            {form.code || form.name ? <Issues issues={issues} prefix="catalog.issue" /> : null}
+          </Card>
+          <ActionBar>
+            <Button variant="outline" onClick={() => setCreating(false)}>
+              {t('price_rules.cancel')}
+            </Button>
+            <Button
+              size="lg"
+              className="submit-sale"
+              disabled={issues.length > 0 || blocked}
+              onClick={submit}
+            >
+              {t('catalog.create_product')}
+            </Button>
+          </ActionBar>
+        </>
+      )}
+      {products.length === 0 ? (
+        <p className="muted">{t('catalog.none')}</p>
+      ) : (
+        <DataList
+          aria-label={t('catalog.section.PRODUCTS')}
+          columns={[
+            { label: t('catalog.col.product') },
+            { label: t('catalog.col.family') },
+            { label: t('catalog.col.unit') },
+            { label: t('catalog.col.status') },
+            { label: '' },
+          ]}
+          template="minmax(0, 2.4fr) minmax(0, 1.8fr) 6rem 7rem 7rem"
+        >
           {products.map((product) => (
-            <li key={product.id}>
-              <span>
-                <strong>{product.name}</strong>
-                <small>
-                  {product.code} · {t(`catalog.family.${product.stockFamily}`)} ·{' '}
-                  {product.baseUnitCode}
-                </small>
-              </span>
-              <span>
-                {t(`catalog.status.${product.status}`, { defaultValue: product.status })}
-                <button
-                  type="button"
-                  className="link-button"
+            <DataRow key={product.id}>
+              <DataCell primary>
+                <span className="cat-name">
+                  <strong>{product.name}</strong>
+                  <small>{product.code}</small>
+                </span>
+              </DataCell>
+              <DataCell>{t(`catalog.family.${product.stockFamily}`)}</DataCell>
+              <DataCell>{product.baseUnitCode}</DataCell>
+              <DataCell>
+                <Badge tone={product.status === 'ACTIVE' ? 'ok' : 'muted'}>
+                  {t(`catalog.status.${product.status}`, { defaultValue: product.status })}
+                </Badge>
+              </DataCell>
+              <DataCell actions>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   disabled={blocked}
                   aria-label={t(
                     product.status === 'ACTIVE' ? 'catalog.deactivate' : 'catalog.reactivate',
@@ -380,136 +544,11 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
                       ? 'catalog.deactivate_short'
                       : 'catalog.reactivate_short',
                   )}
-                </button>
-              </span>
-            </li>
+                </Button>
+              </DataCell>
+            </DataRow>
           ))}
-        </ul>
-      )}
-      {!creating ? (
-        <button type="button" className="btn-block" onClick={() => setCreating(true)}>
-          {t('catalog.new_product')}
-        </button>
-      ) : (
-        <>
-          <h3>{t('catalog.new_product')}</h3>
-          <div className="line-fields">
-            <div className="field">
-              <label htmlFor={ids.code}>{t('catalog.code_label')}</label>
-              <input
-                id={ids.code}
-                className="text-input"
-                maxLength={40}
-                value={form.code}
-                onChange={(event) => update({ code: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor={ids.name}>{t('catalog.name_label')}</label>
-              <input
-                id={ids.name}
-                className="text-input"
-                maxLength={200}
-                value={form.name}
-                onChange={(event) => update({ name: event.target.value })}
-              />
-            </div>
-          </div>
-          {select(
-            ids.category,
-            t('catalog.category_label'),
-            form.categoryId,
-            refs.productCategories.filter(isActiveCategory).map((category) => ({
-              value: category.id,
-              label: category.name,
-            })),
-            (categoryId) => update({ categoryId }),
-            t('catalog.choose'),
-          )}
-          {select(
-            ids.family,
-            t('catalog.family_label'),
-            form.stockFamily,
-            STOCK_FAMILIES.map((family) => ({
-              value: family,
-              label: t(`catalog.family.${family}`),
-            })),
-            (stockFamily) =>
-              // Un produit biologique se suit par lot (lots de production, BR-PRD-001), un service
-              // jamais (BR-CAT-005) : le suivi est réglé avec la famille.
-              update({
-                stockFamily: stockFamily as ProductForm['stockFamily'],
-                ...(stockFamily === 'BIOLOGIQUE'
-                  ? { lotTracking: 'REQUIRED' as const }
-                  : stockFamily === 'SERVICE'
-                    ? { lotTracking: 'NONE' as const }
-                    : {}),
-              }),
-          )}
-          {select(
-            ids.unit,
-            t('catalog.base_unit_label'),
-            form.baseUnitCode,
-            units
-              .filter((unit) => unit.isActive)
-              .map((unit) => ({ value: unit.code, label: `${unit.code} — ${unit.name}` })),
-            (baseUnitCode) => update({ baseUnitCode }),
-            t('catalog.choose'),
-          )}
-          {form.stockFamily !== 'SERVICE'
-            ? select(
-                ids.lot,
-                t('catalog.lot_label'),
-                form.lotTracking,
-                LOT_TRACKINGS.map((value) => ({ value, label: t(`catalog.lot.${value}`) })),
-                (lotTracking) => update({ lotTracking: lotTracking as ProductForm['lotTracking'] }),
-              )
-            : null}
-          {select(
-            ids.mode,
-            t('catalog.pricing_mode_label'),
-            form.pricingMode,
-            PRICING_MODES.map((value) => ({ value, label: t(`catalog.pricing_mode.${value}`) })),
-            (pricingMode) => update({ pricingMode: pricingMode as ProductForm['pricingMode'] }),
-          )}
-          {form.stockFamily === 'BIOLOGIQUE'
-            ? select(
-                ids.species,
-                t('catalog.species_label'),
-                form.species,
-                SPECIES.map((value) => ({ value, label: t(`catalog.species.${value}`) })),
-                (species) => update({ species }),
-                t('catalog.choose'),
-              )
-            : null}
-          <fieldset className="choice-group">
-            <legend>{t('catalog.flags_label')}</legend>
-            {(
-              [
-                'isSellable',
-                'isPurchasable',
-                'isProducible',
-                'isConsumable',
-                'expiryTracking',
-              ] as const
-            ).map(flag)}
-          </fieldset>
-          <p className="home-muted">{t('catalog.immutable_hint')}</p>
-          {form.code || form.name ? <Issues issues={issues} prefix="catalog.issue" /> : null}
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
-              disabled={issues.length > 0 || blocked}
-              onClick={submit}
-            >
-              {t('catalog.create_product')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setCreating(false)}>
-              {t('price_rules.cancel')}
-            </button>
-          </div>
-        </>
+        </DataList>
       )}
     </>
   );
@@ -525,7 +564,6 @@ function PackagingSection({ refs, units, products, send, blocked, userId }: Sect
     isPurchaseUnit: false,
     isCountUnit: false,
   });
-  const ids = { product: useId(), unit: useId(), factor: useId() };
   const product = products.find((candidate) => candidate.id === productId);
   const existing = refs.productUnits;
   const check = checkPackaging(
@@ -554,104 +592,101 @@ function PackagingSection({ refs, units, products, send, blocked, userId }: Sect
     });
   };
   const flag = (key: 'isSalesUnit' | 'isPurchaseUnit' | 'isCountUnit') => (
-    <label className="choice" key={key}>
-      <input
-        type="checkbox"
-        checked={form[key]}
-        onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.checked }))}
-      />
-      {t(`catalog.packaging_flag.${key}`)}
-    </label>
+    <Checkbox
+      key={key}
+      label={t(`catalog.packaging_flag.${key}`)}
+      checked={form[key]}
+      onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.checked }))}
+    />
   );
+  const rows = product ? existing.filter((unit) => unit.product_id === product.id) : [];
   return (
     <>
-      <div className="field">
-        <label htmlFor={ids.product}>{t('catalog.product_label')}</label>
-        <select
-          id={ids.product}
-          className="text-input"
-          value={productId}
-          onChange={(event) => setProductId(event.target.value)}
-        >
-          <option value="">{t('catalog.choose')}</option>
-          {products.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Field label={t('catalog.product_label')}>
+        {(control) => (
+          <Select
+            {...control}
+            value={productId}
+            onChange={(event) => setProductId(event.target.value)}
+          >
+            <option value="">{t('catalog.choose')}</option>
+            {products.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
       {product ? (
         <>
-          <ul className="receipt-lines">
-            {existing
-              .filter((unit) => unit.product_id === product.id)
-              .map((unit) => (
-                <li key={unit.id}>
-                  <span>
-                    <strong>{unit.unit_code}</strong>
-                    <small>
-                      {t('catalog.factor', {
-                        factor: Number(unit.factor_to_base),
-                        unit: product.baseUnitCode,
-                      })}
-                    </small>
-                  </span>
-                  <span>{unit.is_active ? '' : t('catalog.status.INACTIVE')}</span>
-                </li>
+          {rows.length > 0 ? (
+            <List>
+              {rows.map((unit) => (
+                <ListRow
+                  key={unit.id}
+                  title={unit.unit_code}
+                  subtitle={t('catalog.factor', {
+                    factor: Number(unit.factor_to_base),
+                    unit: product.baseUnitCode,
+                  })}
+                  badge={
+                    unit.is_active ? undefined : (
+                      <Badge tone="muted">{t('catalog.status.INACTIVE')}</Badge>
+                    )
+                  }
+                />
               ))}
-          </ul>
-          <h3>{t('catalog.new_packaging')}</h3>
-          <div className="line-fields">
-            <div className="field">
-              <label htmlFor={ids.unit}>{t('catalog.unit_label')}</label>
-              <select
-                id={ids.unit}
-                className="text-input"
-                value={form.unitCode}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, unitCode: event.target.value }))
-                }
-              >
-                <option value="">{t('catalog.choose')}</option>
-                {units
-                  .filter((unit) => unit.isActive && unit.code !== product.baseUnitCode)
-                  .map((unit) => (
-                    <option key={unit.code} value={unit.code}>
-                      {unit.code} — {unit.name}
-                    </option>
-                  ))}
-              </select>
+            </List>
+          ) : null}
+          <Card padded className="cat-form">
+            <h3>{t('catalog.new_packaging')}</h3>
+            <div className="cat-pair">
+              <Field label={t('catalog.unit_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={form.unitCode}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, unitCode: event.target.value }))
+                    }
+                  >
+                    <option value="">{t('catalog.choose')}</option>
+                    {units
+                      .filter((unit) => unit.isActive && unit.code !== product.baseUnitCode)
+                      .map((unit) => (
+                        <option key={unit.code} value={unit.code}>
+                          {unit.code} — {unit.name}
+                        </option>
+                      ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label={t('catalog.factor_label', { unit: product.baseUnitCode })}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    inputMode="decimal"
+                    value={form.factorText}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, factorText: event.target.value }))
+                    }
+                  />
+                )}
+              </Field>
             </div>
-            <div className="field">
-              <label htmlFor={ids.factor}>
-                {t('catalog.factor_label', { unit: product.baseUnitCode })}
-              </label>
-              <input
-                id={ids.factor}
-                className="text-input"
-                inputMode="decimal"
-                value={form.factorText}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, factorText: event.target.value }))
-                }
-              />
+            <fieldset className="cat-flags">
+              <legend>{t('catalog.packaging_use_label')}</legend>
+              {(['isSalesUnit', 'isPurchaseUnit', 'isCountUnit'] as const).map(flag)}
+            </fieldset>
+            <p className="muted">{t('catalog.packaging_immutable')}</p>
+            {touched ? <Issues issues={check.issues} prefix="catalog.issue" /> : null}
+            <div className="cat-submit">
+              <Button disabled={check.issues.length > 0 || blocked} onClick={submit}>
+                {t('catalog.create_packaging')}
+              </Button>
             </div>
-          </div>
-          <fieldset className="choice-group">
-            <legend>{t('catalog.packaging_use_label')}</legend>
-            {(['isSalesUnit', 'isPurchaseUnit', 'isCountUnit'] as const).map(flag)}
-          </fieldset>
-          <p className="home-muted">{t('catalog.packaging_immutable')}</p>
-          {touched ? <Issues issues={check.issues} prefix="catalog.issue" /> : null}
-          <button
-            type="button"
-            className="btn-block"
-            disabled={check.issues.length > 0 || blocked}
-            onClick={submit}
-          >
-            {t('catalog.create_packaging')}
-          </button>
+          </Card>
         </>
       ) : null}
     </>
@@ -667,7 +702,6 @@ function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProp
     lossCategory: '',
     requiresComment: false,
   });
-  const ids = { category: useId(), code: useId(), label: useId(), loss: useId() };
   const issues = checkReason(form, [
     ...reasons,
     ...pending.reasons.map((reason) => ({
@@ -723,88 +757,106 @@ function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProp
     });
   return (
     <>
-      <div className="field">
-        <label htmlFor={ids.category}>{t('catalog.reason_category_label')}</label>
-        <select
-          id={ids.category}
-          className="text-input"
-          value={form.category}
-          onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-        >
-          {REASON_CATEGORIES.map((category) => (
-            <option key={category} value={category}>
-              {t(`catalog.reason_category.${category}`)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Field label={t('catalog.reason_category_label')}>
+        {(control) => (
+          <Select
+            {...control}
+            value={form.category}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, category: event.target.value }))
+            }
+          >
+            {REASON_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {t(`catalog.reason_category.${category}`)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
       {listed.length === 0 ? (
-        <p className="home-muted">{t('catalog.none')}</p>
+        <p className="muted">{t('catalog.none')}</p>
       ) : (
-        <ul className="receipt-lines">
+        <DataList
+          aria-label={t('catalog.section.REASONS')}
+          columns={[
+            { label: t('catalog.col.reason') },
+            { label: t('catalog.col.comment') },
+            { label: '' },
+          ]}
+          template="minmax(0, 3fr) 10rem 12rem"
+        >
           {listed.map((reason) =>
             editing?.id === reason.id ? (
-              <li
+              <DataRow
                 key={reason.id}
-                className="sale-block"
                 aria-label={t('catalog.edit_reason', { name: reason.label })}
               >
-                <div className="field">
-                  <label htmlFor={`${ids.label}-${reason.id}`}>{t('catalog.label_label')}</label>
-                  <input
-                    id={`${ids.label}-${reason.id}`}
-                    className="text-input"
-                    maxLength={200}
-                    value={editing.label}
-                    onChange={(event) =>
-                      setEditing((current) =>
-                        current ? { ...current, label: event.target.value } : current,
-                      )
-                    }
-                  />
-                </div>
-                <label className="choice">
-                  <input
-                    type="checkbox"
-                    checked={editing.requiresComment}
-                    onChange={(event) =>
-                      setEditing((current) =>
-                        current ? { ...current, requiresComment: event.target.checked } : current,
-                      )
-                    }
-                  />
-                  {t('catalog.requires_comment_label')}
-                </label>
-                <div className="result-actions">
-                  <button
-                    type="button"
-                    disabled={blocked || reasonUpdatePayload(reason, editing) === null}
-                    onClick={() => saveEdit(reason)}
-                  >
-                    {t('catalog.save_reason', { name: reason.code })}
-                  </button>
-                  <button type="button" className="secondary" onClick={() => setEditing(null)}>
-                    {t('price_rules.cancel')}
-                  </button>
-                </div>
-              </li>
+                <DataCell wide>
+                  <div className="cat-edit">
+                    <Field label={t('catalog.label_label')}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          maxLength={200}
+                          value={editing.label}
+                          onChange={(event) =>
+                            setEditing((current) =>
+                              current ? { ...current, label: event.target.value } : current,
+                            )
+                          }
+                        />
+                      )}
+                    </Field>
+                    <Checkbox
+                      label={t('catalog.requires_comment_label')}
+                      checked={editing.requiresComment}
+                      onChange={(event) =>
+                        setEditing((current) =>
+                          current ? { ...current, requiresComment: event.target.checked } : current,
+                        )
+                      }
+                    />
+                    <div className="result-actions">
+                      <Button
+                        size="sm"
+                        disabled={blocked || reasonUpdatePayload(reason, editing) === null}
+                        onClick={() => saveEdit(reason)}
+                      >
+                        {t('catalog.save_reason', { name: reason.code })}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
+                        {t('price_rules.cancel')}
+                      </Button>
+                    </div>
+                  </div>
+                </DataCell>
+              </DataRow>
             ) : (
-              <li key={reason.id}>
-                <span>
-                  <strong>{reason.label}</strong>
-                  <small>
-                    {reason.code}
-                    {reason.lossCategory
-                      ? ` · ${t(`loss.categories.${reason.lossCategory}`, { defaultValue: reason.lossCategory })}`
-                      : ''}
-                    {reason.isActive ? '' : ` · ${t('catalog.status.INACTIVE')}`}
-                  </small>
-                </span>
-                <span>
-                  {reason.requiresComment ? t('catalog.requires_comment_short') : ''}
-                  <button
-                    type="button"
-                    className="link-button"
+              <DataRow key={reason.id}>
+                <DataCell primary>
+                  <span className="cat-name">
+                    <strong>{reason.label}</strong>
+                    <small>
+                      {reason.code}
+                      {reason.lossCategory
+                        ? ` · ${t(`loss.categories.${reason.lossCategory}`, { defaultValue: reason.lossCategory })}`
+                        : ''}
+                      {reason.isActive ? '' : ` · ${t('catalog.status.INACTIVE')}`}
+                    </small>
+                  </span>
+                </DataCell>
+                <DataCell>
+                  {reason.requiresComment ? (
+                    <Badge tone="info" plain>
+                      {t('catalog.requires_comment_short')}
+                    </Badge>
+                  ) : null}
+                </DataCell>
+                <DataCell actions>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={blocked}
                     aria-label={t('catalog.edit_reason', { name: reason.label })}
                     onClick={() =>
@@ -816,10 +868,10 @@ function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProp
                     }
                   >
                     {t('catalog.edit_short')}
-                  </button>
-                  <button
-                    type="button"
-                    className="link-button"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={blocked}
                     aria-label={t(reason.isActive ? 'catalog.deactivate' : 'catalog.reactivate', {
                       name: reason.label,
@@ -827,75 +879,75 @@ function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProp
                     onClick={() => toggle(reason)}
                   >
                     {t(reason.isActive ? 'catalog.deactivate_short' : 'catalog.reactivate_short')}
-                  </button>
-                </span>
-              </li>
+                  </Button>
+                </DataCell>
+              </DataRow>
             ),
           )}
-        </ul>
+        </DataList>
       )}
-      <h3>{t('catalog.new_reason')}</h3>
-      <div className="line-fields">
-        <div className="field">
-          <label htmlFor={ids.code}>{t('catalog.code_label')}</label>
-          <input
-            id={ids.code}
-            className="text-input"
-            maxLength={40}
-            value={form.code}
-            onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-          />
+      <Card padded className="cat-form">
+        <h3>{t('catalog.new_reason')}</h3>
+        <div className="cat-pair">
+          <Field label={t('catalog.code_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={40}
+                value={form.code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, code: event.target.value }))
+                }
+              />
+            )}
+          </Field>
+          <Field label={t('catalog.label_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={200}
+                value={form.label}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, label: event.target.value }))
+                }
+              />
+            )}
+          </Field>
         </div>
-        <div className="field">
-          <label htmlFor={ids.label}>{t('catalog.label_label')}</label>
-          <input
-            id={ids.label}
-            className="text-input"
-            maxLength={200}
-            value={form.label}
-            onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))}
-          />
-        </div>
-      </div>
-      {form.category === 'LOSS' ? (
-        <div className="field">
-          <label htmlFor={ids.loss}>{t('catalog.loss_category_label')}</label>
-          <select
-            id={ids.loss}
-            className="text-input"
-            value={form.lossCategory}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, lossCategory: event.target.value }))
-            }
-          >
-            <option value="">{t('catalog.any_loss')}</option>
-            {LOSS_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {t(`loss.categories.${category}`, { defaultValue: category })}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-      <label className="choice">
-        <input
-          type="checkbox"
+        {form.category === 'LOSS' ? (
+          <Field label={t('catalog.loss_category_label')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={form.lossCategory}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, lossCategory: event.target.value }))
+                }
+              >
+                <option value="">{t('catalog.any_loss')}</option>
+                {LOSS_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {t(`loss.categories.${category}`, { defaultValue: category })}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ) : null}
+        <Checkbox
+          label={t('catalog.requires_comment_label')}
           checked={form.requiresComment}
           onChange={(event) =>
             setForm((current) => ({ ...current, requiresComment: event.target.checked }))
           }
         />
-        {t('catalog.requires_comment_label')}
-      </label>
-      {touched ? <Issues issues={issues} prefix="catalog.issue" /> : null}
-      <button
-        type="button"
-        className="btn-block"
-        disabled={issues.length > 0 || blocked}
-        onClick={submit}
-      >
-        {t('catalog.create_reason')}
-      </button>
+        {touched ? <Issues issues={issues} prefix="catalog.issue" /> : null}
+        <div className="cat-submit">
+          <Button disabled={issues.length > 0 || blocked} onClick={submit}>
+            {t('catalog.create_reason')}
+          </Button>
+        </div>
+      </Card>
     </>
   );
 }
@@ -927,9 +979,9 @@ export function CatalogScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.catalog')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale cat-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.catalog')} />
+        <SkeletonRows rows={4} />
       </section>
     );
   }
@@ -981,58 +1033,46 @@ export function CatalogScreen() {
   const failed = units.failed || products.failed || reasons.failed;
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.catalog')}</h1>
-      {!online ? (
-        <p className="alert alert-error" role="alert">
-          {t('catalog.online_only')}
-        </p>
-      ) : null}
+    <section className="sale cat-screen">
+      <PageHeader title={t('nav.screens.catalog')} />
+      {!online ? <Banner tone="bad">{t('catalog.online_only')}</Banner> : null}
       {last ? <CommandResult commandId={last} messages="catalog.result" /> : null}
-      <fieldset className="choice-group">
-        <legend>{t('catalog.section_label')}</legend>
-        {SECTIONS.map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
-              name="catalog-section"
-              value={value}
-              checked={section === value}
-              onChange={() => setSection(value)}
-            />
-            {t(`catalog.section.${value}`)}
-          </label>
-        ))}
-      </fieldset>
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
+      <Segmented
+        label={t('catalog.section_label')}
+        value={section}
+        onChange={setSection}
+        options={SECTIONS.map((value) => ({ value, label: t(`catalog.section.${value}`) }))}
+        className="cat-sections"
+      />
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
       {online && failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{t('catalog.unavailable')}</p>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              units.retry();
-              products.retry();
-              reasons.retry();
-            }}
-          >
-            {t('ledger.retry')}
-          </button>
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                units.retry();
+                products.retry();
+                reasons.retry();
+              }}
+            >
+              {t('ledger.retry')}
+            </Button>
+          }
+        >
+          {t('catalog.unavailable')}
+        </Banner>
       ) : null}
-      {online && !loaded && !failed ? <p className="home-muted">{t('sales.loading')}</p> : null}
+      {online && !loaded && !failed ? <SkeletonRows rows={4} /> : null}
       {online && loaded && stale && !failed ? (
-        <p className="home-muted" role="status">
+        <p className="muted" role="status">
           {t('catalog.refreshing')}
         </p>
       ) : null}
       {props ? (
-        <section className="sale-block" aria-label={t(`catalog.section.${section}`)}>
+        <section className="cat-panel" aria-label={t(`catalog.section.${section}`)}>
           {section === 'PRODUCTS' ? <ProductsSection {...props} /> : null}
           {section === 'UNITS' ? <UnitsSection {...props} /> : null}
           {section === 'CATEGORIES' ? <CategoriesSection {...props} /> : null}

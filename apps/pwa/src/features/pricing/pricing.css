@@ -1,0 +1,143 @@
+/* Prix (ADR-049, lot L5) : règles tarifaires, éditeur de règle, simulateur. Feuille de domaine ; aucune
+   couleur en dur, jetons seulement. */
+
+/* Rythme vertical : ni `Section` ni `Banner` n'ont de marge, l'écran leur donne la leur. */
+.pr-screen > .section {
+  margin-top: var(--space-5);
+}
+
+.pr-screen > .banner {
+  margin-bottom: var(--space-3);
+}
+
+/* --- Éditeur de règle ------------------------------------------------------------------------------ */
+
+.pr-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pr-form .field,
+.pr-pair > .field {
+  margin-bottom: 0;
+}
+
+.pr-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+}
+
+.pr-codes-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* --- Listes de règles -------------------------------------------------------------------------------- */
+
+.pr-text {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.pr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.pr-actions > p {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.pr-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.pr-end {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.pr-end .field {
+  align-self: stretch;
+  margin-bottom: 0;
+}
+
+/* --- Simulateur de prix ------------------------------------------------------------------------------- */
+
+.pr-sim {
+  display: grid;
+  gap: var(--space-5);
+}
+
+@media (min-width: 64rem) {
+  .pr-sim {
+    grid-template-columns: minmax(0, 24rem) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .pr-sim-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .pr-sim-context {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .pr-result {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
+.pr-sim-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pr-sim-form .field,
+.pr-sim-form .pr-pair > .field {
+  margin-bottom: 0;
+}
+
+.pr-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pr-result-price {
+  font: 700 var(--text-3xl) / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-result-total {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-others {
+  margin-top: var(--space-2);
+}
+
+.pr-others h3 {
+  margin: 0 0 var(--space-2);
+  font: 700 var(--text-md) / 1.2 var(--font-display);
+}

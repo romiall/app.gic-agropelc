@@ -6,8 +6,19 @@
  * le stock de l'emplacement : la marchandise vendue l'a quitté à la confirmation (ADR-028 §1).
  */
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -51,16 +62,18 @@ export function DeliverScreen() {
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
-        <p className="home-muted">{t('sales.loading')}</p>
+        <SkeletonRows rows={3} />
       </section>
     );
   }
+
+  const backTo = orderId ? ROUTES.order(orderId) : ROUTES.orders;
 
   // Le résultat reste affiché même si la livraison complète fait sortir la commande du jeu `orders`.
   if (submitted) {
     return (
       <section className="sale">
-        <h1>{t('orders.deliver.title', { doc: submitted.doc })}</h1>
+        <PageHeader title={t('orders.deliver.title', { doc: submitted.doc })} />
         <CommandResult commandId={submitted.commandId} messages="orders.deliver.result">
           {/* Bon de livraison (lot PP) : numéro officiel dès que le serveur l'a attribué. */}
           <PieceAction
@@ -78,28 +91,24 @@ export function DeliverScreen() {
               )
             }
           />
-          <Link
-            to={orderId ? ROUTES.order(orderId) : ROUTES.orders}
-            className="action action-compact"
-          >
-            <span className="action-label">{t('orders.deliver.back_to_order')}</span>
-          </Link>
+          <LinkButton to={backTo} variant="outline">
+            {t('orders.deliver.back_to_order')}
+          </LinkButton>
         </CommandResult>
       </section>
     );
   }
 
   const order = openOrders(refs).find((candidate) => candidate.id === orderId);
-  const back = (
-    <Link to={orderId ? ROUTES.order(orderId) : ROUTES.orders} className="back-link">
-      {t('orders.deliver.back_to_order')}
-    </Link>
-  );
   if (!order) {
     return (
       <section className="sale">
-        {back}
-        <p className="alert alert-error">{t('orders.detail.not_found')}</p>
+        <PageHeader
+          title={t('nav.screens.orders')}
+          backTo={backTo}
+          backLabel={t('orders.deliver.back_to_order')}
+        />
+        <Banner tone="bad">{t('orders.detail.not_found')}</Banner>
       </section>
     );
   }
@@ -173,18 +182,21 @@ export function DeliverScreen() {
 
   return (
     <section className="sale">
-      {back}
-      <h1>{t('orders.deliver.title', { doc })}</h1>
+      <PageHeader
+        title={t('orders.deliver.title', { doc })}
+        backTo={backTo}
+        backLabel={t('orders.deliver.back_to_order')}
+      />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('orders.deliver.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
       {deliverable.length === 0 ? (
-        <p className="home-muted">{t('orders.deliver.nothing')}</p>
+        <p className="muted">{t('orders.deliver.nothing')}</p>
       ) : (
         <>
-          <p className="home-muted">{t('orders.deliver.hint')}</p>
+          <p className="muted">{t('orders.deliver.hint')}</p>
           <ul className="line-list">
             {entries.map(({ line, text }) => {
               const product = refs.products.find((candidate) => candidate.id === line.productId);
@@ -193,71 +205,77 @@ export function DeliverScreen() {
                 <li key={line.id} className="line-card" aria-label={line.productName}>
                   <div className="line-head">
                     <strong>{line.productName}</strong>
-                    <small>
+                    <small className="muted">
                       {t('orders.deliver.line_max', {
                         quantity: formatQuantity(line.toDeliverBase),
                         unit: unitLabel(unit, line.toDeliverBase, refs.units),
                       })}
                     </small>
                   </div>
-                  <div className="field">
-                    <label htmlFor={`deliver-${line.id}`}>
-                      {t('orders.deliver.quantity_label', { unit: unitLabel(unit, 1, refs.units) })}
-                    </label>
-                    <input
-                      id={`deliver-${line.id}`}
-                      className="text-input"
-                      inputMode="decimal"
-                      value={text}
-                      onChange={(event) =>
-                        setQuantities((current) => ({ ...current, [line.id]: event.target.value }))
-                      }
-                    />
+                  <div className="line-fields">
+                    <Field
+                      label={t('orders.deliver.quantity_label', {
+                        unit: unitLabel(unit, 1, refs.units),
+                      })}
+                    >
+                      {(control) => (
+                        <Input
+                          {...control}
+                          inputMode="decimal"
+                          value={text}
+                          onChange={(event) =>
+                            setQuantities((current) => ({
+                              ...current,
+                              [line.id]: event.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                    </Field>
                   </div>
                 </li>
               );
             })}
           </ul>
-          <div className="field">
-            <label htmlFor="deliver-recipient">{t('orders.deliver.recipient_label')}</label>
-            <input
-              id="deliver-recipient"
-              className="text-input"
-              maxLength={MAX_RECIPIENT_LENGTH}
-              value={recipient}
-              onChange={(event) => setRecipient(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="deliver-notes">{t('orders.deliver.notes_label')}</label>
-            <textarea
-              id="deliver-notes"
-              className="text-input"
-              rows={2}
-              maxLength={MAX_COMMENT_LENGTH}
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-            />
-          </div>
+          <Field label={t('orders.deliver.recipient_label')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={MAX_RECIPIENT_LENGTH}
+                value={recipient}
+                onChange={(event) => setRecipient(event.target.value)}
+                autoComplete="off"
+              />
+            )}
+          </Field>
+          <Field label={t('orders.deliver.notes_label')}>
+            {(control) => (
+              <Textarea
+                {...control}
+                rows={2}
+                maxLength={MAX_COMMENT_LENGTH}
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+              />
+            )}
+          </Field>
           {errors.map((message) => (
-            <p key={message} className="error-message" role="alert">
+            <p key={message} className="field-error" role="alert">
               {message}
             </p>
           ))}
-          {saveError ? (
-            <p className="alert alert-error" role="alert">
-              {t('sales.error_local_save')}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            className="btn-block submit-sale"
-            disabled={!ready}
-            onClick={() => void submit()}
-          >
-            {busy ? t('sales.submitting') : t('orders.deliver.submit')}
-          </button>
+          {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+          <ActionBar>
+            <Button
+              size="lg"
+              className="submit-sale"
+              disabled={!ready}
+              loading={busy}
+              onClick={() => void submit()}
+            >
+              {busy ? t('sales.submitting') : t('orders.deliver.submit')}
+            </Button>
+          </ActionBar>
         </>
       )}
     </section>

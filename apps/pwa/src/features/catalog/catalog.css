@@ -1,0 +1,98 @@
+/* Catalogue (ADR-049, lot L5) : rubriques, formulaires de création, listes en colonnes. Feuille de
+   domaine ; aucune couleur en dur, jetons seulement. */
+
+/* Rythme vertical : le bandeau n'a pas de marge, l'écran lui donne la sienne. */
+.cat-screen > .banner {
+  margin-bottom: var(--space-3);
+}
+
+.cat-sections {
+  margin-bottom: var(--space-4);
+}
+
+/* Sur téléphone, les actions d'une ligne se rangent au bout de la dernière ligne de la carte. */
+@media (max-width: 56.24rem) {
+  .cat-panel .data-cell.is-actions {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+}
+
+.cat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.cat-panel > .field {
+  margin-bottom: 0;
+}
+
+.cat-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Formulaire de création : une carte, un titre, des champs à intervalle régulier. */
+.cat-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cat-form h3 {
+  font: 700 var(--text-lg) / 1.2 var(--font-display);
+}
+
+.cat-panel .cat-form .field,
+.cat-panel .cat-pair > .field,
+.cat-panel .cat-edit .field {
+  margin-bottom: 0;
+}
+
+.cat-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+}
+
+.cat-submit {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Cases d'usage : un cadre sous une légende, les cases en grille dès que la place le permet. */
+.cat-flags {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0 var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.cat-flags > legend {
+  padding: 0 var(--space-1);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.cat-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cat-name small {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.cat-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

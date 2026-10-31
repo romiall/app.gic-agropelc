@@ -6,10 +6,24 @@
  * compte) sont annoncés avant l'envoi. Un compte sans position reçoit celle de la visite si elle est
  * précise (BR-CRM-014, `crm.customer.update`).
  */
-import { useId, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
+import {
+  ActionBar,
+  Banner,
+  Button,
+  Checkbox,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useGeolocation } from '../../platform/useGeolocation.js';
@@ -34,6 +48,7 @@ import {
   visitPayload,
   type VisitDraft,
 } from './visit.js';
+import './crm.css';
 
 export function NewVisitScreen() {
   const { t } = useTranslation();
@@ -50,9 +65,6 @@ export function NewVisitScreen() {
   const [submitted, setSubmitted] = useState<{ visit: string; customerId: string }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const notesId = useId();
-  const nextAtId = useId();
-  const nextNoteId = useId();
 
   const update = (patch: Partial<VisitDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
@@ -63,20 +75,19 @@ export function NewVisitScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.new_visit')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale crm-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.new_visit')} />
+        <SkeletonRows rows={4} />
       </section>
     );
   }
 
   if (submitted) {
     return (
-      <section className="sale">
-        <h1>{t('nav.screens.new_visit')}</h1>
+      <section className="sale crm-screen">
+        <PageHeader title={t('nav.screens.new_visit')} />
         <CommandResult commandId={submitted.visit} messages="visit.result">
-          <button
-            type="button"
+          <Button
             onClick={() => {
               setDraft(EMPTY_VISIT);
               setSubmitted(undefined);
@@ -85,10 +96,10 @@ export function NewVisitScreen() {
             }}
           >
             {t('visit.another')}
-          </button>
-          <Link to={ROUTES.customer(submitted.customerId)} className="action action-compact">
-            <span className="action-label">{t('visit.to_customer')}</span>
-          </Link>
+          </Button>
+          <LinkButton to={ROUTES.customer(submitted.customerId)} variant="outline">
+            {t('visit.to_customer')}
+          </LinkButton>
         </CommandResult>
       </section>
     );
@@ -158,153 +169,160 @@ export function NewVisitScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.new_visit')}</h1>
+    <section className="sale crm-screen">
+      <PageHeader title={t('nav.screens.new_visit')} />
       {!online ? (
-        <p className="home-banner" role="status">
+        <Banner tone="warn" role="status">
           {t('visit.offline_banner')}
-        </p>
+        </Banner>
       ) : null}
       {check.flags.includes('OUT_OF_SESSION') ? (
-        <p className="text-warn">
-          {t('visit.out_of_session')} <Link to={ROUTES.service}>{t('visit.take_service')}</Link>
-        </p>
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <LinkButton to={ROUTES.service} variant="outline" size="sm">
+              {t('visit.take_service')}
+            </LinkButton>
+          }
+        >
+          {t('visit.out_of_session')}
+        </Banner>
       ) : null}
       {check.flags.includes('SESSION_REJECTED') ? (
-        <p className="text-warn">{t('visit.session_rejected')}</p>
+        <Banner tone="warn" role="status">
+          {t('visit.session_rejected')}
+        </Banner>
       ) : null}
 
-      <div className="sale-block">
-        <h2>{t('visit.customer_title')}</h2>
+      <Section title={t('visit.customer_title')}>
         <CustomerPicker
           customers={customers}
           value={draft.customerId}
           onChange={(customerId) => update({ customerId })}
           allowAnonymous={false}
         />
-      </div>
+      </Section>
 
       <div className="field">
         <span className="field-label">{t('visit.position_label')}</span>
-        {effective.position ? (
-          <p className="home-muted">
-            {t('visit.position_value', {
-              accuracy:
-                effective.position.accuracyM === null
-                  ? '?'
-                  : Math.round(effective.position.accuracyM),
-            })}
-          </p>
-        ) : geo.state === 'unavailable' ? (
-          <p className="text-warn">{t('visit.gps_unavailable')}</p>
-        ) : null}
+        <div className="crm-locate">
+          {effective.position ? (
+            <p>
+              {t('visit.position_value', {
+                accuracy:
+                  effective.position.accuracyM === null
+                    ? '?'
+                    : Math.round(effective.position.accuracyM),
+              })}
+            </p>
+          ) : geo.state === 'unavailable' ? (
+            <p className="is-warn">{t('visit.gps_unavailable')}</p>
+          ) : null}
+          <Button variant="outline" onClick={geo.locate} disabled={geo.state === 'locating'}>
+            {geo.state === 'locating' ? t('visit.locating') : t('visit.locate')}
+          </Button>
+        </div>
         {check.flags.includes('FAR_FROM_CUSTOMER') && check.distanceToCustomerM !== null ? (
-          <p className="text-warn">
+          <Banner tone="warn" role="status">
             {t('visit.far_from_customer', {
               distance: Math.round(check.distanceToCustomerM),
               max: maxDistanceM,
             })}
-          </p>
+          </Banner>
         ) : null}
-        <button
-          type="button"
-          className="secondary"
-          onClick={geo.locate}
-          disabled={geo.state === 'locating'}
-        >
-          {geo.state === 'locating' ? t('visit.locating') : t('visit.locate')}
-        </button>
         {proposePosition ? (
-          <label className="choice">
-            <input
-              type="checkbox"
-              checked={draft.saveCustomerPosition}
-              onChange={(event) => update({ saveCustomerPosition: event.target.checked })}
-            />
-            {t('visit.save_customer_position')}
-          </label>
+          <Checkbox
+            label={t('visit.save_customer_position')}
+            checked={draft.saveCustomerPosition}
+            onChange={(event) => update({ saveCustomerPosition: event.target.checked })}
+          />
         ) : null}
       </div>
 
-      <div className="field">
-        <label htmlFor="visit-outcome">{t('visit.outcome_label')}</label>
-        {outcomes.length === 0 ? (
-          <p className="alert alert-error" role="alert">
-            {t('visit.no_outcomes')}
-          </p>
-        ) : (
-          <select
-            id="visit-outcome"
-            className="text-input"
-            value={draft.outcomeId}
-            onChange={(event) => update({ outcomeId: event.target.value })}
-          >
-            <option value="">{t('visit.outcome_placeholder')}</option>
-            {outcomes.map((reason) => (
-              <option key={reason.id} value={reason.id}>
-                {reason.label}
-              </option>
-            ))}
-          </select>
+      {outcomes.length === 0 ? (
+        <div className="field">
+          <span className="field-label">{t('visit.outcome_label')}</span>
+          <Banner tone="bad">{t('visit.no_outcomes')}</Banner>
+        </div>
+      ) : (
+        <Field label={t('visit.outcome_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={draft.outcomeId}
+              onChange={(event) => update({ outcomeId: event.target.value })}
+            >
+              <option value="">{t('visit.outcome_placeholder')}</option>
+              {outcomes.map((reason) => (
+                <option key={reason.id} value={reason.id}>
+                  {reason.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
+      <Field
+        label={outcomeRequiresComment ? t('visit.notes_label_required') : t('visit.notes_label')}
+      >
+        {(control) => (
+          <Textarea
+            {...control}
+            rows={3}
+            maxLength={MAX_VISIT_NOTES}
+            value={draft.notes}
+            onChange={(event) => update({ notes: event.target.value })}
+          />
         )}
-      </div>
-      <div className="field">
-        <label htmlFor={notesId}>
-          {outcomeRequiresComment ? t('visit.notes_label_required') : t('visit.notes_label')}
-        </label>
-        <textarea
-          id={notesId}
-          className="text-input"
-          rows={3}
-          maxLength={MAX_VISIT_NOTES}
-          value={draft.notes}
-          onChange={(event) => update({ notes: event.target.value })}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor={nextAtId}>{t('visit.next_action_at_label')}</label>
-        <input
-          id={nextAtId}
-          type="date"
-          className="text-input"
-          min={today}
-          value={draft.nextActionAt}
-          onChange={(event) => update({ nextActionAt: event.target.value })}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor={nextNoteId}>{t('visit.next_action_note_label')}</label>
-        <input
-          id={nextNoteId}
-          className="text-input"
-          maxLength={MAX_NEXT_ACTION_NOTE}
-          value={draft.nextActionNote}
-          onChange={(event) => update({ nextActionNote: event.target.value })}
-        />
+      </Field>
+      <div className="crm-pair">
+        <Field label={t('visit.next_action_at_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="date"
+              min={today}
+              value={draft.nextActionAt}
+              onChange={(event) => update({ nextActionAt: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={t('visit.next_action_note_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              maxLength={MAX_NEXT_ACTION_NOTE}
+              value={draft.nextActionNote}
+              onChange={(event) => update({ nextActionNote: event.target.value })}
+            />
+          )}
+        </Field>
       </div>
 
       {check.issues.includes('COMMENT_REQUIRED') ? (
-        <p className="error-message">{t('visit.issue.COMMENT_REQUIRED')}</p>
+        <p className="field-error">{t('visit.issue.COMMENT_REQUIRED')}</p>
       ) : null}
       {check.issues.includes('NEXT_ACTION_PAST') ? (
-        <p className="error-message">{t('visit.issue.NEXT_ACTION_PAST')}</p>
+        <p className="field-error">{t('visit.issue.NEXT_ACTION_PAST')}</p>
       ) : null}
       {!holdsAnyRole(roles, ROLE_SETS.visitRecord) ? (
-        <p className="text-warn">{t('visit.role_hint')}</p>
+        <Banner tone="warn" role="status">
+          {t('visit.role_hint')}
+        </Banner>
       ) : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('visit.submit')}
-      </button>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      <ActionBar>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          loading={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('sales.submitting') : t('visit.submit')}
+        </Button>
+      </ActionBar>
     </section>
   );
 }
