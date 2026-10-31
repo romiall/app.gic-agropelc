@@ -8,6 +8,24 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  Checkbox,
+  DataCell,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Segmented,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeBonCommandeFournisseur } from '../pieces/adaptateurs-achats.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -48,6 +66,8 @@ import {
 } from './orders.js';
 import { purchasableProducts, purchaseUnitsOf } from './request.js';
 import type { SupplierView } from './suppliers.js';
+import { orderStatusTone } from './tones.js';
+import './procurement.css';
 
 type Section = 'LIST' | 'NEW';
 /** Enregistre la commande ; renvoie son identifiant, `null` si l'enregistrement local a échoué. */
@@ -90,7 +110,6 @@ function OrderCard({
   const [date, setDate] = useState(order.expectedDeliveryDate ?? '');
   const [comment, setComment] = useState('');
   const [reasonId, setReasonId] = useState('');
-  const ids = { date: useId(), comment: useId(), reason: useId() };
   const actions = orderActions(order.status);
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const locationName =
@@ -138,256 +157,263 @@ function OrderCard({
   ) => setEdits((current) => new Map(current).set(lineId, { ...editOf(lineId, line), ...patch }));
 
   return (
-    <li className="line-card" aria-label={order.docNumber}>
-      <div className="line-head">
+    <DataRow aria-label={order.docNumber}>
+      <DataCell primary>
         <strong>{order.docNumber}</strong>
-        <span className="badge badge-info">
-          {t(`orders_po.status.${order.status}`, { defaultValue: order.status })}
+      </DataCell>
+      <DataCell>
+        <span className="proc-text">
+          {[supplierName, locationName].filter(Boolean).join(' · ')}
         </span>
-      </div>
-      <p className="home-muted">
-        {[
-          supplierName,
-          locationName,
-          order.expectedDeliveryDate
-            ? t('orders_po.expected', { date: formatBusinessDay(order.expectedDeliveryDate) })
-            : null,
-          order.totalXaf !== null ? formatMoney(order.totalXaf) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </p>
-      <ul className="receipt-lines">
-        {order.lines
-          .filter((line) => line.status !== 'CANCELLED')
-          .map((line) => {
-            const product = products.get(line.productId);
-            const unit = product?.base_unit_code ?? line.unitCode;
-            return (
-              <li key={line.id}>
-                <span>
-                  <strong>{product?.name ?? line.productId}</strong>
-                  <small>
-                    {t('orders_po.line_progress', {
-                      ordered: formatQuantityUnit(line.orderedQtyBase, unit),
-                      remaining: formatQuantityUnit(line.remainingQtyBase, unit),
-                    })}
-                  </small>
-                </span>
-                <span>{line.lineTotalXaf !== null ? formatMoney(line.lineTotalXaf) : ''}</span>
-              </li>
-            );
-          })}
-      </ul>
-      {order.closedReason ? <p className="home-muted">{order.closedReason}</p> : null}
-      {/* Bon de commande fournisseur (lot PP). */}
-      <PieceAction
-        cle={`BC:${order.id}`}
-        annulee={order.status === 'CANCELLED'}
-        demande={() => demandeBonCommandeFournisseur(order, refs, supplierName || null)}
-      />
+      </DataCell>
+      <DataCell>
+        {order.expectedDeliveryDate ? (
+          <span className="proc-text">
+            {t('orders_po.expected', { date: formatBusinessDay(order.expectedDeliveryDate) })}
+          </span>
+        ) : null}
+      </DataCell>
+      <DataCell numeric>{order.totalXaf !== null ? formatMoney(order.totalXaf) : null}</DataCell>
+      <DataCell>
+        <Badge tone={orderStatusTone(order.status)}>
+          {t(`orders_po.status.${order.status}`, { defaultValue: order.status })}
+        </Badge>
+      </DataCell>
+      <DataCell wide>
+        <div className="proc-order-body">
+          <ul className="proc-order-lines">
+            {order.lines
+              .filter((line) => line.status !== 'CANCELLED')
+              .map((line) => {
+                const product = products.get(line.productId);
+                const unit = product?.base_unit_code ?? line.unitCode;
+                return (
+                  <li key={line.id}>
+                    <span className="proc-name">
+                      <strong>{product?.name ?? line.productId}</strong>
+                      <small>
+                        {t('orders_po.line_progress', {
+                          ordered: formatQuantityUnit(line.orderedQtyBase, unit),
+                          remaining: formatQuantityUnit(line.remainingQtyBase, unit),
+                        })}
+                      </small>
+                    </span>
+                    <span className="proc-money">
+                      {line.lineTotalXaf !== null ? formatMoney(line.lineTotalXaf) : ''}
+                    </span>
+                  </li>
+                );
+              })}
+          </ul>
+          {order.closedReason ? <p className="muted">{order.closedReason}</p> : null}
+          {/* Bon de commande fournisseur (lot PP). */}
+          <PieceAction
+            cle={`BC:${order.id}`}
+            annulee={order.status === 'CANCELLED'}
+            demande={() => demandeBonCommandeFournisseur(order, refs, supplierName || null)}
+          />
 
-      {panel === null ? (
-        <div className="result-actions">
-          {actions.edit ? (
-            <button
-              type="button"
-              className="secondary"
-              disabled={blocked}
-              onClick={() => openPanel('EDIT')}
-            >
-              {t('orders_po.edit')}
-            </button>
-          ) : null}
-          {actions.submit ? (
-            <button
-              type="button"
-              className="secondary"
-              disabled={blocked}
-              onClick={() => command('procurement.order.submit', {})}
-            >
-              {t('orders_po.submit')}
-            </button>
-          ) : null}
-          {actions.markSent ? (
-            <button
-              type="button"
-              className="secondary"
-              disabled={blocked}
-              onClick={() => command('procurement.order.mark_sent', {})}
-            >
-              {t('orders_po.mark_sent')}
-            </button>
-          ) : null}
-          {actions.closeRemaining ? (
-            <button
-              type="button"
-              className="secondary"
-              disabled={blocked}
-              onClick={() => openPanel('CLOSE')}
-            >
-              {t('orders_po.close_remaining')}
-            </button>
-          ) : null}
-          {actions.cancel ? (
-            <button
-              type="button"
-              className="secondary"
-              disabled={blocked}
-              onClick={() => openPanel('CANCEL')}
-            >
-              {t('orders_po.cancel')}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {panel === 'EDIT' && draft ? (
-        <div className="sale-block">
-          <div className="field">
-            <label htmlFor={ids.date}>{t('orders_po.expected_label')}</label>
-            <input
-              id={ids.date}
-              type="date"
-              className="text-input"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-            />
-          </div>
-          {order.lines
-            .filter((line) => line.status !== 'CANCELLED')
-            .map((line) => {
-              const product = products.get(line.productId);
-              const unit = product?.base_unit_code ?? line.unitCode;
-              const edit = editOf(line.id, line);
-              const name = t('orders_po.line_legend', {
-                name: product?.name ?? line.productId,
-                no: line.lineNo,
-              });
-              return (
-                <fieldset key={line.id} className="choice-group" aria-label={name}>
-                  <legend>{name}</legend>
-                  <div className="line-fields">
-                    <div className="field">
-                      <label htmlFor={`qty-${line.id}`}>
-                        {t('orders_po.qty_base_label', { unit: unitLabel(unit) })}
-                      </label>
-                      <input
-                        id={`qty-${line.id}`}
-                        className="text-input"
-                        inputMode="decimal"
-                        disabled={edit.cancel}
-                        value={edit.qtyText}
-                        onChange={(event) =>
-                          setEdit(line.id, line, { qtyText: event.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`price-${line.id}`}>
-                        {t('orders_po.price_label', { unit: unitLabel(unit) })}
-                      </label>
-                      <input
-                        id={`price-${line.id}`}
-                        className="text-input"
-                        inputMode="numeric"
-                        disabled={edit.cancel}
-                        value={edit.priceText}
-                        onChange={(event) =>
-                          setEdit(line.id, line, { priceText: event.target.value })
-                        }
-                      />
-                    </div>
-                  </div>
-                  <label className="choice">
-                    <input
-                      type="checkbox"
-                      checked={edit.cancel}
-                      onChange={(event) => setEdit(line.id, line, { cancel: event.target.checked })}
-                    />
-                    {t('orders_po.cancel_line')}
-                  </label>
-                </fieldset>
-              );
-            })}
-          {draft.issues
-            .filter((issue) => issue !== 'NOTHING')
-            .map((issue) => (
-              <p key={issue} className="error-message">
-                {t(`orders_po.edit_issue.${issue}`)}
-              </p>
-            ))}
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
-              disabled={blocked || draft.issues.length > 0 || (remainingStale && raisesRequestLine)}
-              onClick={() => command('procurement.order.update', draft.payload)}
-            >
-              {t('orders_po.save')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPanel(null)}>
-              {t('price_rules.cancel')}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {panel === 'CANCEL' || panel === 'CLOSE' ? (
-        <div className="sale-block">
-          {panel === 'CANCEL' && cancellationReasons.length > 0 ? (
-            <div className="field">
-              <label htmlFor={ids.reason}>{t('orders_po.cancel_reason_label')}</label>
-              <select
-                id={ids.reason}
-                className="text-input"
-                value={reasonId}
-                onChange={(event) => setReasonId(event.target.value)}
-              >
-                <option value="">{t('orders_po.no_reason')}</option>
-                {cancellationReasons.map((reason) => (
-                  <option key={reason.id} value={reason.id}>
-                    {reason.label}
-                  </option>
-                ))}
-              </select>
+          {panel === null ? (
+            <div className="proc-actions">
+              {actions.edit ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => openPanel('EDIT')}
+                >
+                  {t('orders_po.edit')}
+                </Button>
+              ) : null}
+              {actions.submit ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => command('procurement.order.submit', {})}
+                >
+                  {t('orders_po.submit')}
+                </Button>
+              ) : null}
+              {actions.markSent ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => command('procurement.order.mark_sent', {})}
+                >
+                  {t('orders_po.mark_sent')}
+                </Button>
+              ) : null}
+              {actions.closeRemaining ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => openPanel('CLOSE')}
+                >
+                  {t('orders_po.close_remaining')}
+                </Button>
+              ) : null}
+              {actions.cancel ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => openPanel('CANCEL')}
+                >
+                  {t('orders_po.cancel')}
+                </Button>
+              ) : null}
             </div>
           ) : null}
-          <div className="field">
-            <label htmlFor={ids.comment}>
-              {panel === 'CANCEL'
-                ? t('orders_po.cancel_comment_label')
-                : t('orders_po.close_reason_label')}
-            </label>
-            <textarea
-              id={ids.comment}
-              className="text-input"
-              rows={2}
-              maxLength={2000}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-            />
-          </div>
-          <div className="result-actions">
-            <button
-              type="button"
-              className="btn-block submit-sale"
-              disabled={blocked || !comment.trim()}
-              onClick={() =>
-                panel === 'CANCEL'
-                  ? command('procurement.order.cancel', cancelPayload(comment, reasonId))
-                  : command('procurement.order.close_remaining', { reason: comment.trim() })
-              }
-            >
-              {panel === 'CANCEL' ? t('orders_po.cancel_confirm') : t('orders_po.close_confirm')}
-            </button>
-            <button type="button" className="secondary" onClick={() => setPanel(null)}>
-              {t('price_rules.cancel')}
-            </button>
-          </div>
+
+          {panel === 'EDIT' && draft ? (
+            <div className="proc-panel">
+              <Field label={t('orders_po.expected_label')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="date"
+                    value={date}
+                    onChange={(event) => setDate(event.target.value)}
+                  />
+                )}
+              </Field>
+              {order.lines
+                .filter((line) => line.status !== 'CANCELLED')
+                .map((line) => {
+                  const product = products.get(line.productId);
+                  const unit = product?.base_unit_code ?? line.unitCode;
+                  const edit = editOf(line.id, line);
+                  const name = t('orders_po.line_legend', {
+                    name: product?.name ?? line.productId,
+                    no: line.lineNo,
+                  });
+                  return (
+                    <fieldset key={line.id} className="proc-checks" aria-label={name}>
+                      <legend>{name}</legend>
+                      <div className="line-fields">
+                        <Field label={t('orders_po.qty_base_label', { unit: unitLabel(unit) })}>
+                          {(control) => (
+                            <Input
+                              {...control}
+                              inputMode="decimal"
+                              disabled={edit.cancel}
+                              value={edit.qtyText}
+                              onChange={(event) =>
+                                setEdit(line.id, line, { qtyText: event.target.value })
+                              }
+                            />
+                          )}
+                        </Field>
+                        <Field label={t('orders_po.price_label', { unit: unitLabel(unit) })}>
+                          {(control) => (
+                            <Input
+                              {...control}
+                              inputMode="numeric"
+                              disabled={edit.cancel}
+                              value={edit.priceText}
+                              onChange={(event) =>
+                                setEdit(line.id, line, { priceText: event.target.value })
+                              }
+                            />
+                          )}
+                        </Field>
+                      </div>
+                      <Checkbox
+                        label={t('orders_po.cancel_line')}
+                        checked={edit.cancel}
+                        onChange={(event) =>
+                          setEdit(line.id, line, { cancel: event.target.checked })
+                        }
+                      />
+                    </fieldset>
+                  );
+                })}
+              {draft.issues
+                .filter((issue) => issue !== 'NOTHING')
+                .map((issue) => (
+                  <p key={issue} className="field-error">
+                    {t(`orders_po.edit_issue.${issue}`)}
+                  </p>
+                ))}
+              <div className="proc-actions">
+                <Button variant="ghost" onClick={() => setPanel(null)}>
+                  {t('price_rules.cancel')}
+                </Button>
+                <Button
+                  disabled={
+                    blocked || draft.issues.length > 0 || (remainingStale && raisesRequestLine)
+                  }
+                  onClick={() => command('procurement.order.update', draft.payload)}
+                >
+                  {t('orders_po.save')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {panel === 'CANCEL' || panel === 'CLOSE' ? (
+            <div className="proc-panel">
+              {panel === 'CANCEL' && cancellationReasons.length > 0 ? (
+                <Field label={t('orders_po.cancel_reason_label')}>
+                  {(control) => (
+                    <Select
+                      {...control}
+                      value={reasonId}
+                      onChange={(event) => setReasonId(event.target.value)}
+                    >
+                      <option value="">{t('orders_po.no_reason')}</option>
+                      {cancellationReasons.map((reason) => (
+                        <option key={reason.id} value={reason.id}>
+                          {reason.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              ) : null}
+              <Field
+                label={
+                  panel === 'CANCEL'
+                    ? t('orders_po.cancel_comment_label')
+                    : t('orders_po.close_reason_label')
+                }
+              >
+                {(control) => (
+                  <Textarea
+                    {...control}
+                    rows={2}
+                    maxLength={2000}
+                    value={comment}
+                    onChange={(event) => setComment(event.target.value)}
+                  />
+                )}
+              </Field>
+              <div className="proc-actions">
+                <Button variant="ghost" onClick={() => setPanel(null)}>
+                  {t('price_rules.cancel')}
+                </Button>
+                <Button
+                  variant={panel === 'CANCEL' ? 'danger' : 'primary'}
+                  disabled={blocked || !comment.trim()}
+                  onClick={() =>
+                    panel === 'CANCEL'
+                      ? command('procurement.order.cancel', cancelPayload(comment, reasonId))
+                      : command('procurement.order.close_remaining', { reason: comment.trim() })
+                  }
+                >
+                  {panel === 'CANCEL'
+                    ? t('orders_po.cancel_confirm')
+                    : t('orders_po.close_confirm')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-    </li>
+      </DataCell>
+    </DataRow>
   );
 }
 
@@ -452,15 +478,8 @@ function NewOrder({
   }>();
   const [requestPick, setRequestPick] = useState('');
   const [productPick, setProductPick] = useState('');
-  const ids = {
-    supplier: useId(),
-    location: useId(),
-    date: useId(),
-    request: useId(),
-    product: useId(),
-    requestsWait: useId(),
-    retrying: useId(),
-  };
+  // Messages reliés au bouton de création (`aria-describedby`).
+  const ids = { requestsWait: useId(), retrying: useId() };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const activeSuppliers = suppliers
     .filter((supplier) => supplier.status === 'ACTIVE')
@@ -592,68 +611,74 @@ function NewOrder({
   };
 
   return (
-    <>
+    <div className="proc-form">
       {suppliersFailed ? (
-        <div className="alert alert-error" role="alert">
-          <p>
-            {suppliersFailed.denied
-              ? t('orders_po.suppliers_denied')
-              : t('orders_po.suppliers_unavailable')}
-          </p>
-          {suppliersFailed.denied ? null : (
-            <button type="button" className="secondary" onClick={onRetrySuppliers}>
-              {t('ledger.retry')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            suppliersFailed.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={onRetrySuppliers}>
+                {t('ledger.retry')}
+              </Button>
+            )
+          }
+        >
+          {suppliersFailed.denied
+            ? t('orders_po.suppliers_denied')
+            : t('orders_po.suppliers_unavailable')}
+        </Banner>
       ) : null}
       {stillRetrying ? (
-        <p id={ids.retrying} className="text-warn" role="status">
-          {t('orders_po.create_retrying')}
-        </p>
+        <div id={ids.retrying}>
+          <Banner tone="warn" role="status">
+            {t('orders_po.create_retrying')}
+          </Banner>
+        </div>
       ) : null}
-      <div className="field">
-        <label htmlFor={ids.supplier}>{t('orders_po.supplier_label')}</label>
-        <select
-          id={ids.supplier}
-          className="text-input"
-          value={supplierId}
-          onChange={(event) => setSupplierId(event.target.value)}
-        >
-          <option value="">{t('lot_setup.choose')}</option>
-          {activeSuppliers.map((supplier) => (
-            <option key={supplier.id} value={supplier.id}>
-              {supplier.name}
-            </option>
-          ))}
-        </select>
+      <div className="proc-pair">
+        <Field label={t('orders_po.supplier_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={supplierId}
+              onChange={(event) => setSupplierId(event.target.value)}
+            >
+              <option value="">{t('lot_setup.choose')}</option>
+              {activeSuppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label={t('orders_po.location_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={locationId}
+              onChange={(event) => setLocationId(event.target.value)}
+            >
+              <option value="">{t('lot_setup.choose')}</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
-      <div className="field">
-        <label htmlFor={ids.location}>{t('orders_po.location_label')}</label>
-        <select
-          id={ids.location}
-          className="text-input"
-          value={locationId}
-          onChange={(event) => setLocationId(event.target.value)}
-        >
-          <option value="">{t('lot_setup.choose')}</option>
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={ids.date}>{t('orders_po.expected_label')}</label>
-        <input
-          id={ids.date}
-          type="date"
-          className="text-input"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-        />
-      </div>
+      <Field label={t('orders_po.expected_label')}>
+        {(control) => (
+          <Input
+            {...control}
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
+        )}
+      </Field>
 
       <ul className="line-list">
         {rows.map(({ line, product, units, check }) => {
@@ -661,132 +686,138 @@ function NewOrder({
           const name = product?.name ?? line.productId;
           return (
             <li key={line.key} className="line-card" aria-label={name}>
-              <div className="line-head">
-                <strong>{name}</strong>
-                {line.requestLineId ? (
-                  <span className="badge badge-info">{t('orders_po.from_request')}</span>
-                ) : null}
-              </div>
-              <div className="line-fields">
-                <div className="field">
-                  <label htmlFor={`new-qty-${line.key}`}>{t('sales.quantity_label')}</label>
-                  <input
-                    id={`new-qty-${line.key}`}
-                    className="text-input"
-                    inputMode="decimal"
-                    value={line.quantityText}
-                    onChange={(event) => update(line.key, { quantityText: event.target.value })}
-                  />
+              <div className="proc-line">
+                <div className="line-head">
+                  <strong>{name}</strong>
+                  {line.requestLineId ? (
+                    <Badge tone="info">{t('orders_po.from_request')}</Badge>
+                  ) : null}
                 </div>
-                {units.length > 1 ? (
-                  <div className="field">
-                    <label htmlFor={`new-unit-${line.key}`}>{t('sales.unit_label')}</label>
-                    <select
-                      id={`new-unit-${line.key}`}
-                      className="text-input"
-                      value={line.unitCode}
-                      onChange={(event) => update(line.key, { unitCode: event.target.value })}
-                    >
-                      {units.map((candidate) => (
-                        <option key={candidate.unitCode} value={candidate.unitCode}>
-                          {unitLabel(candidate.unitCode)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-                <div className="field">
-                  <label htmlFor={`new-price-${line.key}`}>
-                    {t('orders_po.price_label', { unit: unitLabel(unit) })}
-                  </label>
-                  <input
-                    id={`new-price-${line.key}`}
-                    className="text-input"
-                    inputMode="numeric"
-                    value={line.priceText}
-                    onChange={(event) => update(line.key, { priceText: event.target.value })}
-                  />
+                <div className="line-fields">
+                  <Field label={t('sales.quantity_label')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        inputMode="decimal"
+                        value={line.quantityText}
+                        onChange={(event) => update(line.key, { quantityText: event.target.value })}
+                      />
+                    )}
+                  </Field>
+                  {units.length > 1 ? (
+                    <Field label={t('sales.unit_label')}>
+                      {(control) => (
+                        <Select
+                          {...control}
+                          value={line.unitCode}
+                          onChange={(event) => update(line.key, { unitCode: event.target.value })}
+                        >
+                          {units.map((candidate) => (
+                            <option key={candidate.unitCode} value={candidate.unitCode}>
+                              {unitLabel(candidate.unitCode)}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                  ) : null}
+                  <Field label={t('orders_po.price_label', { unit: unitLabel(unit) })}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        inputMode="numeric"
+                        value={line.priceText}
+                        onChange={(event) => update(line.key, { priceText: event.target.value })}
+                      />
+                    )}
+                  </Field>
                 </div>
-              </div>
-              {line.remainingBase !== null ? (
-                <p className="home-muted">
-                  {t('orders_po.remaining_request', {
-                    quantity: formatQuantity(line.remainingBase),
-                    unit: unitLabel(unit, line.remainingBase),
-                  })}
-                </p>
-              ) : null}
-              {check.issues
-                .filter((issue) => issue !== 'QUANTITY_INVALID' || line.quantityText)
-                .filter((issue) => issue !== 'PRICE_INVALID' || line.priceText)
-                .map((issue) => (
-                  <p key={issue} className="error-message">
-                    {t(`orders_po.line_issue.${issue}`)}
+                {line.remainingBase !== null ? (
+                  <p className="muted">
+                    {t('orders_po.remaining_request', {
+                      quantity: formatQuantity(line.remainingBase),
+                      unit: unitLabel(unit, line.remainingBase),
+                    })}
                   </p>
-                ))}
-              <button
-                type="button"
-                className="link-button"
-                aria-label={t('orders_po.remove_line', { name })}
-                onClick={() =>
-                  setLines((current) => current.filter((item) => item.key !== line.key))
-                }
-              >
-                {t('orders_po.remove')}
-              </button>
+                ) : null}
+                {check.issues
+                  .filter((issue) => issue !== 'QUANTITY_INVALID' || line.quantityText)
+                  .filter((issue) => issue !== 'PRICE_INVALID' || line.priceText)
+                  .map((issue) => (
+                    <p key={issue} className="field-error">
+                      {t(`orders_po.line_issue.${issue}`)}
+                    </p>
+                  ))}
+                <div className="proc-line-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="trash"
+                    aria-label={t('orders_po.remove_line', { name })}
+                    onClick={() =>
+                      setLines((current) => current.filter((item) => item.key !== line.key))
+                    }
+                  >
+                    {t('orders_po.remove')}
+                  </Button>
+                </div>
+              </div>
             </li>
           );
         })}
       </ul>
 
       {requestsRefreshing && !requestsFailed ? (
-        <p id={ids.requestsWait} className="home-muted" role="status">
+        <p id={ids.requestsWait} className="muted" role="status">
           {t('orders_po.requests_refreshing')}
         </p>
       ) : null}
       {lines.length < MAX_ORDER_LINES ? (
         <>
           {requestsFailed ? (
-            <div className="alert alert-error" role="alert">
-              <p>
-                {requests
-                  ? t('orders_po.requests_stale_failed')
-                  : t('orders_po.requests_unavailable')}
-              </p>
-              <button type="button" className="secondary" onClick={onRetryRequests}>
-                {t('ledger.retry')}
-              </button>
-            </div>
+            <Banner
+              tone="bad"
+              action={
+                <Button variant="outline" size="sm" onClick={onRetryRequests}>
+                  {t('ledger.retry')}
+                </Button>
+              }
+            >
+              {requests
+                ? t('orders_po.requests_stale_failed')
+                : t('orders_po.requests_unavailable')}
+            </Banner>
           ) : null}
           {requests === undefined ? (
-            <p className="home-muted">{t('orders_po.requests_loading')}</p>
+            <p className="muted">{t('orders_po.requests_loading')}</p>
           ) : requests === null ? null : orderable.length > 0 ? (
-            <div className="field">
-              <label htmlFor={ids.request}>{t('orders_po.request_line_label')}</label>
-              <select
-                id={ids.request}
-                className="text-input"
-                value={requestPick}
-                onChange={(event) => setRequestPick(event.target.value)}
-              >
-                <option value="">{t('lot_setup.choose')}</option>
-                {orderable.map((line) => (
-                  <option key={line.requestLineId} value={line.requestLineId}>
-                    {t('orders_po.request_line', {
-                      doc: line.requestDoc,
-                      product: products.get(line.productId)?.name ?? line.productId,
-                      quantity: formatQuantity(line.remainingBase),
-                      unit: unitLabel(
-                        products.get(line.productId)?.base_unit_code ?? '',
-                        line.remainingBase,
-                      ),
-                    })}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="secondary"
+            <div className="proc-add">
+              <Field label={t('orders_po.request_line_label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={requestPick}
+                    onChange={(event) => setRequestPick(event.target.value)}
+                  >
+                    <option value="">{t('lot_setup.choose')}</option>
+                    {orderable.map((line) => (
+                      <option key={line.requestLineId} value={line.requestLineId}>
+                        {t('orders_po.request_line', {
+                          doc: line.requestDoc,
+                          product: products.get(line.productId)?.name ?? line.productId,
+                          quantity: formatQuantity(line.remainingBase),
+                          unit: unitLabel(
+                            products.get(line.productId)?.base_unit_code ?? '',
+                            line.remainingBase,
+                          ),
+                        })}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Button
+                variant="outline"
                 disabled={!requestPick || requestsStale}
                 aria-describedby={
                   requestsRefreshing && !requestsFailed ? ids.requestsWait : undefined
@@ -794,43 +825,45 @@ function NewOrder({
                 onClick={addFromRequest}
               >
                 {t('orders_po.add_request_line')}
-              </button>
+              </Button>
             </div>
           ) : null}
-          <div className="field">
-            <label htmlFor={ids.product}>{t('orders_po.direct_product_label')}</label>
-            <select
-              id={ids.product}
-              className="text-input"
-              value={productPick}
-              onChange={(event) => setProductPick(event.target.value)}
-            >
-              <option value="">{t('lot_setup.choose')}</option>
-              {purchasable.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="secondary" disabled={!productPick} onClick={addDirect}>
+          <div className="proc-add">
+            <Field label={t('orders_po.direct_product_label')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={productPick}
+                  onChange={(event) => setProductPick(event.target.value)}
+                >
+                  <option value="">{t('lot_setup.choose')}</option>
+                  {purchasable.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Button variant="outline" disabled={!productPick} onClick={addDirect}>
               {t('orders_po.add_direct_line')}
-            </button>
+            </Button>
           </div>
         </>
       ) : null}
 
       {total !== null && lines.length > 0 ? (
-        <p>
+        <p className="proc-total">
           <strong>{t('orders_po.total', { total: formatMoney(total) })}</strong>
         </p>
       ) : null}
       {total !== null && total > threshold ? (
-        <p className="home-muted">
+        <p className="muted">
           {t('orders_po.approval_hint', { threshold: formatMoney(threshold) })}
         </p>
       ) : null}
       {amountTooLarge ? (
-        <p className="error-message">{t('orders_po.issue.AMOUNT_TOO_LARGE')}</p>
+        <p className="field-error">{t('orders_po.issue.AMOUNT_TOO_LARGE')}</p>
       ) : null}
       {issues
         .filter(
@@ -840,27 +873,36 @@ function NewOrder({
             issue === 'DUPLICATE_REQUEST_LINE',
         )
         .map((issue) => (
-          <p key={issue} className="error-message">
+          <p key={issue} className="field-error">
             {t(`orders_po.issue.${issue}`)}
           </p>
         ))}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        aria-describedby={
-          [
-            sameAsRetrying ? ids.retrying : null,
-            requestsRefreshing && !requestsFailed && fromRequest ? ids.requestsWait : null,
-          ]
-            .filter(Boolean)
-            .join(' ') || undefined
+      <ActionBar
+        summary={
+          <>
+            <span className="action-bar-label">{t('orders_po.summary_total')}</span>
+            <strong className="action-bar-value">{formatMoney(total ?? 0)}</strong>
+          </>
         }
-        onClick={submit}
       >
-        {t('orders_po.create')}
-      </button>
-    </>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          aria-describedby={
+            [
+              sameAsRetrying ? ids.retrying : null,
+              requestsRefreshing && !requestsFailed && fromRequest ? ids.requestsWait : null,
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined
+          }
+          onClick={submit}
+        >
+          {t('orders_po.create')}
+        </Button>
+      </ActionBar>
+    </div>
   );
 }
 
@@ -877,7 +919,6 @@ export function OrdersScreen() {
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const statusId = useId();
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'procurement.order.', userId);
   // Clé de relecture sur la phase (pas le statut brut, qui passe par SYNCING à chaque cycle).
@@ -925,9 +966,9 @@ export function OrdersScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.purchase_orders')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale proc-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.purchase_orders')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -970,13 +1011,9 @@ export function OrdersScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.purchase_orders')}</h1>
-      {!online ? (
-        <p className="alert alert-error" role="alert">
-          {t('orders_po.online_only')}
-        </p>
-      ) : null}
+    <section className="sale proc-screen">
+      <PageHeader title={t('nav.screens.purchase_orders')} />
+      {!online ? <Banner tone="bad">{t('orders_po.online_only')}</Banner> : null}
       {shownCommandId ? (
         <CommandResult
           commandId={shownCommandId}
@@ -987,83 +1024,92 @@ export function OrdersScreen() {
           }
         />
       ) : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <fieldset className="choice-group">
-        <legend>{t('orders_po.section_label')}</legend>
-        {(['LIST', 'NEW'] as const).map((value) => (
-          <label key={value} className="choice">
-            <input
-              type="radio"
-              name="orders-section"
-              value={value}
-              checked={section === value}
-              onChange={() => setSection(value)}
-            />
-            {t(`orders_po.section.${value}`)}
-          </label>
-        ))}
-      </fieldset>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      <Segmented
+        label={t('orders_po.section_label')}
+        value={section}
+        onChange={setSection}
+        options={(['LIST', 'NEW'] as const).map((value) => ({
+          value,
+          label: t(`orders_po.section.${value}`),
+        }))}
+        className="proc-sections"
+      />
       <section
-        className="sale-block"
+        className="proc-section"
         aria-label={t('orders_po.section.LIST')}
         hidden={section !== 'LIST'}
       >
         {/* La rubrique masquée reste montée : une saisie en cours n'est jamais perdue. */}
         <>
-          <div className="field">
-            <label htmlFor={statusId}>{t('orders_po.status_filter')}</label>
-            <select
-              id={statusId}
-              className="text-input"
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value);
-                setOrdersPages(1);
-              }}
-            >
-              <option value="">{t('orders_po.all_statuses')}</option>
-              {ORDER_STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {t(`orders_po.status.${value}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {online && orders.data === undefined && !orders.failed ? (
-            <p className="home-muted">{t('sales.loading')}</p>
-          ) : null}
-          {online && orders.failed ? (
-            <div className="alert alert-error" role="alert">
-              <p>{orders.denied ? t('orders_po.denied') : t('orders_po.unavailable')}</p>
-              {orders.denied ? null : (
-                <button type="button" className="secondary" onClick={orders.retry}>
-                  {t('ledger.retry')}
-                </button>
+          <div className="filter-bar">
+            <Field label={t('orders_po.status_filter')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={status}
+                  onChange={(event) => {
+                    setStatus(event.target.value);
+                    setOrdersPages(1);
+                  }}
+                >
+                  <option value="">{t('orders_po.all_statuses')}</option>
+                  {ORDER_STATUSES.map((value) => (
+                    <option key={value} value={value}>
+                      {t(`orders_po.status.${value}`)}
+                    </option>
+                  ))}
+                </Select>
               )}
-            </div>
+            </Field>
+          </div>
+          {online && orders.data === undefined && !orders.failed ? <SkeletonRows rows={3} /> : null}
+          {online && orders.failed ? (
+            <Banner
+              tone="bad"
+              action={
+                orders.denied ? undefined : (
+                  <Button variant="outline" size="sm" onClick={orders.retry}>
+                    {t('ledger.retry')}
+                  </Button>
+                )
+              }
+            >
+              {orders.denied ? t('orders_po.denied') : t('orders_po.unavailable')}
+            </Banner>
           ) : null}
           {online && orders.data && orders.stale && !orders.failed ? (
-            <p className="home-muted" role="status">
+            <p className="muted" role="status">
               {t('orders_po.refreshing')}
             </p>
           ) : null}
           {online && requests.failed ? (
-            <div className="alert alert-error" role="alert">
-              <p>{t('orders_po.requests_unavailable_list')}</p>
-              <button type="button" className="secondary" onClick={requests.retry}>
-                {t('ledger.retry')}
-              </button>
-            </div>
+            <Banner
+              tone="bad"
+              action={
+                <Button variant="outline" size="sm" onClick={requests.retry}>
+                  {t('ledger.retry')}
+                </Button>
+              }
+            >
+              {t('orders_po.requests_unavailable_list')}
+            </Banner>
           ) : null}
           {orders.data ? (
             orders.data.items.length === 0 ? (
-              <p className="home-muted">{t('orders_po.none')}</p>
+              <EmptyState icon="clipboard" title={t('orders_po.none')} />
             ) : (
-              <ul className="line-list">
+              <DataList
+                aria-label={t('orders_po.section.LIST')}
+                columns={[
+                  { label: t('orders_po.col.order') },
+                  { label: t('orders_po.col.supplier') },
+                  { label: t('orders_po.col.delivery') },
+                  { label: t('orders_po.col.total'), numeric: true },
+                  { label: t('orders_po.col.status') },
+                ]}
+                template="minmax(13rem, 1.6fr) minmax(0, 2.4fr) minmax(0, 2fr) 9rem 9rem"
+              >
                 {orders.data.items.map((order) => (
                   <OrderCard
                     key={order.id}
@@ -1077,31 +1123,30 @@ export function OrdersScreen() {
                     remainingStale={requests.stale}
                   />
                 ))}
-              </ul>
+              </DataList>
             )
           ) : null}
           {orders.data?.more ? (
-            <div className="result-actions">
-              <p className="home-muted">{t('orders_po.truncated')}</p>
-              <button
-                type="button"
-                className="secondary"
+            <div className="proc-more">
+              <p className="muted">{t('orders_po.truncated')}</p>
+              <Button
+                variant="outline"
                 disabled={orders.stale}
                 onClick={() => setOrdersPages((value) => value + 1)}
               >
                 {t('orders_po.older')}
-              </button>
+              </Button>
             </div>
           ) : null}
         </>
       </section>
       <section
-        className="sale-block"
+        className="proc-section"
         aria-label={t('orders_po.section.NEW')}
         hidden={section !== 'NEW'}
       >
         {suppliers.data === undefined && !suppliers.failed ? (
-          <p className="home-muted">{t('sales.loading')}</p>
+          <SkeletonRows rows={3} />
         ) : (
           <NewOrder
             refs={refs}

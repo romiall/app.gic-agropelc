@@ -1054,6 +1054,12 @@ export const fr = {
       'La demande ne se modifie plus une fois soumise ; un valideur autre que vous l’approuve ou la refuse.',
     submit: 'Soumettre la demande',
     mine_title: 'Mes demandes',
+    col: {
+      number: 'Numéro',
+      justification: 'Justification',
+      status: 'Statut',
+      date: 'Date',
+    },
     none: 'Aucune demande.',
     status: {
       PENDING: 'En attente d’envoi',
@@ -1088,6 +1094,14 @@ export const fr = {
       PARTIALLY_RECEIVED: 'Reçu en partie',
     },
     recent_title: 'Réceptions des 30 derniers jours',
+    col: {
+      order: 'Bon de commande',
+      supplier: 'Fournisseur',
+      expected: 'Livraison prévue',
+      status: 'Statut',
+      receipt: 'Réception',
+      date: 'Date',
+    },
     no_receipt: 'Aucune réception récente.',
     status: {
       POSTED: 'Comptabilisée',
@@ -1168,6 +1182,14 @@ export const fr = {
     },
     status_filter: 'Statut',
     all_statuses: 'Tous',
+    col: {
+      order: 'Bon de commande',
+      supplier: 'Fournisseur et lieu',
+      delivery: 'Livraison',
+      total: 'Montant',
+      status: 'Statut',
+    },
+    summary_total: 'Total du bon',
     status: {
       DRAFT: 'Brouillon',
       PENDING_APPROVAL: 'En validation',
@@ -1272,6 +1294,12 @@ export const fr = {
     unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
     denied: 'Lecture des fournisseurs refusée : droit insuffisant.',
     refreshing: 'Relecture des fournisseurs après la dernière opération…',
+    col: {
+      supplier: 'Fournisseur',
+      contact: 'Contact',
+      terms: 'Paiement',
+      status: 'Statut',
+    },
     none: 'Aucun fournisseur.',
     new: 'Nouveau fournisseur',
     new_title: 'Nouveau fournisseur',
@@ -3311,6 +3339,12 @@ export const fr = {
     offline_banner: 'Hors ligne : les bons affichés peuvent être périmés.',
     online_only: 'Rapprochement en ligne seulement : reconnectez-vous pour le lire.',
     list_title: 'Bons de commande',
+    col: {
+      order: 'Bon',
+      supplier: 'Fournisseur',
+      dates: 'Dates et montant',
+      gaps: 'Écarts',
+    },
     group_label: 'Bons à afficher',
     group: {
       OPEN: 'Attendus (envoyés ou reçus en partie)',

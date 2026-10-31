@@ -2,10 +2,28 @@
  * ECR-APP-01 « Fournisseurs » (responsable des achats ; action `SUPPLIERS` ; en ligne). Liste lue sur
  * le serveur (tous statuts), création, modification des champs changés, désactivation et
  * réactivation (`procurement.supplier.*`, agrégat `SUPPLIER`). Relue après chaque opération ;
- * l'opération suivante attend la réponse définitive de la précédente.
+ * l'opération suivante attend la réponse définitive de la précédente. Cartes sur téléphone, colonnes
+ * sur ordinateur.
  */
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Checkbox,
+  DataCell,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  SkeletonRows,
+} from '../../components/ui/index.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -31,6 +49,7 @@ import {
   type SupplierForm,
   type SupplierView,
 } from './suppliers.js';
+import './procurement.css';
 
 interface EditorProps {
   readonly refs: SalesReferences;
@@ -46,17 +65,6 @@ function SupplierEditor({ refs, supplier, takenCodes, blocked, onCancel, onSubmi
   const [form, setForm] = useState<SupplierForm>(() =>
     supplier ? formOf(supplier) : EMPTY_SUPPLIER,
   );
-  const ids = {
-    code: useId(),
-    name: useId(),
-    contact: useId(),
-    phone: useId(),
-    email: useId(),
-    address: useId(),
-    tax: useId(),
-    terms: useId(),
-    notes: useId(),
-  };
   const creating = supplier === null;
   const issues = checkSupplier(form, { creating, takenCodes });
   const changes = supplier ? updatePayload(supplier, form) : null;
@@ -70,90 +78,98 @@ function SupplierEditor({ refs, supplier, takenCodes, blocked, onCancel, onSubmi
         : [...form.suppliedCategories, code],
     });
   const field = (
-    id: string,
     key: Exclude<keyof SupplierForm, 'suppliedCategories' | 'paymentTermsText'>,
     max: number,
     inputMode?: 'tel' | 'email',
   ) => (
-    <div className="field">
-      <label htmlFor={id}>{t(`suppliers.field.${key}`)}</label>
-      <input
-        id={id}
-        className="text-input"
-        maxLength={max}
-        inputMode={inputMode}
-        value={form[key]}
-        disabled={key === 'code' && !creating}
-        onChange={(event) => update({ [key]: event.target.value } as Partial<SupplierForm>)}
-      />
-    </div>
+    <Field label={t(`suppliers.field.${key}`)}>
+      {(control) => (
+        <Input
+          {...control}
+          maxLength={max}
+          inputMode={inputMode}
+          value={form[key]}
+          disabled={key === 'code' && !creating}
+          onChange={(event) => update({ [key]: event.target.value } as Partial<SupplierForm>)}
+        />
+      )}
+    </Field>
   );
 
   return (
-    <section className="sale-block" aria-labelledby="supplier-editor-title">
-      <h2 id="supplier-editor-title">
-        {creating ? t('suppliers.new_title') : t('suppliers.edit_title', { name: supplier.name })}
-      </h2>
-      {field(ids.code, 'code', SUPPLIER_LIMITS.code)}
-      {field(ids.name, 'name', SUPPLIER_LIMITS.name)}
-      {field(ids.contact, 'contactName', SUPPLIER_LIMITS.contactName)}
-      {field(ids.phone, 'phone', SUPPLIER_LIMITS.phone, 'tel')}
-      {field(ids.email, 'email', SUPPLIER_LIMITS.email, 'email')}
-      {field(ids.address, 'address', SUPPLIER_LIMITS.address)}
-      {field(ids.tax, 'taxId', SUPPLIER_LIMITS.taxId)}
-      <div className="field">
-        <label htmlFor={ids.terms}>{t('suppliers.field.paymentTermsText')}</label>
-        <input
-          id={ids.terms}
-          className="text-input"
-          inputMode="numeric"
-          maxLength={String(MAX_PAYMENT_TERMS_DAYS).length}
-          value={form.paymentTermsText}
-          onChange={(event) => update({ paymentTermsText: event.target.value })}
-        />
-      </div>
-      {field(ids.notes, 'notes', SUPPLIER_LIMITS.notes)}
-      {!creating ? <p className="home-muted">{t('suppliers.edit_hint')}</p> : null}
-      {refs.productCategories.length > 0 ? (
-        <fieldset className="choice-group">
-          <legend>{t('suppliers.categories_label')}</legend>
-          {refs.productCategories.map((category) => (
-            <label key={category.id} className="choice">
-              <input
-                type="checkbox"
+    <Section
+      title={
+        creating ? t('suppliers.new_title') : t('suppliers.edit_title', { name: supplier.name })
+      }
+    >
+      <Card padded className="proc-form">
+        <div className="proc-pair">
+          {field('code', SUPPLIER_LIMITS.code)}
+          {field('name', SUPPLIER_LIMITS.name)}
+        </div>
+        <div className="proc-pair">
+          {field('contactName', SUPPLIER_LIMITS.contactName)}
+          {field('phone', SUPPLIER_LIMITS.phone, 'tel')}
+        </div>
+        <div className="proc-pair">
+          {field('email', SUPPLIER_LIMITS.email, 'email')}
+          {field('taxId', SUPPLIER_LIMITS.taxId)}
+        </div>
+        {field('address', SUPPLIER_LIMITS.address)}
+        <div className="proc-pair">
+          <Field label={t('suppliers.field.paymentTermsText')}>
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                maxLength={String(MAX_PAYMENT_TERMS_DAYS).length}
+                value={form.paymentTermsText}
+                onChange={(event) => update({ paymentTermsText: event.target.value })}
+              />
+            )}
+          </Field>
+          {field('notes', SUPPLIER_LIMITS.notes)}
+        </div>
+        {!creating ? <p className="muted">{t('suppliers.edit_hint')}</p> : null}
+        {refs.productCategories.length > 0 ? (
+          <fieldset className="proc-checks">
+            <legend>{t('suppliers.categories_label')}</legend>
+            {refs.productCategories.map((category) => (
+              <Checkbox
+                key={category.id}
+                label={category.name}
                 checked={form.suppliedCategories.includes(category.code)}
                 onChange={() => toggleCategory(category.code)}
               />
-              {category.name}
-            </label>
+            ))}
+          </fieldset>
+        ) : null}
+        {issues
+          .filter(
+            (issue) =>
+              !(issue === 'CODE_REQUIRED' && !form.code) &&
+              !(issue === 'NAME_REQUIRED' && !form.name),
+          )
+          .map((issue) => (
+            <p key={issue} className="field-error">
+              {t(`suppliers.issue.${issue}`)}
+            </p>
           ))}
-        </fieldset>
-      ) : null}
-      {issues
-        .filter(
-          (issue) =>
-            !(issue === 'CODE_REQUIRED' && !form.code) &&
-            !(issue === 'NAME_REQUIRED' && !form.name),
-        )
-        .map((issue) => (
-          <p key={issue} className="error-message">
-            {t(`suppliers.issue.${issue}`)}
-          </p>
-        ))}
-      <div className="result-actions">
-        <button
-          type="button"
-          className="btn-block submit-sale"
+      </Card>
+      <ActionBar>
+        <Button variant="outline" onClick={onCancel}>
+          {t('price_rules.cancel')}
+        </Button>
+        <Button
+          size="lg"
+          className="submit-sale"
           disabled={!ready}
           onClick={() => onSubmit(creating ? createPayload(form) : (changes ?? {}))}
         >
           {creating ? t('suppliers.create') : t('suppliers.save')}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
-          {t('price_rules.cancel')}
-        </button>
-      </div>
-    </section>
+        </Button>
+      </ActionBar>
+    </Section>
   );
 }
 
@@ -181,9 +197,9 @@ export function SuppliersScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.suppliers')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale proc-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.suppliers')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -222,36 +238,39 @@ export function SuppliersScreen() {
   };
 
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.suppliers')}</h1>
-      {!online ? (
-        <p className="alert alert-error" role="alert">
-          {t('suppliers.online_only')}
-        </p>
-      ) : null}
+    <section className="sale proc-screen">
+      <PageHeader
+        title={t('nav.screens.suppliers')}
+        actions={
+          suppliers && !editing ? (
+            <Button disabled={blocked} onClick={() => setEditing({ supplier: null })}>
+              {t('suppliers.new')}
+            </Button>
+          ) : undefined
+        }
+      />
+      {!online ? <Banner tone="bad">{t('suppliers.online_only')}</Banner> : null}
       {shownCommandId ? (
         <CommandResult commandId={shownCommandId} messages="suppliers.result" />
       ) : null}
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      {online && suppliers === undefined && !read.failed ? (
-        <p className="home-muted">{t('sales.loading')}</p>
-      ) : null}
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      {online && suppliers === undefined && !read.failed ? <SkeletonRows rows={3} /> : null}
       {online && read.failed ? (
-        <div className="alert alert-error" role="alert">
-          <p>{read.denied ? t('suppliers.denied') : t('suppliers.unavailable')}</p>
-          {read.denied ? null : (
-            <button type="button" className="secondary" onClick={read.retry}>
-              {t('ledger.retry')}
-            </button>
-          )}
-        </div>
+        <Banner
+          tone="bad"
+          action={
+            read.denied ? undefined : (
+              <Button variant="outline" size="sm" onClick={read.retry}>
+                {t('ledger.retry')}
+              </Button>
+            )
+          }
+        >
+          {read.denied ? t('suppliers.denied') : t('suppliers.unavailable')}
+        </Banner>
       ) : null}
       {online && suppliers && read.stale && !read.failed ? (
-        <p className="home-muted" role="status">
+        <p className="muted" role="status">
           {t('suppliers.refreshing')}
         </p>
       ) : null}
@@ -283,77 +302,80 @@ export function SuppliersScreen() {
         />
       ) : null}
       {suppliers && !editing ? (
-        <>
-          <button
-            type="button"
-            className="btn-block"
-            disabled={blocked}
-            onClick={() => setEditing({ supplier: null })}
+        sorted.length === 0 ? (
+          <EmptyState icon="truck" title={t('suppliers.none')} />
+        ) : (
+          <DataList
+            aria-label={t('nav.screens.suppliers')}
+            columns={[
+              { label: t('suppliers.col.supplier') },
+              { label: t('suppliers.col.contact') },
+              { label: t('suppliers.col.terms') },
+              { label: t('suppliers.col.status') },
+              { label: '' },
+            ]}
+            template="minmax(0, 2.2fr) minmax(0, 2.2fr) 9rem 7rem 13rem"
           >
-            {t('suppliers.new')}
-          </button>
-          {sorted.length === 0 ? (
-            <p className="home-muted">{t('suppliers.none')}</p>
-          ) : (
-            <ul className="line-list">
-              {sorted.map((supplier) => (
-                <li key={supplier.id} className="line-card" aria-label={supplier.name}>
-                  <div className="line-head">
+            {sorted.map((supplier) => (
+              <DataRow key={supplier.id} aria-label={supplier.name}>
+                <DataCell primary>
+                  <span className="proc-name">
                     <strong>{supplier.name}</strong>
-                    <span
-                      className={`badge ${supplier.status === 'ACTIVE' ? 'badge-ok' : 'badge-muted'}`}
-                    >
-                      {t(`suppliers.status.${supplier.status}`, { defaultValue: supplier.status })}
+                    <small>{supplier.code}</small>
+                  </span>
+                </DataCell>
+                <DataCell>
+                  <span className="proc-text">
+                    {[supplier.contactName, supplier.phone].filter(Boolean).join(' · ')}
+                  </span>
+                </DataCell>
+                <DataCell>
+                  {supplier.paymentTermsDays !== null ? (
+                    <span className="proc-text">
+                      {t('suppliers.terms', { days: supplier.paymentTermsDays })}
                     </span>
-                  </div>
-                  <p className="home-muted">
-                    {[
-                      supplier.code,
-                      supplier.contactName,
-                      supplier.phone,
-                      supplier.paymentTermsDays !== null
-                        ? t('suppliers.terms', { days: supplier.paymentTermsDays })
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                  <div className="result-actions">
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={blocked}
-                      onClick={() => setEditing({ supplier })}
-                    >
-                      {t('suppliers.edit')}
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={blocked}
-                      onClick={() =>
-                        void send({
-                          authorUserId: userId,
-                          commandType:
-                            supplier.status === 'ACTIVE'
-                              ? 'procurement.supplier.deactivate'
-                              : 'procurement.supplier.reactivate',
-                          aggregateType: 'SUPPLIER',
-                          aggregateId: supplier.id,
-                          payload: {},
-                        })
-                      }
-                    >
-                      {supplier.status === 'ACTIVE'
-                        ? t('suppliers.deactivate')
-                        : t('suppliers.reactivate')}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+                  ) : null}
+                </DataCell>
+                <DataCell>
+                  <Badge tone={supplier.status === 'ACTIVE' ? 'ok' : 'muted'}>
+                    {t(`suppliers.status.${supplier.status}`, { defaultValue: supplier.status })}
+                  </Badge>
+                </DataCell>
+                <DataCell actions>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={blocked}
+                    onClick={() => setEditing({ supplier })}
+                  >
+                    {t('suppliers.edit')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={blocked}
+                    onClick={() =>
+                      void send({
+                        authorUserId: userId,
+                        commandType:
+                          supplier.status === 'ACTIVE'
+                            ? 'procurement.supplier.deactivate'
+                            : 'procurement.supplier.reactivate',
+                        aggregateType: 'SUPPLIER',
+                        aggregateId: supplier.id,
+                        payload: {},
+                      })
+                    }
+                  >
+                    {supplier.status === 'ACTIVE'
+                      ? t('suppliers.deactivate')
+                      : t('suppliers.reactivate')}
+                  </Button>
+                </DataCell>
+              </DataRow>
+            ))}
+          </DataList>
+        )
       ) : null}
     </section>
   );

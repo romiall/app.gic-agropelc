@@ -4,11 +4,27 @@
  * motif, accepté ; lot fournisseur et péremption ; numéro du bon de livraison (doublon détecté par
  * le serveur). Commande `procurement.receipt.record` (agrégat `GOODS_RECEIPT`), utilisable hors
  * ligne ; l'accepté entre aussitôt au disponible local, sauf une réception annoncée en quarantaine.
- * Réceptions des 30 derniers jours listées.
+ * Réceptions des 30 derniers jours listées. Cartes sur téléphone, colonnes sur ordinateur.
  */
 import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  ActionBar,
+  Badge,
+  Banner,
+  Button,
+  DataCell,
+  DataList,
+  DataRow,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+  SkeletonRows,
+  Textarea,
+} from '../../components/ui/index.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeBonReception } from '../pieces/adaptateurs-achats.js';
 import { businessDayOf } from '@gic/domain';
@@ -41,6 +57,8 @@ import {
   receivableOrders,
   type ReceiptLineDraft,
 } from './receipt.js';
+import { orderStatusTone, receiptStatusTone } from './tones.js';
+import './procurement.css';
 
 interface FormProps {
   readonly refs: SalesReferences;
@@ -94,7 +112,7 @@ function ReceiptPhotoBlock({
   }
   return (
     <span className="receipt-photo">
-      <span className="badge badge-warn">{t('photo.missing_badge')}</span>
+      <Badge tone="warn">{t('photo.missing_badge')}</Badge>
       <AttachPhoto
         userId={userId}
         target={{ ...RECEIPT_PHOTO, cited: false, ownerId: receiptId }}
@@ -134,9 +152,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
   const [preparing, setPreparing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const locationId = useId();
-  const noteId = useId();
-  const observationsId = useId();
+  const observationsErrorId = useId();
 
   const { tolerancePct, offlineOverMode, photoThresholdXaf } = receiptSettings(
     refs.settings,
@@ -232,45 +248,47 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
   };
 
   if (locations.length === 0) {
-    return <p className="alert alert-error">{t('purchase_receipt.no_location')}</p>;
+    return <Banner tone="bad">{t('purchase_receipt.no_location')}</Banner>;
   }
 
   return (
-    <>
-      <div className="field">
-        <label htmlFor={locationId}>{t('purchase_receipt.location_label')}</label>
-        <select
-          id={locationId}
-          className="text-input"
-          value={location?.id ?? ''}
-          onChange={(event) => setLocationChoice(event.target.value)}
-        >
-          {location === undefined ? (
-            <option value="">{t('purchase_receipt.location_placeholder')}</option>
-          ) : null}
-          {locations.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={noteId}>{t('purchase_receipt.delivery_note_label')}</label>
-        <input
-          id={noteId}
-          className="text-input"
-          maxLength={MAX_DELIVERY_NOTE_REF}
-          value={deliveryNote}
-          onChange={(event) => setDeliveryNote(event.target.value)}
-        />
-        <p className="home-muted">{t('purchase_receipt.delivery_note_hint')}</p>
-        {duplicateNote ? (
-          <p className="text-warn" role="status">
-            {t('purchase_receipt.duplicate_note')}
-          </p>
-        ) : null}
-      </div>
+    <div className="proc-form">
+      <Field label={t('purchase_receipt.location_label')}>
+        {(control) => (
+          <Select
+            {...control}
+            value={location?.id ?? ''}
+            onChange={(event) => setLocationChoice(event.target.value)}
+          >
+            {location === undefined ? (
+              <option value="">{t('purchase_receipt.location_placeholder')}</option>
+            ) : null}
+            {locations.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      <Field
+        label={t('purchase_receipt.delivery_note_label')}
+        hint={t('purchase_receipt.delivery_note_hint')}
+      >
+        {(control) => (
+          <Input
+            {...control}
+            maxLength={MAX_DELIVERY_NOTE_REF}
+            value={deliveryNote}
+            onChange={(event) => setDeliveryNote(event.target.value)}
+          />
+        )}
+      </Field>
+      {duplicateNote ? (
+        <Banner tone="warn" role="status">
+          {t('purchase_receipt.duplicate_note')}
+        </Banner>
+      ) : null}
 
       <ul className="line-list">
         {rows.map(({ line, draft, remaining, product, check }) => {
@@ -279,156 +297,156 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           const tracked = product !== undefined && product.lot_tracking !== 'NONE';
           return (
             <li key={line.id} className="line-card" aria-label={name}>
-              <div className="line-head">
-                <strong>{name}</strong>
-                <span>
-                  {t('purchase_receipt.remaining', {
-                    quantity: formatQuantity(remaining),
-                    unit: unitLabel(unit, remaining),
-                  })}
-                </span>
-              </div>
-              <div className="line-fields">
-                <div className="field">
-                  <label htmlFor={`delivered-${line.id}`}>
-                    {t('purchase_receipt.delivered_label', { unit: unitLabel(unit) })}
-                  </label>
-                  <input
-                    id={`delivered-${line.id}`}
-                    className="text-input"
-                    inputMode="decimal"
-                    value={draft.deliveredText}
-                    onChange={(event) =>
-                      update(line.id, draft, { deliveredText: event.target.value })
-                    }
-                  />
+              <div className="proc-line">
+                <div className="line-head">
+                  <strong>{name}</strong>
+                  <span className="proc-text">
+                    {t('purchase_receipt.remaining', {
+                      quantity: formatQuantity(remaining),
+                      unit: unitLabel(unit, remaining),
+                    })}
+                  </span>
                 </div>
-                <div className="field">
-                  <label htmlFor={`rejected-${line.id}`}>
-                    {t('purchase_receipt.rejected_label', { unit: unitLabel(unit) })}
-                  </label>
-                  <input
-                    id={`rejected-${line.id}`}
-                    className="text-input"
-                    inputMode="decimal"
-                    value={draft.rejectedText}
-                    onChange={(event) =>
-                      update(line.id, draft, { rejectedText: event.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              {check.delivered !== null && check.issues.length === 0 ? (
-                <p className="home-muted">
-                  {t('purchase_receipt.accepted', {
-                    quantity: formatQuantity(check.accepted),
-                    unit: unitLabel(unit, check.accepted),
-                  })}
-                </p>
-              ) : null}
-              {check.rejected > 0 ? (
-                reasons.length === 0 ? (
-                  <p className="error-message">{t('purchase_receipt.no_reason')}</p>
-                ) : (
-                  <div className="field">
-                    <label htmlFor={`reason-${line.id}`}>
-                      {t('purchase_receipt.reason_label')}
-                    </label>
-                    <select
-                      id={`reason-${line.id}`}
-                      className="text-input"
-                      value={draft.reasonId}
-                      onChange={(event) => update(line.id, draft, { reasonId: event.target.value })}
-                    >
-                      <option value="">{t('purchase_receipt.reason_placeholder')}</option>
-                      {reasons.map((reason) => (
-                        <option key={reason.id} value={reason.id}>
-                          {reason.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )
-              ) : null}
-              {tracked ? (
                 <div className="line-fields">
-                  <div className="field">
-                    <label htmlFor={`lot-${line.id}`}>{t('purchase_receipt.lot_label')}</label>
-                    <input
-                      id={`lot-${line.id}`}
-                      className="text-input"
-                      maxLength={MAX_LOT_REF}
-                      value={draft.lotRef}
-                      onChange={(event) => update(line.id, draft, { lotRef: event.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`expiry-${line.id}`}>
-                      {t('purchase_receipt.expiry_label')}
-                    </label>
-                    <input
-                      id={`expiry-${line.id}`}
-                      type="date"
-                      className="text-input"
-                      value={draft.expiryDate}
-                      onChange={(event) =>
-                        update(line.id, draft, { expiryDate: event.target.value })
-                      }
-                    />
-                  </div>
+                  <Field label={t('purchase_receipt.delivered_label', { unit: unitLabel(unit) })}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        inputMode="decimal"
+                        value={draft.deliveredText}
+                        onChange={(event) =>
+                          update(line.id, draft, { deliveredText: event.target.value })
+                        }
+                      />
+                    )}
+                  </Field>
+                  <Field label={t('purchase_receipt.rejected_label', { unit: unitLabel(unit) })}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        inputMode="decimal"
+                        value={draft.rejectedText}
+                        onChange={(event) =>
+                          update(line.id, draft, { rejectedText: event.target.value })
+                        }
+                      />
+                    )}
+                  </Field>
                 </div>
-              ) : null}
-              {check.issues.map((issue) => (
-                <p key={issue} className="error-message">
-                  {t(`purchase_receipt.issue.${issue}`)}
-                </p>
-              ))}
-              {check.over > 0 ? (
-                online ? (
-                  <p className="error-message" role="alert">
-                    {t('purchase_receipt.over_online', {
-                      quantity: formatQuantity(check.over),
-                      unit: unitLabel(unit, check.over),
+                {check.delivered !== null && check.issues.length === 0 ? (
+                  <p className="muted">
+                    {t('purchase_receipt.accepted', {
+                      quantity: formatQuantity(check.accepted),
+                      unit: unitLabel(unit, check.accepted),
                     })}
                   </p>
-                ) : (
-                  <p className="text-warn">
-                    {t(
-                      offlineOverMode === 'QUARANTINE'
-                        ? 'purchase_receipt.over_offline'
-                        : 'purchase_receipt.over_offline_apply',
-                      { quantity: formatQuantity(check.over), unit: unitLabel(unit, check.over) },
-                    )}
+                ) : null}
+                {check.rejected > 0 ? (
+                  reasons.length === 0 ? (
+                    <p className="field-error">{t('purchase_receipt.no_reason')}</p>
+                  ) : (
+                    <Field label={t('purchase_receipt.reason_label')}>
+                      {(control) => (
+                        <Select
+                          {...control}
+                          value={draft.reasonId}
+                          onChange={(event) =>
+                            update(line.id, draft, { reasonId: event.target.value })
+                          }
+                        >
+                          <option value="">{t('purchase_receipt.reason_placeholder')}</option>
+                          {reasons.map((reason) => (
+                            <option key={reason.id} value={reason.id}>
+                              {reason.label}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                  )
+                ) : null}
+                {tracked ? (
+                  <div className="line-fields">
+                    <Field label={t('purchase_receipt.lot_label')}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          maxLength={MAX_LOT_REF}
+                          value={draft.lotRef}
+                          onChange={(event) =>
+                            update(line.id, draft, { lotRef: event.target.value })
+                          }
+                        />
+                      )}
+                    </Field>
+                    <Field label={t('purchase_receipt.expiry_label')}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          type="date"
+                          value={draft.expiryDate}
+                          onChange={(event) =>
+                            update(line.id, draft, { expiryDate: event.target.value })
+                          }
+                        />
+                      )}
+                    </Field>
+                  </div>
+                ) : null}
+                {check.issues.map((issue) => (
+                  <p key={issue} className="field-error">
+                    {t(`purchase_receipt.issue.${issue}`)}
                   </p>
-                )
-              ) : null}
+                ))}
+                {check.over > 0 ? (
+                  online ? (
+                    <p className="field-error" role="alert">
+                      {t('purchase_receipt.over_online', {
+                        quantity: formatQuantity(check.over),
+                        unit: unitLabel(unit, check.over),
+                      })}
+                    </p>
+                  ) : (
+                    <p className="proc-warn">
+                      {t(
+                        offlineOverMode === 'QUARANTINE'
+                          ? 'purchase_receipt.over_offline'
+                          : 'purchase_receipt.over_offline_apply',
+                        { quantity: formatQuantity(check.over), unit: unitLabel(unit, check.over) },
+                      )}
+                    </p>
+                  )
+                ) : null}
+              </div>
             </li>
           );
         })}
       </ul>
-      <div className="field">
-        <label htmlFor={observationsId}>
-          {commentRequired
+      <Field
+        label={
+          commentRequired
             ? t('purchase_receipt.observations_required_label')
-            : t('purchase_receipt.observations_label')}
-        </label>
-        <textarea
-          id={observationsId}
-          className="text-input"
-          rows={2}
-          maxLength={MAX_OBSERVATIONS}
-          value={observations}
-          aria-required={commentRequired}
-          aria-invalid={commentMissing}
-          aria-describedby={commentMissing ? `${observationsId}-error` : undefined}
-          onChange={(event) => setObservations(event.target.value)}
-        />
-        {commentMissing ? (
-          <p id={`${observationsId}-error`} className="error-message">
-            {t('purchase_receipt.comment_required')}
-          </p>
-        ) : null}
-      </div>
+            : t('purchase_receipt.observations_label')
+        }
+      >
+        {(control) => (
+          <Textarea
+            {...control}
+            rows={2}
+            maxLength={MAX_OBSERVATIONS}
+            value={observations}
+            aria-required={commentRequired}
+            aria-invalid={commentMissing}
+            aria-describedby={commentMissing ? observationsErrorId : undefined}
+            onChange={(event) => setObservations(event.target.value)}
+          />
+        )}
+      </Field>
+      {commentMissing ? (
+        <p id={observationsErrorId} className="field-error">
+          {t('purchase_receipt.comment_required')}
+        </p>
+      ) : null}
       <PhotoField
         label={t('photo.receipt_label')}
         hint={t('photo.receipt_hint', { threshold: formatMoney(photoThresholdXaf) })}
@@ -436,20 +454,19 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
         onChange={setPhoto}
         onBusyChange={setPreparing}
       />
-      {saveError ? (
-        <p className="alert alert-error" role="alert">
-          {t('sales.error_local_save')}
-        </p>
-      ) : null}
-      <button
-        type="button"
-        className="btn-block submit-sale"
-        disabled={!ready}
-        onClick={() => void submit()}
-      >
-        {busy ? t('sales.submitting') : t('purchase_receipt.submit')}
-      </button>
-    </>
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      <ActionBar>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!ready}
+          loading={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('sales.submitting') : t('purchase_receipt.submit')}
+        </Button>
+      </ActionBar>
+    </div>
   );
 }
 
@@ -468,9 +485,9 @@ export function ReceiptScreen() {
 
   if (!refs || !userId) {
     return (
-      <section className="sale" aria-busy="true">
-        <h1>{t('nav.screens.purchase_receipt')}</h1>
-        <p className="home-muted">{t('sales.loading')}</p>
+      <section className="sale proc-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.purchase_receipt')} />
+        <SkeletonRows rows={3} />
       </section>
     );
   }
@@ -488,9 +505,9 @@ export function ReceiptScreen() {
   if (orderId) {
     if (submitted && submitted.orderId === orderId) {
       return (
-        <section className="sale">
+        <section className="sale proc-screen">
           {back}
-          <h1>{t('nav.screens.purchase_receipt')}</h1>
+          <PageHeader title={t('nav.screens.purchase_receipt')} />
           <CommandResult commandId={submitted.commandId} messages="purchase_receipt.result" />
           <ReceiptPhotoResult
             commandId={submitted.commandId}
@@ -502,33 +519,33 @@ export function ReceiptScreen() {
     }
     const order = orders.find((candidate) => candidate.id === orderId);
     return (
-      <section className="sale">
+      <section className="sale proc-screen">
         {back}
-        <h1>
-          {order
-            ? t('purchase_receipt.order_title', { doc: order.doc_number })
-            : t('nav.screens.purchase_receipt')}
-        </h1>
+        <PageHeader
+          title={
+            order
+              ? t('purchase_receipt.order_title', { doc: order.doc_number })
+              : t('nav.screens.purchase_receipt')
+          }
+          subtitle={order ? supplierName(order.supplier_id) : undefined}
+        />
         {!online ? (
-          <p className="home-banner" role="status">
+          <Banner tone="warn" role="status">
             {t('purchase_receipt.offline_banner')}
-          </p>
+          </Banner>
         ) : null}
         {order ? (
-          <>
-            <p className="home-muted">{supplierName(order.supplier_id)}</p>
-            <ReceiptForm
-              refs={refs}
-              userId={userId}
-              online={online}
-              order={order}
-              onDone={(commandId, receiptId) =>
-                setSubmitted({ commandId, orderId: order.id, receiptId })
-              }
-            />
-          </>
+          <ReceiptForm
+            refs={refs}
+            userId={userId}
+            online={online}
+            order={order}
+            onDone={(commandId, receiptId) =>
+              setSubmitted({ commandId, orderId: order.id, receiptId })
+            }
+          />
         ) : (
-          <p className="alert alert-error">{t('purchase_receipt.not_found')}</p>
+          <Banner tone="bad">{t('purchase_receipt.not_found')}</Banner>
         )}
       </section>
     );
@@ -537,84 +554,126 @@ export function ReceiptScreen() {
   const recent = [...refs.goodsReceipts].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
   const own = ownReceipts(refs, userId);
   return (
-    <section className="sale">
-      <h1>{t('nav.screens.purchase_receipt')}</h1>
-      <section className="sale-block" aria-labelledby="purchase-orders-title">
-        <h2 id="purchase-orders-title">{t('purchase_receipt.orders_title')}</h2>
+    <section className="sale proc-screen">
+      <PageHeader title={t('nav.screens.purchase_receipt')} />
+      <Section title={t('purchase_receipt.orders_title')}>
         {orders.length === 0 ? (
-          <p className="home-muted">{t('purchase_receipt.no_order')}</p>
+          <p className="muted">{t('purchase_receipt.no_order')}</p>
         ) : (
-          <ul className="doc-list">
+          <DataList
+            aria-label={t('purchase_receipt.orders_title')}
+            columns={[
+              { label: t('purchase_receipt.col.order') },
+              { label: t('purchase_receipt.col.supplier') },
+              { label: t('purchase_receipt.col.expected') },
+              { label: t('purchase_receipt.col.status') },
+            ]}
+            template="minmax(13rem, 1.5fr) minmax(0, 2fr) minmax(0, 2fr) 10rem"
+          >
             {orders.map((order) => (
               <li key={order.id}>
                 <Link
                   to={ROUTES.purchaseReceipt(order.id)}
-                  className="doc-row"
+                  className="data-row proc-row"
                   aria-label={t('purchase_receipt.open', { doc: order.doc_number })}
                 >
-                  <span className="doc-main">
+                  <DataCell primary>
                     <strong>{order.doc_number}</strong>
-                    <small>
-                      {supplierName(order.supplier_id)}
-                      {order.expected_delivery_date
-                        ? ` · ${t('purchase_receipt.expected', {
-                            date: formatBusinessDay(order.expected_delivery_date),
-                          })}`
-                        : ''}
-                    </small>
-                  </span>
-                  <span className="doc-side">
-                    <span className="badge badge-info">
+                  </DataCell>
+                  <DataCell>
+                    <span className="proc-text">{supplierName(order.supplier_id)}</span>
+                  </DataCell>
+                  <DataCell>
+                    {order.expected_delivery_date ? (
+                      <span className="proc-text">
+                        {t('purchase_receipt.expected', {
+                          date: formatBusinessDay(order.expected_delivery_date),
+                        })}
+                      </span>
+                    ) : null}
+                  </DataCell>
+                  <DataCell>
+                    <Badge tone={orderStatusTone(order.status)}>
                       {t(`purchase_receipt.order_status.${order.status}`, {
                         defaultValue: order.status,
                       })}
-                    </span>
-                  </span>
+                    </Badge>
+                  </DataCell>
                 </Link>
               </li>
             ))}
-          </ul>
+          </DataList>
         )}
-      </section>
-      <section className="sale-block" aria-labelledby="purchase-receipts-title">
-        <h2 id="purchase-receipts-title">{t('purchase_receipt.recent_title')}</h2>
+      </Section>
+      <Section title={t('purchase_receipt.recent_title')}>
         {recent.length === 0 ? (
-          <p className="home-muted">{t('purchase_receipt.no_receipt')}</p>
+          <p className="muted">{t('purchase_receipt.no_receipt')}</p>
         ) : (
-          <ul className="receipt-lines">
-            {recent.map((receipt) => (
-              <li key={receipt.id}>
-                <span>
-                  <strong>{receipt.doc_number}</strong>
-                  <small>{supplierName(receipt.supplier_id)}</small>
-                </span>
-                <span>
-                  {t(`purchase_receipt.status.${receipt.status}`, { defaultValue: receipt.status })}
-                  <small>{formatMoment(receipt.occurred_at, today)}</small>
-                </span>
-                {own.has(receipt.id) ? (
-                  <ReceiptPhotoBlock
-                    receiptId={receipt.id}
-                    userId={userId}
-                    missing={own.get(receipt.id) === true}
-                  />
-                ) : null}
-                {/* Bon de réception (lot PP). Réceptionnaire connu pour une réception de l'appareil.
-                    Une réception en quarantaine ou refusée n'est pas comptabilisée : pas de bon. */}
-                {receipt.status !== 'QUARANTINED' && receipt.status !== 'REJECTED' ? (
-                  <PieceAction
-                    cle={`BR:${receipt.id}`}
-                    annulee={receipt.status === 'CANCELLED'}
-                    demande={() =>
-                      demandeBonReception(receipt, refs, own.has(receipt.id) ? userId : null)
-                    }
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          <DataList
+            aria-label={t('purchase_receipt.recent_title')}
+            columns={[
+              { label: t('purchase_receipt.col.receipt') },
+              { label: t('purchase_receipt.col.supplier') },
+              { label: t('purchase_receipt.col.status') },
+              { label: t('purchase_receipt.col.date') },
+            ]}
+            template="minmax(13rem, 1.5fr) minmax(0, 2fr) 12rem 9rem"
+          >
+            {recent.map((receipt) => {
+              const piece = receipt.status !== 'QUARANTINED' && receipt.status !== 'REJECTED';
+              return (
+                <DataRow key={receipt.id}>
+                  <DataCell primary>
+                    <strong>{receipt.doc_number}</strong>
+                  </DataCell>
+                  <DataCell>
+                    <span className="proc-text">{supplierName(receipt.supplier_id)}</span>
+                  </DataCell>
+                  <DataCell>
+                    <Badge tone={receiptStatusTone(receipt.status)}>
+                      {t(`purchase_receipt.status.${receipt.status}`, {
+                        defaultValue: receipt.status,
+                      })}
+                    </Badge>
+                  </DataCell>
+                  <DataCell>
+                    <span className="proc-text">{formatMoment(receipt.occurred_at, today)}</span>
+                  </DataCell>
+                  {own.has(receipt.id) || piece ? (
+                    <DataCell wide>
+                      <div className="proc-extras">
+                        {own.has(receipt.id) ? (
+                          <ReceiptPhotoBlock
+                            receiptId={receipt.id}
+                            userId={userId}
+                            missing={own.get(receipt.id) === true}
+                          />
+                        ) : null}
+                        {/* Bon de réception (lot PP). Réceptionnaire connu pour une réception de
+                            l'appareil. Une réception en quarantaine ou refusée n'est pas
+                            comptabilisée : pas de bon. */}
+                        {piece ? (
+                          <PieceAction
+                            cle={`BR:${receipt.id}`}
+                            annulee={receipt.status === 'CANCELLED'}
+                            demande={() =>
+                              demandeBonReception(
+                                receipt,
+                                refs,
+                                own.has(receipt.id) ? userId : null,
+                              )
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    </DataCell>
+                  ) : null}
+                </DataRow>
+              );
+            })}
+          </DataList>
         )}
-      </section>
+      </Section>
     </section>
   );
 }
