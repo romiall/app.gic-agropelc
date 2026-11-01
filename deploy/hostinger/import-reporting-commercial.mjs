@@ -395,6 +395,8 @@ async function loadApp(appDir, codeDir) {
   app.CommandPipelineService = (
     await importCode('commands/command-pipeline.service.js')
   ).CommandPipelineService;
+  // Fonctions de lecture des commandes du CRM (reglages, droits), essayees telles quelles par l'essai a blanc.
+  app.crmShared = await importCode('modules/crm/application/commands/shared.js');
   return app;
 }
 
@@ -405,6 +407,22 @@ async function loadPreflight(app, db, plan, args) {
   const errors = [];
   const notes = [];
   const bad = (message) => errors.push(message);
+
+  // Reglage stocke en JSON (indicatif telephonique), lu par la vraie fonction des commandes : MariaDB peut rendre
+  // une colonne JSON en texte brut, ce qui ferait refuser tous les telephones. Lecture seule.
+  try {
+    const probe = await app.crmShared.normalizePhoneAt(db, '655123456', new Date());
+    if (probe === '+237655123456')
+      notes.push('Reglages en JSON : lecture conforme (indicatif telephonique : +237655123456).');
+    else
+      bad(
+        `Lecture de crm.phone_default_country_code incorrecte : +237655123456 attendu, ${probe} obtenu.`,
+      );
+  } catch (error) {
+    bad(
+      `Lecture de crm.phone_default_country_code impossible (colonne JSON relue en texte ?) : ${error instanceof Error ? error.message : error}`,
+    );
+  }
 
   const steps = await db
     .selectFrom('crm_pipeline_steps')
