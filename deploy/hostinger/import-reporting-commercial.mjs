@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawn } from 'node:child_process';
+import { Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -231,20 +232,27 @@ function describeTarget(url) {
 
 /**
  * Identifiants de la sauvegarde : ceux de DATABASE_URL (la voie de remote-update.sh, droits complets sur la base)
- * quand cette URL vise la meme base que SERVER_DATABASE_URL, sinon ceux du serveur. Jamais affiches.
+ * quand cette URL vise la meme base que SERVER_DATABASE_URL, sinon ceux du serveur. Jamais affiches ; seul le
+ * libelle de leur origine (et, en cas de repli, la cible de DATABASE_URL, sans identifiants) est rapporte.
  */
-function backupUrl(serverUrl) {
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const sameHost = (a, b) => a === b || (LOCAL_HOSTS.has(a) && LOCAL_HOSTS.has(b));
+
+function backupSource(serverUrl) {
   const migrationUrl = process.env.DATABASE_URL;
-  if (migrationUrl) {
-    try {
-      const a = describeTarget(serverUrl);
-      const b = describeTarget(migrationUrl);
-      if (a.host === b.host && a.port === b.port && a.database === b.database) return migrationUrl;
-    } catch {
-      // URL illisible : repli sur celle du serveur
-    }
+  if (!migrationUrl) return { url: serverUrl, label: 'SERVER_DATABASE_URL (DATABASE_URL absente)' };
+  try {
+    const a = describeTarget(serverUrl);
+    const b = describeTarget(migrationUrl);
+    if (sameHost(a.host, b.host) && a.port === b.port && a.database === b.database)
+      return { url: migrationUrl, label: 'DATABASE_URL (meme base)' };
+    return {
+      url: serverUrl,
+      label: `SERVER_DATABASE_URL (DATABASE_URL vise ${b.host}:${b.port}/${b.database})`,
+    };
+  } catch {
+    return { url: serverUrl, label: 'SERVER_DATABASE_URL (DATABASE_URL illisible)' };
   }
-  return serverUrl;
 }
 
 function findExecutable(names) {
@@ -267,7 +275,7 @@ function findExecutable(names) {
  * Sauvegarde complete de la base avant toute ecriture (comme remote-update.sh). Les identifiants passent par un
  * fichier temporaire en mode 600 (jamais sur la ligne de commande), supprime ensuite ; rien n'est affiche.
  */
-async function backupDatabase(url, dir, stamp) {
+async function backupDatabase(url, dir, stamp, { checkOnly = false } = {}) {
   const dumper = findExecutable(['mysqldump', 'mariadb-dump']);
   if (dumper === null)
     throw new Fatal(
@@ -275,8 +283,9 @@ async function backupDatabase(url, dir, stamp) {
     );
   const u = new URL(url);
   const database = decodeURIComponent(u.pathname.replace(/^\//, ''));
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `gic-avant-reprise-reporting-${stamp}.sql.gz`);
+  if (!checkOnly) fs.mkdirSync(dir, { recursive: true });
+  const file = checkOnly ? null : path.join(dir, `gic-avant-reprise-reporting-${stamp}.sql.gz`);
+  let readBytes = 0;
   const cnf = path.join(os.tmpdir(), `rescom-${process.pid}-${Date.now()}.cnf`);
   const esc = (value) => decodeURIComponent(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   fs.writeFileSync(
@@ -301,6 +310,8 @@ async function backupDatabase(url, dir, stamp) {
         '--routines',
         '--triggers',
         database,
+        // Essai de lecture : une seule petite table, memes options et memes identifiants que la vraie sauvegarde.
+        ...(checkOnly ? ['organization_zones'] : []),
       ],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
@@ -308,8 +319,26 @@ async function backupDatabase(url, dir, stamp) {
     child.stderr.on('data', (chunkText) => {
       stderr += chunkText;
     });
-    const closed = new Promise((resolve) => child.on('close', resolve));
-    await pipeline(child.stdout, zlib.createGzip(), fs.createWriteStream(file));
+    const closed = new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', resolve);
+    });
+    closed.catch(() => {});
+    const counter = new Transform({
+      transform(piece, _encoding, done) {
+        readBytes += piece.length;
+        done(null, piece);
+      },
+    });
+    if (checkOnly) {
+      await pipeline(
+        child.stdout,
+        counter,
+        new Writable({ write: (_piece, _encoding, done) => done() }),
+      );
+    } else {
+      await pipeline(child.stdout, counter, zlib.createGzip(), fs.createWriteStream(file));
+    }
     const code = await closed;
     if (code !== 0)
       throw new Fatal(
@@ -317,6 +346,11 @@ async function backupDatabase(url, dir, stamp) {
       );
   } finally {
     fs.rmSync(cnf, { force: true });
+  }
+  if (checkOnly) {
+    if (readBytes < 500)
+      throw new Fatal(`Essai de sauvegarde : lecture trop courte (${readBytes} octets).`);
+    return { file: null, size: readBytes };
   }
   const size = fs.statSync(file).size;
   if (size < 1000) throw new Fatal(`Sauvegarde vide ou trop petite (${size} octets) : ${file}`);
@@ -529,12 +563,6 @@ async function loadPreflight(app, db, plan, args) {
     `Clients deja presents (par identifiant deterministe) : ${existingCustomers} sur ${plan.customers.length}.`,
   );
   notes.push(`Appareil de reprise : ${device ? `existe (${device.status})` : 'a creer'}.`);
-  const dumper = findExecutable(['mysqldump', 'mariadb-dump']);
-  notes.push(
-    dumper === null
-      ? "Sauvegarde avant ecriture : mysqldump et mariadb-dump INTROUVABLES (--apply refusera d'ecrire sans --no-backup)."
-      : `Sauvegarde avant ecriture : ${path.basename(dumper)} disponible, identifiants de ${backupUrl(process.env.SERVER_DATABASE_URL) === process.env.SERVER_DATABASE_URL ? 'SERVER_DATABASE_URL' : 'DATABASE_URL (meme base)'}.`,
-  );
 
   return {
     errors,
@@ -1161,6 +1189,20 @@ async function main() {
     throw new Fatal('La base ne permet pas la reprise (voir les erreurs ci-dessus).');
   }
 
+  if (mode === 'dry-run' && !args.flags.has('no-backup')) {
+    // La sauvegarde est prouvee des l'essai a blanc : lecture d'une seule table, memes options, sortie jetee.
+    const source = backupSource(url);
+    let line;
+    try {
+      const check = await backupDatabase(source.url, '', '', { checkOnly: true });
+      line = `Sauvegarde : essai de lecture reussi (${check.size} octets lus), identifiants de ${source.label}.`;
+    } catch (error) {
+      line = `ATTENTION - Sauvegarde : essai de lecture ECHOUE (${source.label}) : ${error instanceof Error ? error.message : error}`;
+    }
+    console.log(`  ${line}`);
+    report.preflight.notes.push(line);
+  }
+
   const salt = args.values.get('run-salt') ?? 'r1';
   const managerEmail = args.values.get('manager-email');
   const managerName = args.values.get('manager-name');
@@ -1228,13 +1270,16 @@ async function main() {
   if (args.flags.has('no-backup')) {
     console.log("ATTENTION : --no-backup, la base n'est pas sauvegardee avant l'ecriture.");
   } else {
+    const source = backupSource(url);
     const backup = await backupDatabase(
-      backupUrl(url),
+      source.url,
       path.resolve(args.values.get('backup-dir') ?? path.join(os.homedir(), 'backups_db')),
       utcStamp(startedAt),
     );
     report.backup = { file: path.basename(backup.file), bytes: backup.size };
-    console.log(`Sauvegarde de la base : ${backup.file} (${Math.round(backup.size / 1024)} Ko).`);
+    console.log(
+      `Sauvegarde de la base : ${backup.file} (${Math.round(backup.size / 1024)} Ko, identifiants de ${source.label}).`,
+    );
   }
   const password = preflight.manager
     ? null
