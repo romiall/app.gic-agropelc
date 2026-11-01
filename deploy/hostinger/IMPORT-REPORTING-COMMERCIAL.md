@@ -113,21 +113,27 @@ node --import tsx ..\..\deploy\hostinger\import-reporting-commercial.mjs --data 
 
 ### 4.2 En ligne (chaque étape exige l'autorisation explicite du porteur)
 
-Sur le serveur, dans le dossier de l'application, avec Node 22 (`export PATH=/opt/alt/alt-nodejs22/root/usr/bin:$PATH`). Le mot de passe provisoire n'est jamais écrit : l'outil le demande en saisie masquée (terminal avec `ssh -t`) ; la variable `RESCOM_INITIAL_PASSWORD` du processus est possible pour une exécution sans terminal.
+L'outil se lance depuis `~/import-reporting/` avec Node 22 ; `--env-file` et `--app-dir` désignent l'application par des chemins absolus (aucun `cd`). Le mot de passe provisoire n'est jamais écrit : l'outil le demande en saisie masquée dans un terminal (`ssh -t`, fenêtre PowerShell ordinaire, pas l'ISE) ; la variable `RESCOM_INITIAL_PASSWORD` du processus reste possible sans terminal.
 
-1. Envoyer dans `~/import-reporting/` : les trois fichiers `.mjs` (`import-reporting-commercial`, `reporting-import-mapping`, `mariadb-compat`) et `donnees_extraites.json` (`scp`).
-2. **Essai à blanc** en ligne : `--dry-run --app-dir .` avec `--env-file=.env` (lit la base, n'écrit rien) ; relire le rapport.
-3. **Écriture** : `--apply --app-dir .` avec `ssh -t` : sauvegarde de la base, confirmation `OUI`, mot de passe masqué, écriture, vérification ligne à ligne.
+1. Envoyer dans `~/import-reporting/` (dossier privé, droits 700, fichiers 600) les trois fichiers `.mjs` (`import-reporting-commercial`, `reporting-import-mapping`, `mariadb-compat`) et `donnees_extraites.json` (`scp`) ; vérifier les empreintes (`sha256sum`).
+2. **Essai à blanc** (`--dry-run`) : lit la base sans rien écrire et contrôle les décomptes, les référentiels, les droits de l'administrateur, le compte et son téléphone, les zones et clients déjà présents, la **lecture des réglages JSON** (fonction `normalizePhoneAt` du serveur) et la **sauvegarde** (lecture réelle d'une table avec `mysqldump`, mêmes options et mêmes identifiants que la sauvegarde, sortie jetée) ; relire le rapport.
+3. **Écriture** (`--apply`, avec `ssh -t`) : confirmation `OUI`, **sauvegarde de la base** (refus d'écrire si elle échoue), mot de passe masqué, appareil de reprise, zones, compte, affectation, commandes, vérification ligne à ligne ; code de sortie non nul au moindre écart.
 4. Récupérer le rapport (`scp -r`), puis **supprimer `~/import-reporting/`** (données de personnes) ; garder la sauvegarde de `~/backups_db`.
 5. Dans l'application : poser le mot de passe provisoire voulu avec « Réinitialiser le mot de passe » si besoin, approuver l'appareil du responsable après sa première connexion (`approve-device.mjs`), **retirer l'appareil « Reprise de données » dans l'écran Appareils**.
 
-## 5. Essai local du 01/11/2026 (base MySQL 8.4 neuve)
+### 4.3 Reprise après un arrêt
 
-Applications, rejeu et sauvegarde passés : 24 zones, compte et affectation, 194 prospects (tous champs concordants), 2 doublons de téléphone signalés par le serveur (conflits ouverts), 230 lignes d'historique d'étape, 19 visites, 39 appels, 288 commandes `APPLIED` (2 avec avertissement de doublon), 288 lignes d'audit, 194 lignes source conservées dans l'audit ; **aucune commande refusée**, rejeu sans aucune création. Contrôle SQL indépendant : un seul titulaire, 194 affectations ouvertes, 230 changements `customers` et 58 `crm_activity` pour la synchronisation de la PWA.
+Relancer la même commande : les identifiants sont déterministes, ce qui existe est retrouvé et la vérification porte sur l'ensemble. Une commande **refusée** (`REJECTED`) est définitive dans le journal des commandes : après avoir corrigé la cause, relancer avec `--run-salt r2` (nouveaux identifiants de commande, mêmes identifiants de comptes). Une erreur transitoire (`RETRY_LATER`) est réessayée trois fois, puis l'outil s'arrête après trois refus de suite. `--verify-only` ne fait que comparer la base au classeur.
+
+## 5. Essais du 01/11/2026
+
+**Base locale MySQL 8.4 neuve** : applications, rejeu et sauvegarde passés : 24 zones, compte et affectation, 194 prospects (tous champs concordants), 2 doublons de téléphone signalés par le serveur (conflits ouverts), 230 lignes d'historique d'étape, 19 visites, 39 appels, 288 commandes `APPLIED` (2 avec avertissement de doublon), 288 lignes d'audit, 194 lignes source conservées dans l'audit ; **aucune commande refusée**, rejeu sans aucune création. Contrôle SQL indépendant : un seul titulaire, 194 affectations ouvertes, 230 changements `customers` et 58 `crm_activity` pour la synchronisation de la PWA.
+
+**Essai à blanc en ligne** (lecture seule, 23 h 06 UTC, base MariaDB 11.8.9 de l'hébergement) : mêmes décomptes que l'essai local (24 zones, 194 prospects, 36 changements d'étape, 19 visites, 39 appels, 288 commandes préparées ; 0 erreur, 7 avertissements, 51 informations) ; compte, zones, clients et appareil de reprise à créer ; **lecture des réglages JSON conforme** ; **sauvegarde prouvée** avec les identifiants de `DATABASE_URL`. Rien n'a été écrit en base ; le dossier `~/import-reporting/` a été supprimé après la récupération du rapport.
 
 ## 6. Limites et risques connus
 
-- **Première écriture CRM sur MariaDB 11.8** : l'essai a eu lieu sur MySQL 8.4 ; l'hébergement est MariaDB (AV-485). La couche de compatibilité est installée automatiquement si le serveur est MariaDB. Une erreur SQL propre à MariaDB ferait échouer proprement une commande (transaction annulée, jamais d'écriture partielle) ; l'outil s'arrête après trois refus de suite, la sauvegarde est faite, la relance est sans danger.
+- **Première écriture CRM sur MariaDB 11.8** : l'écriture a été essayée sur MySQL 8.4 (288 commandes, 0 refus) ; sur MariaDB, l'essai à blanc a prouvé les lectures, les réglages JSON et la sauvegarde, mais aucune commande du CRM n'y avait encore été écrite (AV-485). La couche de compatibilité est installée automatiquement si le serveur est MariaDB. Une erreur SQL propre à MariaDB ferait échouer proprement une commande (transaction annulée, jamais d'écriture partielle) ; l'outil s'arrête après trois refus de suite, la sauvegarde est faite, la relance est sans danger.
 - **AV-078** : si la fenêtre d'antidatage (72 h) est codée plus tard, l'importer avant, ou exempter le transport `SYSTEM`.
 - **Alertes** : les événements écrits alimentent les détecteurs du serveur (doublons suspectés, relances échues, prospects non contactés…) : des alertes apparaîtront à la Direction et au responsable, c'est le comportement voulu.
 - **Équipe** : l'affectation est de type `ZONE`. Les jeux hors ligne de l'équipe exigent une affectation `TEAM` et une équipe, à créer avec l'écran d'organisation (RP-1).
@@ -137,4 +143,5 @@ Applications, rejeu et sauvegarde passés : 24 zones, compte et affectation, 194
 
 | Date | Opération | Résultat |
 |---|---|---|
-| — | aucune écriture en ligne à ce jour | — |
+| 01/11/2026 (23 h 06 UTC) | Essai à blanc en ligne (lecture seule) avec l'outil du commit `8e3fb5e` ; dossier privé `~/import-reporting/` créé puis supprimé | conforme : 288 commandes préparées, 0 erreur de données ; aucune écriture en base |
+| — | Écriture (sauvegarde `~/backups_db/gic-avant-reprise-reporting-<horodatage>.sql.gz`) | à venir, sur autorisation du porteur |
