@@ -229,6 +229,24 @@ function describeTarget(url) {
   return { host: u.hostname, port: u.port || '3306', database: u.pathname.replace(/^\//, '') };
 }
 
+/**
+ * Identifiants de la sauvegarde : ceux de DATABASE_URL (la voie de remote-update.sh, droits complets sur la base)
+ * quand cette URL vise la meme base que SERVER_DATABASE_URL, sinon ceux du serveur. Jamais affiches.
+ */
+function backupUrl(serverUrl) {
+  const migrationUrl = process.env.DATABASE_URL;
+  if (migrationUrl) {
+    try {
+      const a = describeTarget(serverUrl);
+      const b = describeTarget(migrationUrl);
+      if (a.host === b.host && a.port === b.port && a.database === b.database) return migrationUrl;
+    } catch {
+      // URL illisible : repli sur celle du serveur
+    }
+  }
+  return serverUrl;
+}
+
 function findExecutable(names) {
   const dirs = String(process.env.PATH ?? '')
     .split(path.delimiter)
@@ -511,6 +529,12 @@ async function loadPreflight(app, db, plan, args) {
     `Clients deja presents (par identifiant deterministe) : ${existingCustomers} sur ${plan.customers.length}.`,
   );
   notes.push(`Appareil de reprise : ${device ? `existe (${device.status})` : 'a creer'}.`);
+  const dumper = findExecutable(['mysqldump', 'mariadb-dump']);
+  notes.push(
+    dumper === null
+      ? "Sauvegarde avant ecriture : mysqldump et mariadb-dump INTROUVABLES (--apply refusera d'ecrire sans --no-backup)."
+      : `Sauvegarde avant ecriture : ${path.basename(dumper)} disponible, identifiants de ${backupUrl(process.env.SERVER_DATABASE_URL) === process.env.SERVER_DATABASE_URL ? 'SERVER_DATABASE_URL' : 'DATABASE_URL (meme base)'}.`,
+  );
 
   return {
     errors,
@@ -1200,21 +1224,21 @@ async function main() {
     );
     if (answer.trim() !== 'OUI') throw new Fatal("Abandon : rien n'a ete ecrit.");
   }
-  const password = preflight.manager
-    ? null
-    : await resolvePassword(args.values.get('manager-password-env') ?? 'RESCOM_INITIAL_PASSWORD');
-
+  // La sauvegarde d'abord : un echec (outil absent, droits) arrete tout avant la saisie du mot de passe.
   if (args.flags.has('no-backup')) {
     console.log("ATTENTION : --no-backup, la base n'est pas sauvegardee avant l'ecriture.");
   } else {
     const backup = await backupDatabase(
-      url,
+      backupUrl(url),
       path.resolve(args.values.get('backup-dir') ?? path.join(os.homedir(), 'backups_db')),
       utcStamp(startedAt),
     );
     report.backup = { file: path.basename(backup.file), bytes: backup.size };
     console.log(`Sauvegarde de la base : ${backup.file} (${Math.round(backup.size / 1024)} Ko).`);
   }
+  const password = preflight.manager
+    ? null
+    : await resolvePassword(args.values.get('manager-password-env') ?? 'RESCOM_INITIAL_PASSWORD');
 
   const clock = new app.domain.SystemClock();
   const idGenerator = new app.domain.Uuidv7Generator(clock);
