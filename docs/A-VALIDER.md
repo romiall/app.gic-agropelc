@@ -9,7 +9,7 @@ Classification (PM §45) :
 - **IMPORTANTE** : peut être décidée pendant le développement, avant la phase concernée.
 - **SECONDAIRE** : peut rester configurable ou être reportée.
 
-Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 489 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026, 486 à 488 par la clôture de la refonte graphique du 31/10/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
+Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 490 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026, 486 à 488 par la clôture de la refonte graphique du 31/10/2026, 489 par la reprise du reporting commercial du 01/11/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
 
 ---
 
@@ -477,6 +477,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-486 | Éditeur de règle de prix : erreurs montrées dès l'ouverture | SECONDAIRE | PWA (prix), après la refonte graphique | Comportement d'avant conservé : les champs obligatoires vides s'affichent en erreur dès l'ouverture ; à montrer après une saisie ou une tentative d'envoi | OUVERT |
 | AV-487 | Trésorerie : « Solde des comptes » et total de trésorerie des coûts et marges | IMPORTANTE | PWA (finance), pilote | Somme des comptes listés (inactifs compris) dans la trésorerie, total fourni par le serveur dans la vue d'ensemble des coûts ; à faire concorder | OUVERT |
 | AV-488 | « Fiche de suivi de la semaine » : bouton du module des pièces d'avant la refonte | SECONDAIRE | PWA (pièces papier) | Bouton nu conservé : `features/pieces/` n'a pas été touché pendant la refonte ; à reprendre avec le lot des pièces | OUVERT |
+| AV-489 | Reprise du reporting Excel du responsable commercial (08 au 31/10/2026) dans la base en ligne | IMPORTANTE | Reprise de données (AV-072), pilote | Vraies commandes du pipeline (faits accomplis datés d'octobre, le responsable pour auteur), zones par quartier sous « Douala », doublons signalés et jamais fusionnés, journal archivé, **aucune modification du schéma** ; outil et essai local faits (01/11/2026), écriture en ligne à autoriser | **TRANCHÉ** (voir journal §3) |
 
 ---
 
@@ -3612,6 +3613,13 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (b).
 - **Impact** : `features/pieces/PieceAction.tsx` et les règles de domaine qui contournent sa largeur (`procurement.css`). Défaut conservé : (a). Non paramétrable.
 
+### AV-489 — Reprise du reporting Excel du responsable commercial (08 au 31/10/2026) — IMPORTANTE
+- **Question** : comment charger dans la base en ligne les 194 prospects, les 58 contacts et les 14 journées saisis dans le classeur « GIC Reporting Commercial v2.0 » du responsable commercial, sans modifier le schéma et sans rien perdre ?
+- **Pourquoi** : le classeur devait refléter le schéma (feuille `Correspondances`), mais la lecture du code montre des écarts. Chaque client exige une zone, et aucune n'existe en ligne. Les droits sont jugés à la date du fait (RC-01) : une écriture datée d'octobre exige une affectation de rôle valable dès le 08/10, que `POST /users` ne sait pas poser. Le pipeline n'applique aucune fenêtre d'antidatage (AV-078 non codé). Le pointage exige un GPS ou une dérogation approuvée : les journées ne peuvent pas devenir des sessions sans inventer une position. Le modèle client n'a ni note, ni produit d'intérêt, ni potentiel, ni mode de paiement, et `normalizePhone` accepte un numéro à 10 chiffres. **CONFIRMÉ** (lecture du code et des données, 01/11/2026).
+- **Choix** : (a) vraies commandes du pipeline, en faits accomplis datés d'octobre, le responsable pour auteur ; (b) écriture directe en base par un script, acteur système ; (c) ressaisie par le responsable dans la PWA.
+- **Recommandation** : (a) : règles métier, droits à la date du fait, audit chaîné et flux de synchronisation de la PWA du responsable ; (b) contourne la règle 5 et le journal des commandes ; (c) ne reprend pas l'historique.
+- **Impact** : `deploy/hostinger/import-reporting-commercial.mjs`, `reporting-import-mapping.mjs`, `test-reporting-import-mapping.mjs` et [`IMPORT-REPORTING-COMMERCIAL.md`](../deploy/hostinger/IMPORT-REPORTING-COMMERCIAL.md) (correspondance colonne par colonne). Défauts **DÉDUITS**, relisibles dans le rapport : catégories de client, étapes du pipeline datées du premier contact, « rendez-vous fixé » repris sous le motif `A_RELANCER`, prospects de septembre acquis au début d'usage. Reste ouvert : le téléphone du compte (le schéma exige un numéro E.164 unique), l'écriture en ligne (autorisation du porteur), et la fenêtre d'antidatage d'AV-078 si elle est codée plus tard. Défaut mis en œuvre (essai local du 01/11/2026) : (a). Non paramétrable (propre à l'import).
+
 ## 3. Journal des décisions
 
 | Date | ID | Décision | Décideur |
@@ -3709,3 +3717,4 @@ Politique par défaut, paramétrable :
 | 29/10/2026 | AV-470 | Purge des alertes closes : script d'exploitation `db:purge-alerts` sous le rôle `gic_maintenance`, plancher de 730 jours ; l'exploitation le planifie avant le pilote | Porteur du projet |
 | 29/10/2026 | AV-471 | Notifications purgées à 90 jours : lues et lignes d'envoi Web Push, jamais la notification d'une note publiée ni les non lues | Porteur du projet |
 | 29/10/2026 | AV-472 | Tâches terminées conservées 30 jours, sauts de consommateurs 90 jours, purge par l'application | Porteur du projet |
+| 01/11/2026 | AV-489 | Reprise du reporting commercial : **aucune modification du schéma** (les données s'adaptent au schéma prévu) ; écriture par les commandes du pipeline, le responsable pour auteur, en faits accomplis datés d'octobre ; une zone par quartier sous « Douala » ; tout est importé, les doublons de téléphone sont signalés par le conflit natif et jamais fusionnés ; informations sans champ résumées dans le motif de reprise, ligne source conservée dans l'audit ; journal de 14 jours archivé hors des tables de pointage ; compte du responsable créé avec son adresse e-mail professionnelle, mot de passe provisoire choisi par le porteur et saisi masqué (jamais écrit) | Porteur du projet |
