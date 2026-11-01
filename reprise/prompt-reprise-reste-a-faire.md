@@ -1,0 +1,113 @@
+# Reprise du projet GIC AGROPELC — ce qui reste à faire (état vérifié le 01/11/2026)
+
+> À lire en premier par toute nouvelle session, juste après `CLAUDE.md`. Écrit le 01/11/2026 pour que le porteur reprenne dans une autre session (le crédit de la précédente est épuisé). Il remplace `reprise/prompt-reprise-p9.md`, qui décrit l'avant-clôture de P9 et n'est plus à jour.
+
+## 0. Prompt court à coller dans la nouvelle session
+
+```text
+Tu reprends le projet GIC AGROPELC (dossier C:\xampp\htdocs\app.gic-agropelc, branche claude/brave-pasteur-c7q4y7). Lis d'abord CLAUDE.md, puis reprise/prompt-reprise-reste-a-faire.md : il contient l'etat verifie du 01/11/2026, mes regles de travail et le plan de reprise par lots RP-0 a RP-7. Reponds en francais, avec des points d'avancement courts. Travaille en sequentiel : pas de Workflow ni d'agents en parallele sans que je le demande, pas de gros traitements qui epuisent mes jetons. Ne pousse jamais sans demande explicite. Ne touche pas a la production (lecture ou ecriture) sans mon autorisation explicite dans le chat. Commence par RP-0 (mise en route), puis presente-moi en quelques lignes le detail de RP-1 (ecrans d'administration : organisation, parametres, journal d'audit) et attends mon « continue ».
+```
+
+## 1. Où en est le projet (faits vérifiés le 01/11/2026)
+
+- **Avancement** : ≈ 85 % du périmètre planifié, méthode pondérée du 18/10 (P0 5,5 ; P1 2,5 ; P2 4 ; P3 3 ; P4 4 ; P5 3 ; P6 3 ; P7 4 ; P8 3 ; P9 4 ; P10 2,5 semaines ; « livré » = codé et testé automatiquement ; P10 hors périmètre comptée à zéro ; mise en service exclue). Avec la mise en service (hypothèse de 6 à 10 semaines) : ≈ 70 %. Toujours nommer le périmètre d'un pourcentage (« global » = tout le projet).
+- **Livré** : serveur P0 à P9 (dont P9-27), lot de mise en pilote MP-01 à MP-13, écrans PWA de P1 à P8 (53 des 70 écrans prévus sont repérés dans le code), refonte graphique de la PWA (lots L0 à L10, ADR-049 et ADR-050, suivi `docs/10-development-plan/24-refonte-graphique.md`), kit de mise en ligne `deploy/hostinger/`.
+- **Dépôt** : <https://github.com/romiall/app.gic-agropelc>. Branche de travail `claude/brave-pasteur-c7q4y7` et `main` sont toutes deux à `1a90906` (correctif de CI, exécution n° 87 verte), poussées le 31/10/2026. Si vous lisez ceci plus tard : `git fetch --all && git log --oneline -3 origin/main` doit montrer `1a90906` ou un descendant ; sinon demander au porteur.
+- **Version en ligne** : <https://app.gic-agropelc.com> (Hostinger mutualisé, Node 22 derrière Passenger, **MariaDB 11.8** à utilisateur unique). Dernière livraison `20261031-102020` (commit `d390e0f`, refonte graphique seule). Compte administrateur `admin@gic-agropelc.com` : appareil approuvé, rôles `ADMIN` et `DIRECTION` plus quatre rôles globaux de test (`COMMERCIAL_SEDENTAIRE`, `FINANCE`, `RESP_ACHATS`, `RESP_PRODUCTION`) **jusqu'au 29/11/2026 14:47 UTC** (`grant-test-access.mjs`). La base en ligne n'a **aucun site, aucune zone, aucune équipe** : les rôles de terrain n'y sont pas accordés. Les mots de passe qui ont circulé dans les journaux d'Anti-Gravity sont changés par le porteur lui-même ; aucun agent n'y touche.
+- **Environnement local** : MySQL **8.4** sur le port 3307 (jamais celui de XAMPP), `db/.env` et `apps/server/.env` recréés à la main (non versionnés), configurations de lancement `server:dev` (port 3000) et `pwa:dev` (port 5173) dans `.claude/launch.json`. Dernière migration : `20261202090000_add_job_failed_alert_type.sql`. Prochain AV libre : **489** ; prochain ADR libre : **051** (052 à 059 réservés au fork des écrans, jamais utilisé).
+- **Points à valider** (`docs/A-VALIDER.md`) : 369 ouverts (109 importants, 260 secondaires), **aucun bloquant** ; chacun a un défaut paramétrable déjà en place.
+- **Écrans prévus mais absents du code de la PWA** (17 dans le périmètre) : `ECR-ADM-06` (organisation), `ECR-ADM-07` (paramètres et politiques), `ECR-AUD-01` (journal d'audit), `ECR-ANA-01` à `06`, `ECR-NOT-01` à `03`, `ECR-CRM-06`, `ECR-TER-02`, et à confirmer `ECR-SYN-02`, `ECR-SYN-03`, `ECR-PRD-05` (non cités dans le code ; peut-être faits sous un autre nom). `ECR-KOM-01` relève de Kommo (P10, hors périmètre).
+- **Worktrees périmés** dans `.claude/worktrees/` (non versionnés) : `p5-11`, `p5-12`, `p5-15`, `p5-16`, `p8-finance`, `p9-analytics`, `pwa-ecrans` et les `refonte-*`. Ne rien supprimer sans l'accord du porteur ; les forks P5 portent deux commits absents de `main` à vérifier avant tout nettoyage.
+
+## 2. Règles de travail du porteur (impératives)
+
+1. Répondre **en français**, points d'avancement courts et fréquents. Questions de design ou de métier : QCM (`AskUserQuestion`), option recommandée en premier.
+2. **Séquentiel.** Pas de `Workflow`, pas d'agents en parallèle, pas de traitements massifs « qui épuisent les jetons sans faire grand-chose » : un lot à la fois, petit, vérifiable. Un `Workflow` seulement si le porteur le demande dans ses mots.
+3. **Coder toute la phase (ou tout le lot) avant de vérifier**, puis une seule vérification complète et une seule revue adverse à la fin (ni essai fichier par fichier, ni mutation par incrément). Une revue à 0 constat avec des agents en échec n'est pas une revue : relire les échecs.
+4. **Ne jamais pousser** (`git push`) sans demande explicite ; commits locaux en français préfixés par la portée (`feat(pwa): …`, `docs(reprise): …`). Prettier **depuis la racine**, fichier par fichier, jamais un dossier entier.
+5. Aucun mot de passe dans le code, les journaux, les messages ou git. Un compte de test local : le porteur choisit son mot de passe (saisie masquée).
+6. Commandes que le porteur doit lancer : **un seul bloc** copiable, ASCII, compatible Windows PowerShell 5.1 (pas de `&&`, pas de `cd` : il est déjà à la racine du dépôt).
+7. Règles du dépôt (`CLAUDE.md` § 3 à 5) : classer chaque affirmation (CONFIRMÉ, DÉDUIT, À VALIDER) ; un trou métier devient un AV avec défaut paramétrable ; toute écriture est une commande idempotente ; frontières de modules ; logique partagée dans `packages/domain` ; seuils en paramètres ; même commit pour le code et sa documentation ; `python3 docs/_tools/check_refs.py` doit rester propre.
+
+## 3. Production : ce qui est permis
+
+- Les sondes publiques (`GET /health/ready`, `GET /health`, la page d'accueil) sont libres.
+- **Toute lecture ou écriture en production** (ssh, journaux, base, `deploy.ps1`, `approve-device.mjs`, `grant-test-access.mjs`) exige l'autorisation explicite du porteur dans le chat ; elle vaut pour l'action nommée, pas pour la suivante. Le classifieur du mode auto refuse sinon : ne pas le contourner, laisser le porteur choisir entre autoriser et lancer lui-même une commande en une ligne.
+- Ne jamais se connecter au site en ligne avec le vrai mot de passe ; ne pas y créer de données de test sans accord.
+- **Mise en ligne** : `powershell -ExecutionPolicy Bypass -File deploy\hostinger\deploy.ps1` (reconstruit tout ; `-SkipBuild` si les sources n'ont pas changé depuis la dernière construction ; `-BuildOnly` pour construire sans envoyer). Étapes, sauvegarde de la base, retour arrière et journal des livraisons : `deploy/hostinger/README.md`. Journaux du serveur : `~/domains/gic-agropelc.com/nodejs-app/stderr.log` et `console.log`.
+- **MariaDB** (AV-485) : tout SQL nouveau du serveur doit passer sur MariaDB 11.8. La couche `deploy/hostinger/mariadb-compat.mjs` réécrit `CAST(? AS JSON)` et `FOR SHARE` à la compilation des requêtes ; `compat-check.mjs` le prouve sur la vraie base avant chaque redémarrage. Si un nouveau lot ajoute une construction que MariaDB refuse, étendre la couche, son essai local (`node deploy/hostinger/test-mariadb-compat.mjs`) et son contrôle. Les colonnes JSON sont relues en objets sur la base de l'hébergement (constaté le 30/10/2026).
+
+## 4. Plan de reprise : lots RP-0 à RP-7 (ordre conseillé)
+
+Les noms RP évitent la confusion avec les releases R1 à R5 du plan (`docs/10-development-plan/01-plan-developpement.md` § 3) et avec les lots L0 à L10 de la refonte. Les tailles sont des **estimations indicatives**, à recaler après lecture des documents.
+
+### RP-0 — Mise en route (une fois, petite)
+- Vérifier l'état de GitHub (voir § 1) ; `pnpm install` ; construire les paquets partagés avant tout typecheck ou serveur : `pnpm --filter @gic/domain --filter @gic/contracts run build` (sinon TS2307 sur `@gic/domain`).
+- MySQL 8.4 sur le port 3307 actif ; pour toute expérience, une **base neuve** (jamais la base partagée des essais, polluée de milliers de lignes de test) : `pnpm run db:migrate`, `pnpm run db:seed`, jeu de démonstration `demo:data` d'`apps/server`, compte local avec `pnpm run db:create-local-admin` (valeurs lues dans `db/.env`, jamais affichées).
+- Ne jamais supprimer un dossier contenant une jonction vers `node_modules` avec `rm -rf` ou `Remove-Item -Recurse` : retirer la jonction d'abord avec `cmd /c rmdir`.
+- Le poste a 8 Go : serveurs de développement, essais et construction ne tournent pas en même temps.
+
+### RP-1 — Écrans d'administration : organisation, paramètres, audit (priorité 1, bloquant pour tout pilote)
+- **Pourquoi** : le serveur a déjà les commandes (`organization.site.create|update|close`, `zone.create|update`, `team.create|assign_member|remove_member`, `location.create|update|deactivate`, `pos.configure`, `setting.set`) mais aucun écran ne permet de créer l'organisation de GIC ni de régler les politiques ; la base en ligne n'a aucun site. Sans cela, ni pilote ni essai des fonctions de site (stock, caisse, ferme).
+- **À faire** : `ECR-ADM-06` (sites, emplacements, zones, géorepères, équipes, points de vente), `ECR-ADM-07` (paramètres versionnés et politiques de contrôle ; les seuils de la Direction), `ECR-AUD-01` (recherche dans le journal d'audit) ; zones et équipes dans l'affectation d'un rôle de l'écran des comptes (`ECR-ADM-04`, besoins S-19 et S-28).
+- **Lire** : `docs/01-functional/03-parcours-et-ecrans.md` (lignes de ces écrans), `docs/10-development-plan/16-besoins-serveur-des-ecrans.md` (S-xx : vérifier quelles lectures existent déjà ; les lectures de zones, équipes, géorepères, paramètres et journal d'audit sont peut-être à ajouter côté serveur, chacune en incrément testé), `docs/07-security-rbac/01-rbac.md`, ADR-047, ADR-049, ADR-050.
+- **Règles d'écran** (refonte, voir `CLAUDE.md`) : composants de `apps/pwa/src/components/ui/` ; un seul bouton plein par écran ; `PageHeader` avec retour ; `ActionBar` pour le bouton principal d'un formulaire ; `DataList` en `ul` et `li`, jamais de `table` ; aucune couleur en dur (`styles/tokens.test.ts` balaie les feuilles) ; libellés dans `apps/pwa/src/i18n/fr.ts` ; une feuille de style par domaine `features/<domaine>/<domaine>.css` ; budget `size-check` (JS initial ≤ 300 Ko gzip, NFR-05).
+- **Fait quand** : un administrateur crée, depuis la PWA seule, l'organisation d'un pilote (magasin central, un point de vente et sa configuration, une zone, une équipe), règle des paramètres avec historique, cherche dans le journal d'audit, et affecte un rôle de terrain à un site ; essais verts, contrôle visuel mobile (375 px) et bureau (1280 px).
+- **Taille** : moyenne (≈ 1 à 1,5 semaine).
+
+### RP-2 — Reprise des données (AV-072)
+- **Objectif** : charger les vraies données de GIC pour le pilote R1 et R2 (magasin central, un point de vente, deux commerciaux) : organisation (si non créée par RP-1), catalogue (produits, unités, catégories), règles de prix, clients, fournisseurs, comptes, **stock d'ouverture**.
+- **Source des clients** : `BASE_CLIENTS_ET_PARTENAIRES_AFRIQUE_CENTRALE*.xlsx` à la racine (trois versions ; ne jamais écrire dans `…_ENRICHI.xlsx`). Les autres données sont à fournir par GIC.
+- **Conception** (à valider par QCM avant de coder) : gabarits CSV ou XLSX par entité, essai à blanc avec rapport, idempotence par clés stables, **toutes les écritures par commandes** (règle 3) avec audit, détection des doublons clients, outil lançable en ligne comme `approve-device.mjs` (script du kit passé par `compat-check`).
+- **Fait quand** : aller-retour réussi sur une base neuve avec des fichiers d'exemple anonymisés, essais verts, mode d'emploi pour préparer les fichiers.
+- **Dépend du porteur** : les données de GIC et ses réponses (AV-002, AV-072). **Taille** : moyenne à grande (1 à 2 semaines de code, plus le délai des données).
+
+### RP-3 — Compléments d'écrans et de serveur
+- `ECR-CRM-06` (réaffectation de clients) et `ECR-TER-02` (présences et activité de l'équipe) : besoin serveur S-28.
+- Dérogation d'emplacement d'AV-096 (reprise de P6).
+- Confirmer si `ECR-SYN-02` (supervision de la synchronisation), `ECR-SYN-03` (résolution des conflits) et `ECR-PRD-05` existent déjà sous un autre nom (`apps/pwa/src/features/sync`, `production`) ; sinon les construire.
+- **Si le porteur l'accepte** : intégrer au code source la connexion par adresse e-mail aujourd'hui réappliquée par `deploy/hostinger/build-bundle.ps1` (`apps/server/src/modules/identity/api/auth.controller.ts` : `phone` de 20 à 200 caractères, recherche de repli sur `identity_users.email`), avec essais ; puis retirer ce bloc du script et la section correspondante du README du kit.
+- **Taille** : petite à moyenne (≈ 1 semaine).
+
+### RP-4 — Écrans de P9 (feu vert du porteur requis)
+- `ECR-ANA-01` à `06` (tableaux, explorateur, vues sauvegardées, exports) et `ECR-NOT-01` à `03` (alertes, notifications, notes de direction), plus l'application côté PWA des jeux hors ligne `comms` et `kpi`.
+- **Lire** : `docs/10-development-plan/22-demonstration-p9.md`, `21-suivi-p9.md`, ADR-060 à ADR-068, `docs/07-security-rbac/01-rbac.md` ; les lectures serveur existent (tableaux de rôle, explorateur à étendue exacte, vues, exports CSV et XLSX audités, centre de notes). Pour les tuiles d'indicateurs et graphiques : la compétence `dataviz` si elle est disponible.
+- **Fait quand** : la Direction répond seule aux questions du CM §62 (DoD de P9), essais verts, budget de taille respecté. **Taille** : grande (≈ 2 à 3 semaines).
+
+### RP-5 — Qualité et mesures
+- Seconde revue adverse des correctifs de P9-25 (`docs/10-development-plan/23-revue-p9-constats.md`), jamais faite, et des nouveaux écrans.
+- Mesures jamais faites : NFR-15, plans `EXPLAIN`, essai de charge.
+- Une seule vérification complète en fin de lot : `pnpm run typecheck`, `npx eslint apps packages db`, `npx vitest run` dans `packages/domain`, `packages/contracts`, `apps/pwa`, `db`, `apps/server`, `pnpm run check:boundaries`, `python3 docs/_tools/check_refs.py` ; après la suite serveur, la passe stricte `ANALYTICS_STRICT=1` sur base peuplée (jamais sur base neuve).
+- **Taille** : moyenne (≈ 1 semaine).
+
+### RP-6 — Pièces papier PP-B à PP-E (non prioritaire)
+- Plan : `docs/10-development-plan/19-pieces-papier.md`, ADR-048. Ne pas toucher à l'apparence de `apps/pwa/src/features/pieces/` (`charte.css` et `identite.ts` sont des copies vérifiées par un test) ; à valider avec le comptable.
+
+### RP-7 — Préparer la mise en service (livrables que l'agent peut écrire)
+- **a. Documents de validation des AV** par domaine, à partir de `docs/A-VALIDER.md` : tableaux « question, défaut déjà implémenté, recommandation, OK ou autre », pour que le porteur ne marque que les exceptions. Commencer par ce qui conditionne le pilote : AV-001 (périmètre des mises en production), AV-002 (sites réels), AV-072, AV-075 (parc d'appareils), AV-084 (équipe et budget d'exploitation), AV-296, AV-297, AV-320 (motifs de rejet jamais semés), AV-485 (base en ligne), AV-473 à AV-484 (nés de P9-27, AV-480 amende AV-467) et AV-486 à AV-488 (refonte). Consigner chaque décision au journal de `docs/A-VALIDER.md` § 3 et répercuter dans le code si un défaut change (il est paramétrable).
+- **b. Protocole d'essai sur téléphones réels** (jamais fait) : installation de la PWA, connexion, PIN, approbation de l'appareil, vente et clôture hors ligne puis synchronisation, photo jointe, pointage GPS, impression des pièces, thèmes clair et sombre ; résultats attendus et grille de résultats.
+- **c. Manuel d'exploitation** : kit de mise en ligne, sauvegardes (`~/backups_db`), journaux, retour arrière, opérations de compte (`approve-device.mjs`, `grant-test-access.mjs`), alerte `JOB_FAILED` ; à consolider dans `docs/05-architecture/04-deploiement.md`.
+- **d. Plan de formation par rôle** (NFR-35) : plans de modules courts.
+- **e. Fiche de décision pour AV-485** : MariaDB mutualisée avec couche de compatibilité, ou base MySQL 8.4 dédiée avant le pilote (autre offre d'hébergement, serveur privé ou base managée), avec les risques de chacune.
+- **Taille** : moyenne, répartie.
+
+### Ordre conseillé
+1. RP-0, puis RP-1 (le plus bloquant). 2. RP-7a limité aux décisions du pilote, en parallèle de la lecture de RP-2. 3. RP-2. 4. RP-7b (protocole d'essai) puis essais sur téléphones par le porteur. 5. Pilote R1 et R2 conduit par le porteur et GIC. 6. RP-4 (Direction et Finance, release R4). 7. RP-3, RP-5, RP-6 selon les retours du pilote. Chaque lot se termine par un point d'avancement et l'attente du « continue » du porteur.
+
+## 5. Ce qui n'est pas du ressort de l'agent (à rappeler au porteur)
+
+Les décisions métier (AV), la fourniture des données réelles, le choix et le contrat d'hébergement, la recette avec GIC, la formation et la conduite du pilote, la validation par la Direction de la marge d'un lot pilote (DoD de P8), la validation des pièces papier avec le comptable. L'agent prépare les documents et les outils (RP-7) ; le porteur décide et exécute.
+
+## 6. Pièges techniques connus
+
+- Typecheck d'un worktree neuf : construire `@gic/domain` et `@gic/contracts` d'abord.
+- Une transaction de test annulée qui a inséré des événements laisse un trou dans la numérotation : les consommateurs attendent jusqu'à 120 s ; ne pas enchaîner des essais juste après.
+- Ne pas simuler une date future sur la base partagée (les paramètres système sont immuables) ; données de test calquées sur l'enveloppe réelle du contrôleur ; passe stricte d'analyse sur base peuplée seulement.
+- « Test timed out in 20000ms » en cascade : mémoire saturée du poste, pas le code ; relancer à froid.
+- `.git/index.lock` orphelin (vieux, vide) : vérifier l'âge et le processus avant de le supprimer.
+- Windows : écrire les scripts d'édition avec l'outil d'écriture de fichiers (UTF-8), jamais en heredoc ; `cd` dans l'outil Bash change le dossier courant de la session, préférer les chemins absolus ; sous Git Bash, `tar` avec un chemin `C:` échoue (utiliser le `tar` de PowerShell) ; fichiers de scripts du kit en ASCII.
+- Suite de la CI : `.prettierignore` exclut deux fichiers du module des pièces (`charte.css`, `valeurs.css`).
+
+## 7. Définition de « terminé »
+
+Le périmètre ci-dessus livré (hors Kommo), les quatre releases R1 à R4 en service chez GIC avec leurs vraies données, la recette acceptée par la Direction, et les décisions ouvertes tranchées ou explicitement laissées à leur défaut.

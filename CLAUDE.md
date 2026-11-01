@@ -6,6 +6,8 @@ Ce fichier s'adresse à toute session Claude Code et à tout développeur qui tr
 
 > Cette section est le prompt de reprise. Elle prime sur les phrases du § 1 qui décrivent l'état de GitHub (elles datent du 07/10/2026 : jusqu'au 26/10/2026 le dépôt distant n'avait que `main` à `417c791`, soit P4-06 en cours).
 
+> **01/11/2026 — Reprise : le reste à faire est planifié par lots RP-0 à RP-7** (état vérifié, règles de travail du porteur, prompt à coller) dans [`reprise/prompt-reprise-reste-a-faire.md`](reprise/prompt-reprise-reste-a-faire.md) : à lire juste après ce fichier.
+
 > **28/10/2026 — P9 est clos** (P9-01 à P9-26 ; suite complète et seconde passe stricte vertes sur base neuve ; démonstration [`22-demonstration-p9.md`](docs/10-development-plan/22-demonstration-p9.md), revue [`23-revue-p9-constats.md`](docs/10-development-plan/23-revue-p9-constats.md)). Ses commits ont été poussés le 31/10/2026 avec ceux de la refonte graphique (`main` et `claude/brave-pasteur-c7q4y7` à `d390e0f`). [`reprise/prompt-reprise-p9.md`](reprise/prompt-reprise-p9.md) décrit l'avant-clôture : ne plus s'y fier pour l'état de P9.
 
 **Dépôt** : <https://github.com/romiall/app.gic-agropelc>. Le porteur a poussé tout le travail local le 26/10/2026 depuis son poste Windows. Vérifier d'abord que le push a bien eu lieu : `git fetch --all && git log --oneline -3 origin/main` doit montrer le commit `docs(reprise)` ou un descendant de `27d123c` (MP-12). Sinon, ne pas inventer l'état : le demander au porteur.
