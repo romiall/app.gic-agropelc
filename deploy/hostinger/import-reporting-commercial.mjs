@@ -1187,14 +1187,39 @@ async function main() {
       2,
     );
   report.target = describeTarget(url);
+  // La couche de compatibilite MariaDB doit etre posee AVANT la creation de l'instance Kysely qui ecrit : son
+  // compilateur retient ses methodes a sa construction, poser la couche apres n'a aucun effet sur lui et l'audit
+  // echoue en CAST(? AS JSON) (erreur 1064, essai en ligne du 01/11/2026 a 23 h 18 UTC). D'ou une premiere
+  // connexion, jetee, qui ne sert qu'a lire la version.
+  const probe = app.createDatabase(url);
+  let serverVersion;
+  try {
+    const versionResult = await app.kysely.sql`SELECT VERSION() AS v`.execute(probe.db);
+    serverVersion = String(versionResult.rows[0].v);
+  } finally {
+    await new Promise((resolve) => probe.pool.end(() => resolve()));
+  }
+  const isMariaDb = /mariadb/i.test(serverVersion);
+  // GIC_FORCE_MARIADB_COMPAT=1 : essai local de la couche sur MySQL (ses reecritures y sont valides aussi).
+  const useCompat = isMariaDb || process.env.GIC_FORCE_MARIADB_COMPAT === '1';
+  if (useCompat) installMariaDbCompat(app.kysely.DefaultQueryCompiler);
   const created = app.createDatabase(url);
   const db = created.db;
   pool = created.pool;
-  const versionResult = await app.kysely.sql`SELECT VERSION() AS v`.execute(db);
-  const serverVersion = String(versionResult.rows[0].v);
-  if (/mariadb/i.test(serverVersion)) installMariaDbCompat(app.kysely.DefaultQueryCompiler);
   console.log(
-    `Base : ${report.target.host}:${report.target.port}/${report.target.database} (${/mariadb/i.test(serverVersion) ? 'MariaDB' : 'MySQL'} ${serverVersion}).`,
+    `Base : ${report.target.host}:${report.target.port}/${report.target.database} (${isMariaDb ? 'MariaDB' : 'MySQL'} ${serverVersion}).`,
+  );
+  // Controle sans ecriture, sur l'instance qui ecrira : les deux constructions que MariaDB refuse doivent etre reecrites.
+  const jsonSql = app.kysely.sql`select ${app.jsonValue({ a: 1 })}`.compile(db).sql;
+  const shareSql = db.selectFrom('identity_users').select('id').forShare().compile().sql;
+  if (useCompat && (/AS JSON/i.test(jsonSql) || /for share/i.test(shareSql)))
+    throw new Fatal(
+      "La couche de compatibilite MariaDB n'est pas effective sur l'instance qui ecrit (CAST AS JSON ou FOR SHARE non reecrit) : arret, rien n'est ecrit.",
+    );
+  console.log(
+    useCompat
+      ? '  Compatibilite MariaDB : effective (ecritures JSON et verrous partages reecrits).'
+      : '  Compatibilite MariaDB : sans objet (MySQL).',
   );
 
   const preflight = await loadPreflight(app, db, plan, args);

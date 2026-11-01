@@ -61,6 +61,17 @@ assert.equal(
 );
 const db = makeDb();
 
+// Piege constate en ligne le 01/11/2026 (outil de reprise du reporting) : le compilateur retient ses methodes a sa
+// construction, une instance creee AVANT l'installation n'est jamais corrigee. Installer la couche avant createDatabase.
+check(
+  "une instance creee AVANT l'installation n'est pas corrigee (installer avant createDatabase)",
+  () => {
+    assert.match(castSql(before), /CAST\(\? AS JSON\)/);
+    assert.match(shareSql(before), /for share$/);
+    assert.doesNotMatch(castSql(db), /AS JSON/);
+  },
+);
+
 check("jsonValue : CAST(? AS JSON) devient JSON_EXTRACT(?, '$')", () => {
   const q = db
     .insertInto('t')
