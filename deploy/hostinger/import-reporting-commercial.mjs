@@ -444,6 +444,16 @@ async function loadPreflight(app, db, plan, args) {
     : undefined;
   if (managerRow && managerRow.status !== 'ACTIVE')
     bad(`Le compte du responsable existe mais est ${managerRow.status}.`);
+  const managerPhoneArg = args.values.get('manager-phone');
+  if (!managerRow && managerPhoneArg) {
+    const phoneTaken = await db
+      .selectFrom('identity_users')
+      .select('id')
+      .where('phone', '=', managerPhoneArg)
+      .where('status', '!=', 'DEACTIVATED')
+      .executeTakeFirst();
+    if (phoneTaken) bad(`Le telephone ${managerPhoneArg} est deja utilise par un compte actif.`);
+  }
 
   const zoneRows = await db
     .selectFrom('organization_zones')
@@ -1132,13 +1142,18 @@ async function main() {
   const managerName = args.values.get('manager-name');
   const managerPhone = args.values.get('manager-phone');
   if (!managerEmail) throw new Fatal('--manager-email est obligatoire.', 2);
-  if (!preflight.manager && mode !== 'verify-only') {
+  if (!preflight.manager && mode === 'apply') {
     if (!managerName) throw new Fatal('--manager-name est obligatoire pour creer le compte.', 2);
     if (!managerPhone || !/^\+[1-9][0-9]{7,14}$/.test(managerPhone))
       throw new Fatal(
         '--manager-phone (E.164, ex. +237...) est obligatoire pour creer le compte : le schema exige un telephone unique sur chaque compte.',
         2,
       );
+  }
+  if (!preflight.manager && mode === 'dry-run' && (!managerName || !managerPhone)) {
+    console.log(
+      '  Rappel : --manager-name et --manager-phone (E.164) seront obligatoires avec --apply pour creer le compte.',
+    );
   }
   const managerId = preflight.manager
     ? preflight.manager.id
