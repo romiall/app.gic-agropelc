@@ -33,7 +33,7 @@ describe('LoginScreen (ECR-ADM-01)', () => {
     render(<LoginScreen />);
     expect(screen.getByText('GIC AGROPELC')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Connexion' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Téléphone')).toBeInTheDocument();
+    expect(screen.getByLabelText('Téléphone ou e-mail')).toBeInTheDocument();
     expect(screen.getByLabelText('Mot de passe')).toHaveAttribute('type', 'password');
   });
 
@@ -62,12 +62,12 @@ describe('LoginScreen (ECR-ADM-01)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(message);
   });
 
-  it('envoie le téléphone et le mot de passe saisis', async () => {
+  it('envoie l’identifiant (téléphone ou e-mail) et le mot de passe saisis', async () => {
     const loginWithPassword = vi.fn(async () => {});
     stubUseAuth(undefined, loginWithPassword);
     const user = userEvent.setup();
     render(<LoginScreen />);
-    await user.type(screen.getByLabelText('Téléphone'), '+237600000000');
+    await user.type(screen.getByLabelText('Téléphone ou e-mail'), '+237600000000');
     await user.type(screen.getByLabelText('Mot de passe'), 'secret');
     await user.click(screen.getByRole('button', { name: 'Se connecter' }));
     expect(loginWithPassword).toHaveBeenCalledWith('+237600000000', 'secret');

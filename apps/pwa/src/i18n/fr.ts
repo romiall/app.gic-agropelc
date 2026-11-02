@@ -27,8 +27,8 @@ export const fr = {
   auth: {
     login_title: 'Connexion',
     login_subtitle: 'Identifiez-vous pour accéder à votre espace.',
-    phone_label: 'Téléphone',
-    phone_placeholder: '+237 6XX XX XX XX',
+    phone_label: 'Téléphone ou e-mail',
+    phone_placeholder: '+237 6XX XX XX XX ou nom@gic-agropelc.com',
     password_label: 'Mot de passe',
     show_password: 'Afficher',
     hide_password: 'Masquer',

@@ -35,9 +35,12 @@ export function LoginScreen() {
           {(control) => (
             <Input
               {...control}
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
+              type="text"
+              inputMode="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder={t('auth.phone_placeholder')}
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
