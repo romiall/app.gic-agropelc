@@ -8,6 +8,8 @@ Ce fichier s'adresse à toute session Claude Code et à tout développeur qui tr
 
 > **01/11/2026 — Reprise : le reste à faire est planifié par lots RP-0 à RP-7** (état vérifié, règles de travail du porteur, prompt à coller) dans [`reprise/prompt-reprise-reste-a-faire.md`](reprise/prompt-reprise-reste-a-faire.md) : à lire juste après ce fichier.
 
+> **02/11/2026 — RP-7a : le document de décision du pilote est écrit** ([`docs/10-development-plan/25-validation-av-pilote.md`](docs/10-development-plan/25-validation-av-pilote.md) : 24 AV, fiche AV-485, tableaux de données pour RP-2) ; il attend les décisions du porteur, à consigner au journal de [`docs/A-VALIDER.md`](docs/A-VALIDER.md) § 3.
+
 > **01/11/2026 — RP-1 fait** : écrans d'administration de la PWA (organisation ECR-ADM-06, paramètres et politiques ECR-ADM-07, journal d'audit ECR-AUD-01, zones et équipes d'ECR-ADM-04), lectures serveur associées, [ADR-051](docs/decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md), AV-490 à AV-497. Reste le contrôle visuel dans un navigateur (375 et 1280 px) et sur un téléphone, jamais fait.
 
 > **28/10/2026 — P9 est clos** (P9-01 à P9-26 ; suite complète et seconde passe stricte vertes sur base neuve ; démonstration [`22-demonstration-p9.md`](docs/10-development-plan/22-demonstration-p9.md), revue [`23-revue-p9-constats.md`](docs/10-development-plan/23-revue-p9-constats.md)). Ses commits ont été poussés le 31/10/2026 avec ceux de la refonte graphique (`main` et `claude/brave-pasteur-c7q4y7` à `d390e0f`). [`reprise/prompt-reprise-p9.md`](reprise/prompt-reprise-p9.md) décrit l'avant-clôture : ne plus s'y fier pour l'état de P9.
