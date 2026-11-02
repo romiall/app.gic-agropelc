@@ -184,6 +184,32 @@ describe('app/screens — registre et navigation par rôle', () => {
     }
   });
 
+  it('écrans d’administration de RP-1 : organisation pour l’Admin, paramètres pour la Direction et l’Admin, journal avec la Finance', () => {
+    for (const [id, path, labelKey, roles] of [
+      ['ECR-ADM-06', '/administration/organisation', 'organization', ['ADMIN']],
+      ['ECR-ADM-07', '/administration/parametres', 'settings', ['DIRECTION', 'ADMIN']],
+      ['ECR-AUD-01', '/administration/audit', 'audit', ['DIRECTION', 'ADMIN', 'FINANCE']],
+    ] as const) {
+      expect(SCREENS.find((screen) => screen.id === id)).toMatchObject({
+        path,
+        labelKey,
+        group: 'general',
+        roles,
+        actionCodes: [],
+        offline: false,
+      });
+    }
+    const ids = (role: string) => screensForRoles([role]).map((screen) => screen.id);
+    expect(ids('ADMIN')).toEqual(
+      expect.arrayContaining(['ECR-ADM-06', 'ECR-ADM-07', 'ECR-AUD-01']),
+    );
+    expect(ids('DIRECTION')).toEqual(expect.arrayContaining(['ECR-ADM-07', 'ECR-AUD-01']));
+    expect(ids('DIRECTION')).not.toContain('ECR-ADM-06');
+    expect(ids('FINANCE')).toContain('ECR-AUD-01');
+    expect(ids('FINANCE')).not.toContain('ECR-ADM-07');
+    expect(ids('VENDEUR_PDV')).not.toContain('ECR-AUD-01');
+  });
+
   it('pour un rôle, chaque code d’action ne mène qu’à un seul écran ; chaque chemin est unique', () => {
     const pairs = SCREENS.flatMap((screen) =>
       screen.roles === 'ALL'

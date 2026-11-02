@@ -9,7 +9,7 @@ Classification (PM §45) :
 - **IMPORTANTE** : peut être décidée pendant le développement, avant la phase concernée.
 - **SECONDAIRE** : peut rester configurable ou être reportée.
 
-Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 490 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026, 486 à 488 par la clôture de la refonte graphique du 31/10/2026, 489 par la reprise du reporting commercial du 01/11/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
+Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 498 (460 et 461 sont pris par la revue de clôture de P9, 462 à 472 par sa consolidation du 28/10/2026, 473 à 484 par P9-27 du 29/10/2026, 485 par la base de l'hébergement du 30/10/2026, 486 à 488 par la clôture de la refonte graphique du 31/10/2026, 489 par la reprise du reporting commercial du 01/11/2026, 490 à 497 par les écrans d'administration de RP-1 du 01/11/2026 ; le 329 a servi à l'intégration ; 451 à 459 sont réservés au fil de l'impression des pièces). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
 
 ---
 
@@ -478,6 +478,14 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-487 | Trésorerie : « Solde des comptes » et total de trésorerie des coûts et marges | IMPORTANTE | PWA (finance), pilote | Somme des comptes listés (inactifs compris) dans la trésorerie, total fourni par le serveur dans la vue d'ensemble des coûts ; à faire concorder | OUVERT |
 | AV-488 | « Fiche de suivi de la semaine » : bouton du module des pièces d'avant la refonte | SECONDAIRE | PWA (pièces papier) | Bouton nu conservé : `features/pieces/` n'a pas été touché pendant la refonte ; à reprendre avec le lot des pièces | OUVERT |
 | AV-489 | Reprise du reporting Excel du responsable commercial (08 au 31/10/2026) dans la base en ligne | IMPORTANTE | Reprise de données (AV-072), pilote | Vraies commandes du pipeline (faits accomplis datés d'octobre, le responsable pour auteur), zones par quartier sous « Douala », doublons signalés et jamais fusionnés, journal archivé, **aucune modification du schéma** ; outil, essais et écriture en ligne faits le 01/11/2026 (vérification ligne à ligne conforme) | **TRANCHÉ** (voir journal §3) |
+| AV-490 | Paramètres (ECR-ADM-07) : éditeur par catalogue, valeurs typées, réglages techniques repliés | IMPORTANTE | RP-1, pilote | Catalogue partagé dans `@gic/contracts` (forme, unité, bornes, portée) pour les 108 clés semées, saisie typée contrôlée dans l'écran, libellés français ; réglages techniques repliés avec avertissement ; clé hors catalogue modifiable en objet JSON | **TRANCHÉ** (voir journal §3) |
+| AV-491 | Paramètres : portée d'une valeur (global ou un site) | SECONDAIRE | RP-1 | Global, ou un site pour les 13 réglages que le serveur lit « du site, à défaut global » ; aucune autre portée n'a d'effet aujourd'hui | **TRANCHÉ** (voir journal §3) |
+| AV-492 | Géorepère d'une zone : champs et position de l'appareil, sans carte | SECONDAIRE | RP-1 | Latitude, longitude, rayon (m) et « Utiliser ma position » ; carte non retenue | **TRANCHÉ** (voir journal §3) |
+| AV-493 | Journal d'audit : période, noms d'acteurs, lecture de la Finance bornée aux entités financières | IMPORTANTE | RP-1, RBAC | Jours métier sur l'enregistrement serveur ; noms d'acteurs ; Direction et Admin lisent tout, les autres détenteurs de `audit.log.read` ne lisent que les types du paramètre `audit.finance_entity_types` (15 types semés, fermé par défaut) | **TRANCHÉ** (voir journal §3) |
+| AV-494 | Politiques de contrôle (ECR-ADM-07) : nouvelle version, condition en lecture seule | IMPORTANTE | RP-1 | Photo, commentaire, validation, approbateur et portée modifiables en nouvelle version ; `condition` reprise telle quelle | **TRANCHÉ** (voir journal §3) |
+| AV-495 | Équipes : qui voit lesquelles, avec quels membres | SECONDAIRE | RP-1 | Portée `ALL` : toutes ; sinon les équipes dirigées ou dont on est membre ; noms des membres fournis par le serveur | OUVERT |
+| AV-496 | Paramètres et journal : contrôles que seul l'écran porte | IMPORTANTE | RP-1, pilote | Le serveur ne valide pas le type d'une valeur par clé (commande `z.unknown()`) ; liste des acteurs du journal limitée à 1 000 comptes | OUVERT |
+| AV-497 | Organisation : actions que les commandes n'offrent pas | SECONDAIRE | RP-1 | Pas de renommage ni de déplacement d'une zone, de fermeture d'une équipe, de changement du code ou de la zone d'un site, de réouverture d'un site, ni de retrait de la capacité d'un emplacement ou de la précision GPS d'une zone (une valeur effacée à l'écran reste en place) : l'écran n'offre que ce que le serveur permet | OUVERT |
 
 ---
 
@@ -3620,6 +3628,62 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a) : règles métier, droits à la date du fait, audit chaîné et flux de synchronisation de la PWA du responsable ; (b) contourne la règle 5 et le journal des commandes ; (c) ne reprend pas l'historique.
 - **Impact** : `deploy/hostinger/import-reporting-commercial.mjs`, `reporting-import-mapping.mjs`, `test-reporting-import-mapping.mjs` et [`IMPORT-REPORTING-COMMERCIAL.md`](../deploy/hostinger/IMPORT-REPORTING-COMMERCIAL.md) (correspondance colonne par colonne). Défauts **DÉDUITS**, relisibles dans le rapport : catégories de client, étapes du pipeline datées du premier contact, « rendez-vous fixé » repris sous le motif `A_RELANCER`, prospects de septembre acquis au début d'usage. Le téléphone du compte (le schéma exige un numéro E.164 unique) a été fixé par le porteur le 01/11/2026 au numéro de la feuille Paramètres (numéro conservé hors du dépôt ; connexion par e-mail). **Écrit en ligne le 01/11/2026** (23 h 33 UTC, seconde tentative ; la première, restée sans effet, avait échoué faute d'une couche de compatibilité MariaDB posée à temps : voir [`IMPORT-REPORTING-COMMERCIAL.md`](../deploy/hostinger/IMPORT-REPORTING-COMMERCIAL.md) § 7) : 24 zones, le compte, 194 prospects, 19 visites et 39 appels, vérifiés ligne à ligne. Reste ouvert : la fenêtre d'antidatage d'AV-078 si elle est codée plus tard (importer avant, ou exempter le transport `SYSTEM`). Défaut mis en œuvre : (a). Non paramétrable (propre à l'import).
 
+### AV-490 — Écran des paramètres : éditeur par catalogue — IMPORTANTE — **TRANCHÉ**
+- **Question** : comment l'écran des paramètres présente-t-il et contrôle-t-il les 108 clés de `organization.system_settings`, dont la valeur est du JSON libre ?
+- **Pourquoi** : la commande `organization.setting.set` accepte n'importe quelle valeur (`z.unknown()`) : **CONFIRMÉ** (lecture du code, 01/11/2026). **DÉDUIT** : un texte à la place d'un seuil, ou un nombre négatif, changerait silencieusement une règle (alerte, approbation, délai), les règles lisant ces valeurs telles quelles.
+- **Choix** : (a) un catalogue partagé (forme, unité, bornes, portée, domaine) dans `@gic/contracts` et des libellés français dans la PWA ; saisie typée et contrôlée ; réglages techniques repliés derrière un interrupteur avec avertissement ; clé hors catalogue modifiable comme objet JSON ; (b) un éditeur JSON brut pour toutes les clés ; (c) la validation par clé dans la commande du serveur.
+- **Recommandation** : (a) maintenant, (c) plus tard (AV-496). **TRANCHÉ** : (a) (porteur, 01/11/2026).
+- **Impact** : `packages/contracts/src/settings-catalog.ts`, `apps/pwa/src/features/settings/`, `apps/server/test/settings-catalog.test.ts` (une clé semée sans entrée au catalogue fait échouer l'essai), [ADR-051](decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md). Défaut mis en œuvre : (a). Non paramétrable.
+
+### AV-491 — Paramètres : portée d'une valeur — SECONDAIRE — **TRANCHÉ**
+- **Question** : l'écran permet-il de poser une valeur propre à un site, une zone ou un rôle, ou seulement une valeur globale ?
+- **Pourquoi** : la commande accepte quatre portées (`GLOBAL`, `SITE`, `ZONE`, `ROLE`), mais le serveur ne lit « du site, à défaut global » que 13 réglages (caisse, pertes, vente hors ligne). **DÉDUIT** : une valeur posée pour un site sur un autre réglage, ou pour une zone ou un rôle, n'aurait aucun effet.
+- **Choix** : (a) global, ou un site pour les seuls réglages lus par site ; (b) toutes les portées de la commande ; (c) global seulement.
+- **Recommandation** : (a). **TRANCHÉ** : (a) (porteur, 01/11/2026).
+- **Impact** : `site: true` du catalogue, `features/settings/SettingsPanel.tsx`. Défaut mis en œuvre : (a). Non paramétrable.
+
+### AV-492 — Géorepère d'une zone : champs et position de l'appareil, sans carte — SECONDAIRE — **TRANCHÉ**
+- **Question** : comment saisir le centre et le rayon du géorepère de pointage d'une zone ?
+- **Pourquoi** : AV-003 retient « centre + rayon ». Une carte exige une bibliothèque cartographique et des tuiles en ligne, et le paquet de la PWA est borné à 300 Ko (gzip).
+- **Choix** : (a) latitude, longitude et rayon saisis, avec « Utiliser ma position » (GPS de l'appareil) ; (b) une carte avec un repère déplaçable.
+- **Recommandation** : (a). **TRANCHÉ** : (a) (porteur, 01/11/2026).
+- **Impact** : `features/organization/ZonesPanel.tsx`, `use-position.ts`. Défaut mis en œuvre : (a). Non paramétrable.
+
+### AV-493 — Journal d'audit : période, noms d'acteurs, lecture de la Finance — IMPORTANTE — **TRANCHÉ**
+- **Question** : sur quelle date et quel fuseau filtrer le journal, afficher le nom des acteurs, et la Finance lit-elle tout le journal ?
+- **Pourquoi** : [`03-audit.md`](07-security-rbac/03-audit.md) § 6 écrit que « la Finance est limitée aux entités financières », mais la lecture servait tout détenteur de `audit.log.read` sans restriction : un écran seul ne peut pas porter la règle. **CONFIRMÉ** (lecture du code, 01/11/2026).
+- **Choix** : (a) jours métier (`Africa/Douala`) sur l'enregistrement serveur, noms d'acteurs fournis par le serveur, Direction et Admin lisent tout, tout autre détenteur de `audit.log.read` ne lit que les types d'entité du paramètre `audit.finance_entity_types` (quinze types financiers semés, **fermé par défaut**), la liste des types du filtre est bornée de même ; (b) la Finance lit tout ; (c) restriction dans l'écran seulement.
+- **Recommandation** : (a). **TRANCHÉ** : (a) (porteur, 01/11/2026).
+- **Impact** : `audit-api/audit-scope.ts`, `audit-api/audit.controller.ts`, `audit/audit-log-query.ts`, `db/seeds/system-settings.ts`, [dictionnaire `02-organization.md`](03-data/dictionnaire/02-organization.md), [`03-audit.md`](07-security-rbac/03-audit.md) § 6, `apps/server/test/admin-config-reads.e2e.test.ts`. Défaut mis en œuvre : (a). Paramétrable (`audit.finance_entity_types`).
+
+### AV-494 — Politiques de contrôle : nouvelle version, condition en lecture seule — IMPORTANTE — **TRANCHÉ**
+- **Question** : que peut modifier l'écran dans une politique de contrôle (`approvals.policy.set`) ?
+- **Pourquoi** : une politique est versionnée (une nouvelle version retire l'ancienne) ; sa `condition` JSON décide quand elle s'applique et une condition mal formée la ferait jouer à tort ou jamais. **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) photo, commentaire, validation, approbateur et portée modifiables, en nouvelle version, `condition` reprise telle quelle et en lecture seule ; (b) `condition` modifiable ; (c) lecture seule.
+- **Recommandation** : (a). **TRANCHÉ** : (a) (porteur, 01/11/2026).
+- **Impact** : `features/settings/PoliciesPanel.tsx`, `GET /approvals/policies`. Limites : la portée de l'approbateur est descriptive (le serveur ne la revérifie pas) ; retirer l'approbateur peut rendre la politique non décidable, l'écran le signale sans l'interdire. Défaut mis en œuvre : (a). Non paramétrable.
+
+### AV-495 — Équipes : qui voit lesquelles, avec quels membres — SECONDAIRE
+- **Question** : qui lit la liste des équipes et les noms de leurs membres ?
+- **Pourquoi** : S-28 demandait une lecture des équipes ; le droit `org.structure.read` est large (toutes portées), alors qu'une équipe est un périmètre de commandement. **DÉDUIT**.
+- **Choix** : (a) portée `ALL` : toutes les équipes ; sinon celles que la personne dirige ou dont elle est membre ; noms des membres fournis par le serveur ; (b) toutes les équipes pour tout lecteur de la structure ; (c) seulement ses propres équipes, même en portée `ALL`.
+- **Recommandation** : (a).
+- **Impact** : `GET /teams` (`organization-api/structure-read.controller.ts`), `listTeams`. Défaut mis en œuvre : (a). Non paramétrable.
+
+### AV-496 — Paramètres et journal : contrôles que seul l'écran porte — IMPORTANTE
+- **Question** : le serveur doit-il valider lui-même la valeur d'un paramètre, et la liste des acteurs du journal doit-elle dépasser 1 000 comptes ?
+- **Pourquoi** : seul l'écran contrôle le type et les bornes d'une valeur (AV-490) ; un autre client de l'API pourrait poser une valeur de mauvais type. La liste « Qui » du journal relit au plus cinq pages de 200 comptes. **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) laisser ainsi jusqu'au pilote ; (b) valider par clé dans `organization.setting.set` à partir du catalogue partagé ; (c) idem, plus une recherche d'acteur côté serveur.
+- **Recommandation** : (b) avant le pilote ; (c) seulement si les comptes dépassent 1 000.
+- **Impact** : `organization/application/commands/setting-commands.ts`, `settings-catalog.ts`, `features/audit/`. Défaut mis en œuvre : (a). Non paramétrable.
+
+### AV-497 — Organisation : actions que les commandes n'offrent pas — SECONDAIRE
+- **Question** : l'écran de l'organisation doit-il proposer ce que le serveur ne sait pas faire : renommer ou déplacer une zone, fermer une équipe, changer le code ou la zone d'un site, réouvrir un site, retirer la capacité d'un emplacement ou la précision GPS maximale d'une zone ?
+- **Pourquoi** : les commandes `organization.*` n'offrent que la création, la mise à jour de champs listés, la fermeture d'un site et la désactivation d'un emplacement ; une valeur absente d'une mise à jour est « inchangée », jamais « retirée » (seule l'adresse d'un site peut être remplacée par un texte vide) ; contourner par un écran créerait un second chemin d'écriture (règle 3 : toute écriture est une commande). **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) n'offrir que ce que les commandes permettent ; (b) ajouter les commandes au serveur dans un lot à part.
+- **Recommandation** : (a) maintenant ; (b) si le pilote en révèle le besoin (la fermeture d'une équipe, par exemple).
+- **Impact** : `features/organization/`. Défaut mis en œuvre : (a). Non paramétrable.
+
 ## 3. Journal des décisions
 
 | Date | ID | Décision | Décideur |
@@ -3718,3 +3782,8 @@ Politique par défaut, paramétrable :
 | 29/10/2026 | AV-471 | Notifications purgées à 90 jours : lues et lignes d'envoi Web Push, jamais la notification d'une note publiée ni les non lues | Porteur du projet |
 | 29/10/2026 | AV-472 | Tâches terminées conservées 30 jours, sauts de consommateurs 90 jours, purge par l'application | Porteur du projet |
 | 01/11/2026 | AV-489 | Reprise du reporting commercial : **aucune modification du schéma** (les données s'adaptent au schéma prévu) ; écriture par les commandes du pipeline, le responsable pour auteur, en faits accomplis datés d'octobre ; une zone par quartier sous « Douala » ; tout est importé, les doublons de téléphone sont signalés par le conflit natif et jamais fusionnés ; informations sans champ résumées dans le motif de reprise, ligne source conservée dans l'audit ; journal de 14 jours archivé hors des tables de pointage ; compte du responsable créé avec son adresse e-mail professionnelle (connexion) et le téléphone de sa fiche Paramètres (exigé par le schéma ; numéro conservé hors du dépôt), mot de passe provisoire choisi par le porteur et saisi masqué (jamais écrit) | Porteur du projet |
+| 01/11/2026 | AV-490 | Paramètres : éditeur par catalogue (forme, unité, bornes, portée), les 108 clés semées groupées par domaine avec libellé français, réglages techniques repliés derrière un interrupteur avec avertissement, clé hors catalogue modifiable en objet JSON ; le contrôle du type par le serveur est renvoyé à AV-496 | Porteur du projet |
+| 01/11/2026 | AV-491 | Portée d'un paramètre : global, ou un site pour les 13 réglages que le serveur lit par site | Porteur du projet |
+| 01/11/2026 | AV-492 | Géorepère d'une zone : latitude, longitude, rayon et « Utiliser ma position », pas de carte | Porteur du projet |
+| 01/11/2026 | AV-493 | Journal d'audit : filtre par jours métier sur l'enregistrement serveur, noms d'acteurs, Direction et Admin lisent tout, la Finance est limitée aux types du paramètre `audit.finance_entity_types` (quinze types financiers semés, fermé par défaut) | Porteur du projet |
+| 01/11/2026 | AV-494 | Politiques de contrôle : photo, commentaire, validation, approbateur et portée modifiables en nouvelle version ; la condition JSON reste en lecture seule | Porteur du projet |

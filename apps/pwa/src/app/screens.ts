@@ -99,6 +99,12 @@ export const ROUTES = {
   devices: '/administration/appareils',
   approvals: '/validations',
   users: '/administration/utilisateurs',
+  /** ECR-ADM-06 (RP-1) : sites, emplacements, zones et géorepères, équipes, points de vente. */
+  organization: '/administration/organisation',
+  /** ECR-ADM-07 (RP-1) : paramètres versionnés et politiques de contrôle. */
+  settings: '/administration/parametres',
+  /** ECR-AUD-01 (RP-1) : recherche dans le journal d'audit. */
+  audit: '/administration/audit',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -380,6 +386,18 @@ export const ROLE_SETS = {
    * (`identity.user.manage`) ; la lecture `GET /users` sert aussi d'autres rôles, sans menu pour eux.
    */
   userManage: ['ADMIN'],
+  /**
+   * ECR-ADM-06 (RP-1) : `org.structure.manage` (ADM seul, 01-rbac.md §5.1) ; la Direction lit la structure
+   * mais ne la modifie pas, l'inventaire des écrans réserve celui-ci à l'Admin.
+   */
+  organizationManage: ['ADMIN'],
+  /** ECR-ADM-07 (RP-1) : `org.settings.manage` et `approvals.policy.manage` (DIR et ADM, portée ALL). */
+  settingsManage: ['DIRECTION', 'ADMIN'],
+  /**
+   * ECR-AUD-01 (RP-1) : `audit.log.read` (DIR, ADM, FIN). La Finance n'y voit que les entités financières :
+   * le serveur borne la lecture (AV-493).
+   */
+  auditRead: ['DIRECTION', 'ADMIN', 'FINANCE'],
   approvals: [
     'DIRECTION',
     'FINANCE',
@@ -661,6 +679,36 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'general',
     roles: ROLE_SETS.userManage,
     actionCodes: ['USERS'],
+    offline: false,
+  },
+  {
+    // RP-1 : organisation (sites, emplacements, zones, équipes, points de vente), commandes `organization.*`.
+    id: 'ECR-ADM-06',
+    path: ROUTES.organization,
+    labelKey: 'organization',
+    group: 'general',
+    roles: ROLE_SETS.organizationManage,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    // RP-1 : paramètres système versionnés et politiques de contrôle.
+    id: 'ECR-ADM-07',
+    path: ROUTES.settings,
+    labelKey: 'settings',
+    group: 'general',
+    roles: ROLE_SETS.settingsManage,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    // RP-1 : journal d'audit (recherche), lecture seule.
+    id: 'ECR-AUD-01',
+    path: ROUTES.audit,
+    labelKey: 'audit',
+    group: 'general',
+    roles: ROLE_SETS.auditRead,
+    actionCodes: [],
     offline: false,
   },
   {

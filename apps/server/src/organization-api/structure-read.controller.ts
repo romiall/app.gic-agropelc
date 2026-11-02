@@ -6,6 +6,7 @@
  * `ALL` ; Commercial terrain `ZONE` ; Vendeur, Resp. ferme, Magasinier `SITE`). Portée (RC-04, AV-189) :
  * le site et sa zone ; un site hors portée est absent de la liste, un emplacement ou un PDV d'un site
  * hors portée aussi ; `/locations` exige le site (`site_id`), hors portée ou inconnu ⇒ 404 audité.
+ * RP-1 : `GET /zones` (portée de la zone et de ses descendantes) et `GET /teams` (S-19, S-28).
  * Le PDV est complété, dans cette couche de transport, par l'identifiant de sa caisse (`CAISSE_PDV`
  * active du site) et de sa session ouverte (`finance`), sans aucun montant (ceux-ci relèvent de
  * `finance.cash.read`, `GET /cash-accounts`, `/cash-sessions`).
@@ -23,8 +24,11 @@ import {
   listLocations,
   listPointsOfSale,
   listSites,
+  listTeams,
+  listZones,
   type SiteSummary,
 } from '../modules/organization/application/public/index.js';
+import { userFullNames } from '../modules/identity/application/public/index.js';
 import {
   findCashSessionCovering,
   listCashAccounts,
@@ -90,6 +94,58 @@ export class StructureReadController {
       ...(query.zone_id !== undefined ? { zoneId: query.zone_id } : {}),
     });
     return { sites: await this.visibleSites(request, now, sites) };
+  }
+
+  @Get('zones')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(STRUCTURE_READ)
+  async zones(@Req() request: AuthenticatedRequest) {
+    const now = this.clock.now();
+    await this.access.requirePermission(request, now, { type: 'ZONE' });
+    const zones = await listZones(this.db);
+    if (await this.access.allowsAll(request, now)) return { zones };
+    // Portée `ZONE` : la zone de l'affectation et ses descendantes ; une portée de site ne voit aucune zone.
+    const kept = [];
+    for (const zone of zones) {
+      if (await this.access.allows(request, now, { zoneId: zone.id })) kept.push(zone);
+    }
+    return { zones: kept };
+  }
+
+  /**
+   * Équipes et leurs membres à l'instant (S-28). Une équipe ne porte ni site ni zone : portée `ALL`, toutes ;
+   * sinon (AV-495) seulement celles que le lecteur dirige ou dont il est membre.
+   */
+  @Get('teams')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(STRUCTURE_READ)
+  async teams(@Req() request: AuthenticatedRequest) {
+    const now = this.clock.now();
+    await this.access.requirePermission(request, now, { type: 'TEAM' });
+    const all = await this.access.allowsAll(request, now);
+    const userId = request.auth!.sub;
+    const teams = (await listTeams(this.db, now)).filter(
+      (team) =>
+        all ||
+        team.managerUserId === userId ||
+        team.members.some((member) => member.userId === userId),
+    );
+    const names = await userFullNames(
+      this.db,
+      teams.flatMap((team) => [team.managerUserId, ...team.members.map((member) => member.userId)]),
+    );
+    return {
+      teams: teams.map((team) => ({
+        ...team,
+        managerName: names.get(team.managerUserId) ?? null,
+        members: team.members.map((member) => ({
+          ...member,
+          fullName: names.get(member.userId) ?? null,
+        })),
+      })),
+    };
   }
 
   @Get('locations')

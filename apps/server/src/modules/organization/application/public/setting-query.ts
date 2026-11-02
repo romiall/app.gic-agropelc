@@ -45,6 +45,38 @@ export async function listSettingHistory(
   return rows.map(toSettingVersion);
 }
 
+/**
+ * Version en vigueur à `at` de chaque paramètre et de chaque portée (dernière `valid_from ≤ at` par clé,
+ * type et cible de portée, BR-ADM-016), par clé puis portée : la base de l'écran des paramètres (ECR-ADM-07).
+ * Lecture sans filtre : le catalogue est petit (une centaine de clés) et chaque révision n'ajoute qu'une ligne.
+ */
+export async function listCurrentSettings(
+  executor: Kysely<DB> | Transaction<DB>,
+  at: Date,
+): Promise<readonly SettingVersion[]> {
+  const rows = await executor
+    .selectFrom('organization_system_settings')
+    .selectAll()
+    .where('valid_from', '<=', at)
+    .orderBy('valid_from', 'desc')
+    .orderBy('created_at', 'desc')
+    .execute();
+  const seen = new Set<string>();
+  const current: SettingVersion[] = [];
+  for (const row of rows) {
+    const identity = `${row.key}|${row.scope_type}|${row.scope_id === null ? '' : fromBin(row.scope_id)}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    current.push(toSettingVersion(row));
+  }
+  return current.sort(
+    (a, b) =>
+      a.key.localeCompare(b.key) ||
+      a.scopeType.localeCompare(b.scopeType) ||
+      (a.scopeId ?? '').localeCompare(b.scopeId ?? ''),
+  );
+}
+
 /** Valeur en vigueur à `at` (dernière `valid_from ≤ at`, BR-ADM-016) ; `undefined` si aucune version n'existe encore à cet instant. */
 export async function currentSettingValue(
   executor: Kysely<DB> | Transaction<DB>,

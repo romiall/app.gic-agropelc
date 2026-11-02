@@ -243,6 +243,7 @@ Remarques :
   - `finance.payable.read` ouvre les factures, paiements et dettes fournisseurs, la vue d'ensemble financière, et le payé d'un BC dans le rapprochement de P6.
   - Dans la vue d'ensemble, chaque bloc garde le droit de sa lecture : `analytics.dashboard.finance` pour le CA, l'encaissé, les créances et la trésorerie ; `finance.expense.read` en portée `ALL` pour les dépenses.
   - La liste des dépenses est pré-filtrée par le périmètre du lecteur (sites, auteurs), puis affinée élément par élément.
+- **Lectures de RP-1 (01/11/2026, ADR-051, AV-493, AV-495)** : aucune permission de lecture nouvelle. `GET /zones` et `GET /teams` réutilisent `org.structure.read` : les zones sont bornées aux affectations `ZONE` (une portée de site n'en voit aucune), les équipes sont toutes visibles en portée `ALL`, sinon seulement celles que le lecteur dirige ou dont il est membre. `GET /organization/settings/current` et l'historique d'une clé relèvent d'`org.settings.manage`, `GET /approvals/policies` d'`approvals.policy.manage` (Direction et Admin). `GET /audit` et `GET /audit/entity-types` relèvent d'`audit.log.read` ; **la Finance et tout autre détenteur que la Direction et l'Admin ne lisent que les types d'entité du paramètre `audit.finance_entity_types`** (03-audit.md §6), jamais l'ensemble du journal. **DÉDUIT** (AV-493 tranché le 01/11/2026 ; AV-495 **À VALIDER**).
 
 ## 6. Vue condensée par domaine (lecture rapide)
 

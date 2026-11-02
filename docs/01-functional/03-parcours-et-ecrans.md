@@ -113,10 +113,10 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-ADM-01 | Connexion et enrôlement de l'appareil | Tous | Non | P0 |
 | ECR-ADM-02 | Déverrouillage par PIN, changement d'utilisateur sur appareil partagé | Tous | Oui | P0 |
 | ECR-ADM-03 | Accueil par rôle (actions du jour + indicateurs) | Tous | Oui | P0 (squelette), enrichi à chaque phase |
-| ECR-ADM-04 | Utilisateurs et affectations de rôle | ADMIN | Non | P0 (cadrage) ; partiel en MP-08 (liste des comptes, réinitialisation du mot de passe) ; complété en MP-13 (création d'un compte, ajout et retrait de rôle sur `GLOBAL` ou `SITE`, suspension, réactivation et désactivation ; zones et équipes avec S-19 et S-28 ; rôles figés, AV-257) |
+| ECR-ADM-04 | Utilisateurs et affectations de rôle | ADMIN | Non | P0 (cadrage) ; partiel en MP-08 (liste des comptes, réinitialisation du mot de passe) ; complété en MP-13 (création d'un compte, ajout et retrait de rôle sur `GLOBAL` ou `SITE`, suspension, réactivation et désactivation ; rôles figés, AV-257) ; zones et équipes livrées en RP-1 (01/11/2026, lectures `GET /zones` et `GET /teams`, S-19 et S-28) |
 | ECR-ADM-05 | Appareils (approbation, blocage, déclaration de perte, rattachement à un site) | ADMIN, responsables dans leur portée (BR-ADM-025) ; lecture seule pour la Direction et le magasinier | Non | P0 (cadrage), livré en MP-06 |
-| ECR-ADM-06 | Organisation : sites, emplacements, zones, géorepères, équipes, PDV | ADMIN | Non | P0/P1 |
-| ECR-ADM-07 | Paramètres et politiques de contrôle | ADMIN (Direction pour les seuils) | Non | P0/P2 |
+| ECR-ADM-06 | Organisation : sites, emplacements, zones, géorepères, équipes, PDV | ADMIN | Non | P0/P1, livré en RP-1 (01/11/2026, [ADR-051](../decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md) : quatre onglets Sites, Zones, Équipes et Points de vente, emplacements dans la fiche d'un site ; géorepère par champs et « Utiliser ma position », AV-492 ; actions que les commandes n'offrent pas, AV-497) |
+| ECR-ADM-07 | Paramètres et politiques de contrôle | DIRECTION, ADMIN (`org.settings.manage` et `approvals.policy.manage`) | Non | P0/P2, livré en RP-1 (01/11/2026, [ADR-051](../decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md) : les 108 paramètres par domaine avec libellé, unité et bornes, portée globale ou d'un site, historique par clé ; politiques en nouvelle version, condition en lecture seule ; AV-490, AV-491, AV-494, AV-496) |
 | ECR-ADM-08 | File de validation unifiée | DIRECTION, responsables, FINANCE, magasinier (écarts de transfert de son site) ; chacun ne voit que ce qu'il peut décider | Non | P2 (cadrage), livré en MP-07 |
 | ECR-SYN-01 | État de synchronisation et opérations en attente | Tous | Oui | P0 |
 | ECR-SYN-02 | Supervision de la synchronisation (appareils, retards, erreurs) | ADMIN, DIRECTION | Non | P0 |
@@ -124,7 +124,7 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-NOT-01 | Centre d'alertes et de notifications | Tous | Oui (dernières) | P2, complété en P9 |
 | ECR-NOT-02 | Notes de direction (lecture, accusé) | Tous | Oui | P9 |
 | ECR-NOT-03 | Publication d'une note | DIRECTION | Non | P9 |
-| ECR-AUD-01 | Journal d'audit (recherche) | DIRECTION, ADMIN, FINANCE | Non | P0 |
+| ECR-AUD-01 | Journal d'audit (recherche) | DIRECTION, ADMIN, FINANCE | Non | P0, livré en RP-1 (01/11/2026, [ADR-051](../decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md) : filtres période, type d'entité, acteur, action et identifiant, détail avant et après ; la Finance ne lit que les entités financières, AV-493) |
 
 ### 3.2 Catalogue et tarification
 

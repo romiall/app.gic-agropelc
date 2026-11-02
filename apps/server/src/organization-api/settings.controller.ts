@@ -9,13 +9,15 @@ import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestj
 import { z } from 'zod';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { CLOCK } from '../platform/clock.provider.js';
-import type { Clock } from '@gic/domain';
+import { ID_GENERATOR } from '../platform/id-generator.provider.js';
+import type { Clock, IdGenerator } from '@gic/domain';
 import { ApiError } from '../platform/http/api-error.exception.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
-import { hasPermissionAt } from '../modules/identity/application/public/index.js';
+import { userFullNames } from '../modules/identity/application/public/index.js';
 import { RequiresPermission } from '../platform/http/authorization.decorators.js';
-import { toBin } from '../platform/kysely/uuid-columns.js';
+import { ReadAccess } from '../read-api/read-access.js';
 import {
+  listCurrentSettings,
   listSettingHistory,
   type SettingVersion,
 } from '../modules/organization/application/public/index.js';
@@ -30,10 +32,15 @@ const settingsQuerySchema = z.object({
 
 @Controller('api/v1/organization/settings')
 export class SettingsController {
+  private readonly access: ReadAccess;
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(CLOCK) private readonly clock: Clock,
-  ) {}
+    @Inject(ID_GENERATOR) idGenerator: IdGenerator,
+  ) {
+    this.access = new ReadAccess(db, { clock, idGenerator }, SETTINGS_READ_PERMISSION);
+  }
 
   @Get()
   @HttpCode(200)
@@ -42,8 +49,7 @@ export class SettingsController {
   async history(
     @Query() rawQuery: unknown,
     @Req() request: AuthenticatedRequest,
-  ): Promise<{ history: readonly SettingVersion[] }> {
-    const auth = request.auth!;
+  ): Promise<{ history: readonly (SettingVersion & { createdByName: string | null })[] }> {
     const parsed = settingsQuerySchema.safeParse(rawQuery);
     if (!parsed.success) {
       throw new ApiError(
@@ -53,21 +59,41 @@ export class SettingsController {
       );
     }
 
-    const allowed = await hasPermissionAt(
-      this.db,
-      toBin(auth.sub),
-      SETTINGS_READ_PERMISSION,
-      this.clock.now(),
-    );
-    if (!allowed) {
-      throw new ApiError(403, 'FORBIDDEN', 'Droit insuffisant pour consulter les paramètres.');
-    }
+    // Refus audité (`access.denied`, BR-AUD-004).
+    await this.access.requirePermission(request, this.clock.now(), { type: 'SETTING' });
 
     const history = await listSettingHistory(this.db, {
       key: parsed.data.key,
       ...(parsed.data.scope_type !== undefined ? { scopeType: parsed.data.scope_type } : {}),
       ...(parsed.data.scope_id !== undefined ? { scopeId: parsed.data.scope_id } : {}),
     });
-    return { history };
+    return { history: await this.withAuthorNames(history) };
+  }
+
+  /**
+   * Version en vigueur de chaque paramètre et de chaque portée (RP-1, ECR-ADM-07), avec l'auteur de la
+   * révision : de quoi lister l'écran sans une lecture par clé. Même droit que l'historique.
+   */
+  @Get('current')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(SETTINGS_READ_PERMISSION)
+  async current(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ settings: readonly (SettingVersion & { createdByName: string | null })[] }> {
+    const now = this.clock.now();
+    await this.access.requirePermission(request, now, { type: 'SETTING' });
+    return { settings: await this.withAuthorNames(await listCurrentSettings(this.db, now)) };
+  }
+
+  private async withAuthorNames(versions: readonly SettingVersion[]) {
+    const names = await userFullNames(
+      this.db,
+      versions.map((version) => version.createdBy),
+    );
+    return versions.map((version) => ({
+      ...version,
+      createdByName: names.get(version.createdBy) ?? null,
+    }));
   }
 }

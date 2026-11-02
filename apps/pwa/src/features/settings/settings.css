@@ -1,0 +1,58 @@
+/* Paramètres et politiques (ECR-ADM-07, RP-1) : ce qui est propre à l'écran ; le vocabulaire commun des
+   écrans d'administration est dans `users/admin.css`. Aucune couleur en dur : tout passe par les jetons. */
+
+.settings-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 56.25rem) {
+  .settings-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Surcharges d'un paramètre : une ligne par site, la valeur à côté de sa pastille. */
+.settings-overrides {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-overrides > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* Historique : la valeur, puis la date, l'auteur et le motif en gris. */
+.settings-history {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-history > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-history > li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* Objet JSON : chasse fixe pour lire les accolades. */
+.settings-json {
+  min-height: 9rem;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: var(--text-sm);
+}

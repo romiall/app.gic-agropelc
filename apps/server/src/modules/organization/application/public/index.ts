@@ -5,7 +5,7 @@
  * par clé étrangère par les modules qui en dépendent (`identity`, 03-graphe-dependances.md
  * note 1), sans détour par ce module pour de simples jointures.
  */
-export { listSettingHistory, currentSettingValue } from './setting-query.js';
+export { listSettingHistory, listCurrentSettings, currentSettingValue } from './setting-query.js';
 export { siteThenGlobalSetting } from './site-setting.js';
 export type { SettingScopeType, SettingVersion, SettingFilter } from './setting-query.js';
 export { listSiteIdsInZones, listZoneIdsWithDescendants } from './site-query.js';
@@ -19,6 +19,11 @@ export {
 } from './pos-query.js';
 export type { PosConfig } from './pos-query.js';
 export { listTeamMembersAt, listManagedTeamMembersAt, listTeamsOfUserAt } from './team-query.js';
+export { listTeams } from './team-query.js';
+export type { TeamMemberSummary, TeamSummary } from './team-query.js';
+// RP-1 (S-19) : lecture des zones pour `GET /zones`.
+export { listZones } from './zone-query.js';
+export type { ZoneSummary } from './zone-query.js';
 
 // P5-05 : gardes de désactivation d'un emplacement (INV-STK-07), inversion de dépendance.
 export { LOCATION_DEACTIVATION_GUARD_REGISTRY } from '../deactivation-guard-registry.provider.js';

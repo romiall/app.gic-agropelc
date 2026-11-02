@@ -38,6 +38,23 @@ export type {
 export { CommandRegistry } from './command-registry.js';
 export type { RegisteredCommandType, ParsedCommand } from './command-registry.js';
 
+// RP-1 (ECR-ADM-07, AV-490) : forme, unité, bornes et portée de chaque paramètre système.
+export {
+  DISCOUNT_SETTING_PREFIX,
+  SETTING_CATALOG,
+  SETTING_GROUPS,
+  WEEKDAY_VALUES,
+  settingDefOf,
+  validateSettingValue,
+} from './settings-catalog.js';
+export type {
+  SettingDef,
+  SettingGroup,
+  SettingKind,
+  SettingProblem,
+  SettingUnit,
+} from './settings-catalog.js';
+
 export {
   rawCommandEnvelopeSchema,
   pushRequestSchema,

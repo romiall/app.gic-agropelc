@@ -544,6 +544,31 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-124, AV-413',
   },
+  // RP-1 (AV-493) : types d'entité du journal d'audit que la Finance peut lire (03-audit.md §6 : « la
+  // Finance est limitée aux entités financières ») ; la Direction et l'Admin lisent tout. Liste vide :
+  // aucune lecture pour la Finance. Valeur absente ou invalide : le serveur reprend cette même liste.
+  {
+    key: 'audit.finance_entity_types',
+    value: [
+      'CASH_ACCOUNT',
+      'CASH_RECONCILIATION',
+      'CASH_SESSION',
+      'CASH_TRANSFER',
+      'CASH_TRANSFER_TARGET',
+      'CUSTOMER_PAYMENT',
+      'EXPENSE',
+      'EXPENSE_CATEGORY',
+      'LEDGER_RECONCILIATION',
+      'PURCHASE_ORDER',
+      'SALE',
+      'SALE_CANCELLATION',
+      'SALES_ORDER',
+      'SUPPLIER_INVOICE',
+      'SUPPLIER_PAYMENT',
+    ],
+    isClientVisible: false,
+    ref: 'AV-493',
+  },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que
   // dupliqué ici (le rôle doit exister avant que sa clé de remise ait un sens).

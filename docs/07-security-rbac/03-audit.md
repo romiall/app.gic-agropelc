@@ -76,7 +76,8 @@ prev_hash(e) = row_hash(e précédente) ; première entrée : 64 zéros
 
 ## 6. Accès et consultation
 
-- Permission `audit.log.read` (Direction, Admin, Finance), dans la portée du rôle. La Finance est limitée aux entités financières.
+- Permission `audit.log.read` (Direction, Admin, Finance), dans la portée du rôle. La Finance est limitée aux entités financières : la Direction et l'Admin lisent tout, tout autre détenteur du droit ne lit que les types d'entité du paramètre `audit.finance_entity_types` (quinze types financiers semés, liste vide : rien ; fermé par défaut), pour la lecture comme pour la liste des types d'entité du filtre (AV-493, ADR-051). La restriction est posée par le serveur (`audit-api/audit-scope.ts`), jamais par l'écran seul.
+- Recherche (ECR-AUD-01) : par période (jours métier `Africa/Douala` sur l'enregistrement serveur), type d'entité, identifiant d'entité, acteur et action, de l'entrée la plus récente à la plus ancienne, par pages de 50 ; l'acteur est nommé.
 - Historique d'un document : chaque écran de document affiche son historique d'audit filtré (auteur, décisions), dans la portée de lecture du document.
 - Toute consultation du journal est elle-même auditée (BR-AUD-009).
 

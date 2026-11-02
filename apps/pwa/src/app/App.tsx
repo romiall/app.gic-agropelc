@@ -212,6 +212,17 @@ const ApprovalsScreen = lazy(() =>
 const UsersScreen = lazy(() =>
   import('../features/users/UsersScreen.js').then((m) => ({ default: m.UsersScreen })),
 );
+const OrganizationScreen = lazy(() =>
+  import('../features/organization/OrganizationScreen.js').then((m) => ({
+    default: m.OrganizationScreen,
+  })),
+);
+const SettingsScreen = lazy(() =>
+  import('../features/settings/SettingsScreen.js').then((m) => ({ default: m.SettingsScreen })),
+);
+const AuditScreen = lazy(() =>
+  import('../features/audit/AuditScreen.js').then((m) => ({ default: m.AuditScreen })),
+);
 // Page de référence des composants (ADR-049), réservée au développement : `import.meta.env.DEV` vaut
 // `false` à la construction, la branche et son import sont supprimés (rien de la galerie dans `dist`).
 const ComponentGallery = import.meta.env.DEV
@@ -288,6 +299,9 @@ function AppShell() {
             <Route path={ROUTES.devices} element={<DevicesScreen />} />
             <Route path={ROUTES.approvals} element={<ApprovalsScreen />} />
             <Route path={ROUTES.users} element={<UsersScreen />} />
+            <Route path={ROUTES.organization} element={<OrganizationScreen />} />
+            <Route path={ROUTES.settings} element={<SettingsScreen />} />
+            <Route path={ROUTES.audit} element={<AuditScreen />} />
             {ComponentGallery ? (
               <Route path="/dev/composants" element={<ComponentGallery />} />
             ) : null}

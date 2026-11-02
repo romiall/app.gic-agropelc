@@ -11,6 +11,7 @@ import {
   assignmentProblem,
   canSendStatus,
   createBody,
+  createRoleBody,
   EMPTY_NEW_USER,
   failureOutcome,
   grantPayload,
@@ -80,13 +81,24 @@ const NO_ACTIONS = {
 };
 
 const FIELD_ROLE = '01900000-0000-7000-8000-0000000004a3';
-/** Rôle de zone seulement : aucun périmètre que l'écran sait proposer (AV-326). */
+/** Rôle sans aucun périmètre que l'écran sache proposer (périmètre propre au titulaire seulement). */
 const ZONE_ONLY: RoleView = {
   id: FIELD_ROLE,
   code: 'COMMERCIAL_TERRAIN',
   name: 'Commercial terrain',
   description: null,
-  allowedScopeTypes: ['ZONE'],
+  allowedScopeTypes: ['OWN'],
+  isSystem: true,
+};
+const TEAM_ID = '01900000-0000-7000-8000-0000000003b1';
+const ZONE_ROLE = '01900000-0000-7000-8000-0000000004a4';
+/** Rôle de zone et d'équipe (RP-1, S-19, S-28). */
+const REGIONAL: RoleView = {
+  id: ZONE_ROLE,
+  code: 'RESP_COMMERCIAL',
+  name: 'Responsable commercial',
+  description: null,
+  allowedScopeTypes: ['GLOBAL', 'ZONE', 'TEAM'],
   isSystem: true,
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -150,15 +162,20 @@ interface Served {
   readonly roles?: readonly RoleView[];
   /** Réponse de la lecture des rôles, à la place de `roles` (panne passagère). */
   readonly rolesResponse?: unknown;
+  /** Zones et équipes servies (`GET /zones`, `GET /teams`) : sans elles, la lecture est refusée. */
+  readonly zones?: readonly { id: string; name: string; isActive: boolean }[];
+  readonly teams?: readonly { id: string; name: string; isActive: boolean }[];
 }
 
-/** Réponses du serveur : liste des comptes, rôles, création et réinitialisation. */
+/** Réponses du serveur : liste des comptes, rôles, zones, équipes, création et réinitialisation. */
 function serve({
   users,
   reset = { ok: true, data: { status: 'ok' } },
   created = { ok: true, data: { id: PAUL } },
   roles,
   rolesResponse,
+  zones,
+  teams,
 }: Served) {
   vi.mocked(authorizedRequest).mockImplementation((_db, path, init) => {
     const target = String(path);
@@ -171,6 +188,14 @@ function serve({
         : roles
           ? { ok: true, data: { roles } }
           : { ok: false, reason: 'HTTP_ERROR', status: 403, body: {} };
+    } else if (target === '/api/v1/zones') {
+      response = zones
+        ? { ok: true, data: { zones } }
+        : { ok: false, reason: 'HTTP_ERROR', status: 403, body: {} };
+    } else if (target === '/api/v1/teams') {
+      response = teams
+        ? { ok: true, data: { teams } }
+        : { ok: false, reason: 'HTTP_ERROR', status: 403, body: {} };
     } else if (target.startsWith('/api/v1/users')) {
       response = { ok: true, data: { users, next_cursor: null } };
     } else {
@@ -222,31 +247,41 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
     ).toEqual({ kind: 'REFUSED', code: 'X', message: 'Non.' });
   });
 
-  it('périmètres proposés : GLOBAL et SITE seulement, selon ce que le rôle permet (AV-326)', () => {
+  it('périmètres proposés : global, site, zone et équipe, selon ce que le rôle permet (AV-326, RP-1)', () => {
     expect(scopeTypesFor(undefined)).toEqual([]);
     expect(scopeTypesFor({ allowedScopeTypes: ['GLOBAL', 'SITE', 'ZONE', 'TEAM'] })).toEqual([
       'GLOBAL',
       'SITE',
+      'ZONE',
+      'TEAM',
     ]);
-    expect(scopeTypesFor({ allowedScopeTypes: ['ZONE', 'TEAM'] })).toEqual([]);
+    expect(scopeTypesFor({ allowedScopeTypes: ['ZONE', 'TEAM'] })).toEqual(['ZONE', 'TEAM']);
     expect(scopeTypesFor({ allowedScopeTypes: ['SITE'] })).toEqual(['SITE']);
+    expect(scopeTypesFor({ allowedScopeTypes: ['OWN'] })).toEqual([]);
   });
 
-  it('choix d’une affectation : rôle, périmètre permis, site ; doublon ; charges des commandes', () => {
-    const seller = { roleId: SELLER_ROLE, scopeType: 'SITE', siteId: IDS.site } as const;
+  it('choix d’une affectation : rôle, périmètre permis, site, zone, équipe ; doublon ; charges des commandes', () => {
+    const none = { siteId: '', zoneId: '', teamId: '' };
+    const seller = {
+      roleId: SELLER_ROLE,
+      scopeType: 'SITE',
+      siteId: IDS.site,
+      zoneId: '',
+      teamId: '',
+    } as const;
     expect(assignmentProblem({ ...seller, roleId: '' }, ROLES)).toBe('ROLE');
     expect(assignmentProblem({ ...seller, scopeType: 'GLOBAL' }, ROLES)).toBe('SCOPE');
     expect(assignmentProblem({ ...seller, siteId: '' }, ROLES)).toBe('SITE');
     expect(assignmentProblem(seller, ROLES)).toBeNull();
     expect(
-      assignmentProblem({ roleId: ADMIN_ROLE, scopeType: 'GLOBAL', siteId: '' }, ROLES),
+      assignmentProblem({ roleId: ADMIN_ROLE, scopeType: 'GLOBAL', ...none }, ROLES),
     ).toBeNull();
 
     expect(alreadyAssigned(account(), seller)).toBe(true);
     expect(alreadyAssigned(account(), { ...seller, siteId: 'autre-site' })).toBe(false);
-    expect(
-      alreadyAssigned(account(), { roleId: ADMIN_ROLE, scopeType: 'GLOBAL', siteId: '' }),
-    ).toBe(false);
+    expect(alreadyAssigned(account(), { roleId: ADMIN_ROLE, scopeType: 'GLOBAL', ...none })).toBe(
+      false,
+    );
 
     expect(grantPayload(AWA, seller)).toEqual({
       userId: AWA,
@@ -255,9 +290,59 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
       scopeSiteId: IDS.site,
     });
     expect(
-      grantPayload(AWA, { roleId: ADMIN_ROLE, scopeType: 'GLOBAL', siteId: 'ignoré' }),
+      grantPayload(AWA, { roleId: ADMIN_ROLE, scopeType: 'GLOBAL', ...none, siteId: 'ignoré' }),
     ).toEqual({ userId: AWA, roleId: ADMIN_ROLE, scopeType: 'GLOBAL' });
     expect(revokePayload('  Changement de poste ')).toEqual({ reason: 'Changement de poste' });
+  });
+
+  it('périmètres de zone et d’équipe (RP-1, S-19, S-28) : identifiant exigé, doublon, charges des commandes', () => {
+    const roles = [{ ...ROLES[0]!, allowedScopeTypes: ['GLOBAL', 'SITE', 'ZONE', 'TEAM'] }];
+    const roleId = roles[0]!.id;
+    const zone = { roleId, scopeType: 'ZONE', siteId: '', zoneId: IDS.zone, teamId: '' } as const;
+    const team = { roleId, scopeType: 'TEAM', siteId: '', zoneId: '', teamId: TEAM_ID } as const;
+    expect(assignmentProblem({ ...zone, zoneId: '' }, roles)).toBe('ZONE');
+    expect(assignmentProblem(zone, roles)).toBeNull();
+    expect(assignmentProblem({ ...team, teamId: '' }, roles)).toBe('TEAM');
+    expect(assignmentProblem(team, roles)).toBeNull();
+
+    expect(grantPayload(AWA, zone)).toEqual({
+      userId: AWA,
+      roleId,
+      scopeType: 'ZONE',
+      scopeZoneId: IDS.zone,
+    });
+    expect(grantPayload(AWA, team)).toEqual({
+      userId: AWA,
+      roleId,
+      scopeType: 'TEAM',
+      scopeTeamId: TEAM_ID,
+    });
+    expect(createRoleBody(zone)).toEqual({
+      role_id: roleId,
+      scope_type: 'ZONE',
+      scope_zone_id: IDS.zone,
+    });
+    expect(createRoleBody(team)).toEqual({
+      role_id: roleId,
+      scope_type: 'TEAM',
+      scope_team_id: TEAM_ID,
+    });
+
+    const held = account({
+      assignments: [
+        assignment({
+          roleId,
+          roleCode: 'RESP_COMMERCIAL',
+          roleName: 'Responsable commercial',
+          scopeType: 'ZONE',
+          scopeSiteId: null,
+          scopeZoneId: IDS.zone,
+        }),
+      ],
+    });
+    expect(alreadyAssigned(held, zone)).toBe(true);
+    expect(alreadyAssigned(held, { ...zone, zoneId: 'autre-zone' })).toBe(false);
+    expect(alreadyAssigned(held, team)).toBe(false);
   });
 
   it('état d’un compte : actions selon le serveur, motif exigé pour suspendre et désactiver', () => {
@@ -774,7 +859,7 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(posts()).toHaveLength(0);
   });
 
-  it('rôle sans périmètre proposable (zone seulement) : alerte unique, création bloquée', async () => {
+  it('rôle sans périmètre proposable : alerte unique, création bloquée', async () => {
     serve({ users: [account()], roles: [...ROLES, ZONE_ONLY] });
     const user = userEvent.setup();
     renderScreen();
@@ -935,6 +1020,65 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(command!.payload).toEqual({ userId: AWA, roleId: ADMIN_ROLE, scopeType: 'GLOBAL' });
     expect(command!.aggregate_id).toMatch(UUID);
     expect(command!.aggregate_id).not.toBe(AWA_ASSIGNMENT);
+  });
+
+  it('ajoute un rôle de zone puis d’équipe (RP-1, S-19, S-28) : zones et équipes lues, commande avec scopeZoneId puis scopeTeamId', async () => {
+    serve({
+      users: [account({ actions: { ...NO_ACTIONS, manageRoles: true } })],
+      roles: [...ROLES, REGIONAL],
+      zones: [
+        { id: IDS.zone, name: 'Douala', isActive: true },
+        { id: '01900000-0000-7000-8000-0000000003c9', name: 'Zone fermée', isActive: false },
+      ],
+      teams: [{ id: TEAM_ID, name: 'Équipe Littoral', isActive: true }],
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    await user.click(within(card).getByRole('button', { name: 'Ajouter un rôle à Awa Nde' }));
+    await user.selectOptions(within(card).getByLabelText('Rôle'), ZONE_ROLE);
+    await user.selectOptions(within(card).getByLabelText('Périmètre'), 'ZONE');
+    const confirm = within(card).getByRole('button', { name: 'Ajouter le rôle à Awa Nde' });
+    expect(confirm).toBeDisabled();
+    const zoneSelect = within(card).getByLabelText('Zone');
+    // Seules les zones actives sont proposées.
+    expect(within(zoneSelect).queryByRole('option', { name: 'Zone fermée' })).toBeNull();
+    await user.selectOptions(zoneSelect, IDS.zone);
+    await user.click(confirm);
+
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [zoneCommand] = await getDb().outbox.toArray();
+    expect(zoneCommand).toMatchObject({ command_type: 'identity.role_assignment.grant' });
+    expect(zoneCommand!.payload).toEqual({
+      userId: AWA,
+      roleId: ZONE_ROLE,
+      scopeType: 'ZONE',
+      scopeZoneId: IDS.zone,
+    });
+  });
+
+  it('le périmètre d’équipe se choisit parmi les équipes lues (RP-1, S-28) : commande avec scopeTeamId', async () => {
+    serve({
+      users: [account({ actions: { ...NO_ACTIONS, manageRoles: true } })],
+      roles: [...ROLES, REGIONAL],
+      teams: [{ id: TEAM_ID, name: 'Équipe Littoral', isActive: true }],
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    await user.click(within(card).getByRole('button', { name: 'Ajouter un rôle à Awa Nde' }));
+    await user.selectOptions(within(card).getByLabelText('Rôle'), ZONE_ROLE);
+    await user.selectOptions(within(card).getByLabelText('Périmètre'), 'TEAM');
+    await user.selectOptions(within(card).getByLabelText('Équipe'), TEAM_ID);
+    await user.click(within(card).getByRole('button', { name: 'Ajouter le rôle à Awa Nde' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [command] = await getDb().outbox.toArray();
+    expect(command!.payload).toEqual({
+      userId: AWA,
+      roleId: ZONE_ROLE,
+      scopeType: 'TEAM',
+      scopeTeamId: TEAM_ID,
+    });
   });
 
   it('retire un rôle : affectation nommée, motif exigé et propre à chaque affectation, commande identity.role_assignment.revoke', async () => {

@@ -42,6 +42,9 @@ export type {
 } from './rights-check.js';
 
 export { deviceUserCounts, userFullName, userFullNames } from './user-summary.js';
+// RP-1 (ECR-ADM-07) : permissions d'approbation proposées à l'approbateur d'une politique de contrôle.
+export { listApprovalPermissions } from './permission-query.js';
+export type { ApprovalPermission } from './permission-query.js';
 // MP-08 (ECR-ADM-04 partiel) : lecture des comptes pour `GET /users`.
 export { USER_STATUSES, listUsersPage, phonesInUse } from './user-query.js';
 // MP-13 (ECR-ADM-04 complet) : affectations actives de plusieurs comptes, avec leur identifiant.

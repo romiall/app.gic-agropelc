@@ -12,7 +12,7 @@ import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { type JwtKeyPair } from '../src/modules/identity/application/public/jwt.js';
 import {
@@ -81,6 +81,14 @@ describe('GET /api/v1/audit (§6, BR-AUD-004, BR-AUD-009)', () => {
       const role = await insertTestRole(trx, authorizedUser);
       await grantTestPermission(trx, role, AUDIT_LOG_READ_PERMISSION, authorizedUser);
       await assignTestRole(trx, authorizedUser, role, authorizedUser);
+      // RP-1 (AV-493) : tout détenteur de `audit.log.read` qui n'est ni Direction ni Admin est limité aux
+      // entités financières ; ce lecteur lit tout le journal, comme la Direction (rôle semé).
+      const direction = await trx
+        .selectFrom('identity_roles')
+        .select('id')
+        .where('code', '=', 'DIRECTION')
+        .executeTakeFirstOrThrow();
+      await assignTestRole(trx, authorizedUser, fromBin(direction.id), authorizedUser);
     });
   });
 

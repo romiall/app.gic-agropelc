@@ -1,0 +1,76 @@
+/* Organisation (ECR-ADM-06, RP-1) : ce qui est propre à l'écran ; le vocabulaire commun des écrans
+   d'administration est dans `users/admin.css`. Aucune couleur en dur : tout passe par les jetons. */
+
+.org-toolbar {
+  align-items: center;
+  margin: 0 0 var(--space-4);
+}
+
+.org-subtitle {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+/* Emplacements d'un site : une ligne par emplacement, séparées par un filet. */
+.org-locations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.org-locations > li {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.org-locations > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.org-location-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Arbre des zones : retrait selon la profondeur (`--level` posé par l'écran). */
+.org-zones {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 56.25rem) {
+  .org-zones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.org-zone {
+  margin-inline-start: calc(var(--level, 0) * var(--space-4));
+}
+
+/* Géorepère : latitude, longitude et rayon côte à côte dès que la place le permet. */
+.org-geofence {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.org-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.sale .org-grid .field,
+.sale .org-geofence .field {
+  margin-bottom: 0;
+}
+
+@media (min-width: 40rem) {
+  .org-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

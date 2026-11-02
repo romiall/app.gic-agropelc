@@ -79,3 +79,56 @@ export async function decidablePolicyFor(
     isDecidablePolicy,
   );
 }
+
+/** Une version d'une politique, avec sa période et son état (écran des politiques, ECR-ADM-07). */
+export interface PolicyVersion extends ActiveControlPolicy {
+  readonly status: string;
+  readonly validFrom: Date;
+  readonly validTo: Date | null;
+  readonly createdAt: Date;
+  readonly createdBy: string;
+}
+
+/**
+ * Politiques de l'écran d'administration : sans `code`, celles en vigueur à `at` (toutes opérations
+ * confondues), par type d'opération puis code ; avec `code`, toutes les versions de ce code, la plus
+ * récente d'abord (historique, BR-ADM-016). `condition` n'est jamais interprétée ici.
+ */
+export async function listPolicies(
+  executor: Kysely<DB> | Transaction<DB>,
+  filter: { readonly at: Date; readonly code?: string },
+): Promise<readonly PolicyVersion[]> {
+  const rows = await executor
+    .selectFrom('approvals_control_policies')
+    .selectAll()
+    .$if(filter.code !== undefined, (qb) =>
+      qb.where('code', '=', filter.code!).orderBy('version', 'desc'),
+    )
+    .$if(filter.code === undefined, (qb) =>
+      qb
+        .where('status', '=', 'ACTIVE')
+        .where('valid_from', '<=', filter.at)
+        .where((eb) => eb.or([eb('valid_to', 'is', null), eb('valid_to', '>', filter.at)]))
+        .orderBy('operation_type', 'asc')
+        .orderBy('code', 'asc')
+        .orderBy('version', 'desc'),
+    )
+    .execute();
+  return rows.map((row) => ({
+    id: fromBin(row.id),
+    code: row.code,
+    version: row.version,
+    operationType: row.operation_type,
+    condition: row.condition,
+    requiresPhoto: Boolean(row.requires_photo),
+    requiresComment: Boolean(row.requires_comment),
+    requiresApproval: Boolean(row.requires_approval),
+    approverPermission: row.approver_permission,
+    approverScope: row.approver_scope,
+    status: row.status,
+    validFrom: row.valid_from,
+    validTo: row.valid_to,
+    createdAt: row.created_at,
+    createdBy: fromBin(row.created_by),
+  }));
+}

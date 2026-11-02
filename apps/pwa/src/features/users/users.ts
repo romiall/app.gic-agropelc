@@ -11,8 +11,8 @@
  *   (`newPasswordProblem` : 8 à 128 caractères, confirmation).
  * - Suspension, réactivation, désactivation, octroi et révocation de rôle : commandes `identity.user.*` et
  *   `identity.role_assignment.*` (droits ALL de l'Admin) émises par la file d'envoi, comme les appareils.
- * - Périmètres proposés : `GLOBAL` et `SITE` (AV-326) ; les zones et les équipes attendent `GET /zones` et
- *   `GET /teams` (S-19, S-28). Les permissions d'un rôle ne se modifient pas ici (AV-257, rôles figés).
+ * - Périmètres proposés : `GLOBAL`, `SITE`, `ZONE` et `TEAM` (AV-326 ; RP-1, S-19 et S-28 : `GET /zones` et
+ *   `GET /teams`). Les permissions d'un rôle ne se modifient pas ici (AV-257, rôles figés).
  */
 import { newPasswordProblem, normalizePhone, type NewPasswordProblem } from '@gic/domain';
 
@@ -76,6 +76,9 @@ export function usersPath(filter: UserFilter): string {
 }
 
 export const ROLES_PATH = '/api/v1/roles';
+/** Zones et équipes proposées aux périmètres `ZONE` et `TEAM` d'une affectation (RP-1). */
+export const ZONES_PATH = '/api/v1/zones';
+export const TEAMS_PATH = '/api/v1/teams';
 export const CREATE_PATH = '/api/v1/users';
 
 /** Recherche locale : nom ou téléphone contenant le texte (sans tenir compte des espaces du numéro). */
@@ -147,8 +150,8 @@ export function failureOutcome(
 
 // --- Périmètres et affectations ------------------------------------------------------------------
 
-/** Types de périmètre que l'écran propose (AV-326) ; zones et équipes attendent leurs lectures (S-19, S-28). */
-export const ASSIGNABLE_SCOPES: readonly ScopeType[] = ['GLOBAL', 'SITE'];
+/** Types de périmètre que l'écran propose : global, site, zone et équipe (AV-326, S-19, S-28). */
+export const ASSIGNABLE_SCOPES: readonly ScopeType[] = ['GLOBAL', 'SITE', 'ZONE', 'TEAM'];
 
 /** Types de périmètre proposés pour un rôle : ceux que le rôle permet et que l'écran sait choisir. */
 export function scopeTypesFor(role: Pick<RoleView, 'allowedScopeTypes'> | undefined): ScopeType[] {
@@ -156,14 +159,16 @@ export function scopeTypesFor(role: Pick<RoleView, 'allowedScopeTypes'> | undefi
   return ASSIGNABLE_SCOPES.filter((scope) => role.allowedScopeTypes.includes(scope));
 }
 
-/** Choix d'une affectation : rôle, type de périmètre et, pour `SITE`, le site. */
+/** Choix d'une affectation : rôle, type de périmètre et, selon lui, le site, la zone ou l'équipe. */
 export interface AssignmentChoice {
   readonly roleId: string;
   readonly scopeType: ScopeType;
   readonly siteId: string;
+  readonly zoneId: string;
+  readonly teamId: string;
 }
 
-export type AssignmentProblem = 'ROLE' | 'SCOPE' | 'SITE';
+export type AssignmentProblem = 'ROLE' | 'SCOPE' | 'SITE' | 'ZONE' | 'TEAM';
 
 /** Défaut du choix d'une affectation, ou `null`. */
 export function assignmentProblem(
@@ -174,6 +179,8 @@ export function assignmentProblem(
   if (!role) return 'ROLE';
   if (!scopeTypesFor(role).includes(choice.scopeType)) return 'SCOPE';
   if (choice.scopeType === 'SITE' && !choice.siteId) return 'SITE';
+  if (choice.scopeType === 'ZONE' && !choice.zoneId) return 'ZONE';
+  if (choice.scopeType === 'TEAM' && !choice.teamId) return 'TEAM';
   return null;
 }
 
@@ -183,7 +190,9 @@ export function alreadyAssigned(user: UserView, choice: AssignmentChoice): boole
     (assignment) =>
       assignment.roleId === choice.roleId &&
       assignment.scopeType === choice.scopeType &&
-      (choice.scopeType !== 'SITE' || assignment.scopeSiteId === choice.siteId),
+      (choice.scopeType !== 'SITE' || assignment.scopeSiteId === choice.siteId) &&
+      (choice.scopeType !== 'ZONE' || assignment.scopeZoneId === choice.zoneId) &&
+      (choice.scopeType !== 'TEAM' || assignment.scopeTeamId === choice.teamId),
   );
 }
 
@@ -194,6 +203,8 @@ export function grantPayload(userId: string, choice: AssignmentChoice): Record<s
     roleId: choice.roleId,
     scopeType: choice.scopeType,
     ...(choice.scopeType === 'SITE' ? { scopeSiteId: choice.siteId } : {}),
+    ...(choice.scopeType === 'ZONE' ? { scopeZoneId: choice.zoneId } : {}),
+    ...(choice.scopeType === 'TEAM' ? { scopeTeamId: choice.teamId } : {}),
   };
 }
 
@@ -203,6 +214,8 @@ export function createRoleBody(choice: AssignmentChoice): Record<string, unknown
     role_id: choice.roleId,
     scope_type: choice.scopeType,
     ...(choice.scopeType === 'SITE' ? { scope_site_id: choice.siteId } : {}),
+    ...(choice.scopeType === 'ZONE' ? { scope_zone_id: choice.zoneId } : {}),
+    ...(choice.scopeType === 'TEAM' ? { scope_team_id: choice.teamId } : {}),
   };
 }
 
@@ -269,6 +282,8 @@ export interface NewUserForm {
   readonly roleId: string;
   readonly scopeType: ScopeType;
   readonly siteId: string;
+  readonly zoneId: string;
+  readonly teamId: string;
 }
 
 export const EMPTY_NEW_USER: NewUserForm = {
@@ -280,6 +295,8 @@ export const EMPTY_NEW_USER: NewUserForm = {
   roleId: '',
   scopeType: 'GLOBAL',
   siteId: '',
+  zoneId: '',
+  teamId: '',
 };
 
 /** Numéro E.164 de la saisie (indicatif national par défaut), ou `null` si elle n'en est pas un. */

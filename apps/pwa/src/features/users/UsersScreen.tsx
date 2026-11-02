@@ -80,6 +80,8 @@ import {
   resetProblem,
   revokePayload,
   ROLES_PATH,
+  TEAMS_PATH,
+  ZONES_PATH,
   scopeTypesFor,
   sortByName,
   statusActionsFor,
@@ -114,6 +116,11 @@ const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
 interface SiteOption {
   readonly id: string;
   readonly name: string;
+}
+
+/** Zone ou équipe renvoyée par `GET /zones` ou `GET /teams` (le nom, et si elle est active). */
+interface ScopeRow extends SiteOption {
+  readonly isActive: boolean;
 }
 
 /** Ce que l'écran a ouvert sous un compte (un seul formulaire à la fois). */
@@ -261,6 +268,9 @@ interface AssignmentFieldsProps {
   readonly choice: AssignmentChoice;
   readonly roles: readonly RoleView[];
   readonly sites: readonly SiteOption[];
+  /** Zones et équipes lues sur `GET /zones` et `GET /teams` (périmètres `ZONE` et `TEAM`, RP-1). */
+  readonly zones: readonly SiteOption[];
+  readonly teams: readonly SiteOption[];
   readonly optional: boolean;
   readonly onChange: (choice: AssignmentChoice) => void;
 }
@@ -270,6 +280,8 @@ function AssignmentFields({
   choice,
   roles,
   sites,
+  zones,
+  teams,
   optional,
   onChange,
 }: AssignmentFieldsProps) {
@@ -283,6 +295,8 @@ function AssignmentFields({
       roleId,
       scopeType: allowed.includes(choice.scopeType) ? choice.scopeType : (allowed[0] ?? 'GLOBAL'),
       siteId: choice.siteId,
+      zoneId: choice.zoneId,
+      teamId: choice.teamId,
     });
   };
   return (
@@ -346,6 +360,42 @@ function AssignmentFields({
           )}
         </Field>
       ) : null}
+      {role && choice.scopeType === 'ZONE' ? (
+        <Field label={t('users.zone_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={choice.zoneId}
+              onChange={(event) => onChange({ ...choice, zoneId: event.target.value })}
+            >
+              <option value="">{t('users.choose_zone')}</option>
+              {zones.map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {zone.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      ) : null}
+      {role && choice.scopeType === 'TEAM' ? (
+        <Field label={t('users.team_label')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={choice.teamId}
+              onChange={(event) => onChange({ ...choice, teamId: event.target.value })}
+            >
+              <option value="">{t('users.choose_team')}</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      ) : null}
     </>
   );
 }
@@ -357,11 +407,22 @@ interface CreateFormProps {
   readonly onSending: (sending: boolean) => void;
   readonly roles: readonly RoleView[];
   readonly sites: readonly SiteOption[];
+  readonly zones: readonly SiteOption[];
+  readonly teams: readonly SiteOption[];
   readonly onCancel: () => void;
   readonly onDone: (outcome: CreateOutcome, name: string) => void;
 }
 
-function CreateForm({ countryCode, onSending, roles, sites, onCancel, onDone }: CreateFormProps) {
+function CreateForm({
+  countryCode,
+  onSending,
+  roles,
+  sites,
+  zones,
+  teams,
+  onCancel,
+  onDone,
+}: CreateFormProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState<NewUserForm>(EMPTY_NEW_USER);
   const [sending, setSending] = useState(false);
@@ -440,6 +501,8 @@ function CreateForm({ countryCode, onSending, roles, sites, onCancel, onDone }: 
           choice={form}
           roles={roles}
           sites={sites}
+          zones={zones}
+          teams={teams}
           optional
           onChange={(choice) => set(choice)}
         />
@@ -453,7 +516,9 @@ function CreateForm({ countryCode, onSending, roles, sites, onCancel, onDone }: 
             sous son choix (`scope_unavailable`). */}
         {(problem === 'PHONE' && form.phone.trim() !== '') ||
         (problem === 'EMAIL' && form.email.trim() !== '') ||
-        problem === 'SITE' ? (
+        problem === 'SITE' ||
+        problem === 'ZONE' ||
+        problem === 'TEAM' ? (
           <p className="adm-note is-warn">{t(`users.create_problem.${problem}`)}</p>
         ) : null}
       </div>
@@ -510,14 +575,27 @@ function ReasonForm({ label, confirm, required, blocked, onCancel, onConfirm }: 
   );
 }
 
-function scopeText(
-  assignment: AssignmentView,
-  siteName: (id: string | null) => string | null,
-  t: TFunction,
-): string {
+/** Noms résolus des périmètres d'une affectation (`…` tant que la liste se charge, `null` si inconnu). */
+interface ScopeNames {
+  readonly site: (id: string | null) => string | null;
+  readonly zone: (id: string | null) => string | null;
+  readonly team: (id: string | null) => string | null;
+}
+
+function scopeText(assignment: AssignmentView, names: ScopeNames, t: TFunction): string {
   if (assignment.scopeType === 'SITE') {
     return t('users.scope_site', {
-      name: siteName(assignment.scopeSiteId) ?? t('users.site_unknown'),
+      name: names.site(assignment.scopeSiteId) ?? t('users.site_unknown'),
+    });
+  }
+  if (assignment.scopeType === 'ZONE') {
+    return t('users.scope_zone', {
+      name: names.zone(assignment.scopeZoneId) ?? t('users.zone_unknown'),
+    });
+  }
+  if (assignment.scopeType === 'TEAM') {
+    return t('users.scope_team', {
+      name: names.team(assignment.scopeTeamId) ?? t('users.team_unknown'),
     });
   }
   return t(`users.scope.${assignment.scopeType}`, { defaultValue: assignment.scopeType });
@@ -527,13 +605,13 @@ function scopeText(
 function revokedRoleText(
   user: UserView,
   assignmentId: string,
-  siteName: (id: string | null) => string | null,
+  names: ScopeNames,
   t: TFunction,
 ): string {
   const assignment = user.assignments.find((candidate) => candidate.id === assignmentId);
   if (!assignment) return '';
   const role = t(`users.role.${assignment.roleCode}`, { defaultValue: assignment.roleName });
-  return `${role} · ${scopeText(assignment, siteName, t)}`;
+  return `${role} · ${scopeText(assignment, names, t)}`;
 }
 
 // --- Écran ---------------------------------------------------------------------------------------
@@ -580,6 +658,20 @@ export function UsersScreen() {
     '',
   );
   useRefreshOnVisible(rolesRead.retry);
+  // Zones et équipes des périmètres `ZONE` et `TEAM` (RP-1, S-19, S-28) : sans droit de lecture ou en panne,
+  // leurs listes restent vides et ces deux périmètres ne peuvent pas être choisis ; le reste de l'écran sert.
+  const zonesRead = useOnlineRead<{ readonly zones: readonly ScopeRow[] }>(
+    online ? ZONES_PATH : null,
+    (path) => readPath<{ zones: ScopeRow[] }>(path),
+    online,
+    '',
+  );
+  const teamsRead = useOnlineRead<{ readonly teams: readonly ScopeRow[] }>(
+    online ? TEAMS_PATH : null,
+    (path) => readPath<{ teams: ScopeRow[] }>(path),
+    online,
+    '',
+  );
 
   if (!userId) {
     return (
@@ -614,6 +706,28 @@ export function UsersScreen() {
   // Tant que le jeu `org` se charge, le nom n'est pas « inconnu » : il n'est pas encore là.
   const siteName = (id: string | null) =>
     id ? (refs ? (refs.sites.get(id)?.name ?? null) : '…') : null;
+  const byName = (a: SiteOption, b: SiteOption) => a.name.localeCompare(b.name, 'fr');
+  const zones: SiteOption[] = (zonesRead.data?.zones ?? [])
+    .filter((zone) => zone.isActive)
+    .map(({ id, name }) => ({ id, name }))
+    .sort(byName);
+  const teams: SiteOption[] = (teamsRead.data?.teams ?? [])
+    .filter((team) => team.isActive)
+    .map(({ id, name }) => ({ id, name }))
+    .sort(byName);
+  const zoneName = (id: string | null) =>
+    id
+      ? zonesRead.data
+        ? (zonesRead.data.zones.find((zone) => zone.id === id)?.name ?? null)
+        : '…'
+      : null;
+  const teamName = (id: string | null) =>
+    id
+      ? teamsRead.data
+        ? (teamsRead.data.teams.find((team) => team.id === id)?.name ?? null)
+        : '…'
+      : null;
+  const scopeNames: ScopeNames = { site: siteName, zone: zoneName, team: teamName };
   const waiting =
     (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand, outbox))) ||
     pendingOps.length > 0;
@@ -722,6 +836,8 @@ export function UsersScreen() {
           onSending={setCreateSending}
           roles={roles}
           sites={sites}
+          zones={zones}
+          teams={teams}
           onCancel={() => setCreating(false)}
           onDone={(result, name) => {
             setOutcome({ kind: 'CREATE', name, result });
@@ -816,7 +932,7 @@ export function UsersScreen() {
                             defaultValue: assignment.roleName,
                           })}
                           {' · '}
-                          {scopeText(assignment, siteName, t)}
+                          {scopeText(assignment, scopeNames, t)}
                         </span>
                         {user.actions.revokeRoles ? (
                           <Button
@@ -894,10 +1010,10 @@ export function UsersScreen() {
                     key={mine.assignmentId}
                     label={t('users.revoke_title', {
                       name: user.fullName,
-                      role: revokedRoleText(user, mine.assignmentId, siteName, t),
+                      role: revokedRoleText(user, mine.assignmentId, scopeNames, t),
                     })}
                     confirm={t('users.revoke_confirm', {
-                      role: revokedRoleText(user, mine.assignmentId, siteName, t),
+                      role: revokedRoleText(user, mine.assignmentId, scopeNames, t),
                     })}
                     required
                     blocked={blocked}
@@ -917,6 +1033,8 @@ export function UsersScreen() {
                     user={user}
                     roles={roles}
                     sites={sites}
+                    zones={zones}
+                    teams={teams}
                     blocked={blocked}
                     onCancel={() => setOpen(null)}
                     onConfirm={(choice) =>
@@ -988,17 +1106,30 @@ interface AssignFormProps {
   readonly user: UserView;
   readonly roles: readonly RoleView[];
   readonly sites: readonly SiteOption[];
+  readonly zones: readonly SiteOption[];
+  readonly teams: readonly SiteOption[];
   readonly blocked: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: (choice: AssignmentChoice) => void;
 }
 
-function AssignForm({ user, roles, sites, blocked, onCancel, onConfirm }: AssignFormProps) {
+function AssignForm({
+  user,
+  roles,
+  sites,
+  zones,
+  teams,
+  blocked,
+  onCancel,
+  onConfirm,
+}: AssignFormProps) {
   const { t } = useTranslation();
   const [choice, setChoice] = useState<AssignmentChoice>({
     roleId: '',
     scopeType: 'GLOBAL',
     siteId: '',
+    zoneId: '',
+    teamId: '',
   });
   const problem = assignmentProblem(choice, roles);
   const duplicate = problem === null && alreadyAssigned(user, choice);
@@ -1014,6 +1145,8 @@ function AssignForm({ user, roles, sites, blocked, onCancel, onConfirm }: Assign
         choice={choice}
         roles={roles}
         sites={sites}
+        zones={zones}
+        teams={teams}
         optional={false}
         onChange={setChoice}
       />
