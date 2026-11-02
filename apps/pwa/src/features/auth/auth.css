@@ -76,14 +76,45 @@
   margin-bottom: 16px;
 }
 
-.auth-form label {
+.auth-form label:not(.check) {
   font-size: 14px;
   font-weight: 600;
 }
 
-.auth-form input {
+.auth-form input:where(:not([type='checkbox'], [type='radio'])) {
   width: 100%;
   min-height: var(--control-h-lg);
+}
+
+.auth-form input[type='checkbox'],
+.auth-form input[type='radio'] {
+  width: 1.25rem !important;
+  min-width: 1.25rem !important;
+  max-width: 1.25rem !important;
+  height: 1.25rem !important;
+  min-height: 1.25rem !important;
+  max-height: 1.25rem !important;
+  flex: none;
+  margin: 0;
+}
+
+.auth-form .check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--field-h);
+  margin-top: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  user-select: none;
+}
+
+.auth-form .check .check-text {
+  font-weight: 500;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .input-with-action {
