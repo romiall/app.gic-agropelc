@@ -656,6 +656,22 @@ describe('organization.* (P0-11)', () => {
         .where('id', '=', toBin(membership2))
         .executeTakeFirstOrThrow();
       expect(second.valid_to).not.toBeNull();
+
+      // S-28 (RP-3) : les appartenances d'équipe sont publiées dans sync_change_feed.
+      const feedRows = await db
+        .selectFrom('sync_change_feed')
+        .select(['dataset', 'entity_type', 'scope_type', 'change_type'])
+        .where('dataset', '=', 'team_membership')
+        .where('entity_id', 'in', [toBin(membership1), toBin(membership2)])
+        .orderBy('seq', 'asc')
+        .execute();
+      expect(feedRows.length).toBeGreaterThanOrEqual(4);
+      expect(feedRows[0]).toMatchObject({
+        dataset: 'team_membership',
+        entity_type: 'TEAM_MEMBERSHIP',
+        scope_type: 'GLOBAL',
+        change_type: 'UPSERT',
+      });
     });
   });
 

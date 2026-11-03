@@ -298,6 +298,7 @@ const QUARANTINE_REASON_LABELS: Readonly<Record<string, string>> = {
   DUPLICATE_DELIVERY_NOTE: 'Bon de livraison déjà reçu',
   OVER_RECEIPT: 'Dépassement du reliquat',
   PO_NOT_RECEIVABLE: 'Bon de commande non réceptionnable',
+  LOCATION_OVERRIDE: "Dérogation d'emplacement hors du site du bon de commande",
 };
 
 /** Libellé d'un ensemble de raisons de quarantaine (« A ; B »). */

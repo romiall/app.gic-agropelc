@@ -120,22 +120,33 @@ export function receivableOrders(orders: readonly PurchaseOrderData[]): Purchase
 }
 
 /**
- * Emplacements où recevoir un bon de commande : physiques et actifs, du site du bon (ou son emplacement
- * de livraison), celui de livraison en tête, les autres par nom.
+ * Emplacements où recevoir un bon de commande : physiques et actifs (AV-096 : emplacement de livraison
+ * en tête, puis ceux du site du bon, puis ceux des autres sites en dérogation soumise à validation du
+ * responsable des achats).
  */
 export function receiptLocations(
   locations: readonly LocationData[],
   order: Pick<PurchaseOrderData, 'site_id' | 'delivery_location_id'>,
 ): LocationData[] {
-  const delivery = (location: LocationData) => (location.id === order.delivery_location_id ? 0 : 1);
+  const rank = (location: LocationData) => {
+    if (location.id === order.delivery_location_id) return 0;
+    if (location.site_id === order.site_id) return 1;
+    return 2;
+  };
   return locations
     .filter(
       (location) =>
-        !location.is_virtual &&
-        location.status === 'ACTIVE' &&
-        (location.site_id === order.site_id || location.id === order.delivery_location_id),
+        !location.is_virtual && location.status === 'ACTIVE' && location.site_id !== null,
     )
-    .sort((a, b) => delivery(a) - delivery(b) || a.name.localeCompare(b.name, 'fr'));
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'fr'));
+}
+
+/** Dérogation d'emplacement (AV-096) : l'emplacement choisi appartient à un autre site que celui du BC. */
+export function isLocationOverride(
+  location: Pick<LocationData, 'site_id'> | undefined,
+  order: Pick<PurchaseOrderData, 'site_id'>,
+): boolean {
+  return location !== undefined && location.site_id !== null && location.site_id !== order.site_id;
 }
 
 export interface ReceiptLineDraft {

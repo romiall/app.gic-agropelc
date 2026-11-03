@@ -141,6 +141,7 @@ describe('procurement.receipt.* (P6-05)', () => {
       readonly supplier?: string;
       readonly locationId?: string;
       readonly note?: string;
+      readonly observations?: string;
       readonly lines: readonly ReceiptLine[];
     },
     occurredAt: string,
@@ -158,6 +159,7 @@ describe('procurement.receipt.* (P6-05)', () => {
         supplierId: input.supplier ?? supplierId,
         locationId: input.locationId ?? storeId,
         ...(input.note ? { supplierDeliveryNoteRef: input.note } : {}),
+        ...(input.observations ? { observations: input.observations } : {}),
         lines: input.lines.map((line) => ({ unitCode, ...line })),
       },
       options,
@@ -550,7 +552,7 @@ describe('procurement.receipt.* (P6-05)', () => {
         ).result,
       ),
     ).toBe('FORBIDDEN_SCOPE');
-    // Magasinier de l'autre site : autorisé chez lui, mais le BC est livré ailleurs.
+    // Magasinier de l'autre site : autorisé chez lui, mais le BC est livré ailleurs (sans motif : refus).
     expect(
       code(
         (
@@ -565,6 +567,30 @@ describe('procurement.receipt.* (P6-05)', () => {
       ),
     ).toBe('RECEIPT_LOCATION_INVALID');
     expect(await stockAt(storeId, productId)).toBe(0);
+
+    // AV-096 (RP-3) : avec motif dans les observations, la dérogation d'emplacement part en quarantaine
+    // puis entre au stock de l'emplacement réel après validation des Achats.
+    const override = await receive(
+      {
+        purchaseOrderId: po.id,
+        locationId: otherStoreId,
+        observations: 'Livraison redirigée vers le second entrepôt',
+        lines: [ok],
+      },
+      at('09:15:00'),
+      { actor: otherStorekeeper },
+    );
+    expect(override.result).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['RECEIPT_QUARANTINED'],
+    });
+    expect((await receiptRow(override.id))!.status).toBe('QUARANTINED');
+    expect(await stockAt(otherStoreId, productId)).toBe(0);
+    const overrideApproval = await approvalOf(override.id);
+    expect(overrideApproval.row.subject_summary).toContain('LOCATION_OVERRIDE');
+    expect(code(await approve(buyer, overrideApproval.id, at('09:30:00')))).toBe('APPLIED');
+    expect((await receiptRow(override.id))!.status).toBe('POSTED');
+    expect(await stockAt(otherStoreId, productId)).toBe(2);
   });
 
   it('AT-024 : même bon de livraison deux fois → quarantaine sans effet stock ; rejet, puis réception distincte confirmée', async () => {

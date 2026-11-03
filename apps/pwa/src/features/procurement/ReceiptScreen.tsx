@@ -47,6 +47,7 @@ import {
   duplicateDeliveryNote,
   EMPTY_LINE,
   inFlightAccepted,
+  isLocationOverride,
   localRemaining,
   MAX_DELIVERY_NOTE_REF,
   MAX_LOT_REF,
@@ -193,13 +194,15 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
     refs.outbox,
     refs.procurementPulledAt,
   );
-  const commentRequired = rows.some(
+  const locationOverride = isLocationOverride(location, order);
+  const rejectCommentRequired = rows.some(
     (row) =>
       row.check.rejected > 0 &&
       reasons.find((reason) => reason.id === row.draft.reasonId)?.requires_comment === true,
   );
-  // Motif de rejet qui exige un commentaire : précisé dans les observations (pas de commentaire par
-  // ligne dans le contrat).
+  const commentRequired = locationOverride || rejectCommentRequired;
+  // Motif de rejet qui exige un commentaire ou dérogation d'emplacement (AV-096) : précisé dans les
+  // observations (pas de commentaire par ligne dans le contrat).
   const commentMissing = commentRequired && observations.trim() === '';
   const ready =
     location !== undefined &&
@@ -226,9 +229,11 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
         ...(photo
           ? { attachments: [photoAttachment(photo, { ...RECEIPT_PHOTO, cited: true })] }
           : {}),
-        // Quarantaine prévisible (bon de livraison déjà reçu, ou dépassement hors ligne en mode
-        // quarantaine) : rien n'entre au disponible local.
-        ...(duplicateNote || (!online && over.length > 0 && offlineOverMode === 'QUARANTINE')
+        // Quarantaine prévisible (bon de livraison déjà reçu, dérogation d'emplacement hors du site du
+        // BC, ou dépassement hors ligne en mode quarantaine) : rien n'entre au disponible local.
+        ...(duplicateNote ||
+        locationOverride ||
+        (!online && over.length > 0 && offlineOverMode === 'QUARANTINE')
           ? { localFlags: ['EXPECTED_QUARANTINE'] }
           : {}),
         payload: receiptPayload({
@@ -271,6 +276,11 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           </Select>
         )}
       </Field>
+      {locationOverride ? (
+        <Banner tone="warn" role="status">
+          {t('purchase_receipt.location_override_notice')}
+        </Banner>
+      ) : null}
       <Field
         label={t('purchase_receipt.delivery_note_label')}
         hint={t('purchase_receipt.delivery_note_hint')}
@@ -444,7 +454,11 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
       </Field>
       {commentMissing ? (
         <p id={observationsErrorId} className="field-error">
-          {t('purchase_receipt.comment_required')}
+          {t(
+            locationOverride
+              ? 'purchase_receipt.location_override_reason_required'
+              : 'purchase_receipt.comment_required',
+          )}
         </p>
       ) : null}
       <PhotoField

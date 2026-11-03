@@ -14,7 +14,8 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { emitTeamMembershipChange } from '../sync-changes.js';
 
 const createPayloadSchema = z.object({
   code: z.string().min(1).max(40),
@@ -112,6 +113,7 @@ const assignMember: CommandHandler<AssignMemberPayload> = async (uow, envelope) 
       })
       .where('id', '=', current.id)
       .execute();
+    await emitTeamMembershipChange(uow, fromBin(current.id));
   }
 
   await uow
@@ -124,6 +126,7 @@ const assignMember: CommandHandler<AssignMemberPayload> = async (uow, envelope) 
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
+  await emitTeamMembershipChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -149,6 +152,7 @@ const removeMember: CommandHandler<RemoveMemberPayload> = async (uow, envelope) 
     })
     .where('id', '=', current.id)
     .execute();
+  await emitTeamMembershipChange(uow, fromBin(current.id));
   return { status: 'APPLIED' };
 };
 

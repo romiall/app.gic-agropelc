@@ -54,7 +54,8 @@ import { createSession, rotateSession, revokeSessionById } from '../application/
 import { revokeOtherUserSessions } from '../application/commands/revoke-sessions.js';
 
 const loginSchema = z.object({
-  phone: z.string().min(1).max(20),
+  // Téléphone (E.164) ou adresse e-mail du compte (RP-3, 200 caractères au plus).
+  phone: z.string().min(1).max(200),
   password: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
   device_id: z.string().uuid(),
   device_label: z.string().max(200).optional(),
@@ -128,7 +129,7 @@ export class AuthController {
 
     // MP-11 (revue adverse) : un numéro se réattribue après la désactivation de son compte (unicité sur
     // les seuls comptes non désactivés, `active_phone`) — le compte en vigueur passe d'abord ; à défaut,
-    // le dernier compte désactivé du numéro, pour l'audit de l'échec.
+    // le dernier compte désactivé du numéro, pour l'audit de l'échec. Repli sur l'adresse e-mail (RP-3).
     const user =
       (await this.db
         .selectFrom('identity_users')
@@ -139,6 +140,21 @@ export class AuthController {
         .selectFrom('identity_users')
         .select(['id', 'password_hash', 'status', 'must_change_password'])
         .where('phone', '=', phone)
+        .orderBy('id', 'desc')
+        .limit(1)
+        .executeTakeFirst()) ??
+      (await this.db
+        .selectFrom('identity_users')
+        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .where('email', '=', phone)
+        .where('status', '!=', 'DEACTIVATED')
+        .orderBy('id', 'desc')
+        .limit(1)
+        .executeTakeFirst()) ??
+      (await this.db
+        .selectFrom('identity_users')
+        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .where('email', '=', phone)
         .orderBy('id', 'desc')
         .limit(1)
         .executeTakeFirst());

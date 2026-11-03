@@ -372,10 +372,15 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         return rejected('SUPPLIER_MISMATCH', 'Fournisseur différent de celui du bon de commande.');
       }
       if (fromBin(order.site_id) !== location.site.id) {
-        return rejected(
-          'RECEIPT_LOCATION_INVALID',
-          'Emplacement de réception hors du site de livraison du bon de commande.',
-        );
+        // AV-096 (reprise de P6, RP-3) : réception hors du site de livraison du BC soumise à validation
+        // du responsable des achats (`RECEIPT_QUARANTINE`, motif exigé dans `observations`).
+        if (!p.observations || p.observations.trim().length === 0) {
+          return rejected(
+            'RECEIPT_LOCATION_INVALID',
+            'Emplacement de réception hors du site de livraison du bon de commande : un motif est requis pour demander la dérogation (AV-096).',
+          );
+        }
+        quarantineReasons.push('LOCATION_OVERRIDE');
       }
       if (!RECEIVABLE.includes(order.status)) {
         if (!offline) {
@@ -566,7 +571,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         subjectId: receiptId,
         subjectSummary:
           status === 'QUARANTINED'
-            ? `Réception ${docNumber} en quarantaine (${quarantineReasons.join(', ')})`
+            ? `Réception ${docNumber} en quarantaine (${quarantineReasons.join(', ')})${
+                quarantineReasons.includes('LOCATION_OVERRIDE') && p.observations
+                  ? ` — ${p.observations}`
+                  : ''
+              }`
             : `Réception sans bon de commande ${docNumber}`,
         siteId: location.site.id,
         amountXaf: acceptedValue,

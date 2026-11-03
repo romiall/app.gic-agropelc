@@ -223,6 +223,26 @@ const SettingsScreen = lazy(() =>
 const AuditScreen = lazy(() =>
   import('../features/audit/AuditScreen.js').then((m) => ({ default: m.AuditScreen })),
 );
+const ReassignCustomersScreen = lazy(() =>
+  import('../features/crm/ReassignCustomersScreen.js').then((m) => ({
+    default: m.ReassignCustomersScreen,
+  })),
+);
+const TeamActivityScreen = lazy(() =>
+  import('../features/fieldwork/TeamActivityScreen.js').then((m) => ({
+    default: m.TeamActivityScreen,
+  })),
+);
+const SyncMonitorScreen = lazy(() =>
+  import('../features/sync/SyncMonitorScreen.js').then((m) => ({
+    default: m.SyncMonitorScreen,
+  })),
+);
+const SyncConflictsScreen = lazy(() =>
+  import('../features/sync/SyncConflictsScreen.js').then((m) => ({
+    default: m.SyncConflictsScreen,
+  })),
+);
 // Page de référence des composants (ADR-049), réservée au développement : `import.meta.env.DEV` vaut
 // `false` à la construction, la branche et son import sont supprimés (rien de la galerie dans `dist`).
 const ComponentGallery = import.meta.env.DEV
@@ -302,6 +322,10 @@ function AppShell() {
             <Route path={ROUTES.organization} element={<OrganizationScreen />} />
             <Route path={ROUTES.settings} element={<SettingsScreen />} />
             <Route path={ROUTES.audit} element={<AuditScreen />} />
+            <Route path={ROUTES.reassignCustomers} element={<ReassignCustomersScreen />} />
+            <Route path={ROUTES.teamActivity} element={<TeamActivityScreen />} />
+            <Route path={ROUTES.syncMonitor} element={<SyncMonitorScreen />} />
+            <Route path={ROUTES.syncConflicts} element={<SyncConflictsScreen />} />
             {ComponentGallery ? (
               <Route path="/dev/composants" element={<ComponentGallery />} />
             ) : null}

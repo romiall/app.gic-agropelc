@@ -123,3 +123,32 @@ export async function emitSettingChange(uow: UnitOfWork, settingId: string): Pro
       : []),
   ]);
 }
+
+const TEAM_MEMBERSHIP_DATASET = 'team_membership';
+
+/**
+ * RP-3 (S-28) : publie l'état d'une appartenance à une équipe (`organization_team_memberships`),
+ * y compris l'ancienne appartenance fermée par un déplacement (`assign_member`) ou par un retrait
+ * (`remove_member`, dont l'`aggregate_id` de commande est neuf).
+ */
+export async function emitTeamMembershipChange(
+  uow: UnitOfWork,
+  membershipId: string,
+): Promise<void> {
+  const row = await uow
+    .selectFrom('organization_team_memberships')
+    .select('version')
+    .where('id', '=', toBin(membershipId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: TEAM_MEMBERSHIP_DATASET,
+      entityType: 'TEAM_MEMBERSHIP',
+      entityId: membershipId,
+      scopeType: 'GLOBAL',
+      scopeId: null,
+      rowVersion: row.version,
+    },
+  ]);
+}

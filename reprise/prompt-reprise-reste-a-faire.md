@@ -65,11 +65,12 @@ Les noms RP évitent la confusion avec les releases R1 à R5 du plan (`docs/10-d
 - **Fait quand** : aller-retour réussi sur une base neuve avec des fichiers d'exemple anonymisés, essais verts, mode d'emploi pour préparer les fichiers.
 - **Dépend du porteur** : les données de GIC et ses réponses (AV-002, AV-072). **Taille** : moyenne à grande (1 à 2 semaines de code, plus le délai des données).
 
-### RP-3 — Compléments d'écrans et de serveur
-- `ECR-CRM-06` (réaffectation de clients) et `ECR-TER-02` (présences et activité de l'équipe) : besoin serveur S-28.
-- Dérogation d'emplacement d'AV-096 (reprise de P6).
-- Confirmer si `ECR-SYN-02` (supervision de la synchronisation), `ECR-SYN-03` (résolution des conflits) et `ECR-PRD-05` existent déjà sous un autre nom (`apps/pwa/src/features/sync`, `production`) ; sinon les construire.
-- **Si le porteur l'accepte** : intégrer au code source la connexion par adresse e-mail aujourd'hui réappliquée par `deploy/hostinger/build-bundle.ps1` (`apps/server/src/modules/identity/api/auth.controller.ts` : `phone` de 20 à 200 caractères, recherche de repli sur `identity_users.email`), avec essais ; puis retirer ce bloc du script et la section correspondante du README du kit.
+### RP-3 — Compléments d'écrans et de serveur — **FAIT le 03/11/2026**
+- **État (03/11/2026)** : code, essais et documentation livrés ([matrice § 17.13](../docs/10-development-plan/02-matrice-tracabilite.md), [`15-ecrans-pwa.md`](../docs/10-development-plan/15-ecrans-pwa.md) § 13, [`16-besoins-serveur-des-ecrans.md`](../docs/10-development-plan/16-besoins-serveur-des-ecrans.md) S-28) :
+  - Connexion par adresse e-mail intégrée à la source (`apps/server/src/modules/identity/api/auth.controller.ts`, essai dans `auth.e2e.test.ts`) et bloc temporaire retiré de `deploy/hostinger/build-bundle.ps1`.
+  - Besoin S-28 soldé (`emitTeamMembershipChange` dans `organization/application/sync-changes.ts`, publication dans `team-commands.ts` et `db/seeds/publish-references.ts`).
+  - Dérogation d'emplacement de réception d'AV-096 livrée côté serveur (`receipt-commands.ts`, quarantaine `LOCATION_OVERRIDE` sous `RECEIPT_QUARANTINE` avec motif dans les observations) et côté PWA (`receipt.ts`, `ReceiptScreen.tsx`).
+  - Quatre écrans PWA livrés et reliés aux actions et signaux d'accueil : `ECR-CRM-06` (`ReassignCustomersScreen.tsx`), `ECR-TER-02` (`TeamActivityScreen.tsx`), `ECR-SYN-02` (`SyncMonitorScreen.tsx`, `pendingReported` ajouté à `GET /devices`) et `ECR-SYN-03` (`SyncConflictsScreen.tsx`). `ECR-PRD-05` est déjà couvert par `DailyEntryScreen.tsx`.
 - **Taille** : petite à moyenne (≈ 1 semaine).
 
 ### RP-4 — Écrans de P9 (feu vert du porteur requis)

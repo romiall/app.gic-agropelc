@@ -237,6 +237,8 @@ const GROUP_ICON: Readonly<Record<ScreenGroup, IconName>> = {
 
 const SCREEN_ICON: Readonly<Record<string, IconName>> = {
   'ECR-SYN-01': 'sync',
+  'ECR-SYN-02': 'sync',
+  'ECR-SYN-03': 'alert',
   'ECR-ADM-05': 'phone',
   'ECR-ADM-08': 'shield',
   'ECR-ADM-04': 'users',
@@ -255,8 +257,10 @@ const SCREEN_ICON: Readonly<Record<string, IconName>> = {
   'ECR-FIN-06': 'chart',
   'ECR-FIN-03': 'file',
   'ECR-CRM-05': 'chart',
+  'ECR-CRM-06': 'users',
   'ECR-CRM-07': 'chart',
   'ECR-TER-01': 'clock',
+  'ECR-TER-02': 'users',
   'ECR-STK-04': 'alert',
   'ECR-STK-03': 'truck',
   'ECR-STK-02': 'truck',

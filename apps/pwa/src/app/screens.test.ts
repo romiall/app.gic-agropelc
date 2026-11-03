@@ -210,6 +210,54 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(ids('VENDEUR_PDV')).not.toContain('ECR-AUD-01');
   });
 
+  it('écrans de RP-3 : réaffectation de clients, activité d’équipe, supervision et conflits de synchronisation', () => {
+    expect(SCREENS.find((screen) => screen.id === 'ECR-CRM-06')).toMatchObject({
+      path: '/clients/reaffecter',
+      labelKey: 'reassign_customers',
+      group: 'crm',
+      roles: ROLE_SETS.reassignCustomers,
+      actionCodes: ['REASSIGN'],
+      offline: false,
+    });
+    expect(routeOfAction({ code: 'REASSIGN', route: null }, 'RESP_COMMERCIAL')).toBe(
+      ROUTES.reassignCustomers,
+    );
+    expect(SCREENS.find((screen) => screen.id === 'ECR-TER-02')).toMatchObject({
+      path: '/equipe/activite',
+      labelKey: 'team_activity',
+      group: 'crm',
+      roles: ROLE_SETS.teamActivity,
+      actionCodes: ['TEAM'],
+      offline: false,
+    });
+    expect(routeOfAction({ code: 'TEAM', route: null }, 'RESP_COMMERCIAL')).toBe(
+      ROUTES.teamActivity,
+    );
+    expect(SCREENS.find((screen) => screen.id === 'ECR-SYN-02')).toMatchObject({
+      path: '/synchronisation/supervision',
+      labelKey: 'sync_monitor',
+      group: 'general',
+      roles: ROLE_SETS.syncMonitor,
+      signalCodes: ['DEVICES_STALE'],
+      signalQuery: { DEVICES_STALE: '?filtre=STALE' },
+      offline: false,
+    });
+    expect(routeOfSignal({ code: 'DEVICES_STALE', action: { route: null } })).toBe(
+      `${ROUTES.syncMonitor}?filtre=STALE`,
+    );
+    expect(SCREENS.find((screen) => screen.id === 'ECR-SYN-03')).toMatchObject({
+      path: '/synchronisation/conflits',
+      labelKey: 'sync_conflicts',
+      group: 'general',
+      roles: ROLE_SETS.syncConflicts,
+      signalCodes: ['SYNC_CONFLICTS'],
+      offline: false,
+    });
+    expect(routeOfSignal({ code: 'SYNC_CONFLICTS', action: { route: null } })).toBe(
+      ROUTES.syncConflicts,
+    );
+  });
+
   it('pour un rôle, chaque code d’action ne mène qu’à un seul écran ; chaque chemin est unique', () => {
     const pairs = SCREENS.flatMap((screen) =>
       screen.roles === 'ALL'

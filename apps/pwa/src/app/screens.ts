@@ -105,6 +105,14 @@ export const ROUTES = {
   settings: '/administration/parametres',
   /** ECR-AUD-01 (RP-1) : recherche dans le journal d'audit. */
   audit: '/administration/audit',
+  /** ECR-CRM-06 (RP-3) : réaffectation de clients (`crm.customer.reassign`). */
+  reassignCustomers: '/clients/reaffecter',
+  /** ECR-TER-02 (RP-3) : présences et activité de l'équipe (`fieldwork.session.read`). */
+  teamActivity: '/equipe/activite',
+  /** ECR-SYN-02 (RP-3) : supervision de la synchronisation (`sync.monitor.read`). */
+  syncMonitor: '/synchronisation/supervision',
+  /** ECR-SYN-03 (RP-3) : file et résolution des conflits (`sync.conflict.resolve`). */
+  syncConflicts: '/synchronisation/conflits',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -173,6 +181,10 @@ export const ROLE_SETS = {
   performance: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-CRM-07 (`crm.target.manage` : direction ALL, responsable commercial TEAM). */
   targets: ['RESP_COMMERCIAL', 'DIRECTION'],
+  /** ECR-CRM-06 (`crm.customer.reassign` : responsable commercial TEAM, direction ALL). */
+  reassignCustomers: ['RESP_COMMERCIAL', 'DIRECTION'],
+  /** ECR-TER-02 (`fieldwork.session.read`, `crm.visit.read` : responsable commercial TEAM, direction ALL). */
+  teamActivity: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-PRX-02 : rédaction (`pricing.rule.draft`) ; activation et fin par la Direction (AV-062). */
@@ -398,6 +410,22 @@ export const ROLE_SETS = {
    * le serveur borne la lecture (AV-493).
    */
   auditRead: ['DIRECTION', 'ADMIN', 'FINANCE'],
+  /** ECR-SYN-02 (RP-3) : `sync.monitor.read` (ADM et DIR, portée ALL). */
+  syncMonitor: ['ADMIN', 'DIRECTION'],
+  /**
+   * ECR-SYN-03 (RP-3) : `sync.conflict.resolve` (DIR, ADM, FIN, RCO, RPR, RFE, MAG, RAC — rôles propriétaires
+   * de la matrice des conflits, 03-matrice-conflits.md).
+   */
+  syncConflicts: [
+    'DIRECTION',
+    'ADMIN',
+    'FINANCE',
+    'RESP_COMMERCIAL',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'RESP_ACHATS',
+  ],
   approvals: [
     'DIRECTION',
     'FINANCE',
@@ -456,6 +484,27 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: 'ALL',
     actionCodes: ['SYNC_STATUS'],
     offline: true,
+  },
+  {
+    id: 'ECR-SYN-02',
+    path: ROUTES.syncMonitor,
+    labelKey: 'sync_monitor',
+    group: 'general',
+    roles: ROLE_SETS.syncMonitor,
+    actionCodes: [],
+    signalCodes: ['DEVICES_STALE'],
+    signalQuery: { DEVICES_STALE: '?filtre=STALE' },
+    offline: false,
+  },
+  {
+    id: 'ECR-SYN-03',
+    path: ROUTES.syncConflicts,
+    labelKey: 'sync_conflicts',
+    group: 'general',
+    roles: ROLE_SETS.syncConflicts,
+    actionCodes: [],
+    signalCodes: ['SYNC_CONFLICTS'],
+    offline: false,
   },
   {
     id: 'ECR-VEN-01',
@@ -528,6 +577,24 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'crm',
     roles: ROLE_SETS.targets,
     actionCodes: ['TARGETS'],
+    offline: false,
+  },
+  {
+    id: 'ECR-CRM-06',
+    path: ROUTES.reassignCustomers,
+    labelKey: 'reassign_customers',
+    group: 'crm',
+    roles: ROLE_SETS.reassignCustomers,
+    actionCodes: ['REASSIGN'],
+    offline: false,
+  },
+  {
+    id: 'ECR-TER-02',
+    path: ROUTES.teamActivity,
+    labelKey: 'team_activity',
+    group: 'crm',
+    roles: ROLE_SETS.teamActivity,
+    actionCodes: ['TEAM'],
     offline: false,
   },
   {

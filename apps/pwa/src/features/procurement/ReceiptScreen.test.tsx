@@ -377,4 +377,69 @@ describe('Réceptionner (ECR-APP-04)', () => {
     expect(within(chicken).getByRole('alert')).toHaveTextContent(/de 1 U : le serveur refuserait/);
     expect(screen.getByRole('button', { name: 'Enregistrer la réception' })).toBeDisabled();
   });
+
+  it('AV-096 : réception sur un emplacement d’un autre site exige un motif dans les observations et part en quarantaine', async () => {
+    const OTHER_SITE = '01900000-0000-7000-8000-0000000004d1';
+    const OTHER_LOC = '01900000-0000-7000-8000-0000000004d2';
+    await getDb().projections.bulkPut([
+      projection('site', 'SITE', OTHER_SITE, {
+        code: 'S-AUTRE',
+        name: 'Entrepôt Bonabéri',
+        site_type: 'MAGASIN',
+        zone_id: IDS.zone,
+        status: 'ACTIVE',
+      }),
+      projection(
+        'location',
+        'LOCATION',
+        OTHER_LOC,
+        {
+          site_id: OTHER_SITE,
+          code: 'MAG-BONA',
+          name: 'Magasin Bonabéri',
+          location_type: 'STORE',
+          is_virtual: false,
+          custody_mode: 'SHARED',
+          custodian_user_id: null,
+          status: 'ACTIVE',
+        },
+        'SITE',
+      ),
+    ]);
+
+    const user = userEvent.setup();
+    renderAt(`/achats/receptions/${ORDER}`);
+    await screen.findByRole('listitem', { name: 'Œufs de table' });
+    await user.selectOptions(screen.getByLabelText('Reçu sur'), OTHER_LOC);
+
+    expect(
+      await screen.findByText(
+        /Cet emplacement appartient à un autre site que celui du bon de commande/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Un emplacement hors du site du bon de commande exige un motif/),
+    ).toBeInTheDocument();
+
+    const submit = screen.getByRole('button', { name: 'Enregistrer la réception' });
+    expect(submit).toBeDisabled();
+
+    await user.type(
+      screen.getByLabelText('Observations (exigées par le motif de rejet)'),
+      'Camion dérouté vers Bonabéri suite aux travaux',
+    );
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'procurement.receipt.record',
+      local_flags: ['EXPECTED_QUARANTINE'],
+    });
+    expect(command?.payload).toMatchObject({
+      purchaseOrderId: ORDER,
+      locationId: OTHER_LOC,
+      observations: 'Camion dérouté vers Bonabéri suite aux travaux',
+    });
+  });
 });

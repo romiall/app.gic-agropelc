@@ -211,6 +211,7 @@ export class DevicesReadController {
         lastPullAt: contact?.lastPullAt ?? null,
         lastContactAt: contact?.lastContactAt ?? device.lastSeenAt,
         stale: device.status === 'ACTIVE' && (contact?.stale ?? false),
+        pendingReported: contact?.pendingReported ?? 0,
         // Droits du lecteur sur cet appareil, quel que soit son état (l'écran croise avec SM-DEVICE) :
         // approuver et débloquer excluent l'appareil qu'on a connecté soi-même (AV-258, sauf l'Admin) ;
         // rattacher suit la permission d'approbation (le site cible est vérifié à la commande, AV-259).

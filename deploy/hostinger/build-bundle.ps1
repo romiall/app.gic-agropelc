@@ -49,22 +49,6 @@ Copy-Item "$PSScriptRoot\approve-device.mjs" "$stage\approve-device.mjs" -Force
 # Acces de test temporaire d'un compte (roles globaux du systeme, avec date de fin) : voir README.md.
 Copy-Item "$PSScriptRoot\grant-test-access.mjs" "$stage\grant-test-access.mjs" -Force
 
-# Correctif propre a la mise en ligne (non versionne dans le code source) : connexion par adresse e-mail.
-# Il etait applique a la main sur le serveur depuis le 27/10/2026 ; le reprendre ici evite qu'une mise a jour
-# l'efface. Echec volontaire si le code a change (voir README.md, section sur les correctifs de mise en ligne).
-$authFile = "$stage\dist\modules\identity\api\auth.controller.js"
-$auth = [System.IO.File]::ReadAllText($authFile)
-$pad = ' ' * 16
-$oldLength = 'phone: z.string().min(1).max(20),'
-$oldLookup = ".where('phone', '=', phone)`n$pad.orderBy('id', 'desc')`n$pad.limit(1)`n$pad.executeTakeFirst());"
-$newLookup = ".where('phone', '=', phone)`n$pad.orderBy('id', 'desc')`n$pad.limit(1)`n$pad.executeTakeFirst()) ??`n" +
-  "            (await this.db`n$pad.selectFrom('identity_users')`n$pad.select(['id', 'password_hash', 'status', 'must_change_password'])`n" +
-  "$pad.where('email', '=', phone)`n$pad.orderBy('id', 'desc')`n$pad.limit(1)`n$pad.executeTakeFirst());"
-if (-not $auth.Contains($oldLength)) { throw 'Correctif de connexion par e-mail : longueur du champ introuvable (auth.controller.js a change).' }
-if (-not $auth.Contains($oldLookup)) { throw 'Correctif de connexion par e-mail : recherche par telephone introuvable (auth.controller.js a change).' }
-$auth = $auth.Replace($oldLength, 'phone: z.string().min(1).max(200),').Replace($oldLookup, $newLookup)
-[System.IO.File]::WriteAllText($authFile, $auth, $utf8)
-
 # Dependances d'execution du serveur : celles de apps\server\package.json, sans les paquets de l'espace de travail.
 $serverPackage = [System.IO.File]::ReadAllText("$repo\apps\server\package.json") | ConvertFrom-Json
 $deps = [ordered]@{}

@@ -111,6 +111,24 @@ const REFERENCE_FEEDS: readonly ReferenceFeed[] = [
               FROM identity_devices WHERE status IN ('PENDING', 'ACTIVE')`,
     selfDeviceScoped: true,
   },
+  {
+    // RP-3 (S-28) : comptes utilisateurs non système, équipes et appartenances aux équipes,
+    // pour que les appareils hors ligne nomment les collègues et connaissent la composition des équipes.
+    dataset: 'user',
+    entityType: 'USER',
+    query: `SELECT id AS entity_key, version AS row_version
+              FROM identity_users WHERE is_system = FALSE`,
+  },
+  {
+    dataset: 'team',
+    entityType: 'TEAM',
+    query: 'SELECT id AS entity_key, version AS row_version FROM organization_teams',
+  },
+  {
+    dataset: 'team_membership',
+    entityType: 'TEAM_MEMBERSHIP',
+    query: 'SELECT id AS entity_key, version AS row_version FROM organization_team_memberships',
+  },
 ];
 
 function entityIdOf(feed: ReferenceFeed, key: unknown): Buffer {

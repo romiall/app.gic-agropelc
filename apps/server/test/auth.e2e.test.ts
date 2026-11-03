@@ -99,6 +99,22 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
     expect(again.json().device_short_code).toBe(device.short_code);
   });
 
+  it('RP-3 : connexion par adresse e-mail renseignée dans le champ identifiant (phone)', async () => {
+    const phone = await freshPhone();
+    const userId = await createLoginableUser(phone);
+    const email = `test.${userId.slice(-8)}@gic-agropelc.com`;
+    await db.updateTable('identity_users').set({ email }).where('id', '=', toBin(userId)).execute();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      remoteAddress: freshIp(),
+      payload: { phone: email, password: KNOWN_PASSWORD, device_id: freshUuid() },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(typeof response.json().access_token).toBe('string');
+  });
+
   it('mot de passe incorrect : 401, aucune session créée', async () => {
     const phone = await freshPhone();
     await createLoginableUser(phone);

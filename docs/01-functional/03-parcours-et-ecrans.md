@@ -119,8 +119,8 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-ADM-07 | Paramètres et politiques de contrôle | DIRECTION, ADMIN (`org.settings.manage` et `approvals.policy.manage`) | Non | P0/P2, livré en RP-1 (01/11/2026, [ADR-051](../decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md) : les 108 paramètres par domaine avec libellé, unité et bornes, portée globale ou d'un site, historique par clé ; politiques en nouvelle version, condition en lecture seule ; AV-490, AV-491, AV-494, AV-496) |
 | ECR-ADM-08 | File de validation unifiée | DIRECTION, responsables, FINANCE, magasinier (écarts de transfert de son site) ; chacun ne voit que ce qu'il peut décider | Non | P2 (cadrage), livré en MP-07 |
 | ECR-SYN-01 | État de synchronisation et opérations en attente | Tous | Oui | P0 |
-| ECR-SYN-02 | Supervision de la synchronisation (appareils, retards, erreurs) | ADMIN, DIRECTION | Non | P0 |
-| ECR-SYN-03 | Résolution des conflits | ADMIN, responsables | Non | P2 |
+| ECR-SYN-02 | Supervision de la synchronisation (appareils, retards, erreurs) | ADMIN, DIRECTION | Non | P0, livré en RP-3 (03/11/2026) |
+| ECR-SYN-03 | Résolution des conflits | ADMIN, responsables | Non | P2, livré en RP-3 (03/11/2026) |
 | ECR-NOT-01 | Centre d'alertes et de notifications | Tous | Oui (dernières) | P2, complété en P9 |
 | ECR-NOT-02 | Notes de direction (lecture, accusé) | Tous | Oui | P9 |
 | ECR-NOT-03 | Publication d'une note | DIRECTION | Non | P9 |
@@ -143,10 +143,10 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-CRM-03 | Fiche compte client (historique, visites, commandes, ventes, créance, lien Kommo) | Commerciaux, RESP_COMMERCIAL, FINANCE | Oui (périmètre) | P3 |
 | ECR-CRM-04 | + VISITE | COMMERCIAL_TERRAIN | Oui | P3 |
 | ECR-CRM-05 | Mes objectifs et performances | Commerciaux | Oui (instantané) | P3/P9 |
-| ECR-CRM-06 | Réaffectation de clients | RESP_COMMERCIAL, DIRECTION | Non | P3 |
+| ECR-CRM-06 | Réaffectation de clients | RESP_COMMERCIAL, DIRECTION | Non | P3, livré en RP-3 (03/11/2026) |
 | ECR-CRM-07 | Gestion des objectifs | RESP_COMMERCIAL, DIRECTION | Non | P3 |
 | ECR-TER-01 | PRENDRE SERVICE / FIN DE SERVICE | COMMERCIAL_TERRAIN | Oui | P3 |
-| ECR-TER-02 | Présences et activité de l'équipe | RESP_COMMERCIAL | Non | P3 |
+| ECR-TER-02 | Présences et activité de l'équipe | RESP_COMMERCIAL | Non | P3, livré en RP-3 (03/11/2026) |
 
 ### 3.4 Ventes, distribution, points de vente
 
