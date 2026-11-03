@@ -115,3 +115,94 @@ L'estimation précédente (services managés génériques : conteneurs + Postgre
 La version en ligne (`https://app.gic-agropelc.com`) tourne sur l'hébergement mutualisé Hostinger : Node 22 derrière Passenger (`server.js` : API, worker et fichiers de la PWA dans un même processus) et base MariaDB 11.8 à utilisateur unique. Elle a été installée à la main le 26 et le 27/10/2026 ; la procédure est reprise en scripts versionnés dans [`deploy/hostinger/`](../../deploy/hostinger/README.md) : construction du paquet, sauvegarde de la base, migrations adaptées à MariaDB, semis, redémarrage, contrôle et retour arrière automatique. Aucun secret n'y figure.
 
 **Compatibilité MariaDB** (30/10/2026, AV-485). L'application est développée et testée sur MySQL 8.4 (AV-073, ADR-023), mais l'hébergement fournit MariaDB 11.8. Le kit adapte ce que MariaDB refuse : à l'exécution, `CAST(? AS JSON)` devient `JSON_EXTRACT(?, '$')` (toute écriture d'une colonne JSON) et `FOR SHARE` devient `LOCK IN SHARE MODE` (couche `mariadb-compat.mjs`, posée par `server.js` sur le compilateur de Kysely : le code source ne change pas) ; à la construction, les semis (même remplacement) ; à la migration, les lignes `GRANT` vers `gic_app` et `DROP CHECK`. Avant chaque redémarrage, `compat-check.mjs` rejoue ces écritures et lectures sur la base réelle (table temporaire) et la mise en ligne est annulée s'il échoue. Un premier essai sans cette couche (30/10/2026) avait laissé la connexion et l'ordonnanceur en erreur : les 2 234 essais du serveur ne voient pas ces écarts, car ils tournent sur MySQL 8.4.
+
+## 8. Manuel d'exploitation consolidé (Hostinger & Production)
+
+> Synthèse opérationnelle pour l'administrateur système et l'exploitant (exigence RP-7c du plan de reprise). Complète le kit d'outils versionné sous [`deploy/hostinger/`](../../deploy/hostinger/README.md).
+
+### 8.1 Procédure de déploiement et mise en ligne
+
+Le déploiement en production est entièrement automatisé par le kit PowerShell / SSH. L'accès SSH requiert la clé privée configurée (`gic_agropelc_deploy` sur le port `65002`) et l'autorisation explicite du porteur de projet.
+
+1. **Pré-requis locaux** : dépôt propre sur la branche voulue, dépendances installées (`pnpm install`), paquets partagés construits.
+2. **Commande standard de livraison** :
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deploy\hostinger\deploy.ps1
+   ```
+3. **Options d'exécution** :
+   - `-BuildOnly` : compile et assemble l'archive `%TEMP%\gic-app-bundle.tar.gz` en local sans transfert réseau (vérification de taille et empreinte SHA-256).
+   - `-SkipBuild` : transfère et déploie le dernier paquet déjà assemblé.
+   - `-NoDbBackup` : saute la sauvegarde automatique locale avant migration (déconseillé sauf si un dump manuel vient d'être fait sur hPanel).
+4. **Déroulement distant (`remote-update.sh`)** :
+   - Extraction dans `releases/<horodatage>/new`.
+   - Sauvegarde préventive de la base MariaDB (`mysqldump` compressé) dans `~/backups_db/gic-<horodatage>.sql.gz`.
+   - Déplacement de la version active vers `releases/<horodatage>/previous`.
+   - Test de compatibilité SQL (`compat-check.mjs`) sur table temporaire : valide la réécriture JSON (`JSON_EXTRACT`) et les verrous partagés (`LOCK IN SHARE MODE`). En cas d'échec, abandon immédiat et retour arrière sans altération.
+   - Application des nouvelles migrations via `migrate.mjs` (avec traçabilité dans `schema_migrations`).
+   - Exécution des semis idempotents (paramètres, règles d'alerte, permissions).
+   - Signal de redémarrage de Phusion Passenger via `touch tmp/restart.txt`.
+   - Sondes de santé : `GET /health/ready` (200), page d'accueil PWA (200), contrôle de la route d'authentification (401 attendu sur identifiant test).
+
+### 8.2 Sauvegardes de la base de données et rotation
+
+1. **Emplacement** : les archives sont stockées sur le serveur dans `~/backups_db/`.
+2. **Format** : `gic-<horodatage>.sql.gz` (généré par `mysqldump --single-transaction --routines --triggers`).
+3. **Restauration d'urgence** :
+   ```bash
+   cd ~/domains/gic-agropelc.com/nodejs-app
+   gunzip -c ~/backups_db/gic-<horodatage>.sql.gz | mysql -u <user> -p<password> <database>
+   ```
+   *(Les identifiants sont extraits du `.env` du serveur, jamais saisis en clair dans les scripts).*
+4. **Politique de rétention** :
+   - Les 5 dernières livraisons applicatives sont conservées dans `releases/`.
+   - Les sauvegardes de base de données quotidiennes et avant déploiement dans `~/backups_db/` doivent être purgées périodiquement au-delà de 30 jours, avec une copie mensuelle exportée hors hébergement (NFR-20 à NFR-23).
+
+### 8.3 Journaux et surveillance de l'application
+
+L'application produit deux flux de journaux distincts dans `~/domains/gic-agropelc.com/nodejs-app/` :
+1. `stderr.log` : journal standard du processus Node.js / NestJS (démarrage du serveur, cycle de vie des modules, erreurs non interceptées, ordonnanceur de tâches en arrière-plan).
+2. `console.log` : journal structuré en JSON pour les requêtes API en échec. Chaque entrée contient l'horodatage ISO, le niveau d'erreur, le code d'erreur HTTP, la trace et le `correlation_id` renvoyé au client.
+
+**Surveillance opérationnelle** :
+- `tail -n 100 -f stderr.log` pour observer le comportement de l'ordonnanceur et des consommateurs d'événements.
+- `grep '"level":"error"' console.log | jq .` pour auditer les rejets applicatifs et pannes d'API.
+
+### 8.4 Gestion des incidents et retour arrière (Rollback)
+
+Si une mise en ligne échoue ou si une anomalie critique est détectée en production :
+1. **Retour arrière automatique** : si l'une des sondes de `deploy.ps1` échoue (code HTTP != 200, échec de `compat-check.mjs`, ou erreur 5xx), le script distant restaure automatiquement les fichiers depuis `releases/<horodatage>/previous` et redémarre Passenger.
+2. **Retour arrière manuel** :
+   ```bash
+   cd ~/domains/gic-agropelc.com/nodejs-app
+   cp -r releases/<horodatage>/previous/* .
+   touch tmp/restart.txt
+   ```
+3. **Alerte `JOB_FAILED`** :
+   Le serveur intègre une sonde d'alerte pour les tâches en arrière-plan (`JOB_FAILED`). Si une tâche d'arrière-plan échoue de manière répétée (statut `FAILED` dans les 24 dernières heures), une alerte de sévérité CRITICAL est levée dans `communication_alerts`. Pour diagnostiquer :
+   - Vérifier la table `system_jobs` ou l'écran `/administration/audit`.
+   - Consulter la trace d'échec dans `stderr.log`.
+
+### 8.5 Opérations administratives courantes en ligne
+
+Les outils d'administration en ligne fonctionnent directement avec le binaire Node 22 de l'hébergement (`node --env-file=.env <script>.mjs`) dans `~/domains/gic-agropelc.com/nodejs-app/` :
+
+1. **Approbation d'un premier appareil administrateur** :
+   Lorsqu'un compte administrateur se connecte sur un nouvel appareil, un code court à 4 caractères apparaît à l'écran :
+   ```bash
+   node --env-file=.env approve-device.mjs <CODE_COURT>
+   ```
+   Cette commande approuve l'appareil, inscrit l'événement dans le journal d'audit (`identity.device.approve`) et libère l'accès.
+
+2. **Octroi d'accès temporaires pour tests et pilote** :
+   Pour permettre à un utilisateur (ou compte de test) de tester l'ensemble des modules d'administration et de direction sans attendre l'affectation finale :
+   ```bash
+   node --env-file=.env grant-test-access.mjs <email_ou_tel> --days 30
+   ```
+   *(Option `--dry-run` disponible pour vérifier les rôles sans écrire en base).*
+
+3. **Reprise de données et imports en lot** :
+   Pour intégrer des fichiers de données métier (ex. reporting commercial ou catalogue) :
+   - Exécuter d'abord à blanc : `node --env-file=.env import-reporting-commercial.mjs --dry-run`
+   - Vérifier le rapport d'écarts et doublons.
+   - Appliquer avec sauvegarde automatique : `node --env-file=.env import-reporting-commercial.mjs --apply`
+
