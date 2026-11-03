@@ -121,9 +121,9 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-SYN-01 | État de synchronisation et opérations en attente | Tous | Oui | P0 |
 | ECR-SYN-02 | Supervision de la synchronisation (appareils, retards, erreurs) | ADMIN, DIRECTION | Non | P0, livré en RP-3 (03/11/2026) |
 | ECR-SYN-03 | Résolution des conflits | ADMIN, responsables | Non | P2, livré en RP-3 (03/11/2026) |
-| ECR-NOT-01 | Centre d'alertes et de notifications | Tous | Oui (dernières) | P2, complété en P9 |
-| ECR-NOT-02 | Notes de direction (lecture, accusé) | Tous | Oui | P9 |
-| ECR-NOT-03 | Publication d'une note | DIRECTION | Non | P9 |
+| ECR-NOT-01 | Centre d'alertes et de notifications (onglets Alertes, Notifications, Règles d'alerte pour DIRECTION et ADMIN) | Tous | Oui (dernières) | P2, complété en P9, livré en RP-4 (03/11/2026) |
+| ECR-NOT-02 | Notes de direction (lecture, accusé) | Tous | Oui | P9, livré en RP-4 (03/11/2026) |
+| ECR-NOT-03 | Publication d'une note (brouillon, audience, archivage, suivi des accusés) | DIRECTION | Non | P9, livré en RP-4 (03/11/2026) |
 | ECR-AUD-01 | Journal d'audit (recherche) | DIRECTION, ADMIN, FINANCE | Non | P0, livré en RP-1 (01/11/2026, [ADR-051](../decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md) : filtres période, type d'entité, acteur, action et identifiant, détail avant et après ; la Finance ne lit que les entités financières, AV-493) |
 
 ### 3.2 Catalogue et tarification
@@ -210,10 +210,10 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 
 | ID | Écran | Rôles | Hors ligne | Phase |
 |---|---|---|---|---|
-| ECR-ANA-01 | Tour de contrôle Direction | DIRECTION | Partiel (dernier instantané) | P9 |
-| ECR-ANA-02 | Tableau Responsable commercial | RESP_COMMERCIAL | Partiel | P9 |
-| ECR-ANA-03 | Tableau Magasinier / stock | MAGASINIER | Partiel | P9 |
-| ECR-ANA-04 | Tableau Production | RESP_PRODUCTION, RESP_FERME | Partiel | P9 |
-| ECR-ANA-05 | Tableau Finance | FINANCE | Non | P9 |
-| ECR-ANA-06 | Explorateur analytique (filtrer, trier, grouper, colonnes, agréger, exporter, vues sauvegardées) | Selon permissions | Non | P9 |
+| ECR-ANA-01 | Tour de contrôle Direction | DIRECTION | Partiel (dernier instantané) | P9, livré en RP-4 (03/11/2026) |
+| ECR-ANA-02 | Tableau Responsable commercial | RESP_COMMERCIAL | Partiel | P9, livré en RP-4 (03/11/2026) |
+| ECR-ANA-03 | Tableau Magasinier / stock | MAGASINIER | Partiel | P9, livré en RP-4 (03/11/2026) |
+| ECR-ANA-04 | Tableau Production | RESP_PRODUCTION, RESP_FERME | Partiel | P9, livré en RP-4 (03/11/2026) |
+| ECR-ANA-05 | Tableau Finance | FINANCE | Non | P9, livré en RP-4 (03/11/2026) |
+| ECR-ANA-06 | Explorateur analytique (filtrer, trier, grouper, colonnes, agréger, exporter, vues sauvegardées) | Selon permissions | Non | P9, livré en RP-4 (03/11/2026) |
 | ECR-KOM-01 | Paramétrage et supervision Kommo | ADMIN | Non | P10 |

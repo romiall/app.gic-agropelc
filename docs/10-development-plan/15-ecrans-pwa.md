@@ -500,3 +500,27 @@ Une seule vérification complète, sur la base jetable `gic_agropelc_rp` pour le
 | ECR-SYN-03 Résolution des conflits | `/synchronisation/conflits` | Non | Rôles titulaires de `sync.conflict.resolve` (signal `SYNC_CONFLICTS` de l'accueil) ; lecture de `GET /sync/conflicts?status=OPEN|RESOLVED|DISMISSED` ; auto-clôture d'un fait appliqué interdite à son auteur (AV-192) ; doublons de paiement renvoyés vers les validations ; commandes `sync.conflict.resolve` (`ACCEPT_CLIENT`, `KEEP_SERVER`, `MERGE`, `COMPENSATE` avec références UUID obligatoires) et `sync.conflict.dismiss` avec commentaire obligatoire |
 | ECR-APP-04 Dérogation d'emplacement (AV-096) | `/achats/receptions/:orderId` | Oui | Réception d'un bon de commande sur un emplacement actif d'un autre site : motif exigé dans les observations, mise en quarantaine (`LOCATION_OVERRIDE`, politique `RECEIPT_QUARANTINE`), entrée en stock après validation par le Resp. achats ou la Direction |
 
+## 14. Écrans de Direction, pilotage et alertes (lot RP-4, session principale)
+
+> Écrans du lot RP-4 ([plan de reprise](../../reprise/prompt-reprise-reste-a-faire.md) § 4, P9-27) : alertes et notifications (`ECR-NOT-01`), notes de service et internes (`ECR-NOT-02`), publication et gestion des notes (`ECR-NOT-03`), cinq tableaux de bord opérationnels et financiers (`ECR-ANA-01` à `05`), explorateur analytique multidimensionnel et exports audités (`ECR-ANA-06`). Prise en charge locale des jeux `comms` et `kpi` avec repli hors ligne pour les consultations autorisées.
+
+| Écran | Route PWA | Hors ligne | Notes |
+|---|---|---|---|
+| ECR-NOT-01 Alertes et notifications | `/communication/alertes` | Oui | Tous rôles ; onglets Alertes, Notifications et Règles d'alerte (Admin/Direction) ; repli hors ligne sur les projections `comms:ALERT` et `comms:NOTIFICATION` ; commandes `alert.acknowledge`, `alert.resolve`, `alert.dismiss`, `notification.read`, `alert_rule.set` ; fermeture manuelle des alertes événementielles permise (BR-NOT-006) |
+| ECR-NOT-02 Notes de service | `/communication/notes` | Oui | Tous rôles ; boîte de réception des notes de direction avec repli hors ligne sur `comms:NOTE` ; lecture du corps, affichage de l'audience et accusé de réception par `note.acknowledge` |
+| ECR-NOT-03 Rédaction et diffusion des notes | `/communication/notes/publier` | Non | Direction (`comm.note.publish`) ; formulaire de rédaction avec ciblage d'audience (tous, rôles désignés, sites désignés) ; commandes `note.publish`, `note.save_draft` ; suivi des accusés de lecture et archivage par `note.archive` |
+| ECR-ANA-01 Tour de contrôle Direction | `/direction/indicateurs` | Oui | Direction ; repli hors ligne sur `kpi:KPI_SNAPSHOT` ; tuiles d'indicateurs synthétiques par domaine (ventes, trésorerie, stock, production), statut de conformité et alertes actives ; navigation directe vers l'explorateur |
+| ECR-ANA-02 Indicateurs commerciaux | `/commercial/indicateurs` | Oui | Resp. commercial, Direction, Finance, Commerciaux ; repli hors ligne sur `kpi:KPI_SNAPSHOT` ; CA, marge brute, visites réalisées, taux de transformation, encours créances |
+| ECR-ANA-03 Indicateurs de stock | `/stock/indicateurs` | Oui | Magasinier, Resp. achats, Resp. production, Resp. ferme, Direction, Finance ; repli hors ligne sur `kpi:KPI_SNAPSHOT` ; valorisation stock, taux de rupture, surstock, démarque/pertes |
+| ECR-ANA-04 Indicateurs de production | `/production/indicateurs` | Oui | Resp. production, Resp. ferme, Direction, Finance ; repli hors ligne sur `kpi:KPI_SNAPSHOT` ; effectif cheptel, taux de ponte, mortalité, indice de consommation (FCR) |
+| ECR-ANA-05 Indicateurs financiers | `/finance/indicateurs` | Non | Finance et Direction ; consultation en ligne stricte (politique de sécurité financière) ; trésorerie nette, encaissements, décaissements, créances échues |
+| ECR-ANA-06 Explorateur analytique | `/direction/explorateur` | Non | Direction, Resp. commercial, Resp. production, Resp. achats, Finance ; onglets Explorateur, Vues sauvegardées, Exports ; sélection de jeu de données, mesures, dimensions de regroupement, filtres temporels et par entité ; sauvegarde de vue par `analytics.view.save` ; demande d'export asynchrone par `analytics.export.request` et téléchargement direct en CSV/XLSX |
+
+### 14.1 Vérifications (03/11/2026)
+
+- Typecheck complet (`pnpm --filter @gic/pwa typecheck`) : OK.
+- ESLint et Prettier vérifiés fichier par fichier : 0 erreur, 0 avertissement.
+- Tests unitaires et d'intégration : 1 070 essais passés dans 120 suites PWA (dont 4 essais `communication.test.tsx`, 4 essais `analytics.test.tsx`, 11 essais `screens.test.ts`, 70 essais `tokens.test.ts` sans aucune couleur en dur ni infraction de design system).
+- Budget NFR-05 : JS initial 275,2 Ko gzip pour 300 Ko autorisés.
+- Références : `check_refs.py` propre (0 référence orpheline, 0 identifiant dupliqué, 0 lien cassé).
+

@@ -87,10 +87,14 @@ describe('Réception d’achat : emplacements, paramètres, quarantaine', () => 
       location({ id: 'virtual', name: 'Fournisseur', is_virtual: true }),
       location({ id: 'other', name: 'Autre site', site_id: 'site-b' }),
     ];
-    expect(receiptLocations(locations, order({})).map((l) => l.id)).toEqual(['store-b', 'store-a']);
+    expect(receiptLocations(locations, order({})).map((l) => l.id)).toEqual([
+      'store-b',
+      'store-a',
+      'other',
+    ]);
     expect(
       receiptLocations(locations, order({ delivery_location_id: null })).map((l) => l.id),
-    ).toEqual(['store-a', 'store-b']);
+    ).toEqual(['store-a', 'store-b', 'other']);
   });
 
   it('bons recevables : envoyés ou reçus en partie, sans dépendre des soldes de l’appareil', () => {

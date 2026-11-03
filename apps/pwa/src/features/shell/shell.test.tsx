@@ -50,7 +50,7 @@ describe('Sidebar', () => {
   it('liste courte : tous les domaines sont dépliés, l’écran courant est marqué', () => {
     const groups = sidebarGroups(['RESP_ACHATS']);
     const total = groups.reduce((sum, group) => sum + group.items.length, 0);
-    expect(total).toBeLessThanOrEqual(14);
+    expect(total).toBeLessThanOrEqual(16);
     show(
       <Sidebar
         groups={groups}

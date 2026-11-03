@@ -113,6 +113,24 @@ export const ROUTES = {
   syncMonitor: '/synchronisation/supervision',
   /** ECR-SYN-03 (RP-3) : file et résolution des conflits (`sync.conflict.resolve`). */
   syncConflicts: '/synchronisation/conflits',
+  /** ECR-NOT-01 (RP-4) : centre d'alertes et de notifications, règles d'alerte. */
+  alerts: '/alertes',
+  /** ECR-NOT-02 (RP-4) : lecture et accusé des notes de direction. */
+  notes: '/notes',
+  /** ECR-NOT-03 (RP-4) : publication et suivi des notes de direction (`comm.note.publish`). */
+  notesPublish: '/notes/publication',
+  /** ECR-ANA-01 (RP-4) : tour de contrôle Direction (`analytics.dashboard.direction`). */
+  analyticsDirection: '/pilotage/direction',
+  /** ECR-ANA-02 (RP-4) : tableau de bord Commercial (`analytics.dashboard.commercial`). */
+  analyticsCommercial: '/pilotage/commercial',
+  /** ECR-ANA-03 (RP-4) : tableau de bord Stock & Magasin (`analytics.dashboard.stock`). */
+  analyticsStock: '/pilotage/stock',
+  /** ECR-ANA-04 (RP-4) : tableau de bord Production (`analytics.dashboard.production`). */
+  analyticsProduction: '/pilotage/production',
+  /** ECR-ANA-05 (RP-4) : tableau de bord Finance & Trésorerie (`analytics.dashboard.finance`). */
+  analyticsFinance: '/pilotage/finance',
+  /** ECR-ANA-06 (RP-4) : explorateur analytique, vues sauvegardées & exports (`analytics.explore`). */
+  analyticsExplorer: '/pilotage/explorateur',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -435,6 +453,33 @@ export const ROLE_SETS = {
     'MAGASINIER',
     'RESP_ACHATS',
   ],
+  /** ECR-NOT-03 (RP-4) : `comm.note.publish` (DIR). */
+  notesPublish: ['DIRECTION'],
+  /** ECR-ANA-01 (RP-4) : `analytics.dashboard.direction` (DIR). */
+  analyticsDirection: ['DIRECTION'],
+  /** ECR-ANA-02 (RP-4) : `analytics.dashboard.commercial` (RCO, DIR, FIN, CTE, CSE). */
+  analyticsCommercial: [
+    'RESP_COMMERCIAL',
+    'DIRECTION',
+    'FINANCE',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+  ],
+  /** ECR-ANA-03 (RP-4) : `analytics.dashboard.stock` (MAG, DIR, RPR, RFE, RAC, FIN). */
+  analyticsStock: [
+    'MAGASINIER',
+    'DIRECTION',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'RESP_ACHATS',
+    'FINANCE',
+  ],
+  /** ECR-ANA-04 (RP-4) : `analytics.dashboard.production` (RPR, RFE, DIR, FIN). */
+  analyticsProduction: ['RESP_PRODUCTION', 'RESP_FERME', 'DIRECTION', 'FINANCE'],
+  /** ECR-ANA-05 (RP-4) : `analytics.dashboard.finance` (FIN, DIR). */
+  analyticsFinance: ['FINANCE', 'DIRECTION'],
+  /** ECR-ANA-06 (RP-4) : `analytics.explore` (DIR, RCO, RPR, RAC, FIN). */
+  analyticsExplorer: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_PRODUCTION', 'RESP_ACHATS', 'FINANCE'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -1014,6 +1059,87 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Ventes du jour signalées (AV-255) : la liste filtrée sur elles.
     signalCodes: ['SALES_FLAGGED'],
     signalQuery: { SALES_FLAGGED: '?anomalies=1' },
+  },
+  {
+    id: 'ECR-NOT-01',
+    path: ROUTES.alerts,
+    labelKey: 'alerts',
+    group: 'general',
+    roles: 'ALL',
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-NOT-02',
+    path: ROUTES.notes,
+    labelKey: 'notes',
+    group: 'general',
+    roles: 'ALL',
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-NOT-03',
+    path: ROUTES.notesPublish,
+    labelKey: 'notes_publish',
+    group: 'general',
+    roles: ROLE_SETS.notesPublish,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    id: 'ECR-ANA-01',
+    path: ROUTES.analyticsDirection,
+    labelKey: 'analytics_direction',
+    group: 'general',
+    roles: ROLE_SETS.analyticsDirection,
+    actionCodes: ['CONTROL_TOWER'],
+    offline: true,
+  },
+  {
+    id: 'ECR-ANA-02',
+    path: ROUTES.analyticsCommercial,
+    labelKey: 'analytics_commercial',
+    group: 'crm',
+    roles: ROLE_SETS.analyticsCommercial,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-ANA-03',
+    path: ROUTES.analyticsStock,
+    labelKey: 'analytics_stock',
+    group: 'stock',
+    roles: ROLE_SETS.analyticsStock,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-ANA-04',
+    path: ROUTES.analyticsProduction,
+    labelKey: 'analytics_production',
+    group: 'production',
+    roles: ROLE_SETS.analyticsProduction,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-ANA-05',
+    path: ROUTES.analyticsFinance,
+    labelKey: 'analytics_finance',
+    group: 'finance',
+    roles: ROLE_SETS.analyticsFinance,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    id: 'ECR-ANA-06',
+    path: ROUTES.analyticsExplorer,
+    labelKey: 'analytics_explorer',
+    group: 'general',
+    roles: ROLE_SETS.analyticsExplorer,
+    actionCodes: [],
+    offline: false,
   },
 ];
 

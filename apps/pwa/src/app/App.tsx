@@ -243,6 +243,51 @@ const SyncConflictsScreen = lazy(() =>
     default: m.SyncConflictsScreen,
   })),
 );
+const AlertsNotificationsScreen = lazy(() =>
+  import('../features/communication/AlertsNotificationsScreen.js').then((m) => ({
+    default: m.AlertsNotificationsScreen,
+  })),
+);
+const NotesScreen = lazy(() =>
+  import('../features/communication/NotesScreen.js').then((m) => ({
+    default: m.NotesScreen,
+  })),
+);
+const NotePublishScreen = lazy(() =>
+  import('../features/communication/NotesScreen.js').then((m) => ({
+    default: m.NotePublishScreen,
+  })),
+);
+const DirectionDashboardScreen = lazy(() =>
+  import('../features/analytics/RoleDashboardScreen.js').then((m) => ({
+    default: m.DirectionDashboardScreen,
+  })),
+);
+const CommercialDashboardScreen = lazy(() =>
+  import('../features/analytics/RoleDashboardScreen.js').then((m) => ({
+    default: m.CommercialDashboardScreen,
+  })),
+);
+const StockDashboardScreen = lazy(() =>
+  import('../features/analytics/RoleDashboardScreen.js').then((m) => ({
+    default: m.StockDashboardScreen,
+  })),
+);
+const ProductionDashboardScreen = lazy(() =>
+  import('../features/analytics/RoleDashboardScreen.js').then((m) => ({
+    default: m.ProductionDashboardScreen,
+  })),
+);
+const FinanceDashboardScreen = lazy(() =>
+  import('../features/analytics/RoleDashboardScreen.js').then((m) => ({
+    default: m.FinanceDashboardScreen,
+  })),
+);
+const AnalyticsExplorerScreen = lazy(() =>
+  import('../features/analytics/AnalyticsExplorerScreen.js').then((m) => ({
+    default: m.AnalyticsExplorerScreen,
+  })),
+);
 // Page de référence des composants (ADR-049), réservée au développement : `import.meta.env.DEV` vaut
 // `false` à la construction, la branche et son import sont supprimés (rien de la galerie dans `dist`).
 const ComponentGallery = import.meta.env.DEV
@@ -326,6 +371,15 @@ function AppShell() {
             <Route path={ROUTES.teamActivity} element={<TeamActivityScreen />} />
             <Route path={ROUTES.syncMonitor} element={<SyncMonitorScreen />} />
             <Route path={ROUTES.syncConflicts} element={<SyncConflictsScreen />} />
+            <Route path={ROUTES.alerts} element={<AlertsNotificationsScreen />} />
+            <Route path={ROUTES.notes} element={<NotesScreen />} />
+            <Route path={ROUTES.notesPublish} element={<NotePublishScreen />} />
+            <Route path={ROUTES.analyticsDirection} element={<DirectionDashboardScreen />} />
+            <Route path={ROUTES.analyticsCommercial} element={<CommercialDashboardScreen />} />
+            <Route path={ROUTES.analyticsStock} element={<StockDashboardScreen />} />
+            <Route path={ROUTES.analyticsProduction} element={<ProductionDashboardScreen />} />
+            <Route path={ROUTES.analyticsFinance} element={<FinanceDashboardScreen />} />
+            <Route path={ROUTES.analyticsExplorer} element={<AnalyticsExplorerScreen />} />
             {ComponentGallery ? (
               <Route path="/dev/composants" element={<ComponentGallery />} />
             ) : null}

@@ -264,6 +264,15 @@ const SCREEN_ICON: Readonly<Record<string, IconName>> = {
   'ECR-STK-04': 'alert',
   'ECR-STK-03': 'truck',
   'ECR-STK-02': 'truck',
+  'ECR-NOT-01': 'bell',
+  'ECR-NOT-02': 'file',
+  'ECR-NOT-03': 'edit',
+  'ECR-ANA-01': 'chart',
+  'ECR-ANA-02': 'chart',
+  'ECR-ANA-03': 'chart',
+  'ECR-ANA-04': 'chart',
+  'ECR-ANA-05': 'chart',
+  'ECR-ANA-06': 'search',
 };
 
 export interface SidebarItem {

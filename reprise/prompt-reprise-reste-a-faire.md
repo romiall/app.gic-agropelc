@@ -73,10 +73,14 @@ Les noms RP évitent la confusion avec les releases R1 à R5 du plan (`docs/10-d
   - Quatre écrans PWA livrés et reliés aux actions et signaux d'accueil : `ECR-CRM-06` (`ReassignCustomersScreen.tsx`), `ECR-TER-02` (`TeamActivityScreen.tsx`), `ECR-SYN-02` (`SyncMonitorScreen.tsx`, `pendingReported` ajouté à `GET /devices`) et `ECR-SYN-03` (`SyncConflictsScreen.tsx`). `ECR-PRD-05` est déjà couvert par `DailyEntryScreen.tsx`.
 - **Taille** : petite à moyenne (≈ 1 semaine).
 
-### RP-4 — Écrans de P9 (feu vert du porteur requis)
-- `ECR-ANA-01` à `06` (tableaux, explorateur, vues sauvegardées, exports) et `ECR-NOT-01` à `03` (alertes, notifications, notes de direction), plus l'application côté PWA des jeux hors ligne `comms` et `kpi`.
-- **Lire** : `docs/10-development-plan/22-demonstration-p9.md`, `21-suivi-p9.md`, ADR-060 à ADR-068, `docs/07-security-rbac/01-rbac.md` ; les lectures serveur existent (tableaux de rôle, explorateur à étendue exacte, vues, exports CSV et XLSX audités, centre de notes). Pour les tuiles d'indicateurs et graphiques : la compétence `dataviz` si elle est disponible.
-- **Fait quand** : la Direction répond seule aux questions du CM §62 (DoD de P9), essais verts, budget de taille respecté. **Taille** : grande (≈ 2 à 3 semaines).
+### RP-4 — Écrans de P9 (Direction, Pilotage & Alertes) — **FAIT le 03/11/2026**
+- **État (03/11/2026)** : code, essais, i18n et documentation livrés ([matrice § 17.14](../docs/10-development-plan/02-matrice-tracabilite.md), [`15-ecrans-pwa.md`](../docs/10-development-plan/15-ecrans-pwa.md) § 14) :
+  - `ECR-NOT-01` (`AlertsNotificationsScreen.tsx`), `ECR-NOT-02` (`NotesScreen.tsx`), `ECR-NOT-03` (`NotePublishScreen`).
+  - `ECR-ANA-01` à `05` (`RoleDashboardScreen.tsx` : Direction, Commercial, Stock, Production, Finance).
+  - `ECR-ANA-06` (`AnalyticsExplorerScreen.tsx` : explorateur, vues sauvegardées, exports asynchrones).
+  - Intégration des jeux hors ligne `comms` et `kpi` (`pull.ts`), routes et navigation (`screens.ts`, `App.tsx`, `nav-config.ts`), traductions (`fr.ts`), styles tokens (`communication.css`, `analytics.css`).
+  - Vérifications vertes : 1 070 tests PWA passés, budget JS initial à 275,2 Ko gzip (≤ 300 Ko), `check_refs.py` propre.
+- **Taille** : livrée.
 
 ### RP-5 — Qualité et mesures
 - Seconde revue adverse des correctifs de P9-25 (`docs/10-development-plan/23-revue-p9-constats.md`), jamais faite, et des nouveaux écrans.

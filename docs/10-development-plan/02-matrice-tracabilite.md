@@ -476,4 +476,12 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-045 (part RP-3, AV-096) | Serveur : `procurement-receipt-commands.test.ts` (réception d'un BC sur un emplacement d'un autre site refusée sans observations, mise en quarantaine `LOCATION_OVERRIDE` avec observations, entrée en stock à la validation des Achats) ; PWA : `ReceiptScreen.test.tsx` (avertissement inter-sites, observations exigées, drapeau `EXPECTED_QUARANTINE`) | Vérifié |
 | REQ-061, REQ-062, REQ-063 (part RP-3) | Serveur : `devices-read.controller.ts` (`pendingReported` exposé sur `GET /devices`) ; PWA : `SyncMonitorScreen.test.tsx` (`ECR-SYN-02`, retard des appareils, file en attente et bandeau des conflits ouverts), `SyncConflictsScreen.test.tsx` (`ECR-SYN-03`, garde AV-192, renvoi des doublons de paiement, résolution `COMPENSATE` avec références UUID), `screens.test.ts` (signaux `DEVICES_STALE` et `SYNC_CONFLICTS`) | Vérifié |
 
+### 17.14 Lot de reprise RP-4, écrans de Direction, pilotage et alertes (03/11/2026) — [plan de reprise](../../reprise/prompt-reprise-reste-a-faire.md)
+
+| REQ | Vérifié par | État |
+|---|---|---|
+| REQ-064, REQ-066 (part RP-4) | PWA : `communication.test.tsx`, `AlertsNotificationsScreen.tsx` (`ECR-NOT-01`, acquittement/résolution/fermeture manuelle d'alertes, lecture de notifications, règles d'alerte avec repli hors ligne sur `comms:ALERT` et `comms:NOTIFICATION`), `NotesScreen.tsx` (`ECR-NOT-02` et `ECR-NOT-03`, boîte de réception, accusé de lecture, rédaction et publication ciblée, suivi des accusés et archivage avec repli hors ligne sur `comms:NOTE`), `pull.ts` (`comms` synchronisé) | Vérifié |
+| REQ-065, REQ-067 (part RP-4) | PWA : `analytics.test.tsx`, `RoleDashboardScreen.tsx` (`ECR-ANA-01` à `05`, 5 tableaux de bord : Direction, Commercial, Stock, Production, Finance, repli hors ligne `kpi:KPI_SNAPSHOT` pour 01-04 et en ligne strict pour Finance), `AnalyticsExplorerScreen.tsx` (`ECR-ANA-06`, explorateur multidimensionnel, vues sauvegardées `analytics.view.save`, exports asynchrones `analytics.export.request` en CSV/XLSX), `pull.ts` (`kpi` synchronisé) | Vérifié |
+
+
 

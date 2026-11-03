@@ -70,6 +70,8 @@ export const KNOWN_DATASETS = [
   'production',
   // Alertes, notifications, conflits et demandes de validation de l'utilisateur.
   'comms',
+  // P9 (RP-4) : instantanés personnels d'indicateurs de l'utilisateur (KPI_SNAPSHOT).
+  'kpi',
 ] as const;
 
 export type KnownDataset = (typeof KNOWN_DATASETS)[number];

@@ -89,7 +89,7 @@ describe('app/screens — registre et navigation par rôle', () => {
   });
 
   it('une action sans écran livré reste sans route (affichée « Bientôt »)', () => {
-    expect(routeOfAction({ code: 'CONTROL_TOWER', route: null })).toBeNull();
+    expect(routeOfAction({ code: 'KOMMO_LEADS', route: null })).toBeNull();
   });
 
   it('la route dépend du rôle de la section : RECEIPTS mène à la saisie pour la ferme seulement', () => {
@@ -256,6 +256,53 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(routeOfSignal({ code: 'SYNC_CONFLICTS', action: { route: null } })).toBe(
       ROUTES.syncConflicts,
     );
+  });
+
+  it('écrans de RP-4 (P9) : alertes, notes de direction, tour de contrôle, tableaux par rôle et explorateur analytique', () => {
+    expect(SCREENS.find((screen) => screen.id === 'ECR-NOT-01')).toMatchObject({
+      path: '/alertes',
+      labelKey: 'alerts',
+      group: 'general',
+      roles: 'ALL',
+      offline: true,
+    });
+    expect(SCREENS.find((screen) => screen.id === 'ECR-NOT-02')).toMatchObject({
+      path: '/notes',
+      labelKey: 'notes',
+      group: 'general',
+      roles: 'ALL',
+      offline: true,
+    });
+    expect(SCREENS.find((screen) => screen.id === 'ECR-NOT-03')).toMatchObject({
+      path: '/notes/publication',
+      labelKey: 'notes_publish',
+      group: 'general',
+      roles: ['DIRECTION'],
+      offline: false,
+    });
+    expect(SCREENS.find((screen) => screen.id === 'ECR-ANA-01')).toMatchObject({
+      path: '/pilotage/direction',
+      labelKey: 'analytics_direction',
+      group: 'general',
+      roles: ['DIRECTION'],
+      actionCodes: ['CONTROL_TOWER'],
+      offline: true,
+    });
+    expect(routeOfAction({ code: 'CONTROL_TOWER', route: null }, 'DIRECTION')).toBe(
+      ROUTES.analyticsDirection,
+    );
+    expect(routeOfAction({ code: 'CONTROL_TOWER', route: null }, 'ADMIN')).toBeNull();
+    expect(SCREENS.find((screen) => screen.id === 'ECR-ANA-02')?.path).toBe('/pilotage/commercial');
+    expect(SCREENS.find((screen) => screen.id === 'ECR-ANA-03')?.path).toBe('/pilotage/stock');
+    expect(SCREENS.find((screen) => screen.id === 'ECR-ANA-04')?.path).toBe('/pilotage/production');
+    expect(SCREENS.find((screen) => screen.id === 'ECR-ANA-05')?.path).toBe('/pilotage/finance');
+    expect(SCREENS.find((screen) => screen.id === 'ECR-ANA-06')).toMatchObject({
+      path: '/pilotage/explorateur',
+      labelKey: 'analytics_explorer',
+      group: 'general',
+      roles: ROLE_SETS.analyticsExplorer,
+      offline: false,
+    });
   });
 
   it('pour un rôle, chaque code d’action ne mène qu’à un seul écran ; chaque chemin est unique', () => {

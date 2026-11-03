@@ -117,7 +117,7 @@ export interface SidebarProps {
 }
 
 /** Au-delà de ce nombre d'entrées, seuls les domaines utiles sont dépliés. */
-const EXPAND_ALL_UNTIL = 14;
+const EXPAND_ALL_UNTIL = 16;
 
 export function Sidebar({
   groups,
