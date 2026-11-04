@@ -133,6 +133,8 @@ export const ROUTES = {
   analyticsExplorer: '/pilotage/explorateur',
   /** ECR-PIE-01 (PP-B) : report de pièces papier & registre des carnets (AV-308, AV-312). */
   paperSlipReport: '/pieces/report',
+  /** ECR-IMP-01 (RP-2, PP-C) : chargement de données par fichier CSV (AV-072, AV-508). */
+  dataImport: '/chargement',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -495,6 +497,20 @@ export const ROLE_SETS = {
     'FINANCE',
     'ADMIN',
     'DIRECTION',
+  ],
+  /**
+   * ECR-IMP-01 (RP-2, PP-C) : les rôles de l'un des types chargeables — catalogue (`catalog.*.manage` : administrateur),
+   * fournisseurs (`procurement.supplier.manage` : responsable des achats), clients (`crm.customer.create`). Chaque type
+   * garde ses propres rôles (`ImportEntity.roles`) ; un essai garde cette liste égale à leur réunion.
+   */
+  dataImport: [
+    'ADMIN',
+    'RESP_ACHATS',
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_FERME',
   ],
 } as const satisfies Record<string, readonly string[]>;
 
@@ -1164,6 +1180,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'general',
     roles: ROLE_SETS.paperSlipReport,
     actionCodes: ['REPORT_PAPER_SLIP', 'RECORD_PAPER_SLIP'],
+    offline: true,
+  },
+  {
+    id: 'ECR-IMP-01',
+    path: ROUTES.dataImport,
+    labelKey: 'data_import',
+    group: 'general',
+    roles: ROLE_SETS.dataImport,
+    actionCodes: [],
     offline: true,
   },
 ];
