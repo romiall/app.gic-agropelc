@@ -29,6 +29,7 @@ import {
   grantTestPermission,
   insertTestDevice,
   insertTestRole,
+  insertTestProduct,
   insertTestSite,
   insertTestTeam,
   insertTestTeamMembership,
@@ -180,7 +181,7 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
     registerPolicyCommands(registry);
     registerRequestCommands(registry, decisions);
     registerCustomerCommands(registry, idGenerator);
-    registerActivityCommands(registry);
+    registerActivityCommands(registry, idGenerator);
     registerTargetCommands(registry);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
@@ -633,5 +634,136 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
         }),
       ),
     ).toBe('APPLIED');
+  });
+
+  describe('veille marché d’une visite (PP-D ; AV-315)', () => {
+    let productId: string;
+
+    beforeAll(async () => {
+      productId = await db.transaction().execute((trx) => insertTestProduct(trx, admin.userId));
+    });
+
+    const watchRows = async (visitId: string) =>
+      db
+        .selectFrom('crm_visit_market_watch')
+        .selectAll()
+        .where('visit_id', '=', toBin(visitId))
+        .orderBy('position_no')
+        .execute();
+
+    const visitWith = (
+      customerId: string,
+      marketWatch: unknown,
+      options: { readonly id?: string; readonly offline?: boolean } = {},
+    ) => {
+      const id = options.id ?? freshUuid();
+      const result = run(
+        cte1,
+        'crm.visit.record',
+        'VISIT',
+        id,
+        at('10:00:00'),
+        {
+          customerId,
+          position: { ...CENTER, accuracyM: 15 },
+          outcomeReasonCodeId: outcomeId,
+          notes: 'Veille du jour',
+          marketWatch,
+        },
+        { offline: options.offline ?? false },
+      );
+      return { id, result };
+    };
+
+    it('une visite porte plusieurs relevés, enregistrés dans l’ordre de la fiche, avec le produit et le prix constatés', async () => {
+      const customerId = await createCustomer(cte1);
+      const { id, result } = visitWith(customerId, [
+        {
+          watchType: 'COMPETITOR',
+          sourceName: 'Ferme Abena',
+          productId,
+          unitCode: 'TETE',
+          observedPriceXaf: 3200,
+        },
+        { watchType: 'SUPPLIER', sourceName: 'Provenderie du Littoral' },
+      ]);
+      expect((await result).status).toBe('APPLIED');
+      const rows = await watchRows(id);
+      expect(rows.map((row) => [row.position_no, row.watch_type, row.source_name])).toEqual([
+        [1, 'COMPETITOR', 'Ferme Abena'],
+        [2, 'SUPPLIER', 'Provenderie du Littoral'],
+      ]);
+      expect(rows[0]).toMatchObject({ unit_code: 'TETE', observed_price_xaf: 3200 });
+      expect(fromBinOrNull(rows[0]!.product_id)).toBe(productId);
+      expect(rows[1]).toMatchObject({
+        product_id: null,
+        unit_code: null,
+        observed_price_xaf: null,
+      });
+    });
+
+    it('rejouer la visite sous un autre command_id ne double aucun relevé', async () => {
+      const customerId = await createCustomer(cte1);
+      const lines = [{ watchType: 'COMPETITOR', sourceName: 'Ferme Abena', observedPriceXaf: 100 }];
+      const first = visitWith(customerId, lines);
+      expect((await first.result).status).toBe('APPLIED');
+      const again = visitWith(customerId, lines, { id: first.id });
+      expect((await again.result).status).toBe('APPLIED');
+      expect(await watchRows(first.id)).toHaveLength(1);
+    });
+
+    it('un produit ou une unité inconnus du catalogue sont refusés net, sans écriture à moitié faite', async () => {
+      const customerId = await createCustomer(cte1);
+      const unknownProduct = visitWith(
+        customerId,
+        [{ watchType: 'COMPETITOR', sourceName: 'Ferme Abena', productId: freshUuid() }],
+        { offline: true },
+      );
+      expect(code(await unknownProduct.result)).toBe('REFERENCE_INVALID');
+      const unknownUnit = visitWith(
+        customerId,
+        [{ watchType: 'SUPPLIER', sourceName: 'Provenderie', unitCode: 'INCONNUE' }],
+        { offline: true },
+      );
+      expect(code(await unknownUnit.result)).toBe('REFERENCE_INVALID');
+      for (const { id } of [unknownProduct, unknownUnit]) {
+        expect(await watchRows(id)).toHaveLength(0);
+        expect(
+          await db.selectFrom('crm_visits').select('id').where('id', '=', toBin(id)).execute(),
+        ).toHaveLength(0);
+      }
+    });
+
+    it('un relevé mal formé est refusé par le schéma : type inconnu, nom vide, prix négatif, trop de lignes', async () => {
+      const customerId = await createCustomer(cte1);
+      const bad: unknown[] = [
+        [{ watchType: 'AUTRE', sourceName: 'X' }],
+        [{ watchType: 'SUPPLIER', sourceName: '   ' }],
+        [{ watchType: 'SUPPLIER', sourceName: 'X', observedPriceXaf: -5 }],
+        [{ watchType: 'SUPPLIER', sourceName: 'X', observedPriceXaf: 10.5 }],
+        Array.from({ length: 21 }, () => ({ watchType: 'SUPPLIER', sourceName: 'X' })),
+      ];
+      for (const lines of bad) {
+        expect(code(await visitWith(customerId, lines).result)).toMatch(/^VALIDATION_ERROR/);
+      }
+    });
+
+    it('un relevé est en ajout seul : ni modification ni suppression en base', async () => {
+      const customerId = await createCustomer(cte1);
+      const { id, result } = visitWith(customerId, [
+        { watchType: 'COMPETITOR', sourceName: 'Ferme Abena', observedPriceXaf: 100 },
+      ]);
+      expect((await result).status).toBe('APPLIED');
+      await expect(
+        db
+          .updateTable('crm_visit_market_watch')
+          .set({ observed_price_xaf: 1 })
+          .where('visit_id', '=', toBin(id))
+          .execute(),
+      ).rejects.toThrow(/denied|modification interdite/);
+      await expect(
+        db.deleteFrom('crm_visit_market_watch').where('visit_id', '=', toBin(id)).execute(),
+      ).rejects.toThrow(/denied|suppression physique interdite/);
+    });
   });
 });

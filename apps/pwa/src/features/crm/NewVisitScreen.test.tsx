@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -146,6 +146,132 @@ describe('+ Visite (ECR-CRM-04)', () => {
     expect(
       visitPayload({ ...EMPTY_VISIT, customerId: IDS.customer, outcomeId: OUTCOME, notes: '  ' }),
     ).toEqual({ customerId: IDS.customer, position: null, outcomeReasonCodeId: OUTCOME });
+  });
+
+  it('veille marché (AV-315) : lignes vides omises, nom rogné, unité seulement avec un produit, prix en francs entiers', () => {
+    const payload = visitPayload({
+      ...EMPTY_VISIT,
+      customerId: IDS.customer,
+      outcomeId: OUTCOME,
+      marketWatch: [
+        {
+          key: 'a',
+          watchType: 'COMPETITOR',
+          sourceName: '  Ferme Abena ',
+          productId: IDS.chicken,
+          unitCode: 'U',
+          priceText: '3 200',
+        },
+        // Unité sans produit : jamais envoyée ; prix absent : relevé sans prix.
+        {
+          key: 'b',
+          watchType: 'SUPPLIER',
+          sourceName: 'Provenderie',
+          productId: '',
+          unitCode: 'U',
+          priceText: '',
+        },
+        {
+          key: 'c',
+          watchType: 'SUPPLIER',
+          sourceName: '',
+          productId: '',
+          unitCode: '',
+          priceText: ' ',
+        },
+      ],
+    });
+    expect(payload.marketWatch).toEqual([
+      {
+        watchType: 'COMPETITOR',
+        sourceName: 'Ferme Abena',
+        productId: IDS.chicken,
+        unitCode: 'U',
+        observedPriceXaf: 3200,
+      },
+      { watchType: 'SUPPLIER', sourceName: 'Provenderie' },
+    ]);
+    // Sans relevé entamé, la clé n'existe pas : la visite part comme avant.
+    expect(
+      visitPayload({ ...EMPTY_VISIT, customerId: IDS.customer, outcomeId: OUTCOME }),
+    ).not.toHaveProperty('marketWatch');
+  });
+
+  it('veille marché : un relevé entamé exige un nom et un prix entier', async () => {
+    await seedOutcome();
+    locateAt({ latitude: 3.8667, longitude: 11.5167, accuracy: 20 });
+    const user = userEvent.setup();
+    renderAt(`/clients/visite?client=${IDS.customer}`);
+    await screen.findByText('Boutique Mvog-Mbi');
+    await user.selectOptions(screen.getByLabelText('Résultat de la visite'), OUTCOME);
+    const submit = screen.getByRole('button', { name: 'Enregistrer la visite' });
+    expect(submit).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter un relevé' }));
+    const line = screen.getByRole('group', { name: 'Relevé 1' });
+    // Ligne vide : ignorée, la visite reste enregistrable.
+    expect(submit).toBeEnabled();
+    await user.type(within(line).getByLabelText(/Prix constaté/), '12,5');
+    expect(submit).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Veille marché : indiquez le fournisseur ou le concurrent de chaque relevé.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Veille marché : le prix constaté est un nombre entier de francs.'),
+    ).toBeInTheDocument();
+
+    await user.type(within(line).getByLabelText('Nom'), 'Ferme Abena');
+    await user.clear(within(line).getByLabelText(/Prix constaté/));
+    await user.type(within(line).getByLabelText(/Prix constaté/), '2900');
+    expect(submit).toBeEnabled();
+
+    // Retirer le relevé rend la main à la visite seule.
+    await user.click(screen.getByRole('button', { name: 'Retirer le relevé 1' }));
+    expect(screen.queryByRole('group', { name: 'Relevé 1' })).toBeNull();
+  });
+
+  it('veille marché : le relevé part avec la visite et s’affiche aussitôt dans l’activité du compte', async () => {
+    await seedOutcome();
+    locateAt({ latitude: 3.8667, longitude: 11.5167, accuracy: 20 });
+    const user = userEvent.setup();
+    renderAt(`/clients/visite?client=${IDS.customer}`);
+    await screen.findByText('Boutique Mvog-Mbi');
+    await user.selectOptions(screen.getByLabelText('Résultat de la visite'), OUTCOME);
+    await user.click(screen.getByRole('button', { name: 'Ajouter un relevé' }));
+    const line = screen.getByRole('group', { name: 'Relevé 1' });
+    await user.type(within(line).getByLabelText('Nom'), 'Ferme Abena');
+    await user.selectOptions(within(line).getByLabelText('Produit (facultatif)'), IDS.chicken);
+    await user.type(within(line).getByLabelText(/Prix constaté/), '2900');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la visite' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBeGreaterThan(0));
+
+    const [command] = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(command).toMatchObject({
+      command_type: 'crm.visit.record',
+      payload: {
+        marketWatch: [
+          {
+            watchType: 'COMPETITOR',
+            sourceName: 'Ferme Abena',
+            productId: IDS.chicken,
+            unitCode: 'U',
+            observedPriceXaf: 2900,
+          },
+        ],
+      },
+    });
+    const refs = await loadSalesReferences(getDb());
+    expect(refs.visits[0]?.market_watch).toEqual([
+      {
+        watch_type: 'COMPETITOR',
+        source_name: 'Ferme Abena',
+        product_id: IDS.chicken,
+        unit_code: 'U',
+        observed_price_xaf: 2900,
+      },
+    ]);
   });
 
   it('hors ligne, depuis la fiche : visite géolocalisée hors session, position proposée au compte, activité aussitôt visible', async () => {

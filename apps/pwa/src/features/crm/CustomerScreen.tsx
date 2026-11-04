@@ -263,6 +263,15 @@ export function CustomerScreen() {
                         })
                       : t(`customer.channel.${item.interaction.channel}`);
                   const note = item.kind === 'VISIT' ? item.visit.notes : item.interaction.summary;
+                  // Veille marché de la visite (AV-315) : « Ferme Abena (2 900 F) ».
+                  const watch =
+                    item.kind === 'VISIT'
+                      ? (item.visit.market_watch ?? []).map((line) =>
+                          line.observed_price_xaf === null
+                            ? line.source_name
+                            : `${line.source_name} (${formatMoney(line.observed_price_xaf)})`,
+                        )
+                      : [];
                   const pending = entry.pending_command_id !== undefined;
                   return (
                     <ListRow
@@ -270,9 +279,12 @@ export function CustomerScreen() {
                       icon={item.kind === 'VISIT' ? 'store' : 'phone'}
                       title={label}
                       subtitle={
-                        note || entry.next_action_at ? (
+                        note || entry.next_action_at || watch.length > 0 ? (
                           <span className="crm-lines">
                             {note ? <span>{note}</span> : null}
+                            {watch.length > 0 ? (
+                              <span>{t('customer.market_watch', { lines: watch.join(', ') })}</span>
+                            ) : null}
                             {entry.next_action_at ? (
                               <span>
                                 {t('portfolio.next_action', {

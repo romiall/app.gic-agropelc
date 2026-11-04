@@ -52,6 +52,7 @@ import {
   conflictCommandOf,
 } from '../../pwa/src/features/sync/sync-conflicts.js';
 import { reassignPayload } from '../../pwa/src/features/crm/reassign.js';
+import { EMPTY_VISIT, visitPayload } from '../../pwa/src/features/crm/visit.js';
 import {
   buildAlertAckPayload,
   buildAlertDismissPayload,
@@ -332,6 +333,35 @@ function samples(): Sample[] {
       commandType: 'crm.customer.reassign',
       payload: reassignPayload(userId, 'Départ du commercial'),
     },
+    // Visite avec veille marché (PP-D, AV-315) : aucun champ du relevé ne doit être écarté par le schéma.
+    {
+      label: 'visite : veille marché',
+      commandType: 'crm.visit.record',
+      payload: visitPayload({
+        ...EMPTY_VISIT,
+        customerId: id(),
+        outcomeId: id(),
+        notes: 'Veille du jour',
+        marketWatch: [
+          {
+            key: 'a',
+            watchType: 'COMPETITOR',
+            sourceName: 'Ferme Abena',
+            productId: id(),
+            unitCode: 'KG',
+            priceText: '2 900',
+          },
+          {
+            key: 'b',
+            watchType: 'SUPPLIER',
+            sourceName: 'Provenderie du Littoral',
+            productId: '',
+            unitCode: '',
+            priceText: '',
+          },
+        ],
+      }),
+    },
   ];
 
   const comm: Sample[] = [
@@ -436,6 +466,7 @@ describe('charges de commande fabriquées par la PWA : le schéma du serveur les
       'identity.role_assignment.grant',
       'sync.conflict.resolve',
       'crm.customer.reassign',
+      'crm.visit.record',
       'communication.alert_rule.set',
       'communication.note.publish',
       'analytics.view.share',

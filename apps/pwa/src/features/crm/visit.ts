@@ -20,6 +20,25 @@ export const CUSTOMER_POSITION_MAX_ACCURACY_M = 50;
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Veille marché (AV-315) : de qui vient le prix constaté. */
+export const MARKET_WATCH_TYPES = ['COMPETITOR', 'SUPPLIER'] as const;
+export type MarketWatchType = (typeof MARKET_WATCH_TYPES)[number];
+/** Relevés par visite au plus (le serveur en refuse davantage). */
+export const MAX_MARKET_WATCH_LINES = 20;
+export const MAX_WATCH_SOURCE_NAME = 120;
+
+/** Un relevé en cours de saisie : fournisseur ou concurrent (libellé libre), produit, unité et prix constatés. */
+export interface MarketWatchDraft {
+  readonly key: string;
+  readonly watchType: MarketWatchType;
+  readonly sourceName: string;
+  /** Vide : relevé sans produit précis. */
+  readonly productId: string;
+  readonly unitCode: string;
+  /** Prix constaté en francs, ou vide. */
+  readonly priceText: string;
+}
+
 export interface VisitDraft {
   readonly customerId: string | null;
   readonly position: Position | null;
@@ -30,6 +49,7 @@ export interface VisitDraft {
   readonly nextActionNote: string;
   /** BR-CRM-014 : enregistrer la position de la visite comme celle du compte. */
   readonly saveCustomerPosition: boolean;
+  readonly marketWatch: readonly MarketWatchDraft[];
 }
 
 export const EMPTY_VISIT: VisitDraft = {
@@ -40,10 +60,28 @@ export const EMPTY_VISIT: VisitDraft = {
   nextActionAt: '',
   nextActionNote: '',
   saveCustomerPosition: true,
+  marketWatch: [],
 };
 
 export type VisitIssue =
-  'CUSTOMER_REQUIRED' | 'OUTCOME_REQUIRED' | 'COMMENT_REQUIRED' | 'NEXT_ACTION_PAST';
+  | 'CUSTOMER_REQUIRED'
+  | 'OUTCOME_REQUIRED'
+  | 'COMMENT_REQUIRED'
+  | 'NEXT_ACTION_PAST'
+  | 'WATCH_NAME_REQUIRED'
+  | 'WATCH_PRICE_INVALID';
+
+/** Un relevé n'est « entamé » que s'il porte un nom, un produit ou un prix : une ligne vide n'est pas envoyée. */
+const isBlankWatch = (line: MarketWatchDraft): boolean =>
+  line.sourceName.trim() === '' && line.productId === '' && line.priceText.trim() === '';
+
+/** Prix constaté en francs entiers (espaces tolérés) ; `null` si invalide. */
+export function parseWatchPrice(text: string): number | null {
+  const normalized = text.trim().replace(/\s/g, '');
+  if (!/^\d+$/.test(normalized)) return null;
+  const value = Number(normalized);
+  return Number.isSafeInteger(value) ? value : null;
+}
 
 export interface VisitCheck {
   readonly issues: readonly VisitIssue[];
@@ -97,6 +135,13 @@ export function checkVisit(
     (!DATE_ONLY.test(draft.nextActionAt) || draft.nextActionAt < context.today)
   ) {
     issues.push('NEXT_ACTION_PAST');
+  }
+  const started = draft.marketWatch.filter((line) => !isBlankWatch(line));
+  if (started.some((line) => line.sourceName.trim() === '')) issues.push('WATCH_NAME_REQUIRED');
+  if (
+    started.some((line) => line.priceText.trim() !== '' && parseWatchPrice(line.priceText) === null)
+  ) {
+    issues.push('WATCH_PRICE_INVALID');
   }
   let evaluation: {
     readonly distanceToCustomerM: number | null;
@@ -155,6 +200,19 @@ const optionalText = (value: string): string | undefined => {
 export function visitPayload(draft: VisitDraft) {
   const notes = optionalText(draft.notes);
   const nextActionNote = optionalText(draft.nextActionNote);
+  const marketWatch = draft.marketWatch
+    .filter((line) => !isBlankWatch(line))
+    .map((line) => {
+      const price = line.priceText.trim() === '' ? null : parseWatchPrice(line.priceText);
+      return {
+        watchType: line.watchType,
+        sourceName: line.sourceName.trim(),
+        ...(line.productId ? { productId: line.productId } : {}),
+        // L'unité n'a de sens qu'avec un produit.
+        ...(line.productId && line.unitCode ? { unitCode: line.unitCode } : {}),
+        ...(price !== null ? { observedPriceXaf: price } : {}),
+      };
+    });
   return {
     customerId: draft.customerId,
     position: draft.position
@@ -164,6 +222,7 @@ export function visitPayload(draft: VisitDraft) {
     ...(notes ? { notes } : {}),
     ...(draft.nextActionAt ? { nextActionAt: draft.nextActionAt } : {}),
     ...(nextActionNote ? { nextActionNote } : {}),
+    ...(marketWatch.length > 0 ? { marketWatch } : {}),
   };
 }
 

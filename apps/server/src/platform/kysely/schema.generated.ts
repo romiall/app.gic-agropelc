@@ -764,6 +764,19 @@ export interface CrmSalesTargets {
   version: Generated<number>;
 }
 
+export interface CrmVisitMarketWatch {
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  observed_price_xaf: number | null;
+  position_no: number;
+  product_id: Buffer | null;
+  source_name: string;
+  unit_code: string | null;
+  visit_id: Buffer;
+  watch_type: string;
+}
+
 export interface CrmVisits {
   accuracy_m: Decimal | null;
   backdated_reason: string | null;
@@ -2827,6 +2840,7 @@ export interface DB {
   crm_lead_sources: CrmLeadSources;
   crm_pipeline_steps: CrmPipelineSteps;
   crm_sales_targets: CrmSalesTargets;
+  crm_visit_market_watch: CrmVisitMarketWatch;
   crm_visits: CrmVisits;
   fieldwork_geo_checkins: FieldworkGeoCheckins;
   fieldwork_work_sessions: FieldworkWorkSessions;

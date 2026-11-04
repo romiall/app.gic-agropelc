@@ -331,7 +331,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-312 | Registre des carnets : contrôle de continuité | SECONDAIRE | PP | Manques et doublons d'après les références saisies, à la demande | OUVERT |
 | AV-313 | Présence du personnel non commercial | IMPORTANTE | PP | Table légère alimentée par la fiche PT ; usage statistique, pas de paie | OUVERT |
 | AV-314 | Bilan hebdomadaire du commercial | SECONDAIRE | PP | Entité propre et écran ; chiffres calculés, jamais saisis | OUVERT |
-| AV-315 | Veille marché dans la visite | SECONDAIRE | PP | Table fille de la visite (fournisseur ou concurrent, produit, unité, prix) | OUVERT |
+| AV-315 | Veille marché dans la visite | SECONDAIRE | PP | Table fille de la visite (fournisseur ou concurrent, produit, unité, prix) ; **implémenté le 04/11/2026** (`crm_visit_market_watch`, `crm.visit.record` étendue, jeu `crm_activity`, écran de visite) | OUVERT |
 | AV-316 | Profil commercial du client | IMPORTANTE | PP | Trois champs sur le compte ; demande de crédit distincte de la décision | OUVERT |
 | AV-317 | Écran de report et import par lots des pièces papier | IMPORTANTE | PP | Report par type de pièce ; import validé avant chargement, par les commandes existantes | OUVERT |
 | AV-318 | Politiques de validation par défaut du stock et du pointage | IMPORTANTE | MP | Une politique par type, sans condition (`TRANSFER_DISCREPANCY`, `INVENTORY_ADJUSTMENT`, `CHECKIN_OVERRIDE`) ; **implémenté** (MP-12) | OUVERT |
@@ -2578,6 +2578,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) table fille de la visite (visite, type fournisseur ou concurrent, nom en libellé libre, produit, unité, prix constaté) ; (b) colonnes sur la visite : écartées (un seul relevé).
 - **Recommandation** : (a) ; un référentiel de concurrents plus tard, si la veille s'étend.
 - **Impact** : le CRM (P3) est clos : migration, contrat de la commande de visite, jeu hors ligne `crm_activity`, fiche VC. Défaut retenu pour la conception : (a).
+- **Mis en œuvre (04/11/2026, PP-D)** : migration `20261104100000_create_crm_visit_market_watch.sql` (table `crm_visit_market_watch`, ajout seul, 20 relevés par visite au plus, produit et unité vérifiés dans le catalogue avant l'écriture) ; `crm.visit.record` accepte `marketWatch` (un rejeu de la visite ne double aucun relevé) ; la ligne `VISIT` du jeu `crm_activity` et `GET /visits` portent les relevés ; saisie dans l'écran « Visite » (`MarketWatchSection`), relevés affichés dans l'activité du compte. Reste : la fiche papier VC imprimée avec la ligne de veille.
 
 ### AV-316 — Profil commercial du client — IMPORTANTE
 - **Question** : où et comment enregistrer le produit d'intérêt, le potentiel par jour et le mode de paiement habituel d'un client ?

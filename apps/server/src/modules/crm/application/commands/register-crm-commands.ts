@@ -25,7 +25,7 @@ export class CrmCommandsRegistrar implements OnModuleInit {
   onModuleInit(): void {
     registerCustomerCommands(this.registry, this.idGenerator);
     registerPipelineCommands(this.registry);
-    registerActivityCommands(this.registry);
+    registerActivityCommands(this.registry, this.idGenerator);
     registerTargetCommands(this.registry);
   }
 }

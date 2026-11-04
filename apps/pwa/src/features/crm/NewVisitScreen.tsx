@@ -36,6 +36,7 @@ import { openWorkSession } from '../sales/pricing.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
+import { MarketWatchSection } from './MarketWatchSection.js';
 import {
   checkVisit,
   customerPositionPayload,
@@ -300,11 +301,23 @@ export function NewVisitScreen() {
         </Field>
       </div>
 
+      <MarketWatchSection
+        lines={draft.marketWatch}
+        refs={refs}
+        onChange={(marketWatch) => update({ marketWatch })}
+      />
+
       {check.issues.includes('COMMENT_REQUIRED') ? (
         <p className="field-error">{t('visit.issue.COMMENT_REQUIRED')}</p>
       ) : null}
       {check.issues.includes('NEXT_ACTION_PAST') ? (
         <p className="field-error">{t('visit.issue.NEXT_ACTION_PAST')}</p>
+      ) : null}
+      {check.issues.includes('WATCH_NAME_REQUIRED') ? (
+        <p className="field-error">{t('visit.issue.WATCH_NAME_REQUIRED')}</p>
+      ) : null}
+      {check.issues.includes('WATCH_PRICE_INVALID') ? (
+        <p className="field-error">{t('visit.issue.WATCH_PRICE_INVALID')}</p>
       ) : null}
       {!holdsAnyRole(roles, ROLE_SETS.visitRecord) ? (
         <Banner tone="warn" role="status">

@@ -453,6 +453,15 @@ export interface TeamMembershipData {
 }
 
 /** (`crm_activity`, 90 derniers jours) visite d'un compte. */
+/** Relevé de veille marché d'une visite (`crm_activity`, AV-315) : fournisseur ou concurrent, produit et prix. */
+export interface MarketWatchData {
+  readonly watch_type: string;
+  readonly source_name: string;
+  readonly product_id: string | null;
+  readonly unit_code: string | null;
+  readonly observed_price_xaf: number | null;
+}
+
 export interface VisitData {
   readonly id: string;
   readonly customer_id: string;
@@ -461,6 +470,8 @@ export interface VisitData {
   readonly notes: string | null;
   readonly next_action_at: string | null;
   readonly next_action_note: string | null;
+  /** Veille marché relevée pendant la visite (AV-315) ; absente d'une visite servie avant PP-D. */
+  readonly market_watch?: readonly MarketWatchData[];
   readonly flags: readonly string[];
   readonly status: string;
   readonly occurred_at: string;

@@ -1226,12 +1226,27 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         ? fromBin(row.user_id) === scope.id || fromBinOrNull(row.owner_user_id) === scope.id
         : await anyTeamMemberNow(executor, scope.id, [row.user_id, row.owner_user_id]);
     if (!inScope) return undefined;
+    // Veille marché relevée pendant la visite (AV-315), dans l'ordre de la fiche.
+    const marketWatch = await executor
+      .selectFrom('crm_visit_market_watch')
+      .select(['watch_type', 'source_name', 'product_id', 'unit_code', 'observed_price_xaf'])
+      .where('visit_id', '=', row.id)
+      .orderBy('position_no')
+      .execute();
     return {
       id: fromBin(row.id),
       customer_id: fromBin(row.customer_id),
       user_id: fromBin(row.user_id),
       work_session_id: fromBinOrNull(row.work_session_id),
       customer_stage_at_visit: row.customer_stage_at_visit,
+      market_watch: marketWatch.map((line) => ({
+        watch_type: line.watch_type,
+        source_name: line.source_name,
+        product_id: fromBinOrNull(line.product_id),
+        unit_code: line.unit_code,
+        observed_price_xaf:
+          line.observed_price_xaf === null ? null : Number(line.observed_price_xaf),
+      })),
       lat: row.lat,
       lng: row.lng,
       accuracy_m: row.accuracy_m,

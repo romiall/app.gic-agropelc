@@ -135,6 +135,24 @@
 - **PK** `id`. **UQ** `command_id`. **IX** `(user_id, occurred_at)`, `(customer_id, occurred_at)`, `(next_action_at)` partiel.
 - **Suppr.** `ANNULATION`. **Audit** Création, annulation. **Offline** DL (90 jours du périmètre) ; CR.
 
+## crm.visit_market_watch
+
+**Responsabilité** : veille marché relevée pendant une visite (PP-D ; REQ-308, AV-315) — le fournisseur ou le concurrent rencontré et le prix constaté d'un produit, un relevé par ligne, plusieurs par visite. Table fille de `crm.visits` ; ajout seul comme la visite (BR-CRM-016) : une visite annulée garde ses relevés. Migration `20261104100000_create_crm_visit_market_watch.sql`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | Choisi par le serveur |
+| `visit_id` | uuid → crm.visits | Non | — | |
+| `position_no` | smallint | Non | — | Ordre sur la fiche (1, 2…), unique par visite |
+| `watch_type` | enum(`SUPPLIER`,`COMPETITOR`) | Non | — | De qui vient le prix |
+| `source_name` | varchar(120) | Non | — | Libellé libre (pas de référentiel de concurrents, AV-315) |
+| `product_id` | uuid → catalog.products | Oui | — | Produit constaté |
+| `unit_code` | varchar(20) | Oui | — | Unité du prix constaté |
+| `observed_price_xaf` | bigint | Oui | — | Francs entiers, ≥ 0 |
+| `created_at`, `created_by` | | Non | — | |
+
+- **PK** `id`. **UQ** `(visit_id, position_no)`. **IX** `(product_id)`. **Suppr.** `IMMUABLE` (déclencheurs de refus de la modification et de la suppression). **Offline** DL avec la visite (`crm_activity`, ligne `VISIT`, clé `market_watch`) ; CR par la commande `crm.visit.record` (`marketWatch`, 20 relevés au plus).
+
 ## crm.interactions
 
 **Responsabilité** : contact non physique hors Kommo (AV-019).

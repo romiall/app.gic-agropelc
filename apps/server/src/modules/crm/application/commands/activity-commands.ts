@@ -16,7 +16,7 @@
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
-import { evaluateVisit, type GeoPoint } from '@gic/domain';
+import { evaluateVisit, type GeoPoint, type IdGenerator } from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerRegistry,
@@ -24,7 +24,11 @@ import type {
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
-import { findReasonCode } from '../../../catalog/application/public/index.js';
+import {
+  findProduct,
+  findReasonCode,
+  findUnit,
+} from '../../../catalog/application/public/index.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
 import { findWorkSessionAt } from '../../../fieldwork/application/public/index.js';
 import { emitActivityChange } from '../sync-changes.js';
@@ -42,6 +46,18 @@ import {
 
 const optionalText = (max: number) => z.string().trim().min(1).max(max).nullable().optional();
 
+/** Relevés de veille marché d'une visite : au plus autant par visite (AV-315). */
+export const MARKET_WATCH_MAX_LINES = 20;
+
+/** Un relevé de veille marché (AV-315) : le fournisseur ou le concurrent, et le prix constaté d'un produit. */
+const marketWatchSchema = z.object({
+  watchType: z.enum(['SUPPLIER', 'COMPETITOR']),
+  sourceName: z.string().trim().min(1).max(120),
+  productId: z.string().uuid().nullable().optional(),
+  unitCode: z.string().trim().min(1).max(20).nullable().optional(),
+  observedPriceXaf: z.number().int().nonnegative().safe().nullable().optional(),
+});
+
 const visitPayloadSchema = z.object({
   customerId: z.string().uuid(),
   position: z
@@ -55,6 +71,7 @@ const visitPayloadSchema = z.object({
   notes: optionalText(4000),
   nextActionAt: z.string().regex(DATE_ONLY).nullable().optional(),
   nextActionNote: optionalText(2000),
+  marketWatch: z.array(marketWatchSchema).max(MARKET_WATCH_MAX_LINES).optional(),
 });
 type VisitPayload = z.infer<typeof visitPayloadSchema>;
 
@@ -93,101 +110,138 @@ async function maxVisitDistanceM(uow: Uow, at: Date): Promise<number> {
   return Number.isFinite(parsed) ? parsed : 500;
 }
 
-const recordVisit: CommandHandler<VisitPayload> = async (uow, envelope) => {
-  const visitId = toBin(envelope.aggregate_id);
-  const replay = await uow
-    .selectFrom('crm_visits')
-    .select('id')
-    .where('id', '=', visitId)
-    .executeTakeFirst();
-  if (replay) return { status: 'APPLIED' };
-
-  const p = envelope.payload;
-  const author = envelope.author_user_id;
-  const at = new Date(envelope.occurred_at);
-  const customer = await loadCustomer(uow, p.customerId);
-  if (!customer) return CUSTOMER_NOT_FOUND;
-  if (customer.stage === 'MERGED' && !envelope.captured_offline) return CUSTOMER_MERGED;
-  const allowed = await canRecordFactOn(uow, {
-    userId: author,
-    permissionCode: 'crm.visit.record',
-    at,
-    customer,
-    capturedOffline: envelope.captured_offline,
-  });
-  if (!allowed) return FORBIDDEN_SCOPE;
-  const outcome = await findReasonCode(uow, p.outcomeReasonCodeId);
-  if (
-    !outcome ||
-    outcome.category !== 'VISIT_OUTCOME' ||
-    (!outcome.isActive && !envelope.captured_offline)
-  ) {
-    return rejected(
-      'REFERENCE_INVALID',
-      'Résultat de visite inconnu ou inactif (catégorie VISIT_OUTCOME, BR-CRM-012).',
-    );
+/**
+ * Références des relevés de veille marché : produit et unité connus du catalogue. Un relevé qui citerait un produit
+ * ou une unité inexistants ferait échouer l'écriture sur la clé étrangère, et l'appareil renverrait la visite sans fin.
+ */
+async function marketWatchReferencesError(uow: Uow, lines: VisitPayload['marketWatch']) {
+  for (const line of lines ?? []) {
+    if (line.productId && !(await findProduct(uow, line.productId))) {
+      return rejected('REFERENCE_INVALID', 'Veille marché : produit inconnu du catalogue.');
+    }
+    if (line.unitCode && !(await findUnit(uow, line.unitCode))) {
+      return rejected('REFERENCE_INVALID', 'Veille marché : unité inconnue du catalogue.');
+    }
   }
-  // Résultat qui exige un commentaire (« Autre », AV-248) : refusé en ligne sans commentaire ; hors
-  // ligne, la visite est un fait accompli (BR-SYN-007), acceptée comme un motif désactivé entre-temps.
-  if (outcome.requiresComment && !p.notes && !envelope.captured_offline) {
-    return rejected('COMMENT_REQUIRED', 'Ce résultat de visite exige un commentaire (AV-248).');
-  }
+  return undefined;
+}
 
-  const session = await findWorkSessionAt(uow, author, at);
-  const customerPosition: GeoPoint | null =
-    customer.lat === null || customer.lng === null
-      ? null
-      : { lat: Number(customer.lat), lng: Number(customer.lng) };
-  const evaluation = evaluateVisit({
-    visitPosition: p.position ? { lat: p.position.lat, lng: p.position.lng } : null,
-    customerPosition,
-    maxDistanceM: await maxVisitDistanceM(uow, at),
-    session:
-      session === undefined
-        ? 'NONE'
-        : session.overrideStatus === 'REJECTED'
-          ? 'OPEN_REJECTED'
-          : 'OPEN',
-  });
-  const origin = await loadCommandOrigin(uow, envelope.command_id);
-  const flags: string[] = [...evaluation.flags];
-  if (origin.clockSuspect) flags.push('CLOCK_SUSPECT');
+const buildRecordVisit =
+  (idGenerator: IdGenerator): CommandHandler<VisitPayload> =>
+  async (uow, envelope) => {
+    const visitId = toBin(envelope.aggregate_id);
+    const replay = await uow
+      .selectFrom('crm_visits')
+      .select('id')
+      .where('id', '=', visitId)
+      .executeTakeFirst();
+    if (replay) return { status: 'APPLIED' };
 
-  await uow
-    .insertInto('crm_visits')
-    .values({
-      id: visitId,
-      customer_id: customer.id,
-      user_id: toBin(author),
-      work_session_id: session ? toBin(session.id) : null,
-      customer_stage_at_visit: customer.stage,
-      lat: p.position ? String(p.position.lat) : null,
-      lng: p.position ? String(p.position.lng) : null,
-      accuracy_m:
-        p.position?.accuracyM === undefined || p.position.accuracyM === null
-          ? null
-          : String(p.position.accuracyM),
-      distance_to_customer_m:
-        evaluation.distanceToCustomerM === null ? null : String(evaluation.distanceToCustomerM),
-      outcome_reason_code_id: toBin(outcome.id),
-      notes: p.notes ?? null,
-      next_action_at: p.nextActionAt ? dateColumn(p.nextActionAt) : null,
-      next_action_note: p.nextActionNote ?? null,
-      flags: jsonValue(flags),
-      occurred_at: at,
-      client_created_at: new Date(envelope.client_created_at),
-      received_at_server: origin.receivedAt,
-      command_id: toBin(envelope.command_id),
-      created_device_id: toBinOrNull(origin.deviceId),
-      captured_offline: envelope.captured_offline ? 1 : 0,
-      clock_suspect: origin.clockSuspect ? 1 : 0,
-      backdated_reason: envelope.backdated_reason,
-      created_by: toBin(author),
-    })
-    .execute();
-  await emitActivityChange(uow, 'VISIT', envelope.aggregate_id, at);
-  return { status: 'APPLIED' };
-};
+    const p = envelope.payload;
+    const author = envelope.author_user_id;
+    const at = new Date(envelope.occurred_at);
+    const customer = await loadCustomer(uow, p.customerId);
+    if (!customer) return CUSTOMER_NOT_FOUND;
+    if (customer.stage === 'MERGED' && !envelope.captured_offline) return CUSTOMER_MERGED;
+    const allowed = await canRecordFactOn(uow, {
+      userId: author,
+      permissionCode: 'crm.visit.record',
+      at,
+      customer,
+      capturedOffline: envelope.captured_offline,
+    });
+    if (!allowed) return FORBIDDEN_SCOPE;
+    const outcome = await findReasonCode(uow, p.outcomeReasonCodeId);
+    if (
+      !outcome ||
+      outcome.category !== 'VISIT_OUTCOME' ||
+      (!outcome.isActive && !envelope.captured_offline)
+    ) {
+      return rejected(
+        'REFERENCE_INVALID',
+        'Résultat de visite inconnu ou inactif (catégorie VISIT_OUTCOME, BR-CRM-012).',
+      );
+    }
+    // Résultat qui exige un commentaire (« Autre », AV-248) : refusé en ligne sans commentaire ; hors
+    // ligne, la visite est un fait accompli (BR-SYN-007), acceptée comme un motif désactivé entre-temps.
+    if (outcome.requiresComment && !p.notes && !envelope.captured_offline) {
+      return rejected('COMMENT_REQUIRED', 'Ce résultat de visite exige un commentaire (AV-248).');
+    }
+    const badWatch = await marketWatchReferencesError(uow, p.marketWatch);
+    if (badWatch) return badWatch;
+
+    const session = await findWorkSessionAt(uow, author, at);
+    const customerPosition: GeoPoint | null =
+      customer.lat === null || customer.lng === null
+        ? null
+        : { lat: Number(customer.lat), lng: Number(customer.lng) };
+    const evaluation = evaluateVisit({
+      visitPosition: p.position ? { lat: p.position.lat, lng: p.position.lng } : null,
+      customerPosition,
+      maxDistanceM: await maxVisitDistanceM(uow, at),
+      session:
+        session === undefined
+          ? 'NONE'
+          : session.overrideStatus === 'REJECTED'
+            ? 'OPEN_REJECTED'
+            : 'OPEN',
+    });
+    const origin = await loadCommandOrigin(uow, envelope.command_id);
+    const flags: string[] = [...evaluation.flags];
+    if (origin.clockSuspect) flags.push('CLOCK_SUSPECT');
+
+    await uow
+      .insertInto('crm_visits')
+      .values({
+        id: visitId,
+        customer_id: customer.id,
+        user_id: toBin(author),
+        work_session_id: session ? toBin(session.id) : null,
+        customer_stage_at_visit: customer.stage,
+        lat: p.position ? String(p.position.lat) : null,
+        lng: p.position ? String(p.position.lng) : null,
+        accuracy_m:
+          p.position?.accuracyM === undefined || p.position.accuracyM === null
+            ? null
+            : String(p.position.accuracyM),
+        distance_to_customer_m:
+          evaluation.distanceToCustomerM === null ? null : String(evaluation.distanceToCustomerM),
+        outcome_reason_code_id: toBin(outcome.id),
+        notes: p.notes ?? null,
+        next_action_at: p.nextActionAt ? dateColumn(p.nextActionAt) : null,
+        next_action_note: p.nextActionNote ?? null,
+        flags: jsonValue(flags),
+        occurred_at: at,
+        client_created_at: new Date(envelope.client_created_at),
+        received_at_server: origin.receivedAt,
+        command_id: toBin(envelope.command_id),
+        created_device_id: toBinOrNull(origin.deviceId),
+        captured_offline: envelope.captured_offline ? 1 : 0,
+        clock_suspect: origin.clockSuspect ? 1 : 0,
+        backdated_reason: envelope.backdated_reason,
+        created_by: toBin(author),
+      })
+      .execute();
+    // Veille marché (AV-315) : un relevé par ligne, dans l'ordre de la fiche, dans la même transaction que la visite.
+    for (const [index, line] of (p.marketWatch ?? []).entries()) {
+      await uow
+        .insertInto('crm_visit_market_watch')
+        .values({
+          id: toBin(idGenerator.newId()),
+          visit_id: visitId,
+          position_no: index + 1,
+          watch_type: line.watchType,
+          source_name: line.sourceName,
+          product_id: toBinOrNull(line.productId ?? null),
+          unit_code: line.unitCode ?? null,
+          observed_price_xaf: line.observedPriceXaf ?? null,
+          created_by: toBin(author),
+        })
+        .execute();
+    }
+    await emitActivityChange(uow, 'VISIT', envelope.aggregate_id, at);
+    return { status: 'APPLIED' };
+  };
 
 const recordInteraction: CommandHandler<InteractionPayload> = async (uow, envelope) => {
   const interactionId = toBin(envelope.aggregate_id);
@@ -308,13 +362,16 @@ function buildCancel(
   return handler;
 }
 
-export function registerActivityCommands(registry: CommandHandlerRegistry): void {
+export function registerActivityCommands(
+  registry: CommandHandlerRegistry,
+  idGenerator: IdGenerator,
+): void {
   registry.register({
     commandType: 'crm.visit.record',
     version: 1,
     payloadSchema: visitPayloadSchema,
     permissionCode: 'crm.visit.record',
-    handler: recordVisit,
+    handler: buildRecordVisit(idGenerator),
   });
   registry.register({
     commandType: 'crm.visit.cancel',

@@ -61,6 +61,23 @@ function visit(overrides: Partial<VisitData> = {}): VisitData {
     notes: 'Stock d’œufs bas',
     next_action_at: '2026-10-12',
     next_action_note: 'Livrer 10 plateaux',
+    // Veille marché relevée pendant la visite (PP-D, AV-315).
+    market_watch: [
+      {
+        watch_type: 'COMPETITOR',
+        source_name: 'Ferme Abena',
+        product_id: null,
+        unit_code: null,
+        observed_price_xaf: 2900,
+      },
+      {
+        watch_type: 'SUPPLIER',
+        source_name: 'Provenderie du Littoral',
+        product_id: null,
+        unit_code: null,
+        observed_price_xaf: null,
+      },
+    ],
     flags: [],
     status: 'RECORDED',
     occurred_at: '2026-10-08T10:00:00.000Z',
@@ -278,6 +295,9 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     expect(screen.getByText(/Plafond 50\s000\sF\sCFA/)).toBeInTheDocument();
     expect(screen.getByText('Confirme la visite')).toBeInTheDocument();
     expect(screen.getByText('Stock d’œufs bas')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Veille : Ferme Abena \(2\s900\sF\sCFA\), Provenderie du Littoral$/),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Erreur de saisie')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Encaisser' })).toHaveAttribute(
       'href',

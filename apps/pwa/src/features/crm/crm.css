@@ -403,3 +403,20 @@
 .crm-inline-form > .field {
   margin-bottom: 0;
 }
+
+/* Veille marché de la visite (PP-D ; AV-315) : un relevé par bloc, dans l'ordre de la fiche */
+.crm-watch-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crm-watch-line > .field,
+.crm-watch-line > .crm-pair > .field {
+  margin-bottom: 0;
+}

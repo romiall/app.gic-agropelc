@@ -684,6 +684,7 @@ export const fr = {
     balance_due: 'Reste {{amount}}',
     none: 'Rien à afficher.',
     visit: 'Visite {{outcome}}',
+    market_watch: 'Veille : {{lines}}',
     channel: {
       APPEL: 'Appel',
       SMS: 'SMS',
@@ -719,7 +720,23 @@ export const fr = {
     issue: {
       COMMENT_REQUIRED: 'Ce résultat exige un commentaire : précisez ce qui s’est passé.',
       NEXT_ACTION_PAST: 'La prochaine action ne peut pas être dans le passé.',
+      WATCH_NAME_REQUIRED:
+        'Veille marché : indiquez le fournisseur ou le concurrent de chaque relevé.',
+      WATCH_PRICE_INVALID: 'Veille marché : le prix constaté est un nombre entier de francs.',
     },
+    watch_title: 'Veille marché',
+    watch_hint:
+      'Facultatif : le fournisseur ou le concurrent rencontré, et le prix qu’il pratique.',
+    watch_line: 'Relevé {{n}}',
+    watch_add: 'Ajouter un relevé',
+    watch_remove: 'Retirer le relevé {{n}}',
+    watch_type_label: 'Qui ?',
+    watch_type: { COMPETITOR: 'Concurrent', SUPPLIER: 'Fournisseur' },
+    watch_name_label: 'Nom',
+    watch_product_label: 'Produit',
+    watch_product_none: 'Aucun produit précis',
+    watch_unit_label: 'Unité',
+    watch_price_label: 'Prix constaté',
     role_hint:
       'Votre rôle ne permet peut-être pas d’enregistrer une visite ; le serveur tranchera.',
     submit: 'Enregistrer la visite',

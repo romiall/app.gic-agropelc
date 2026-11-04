@@ -108,7 +108,7 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
       clock,
     );
     registerCustomerCommands(registry, idGenerator);
-    registerActivityCommands(registry);
+    registerActivityCommands(registry, idGenerator);
     const pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     const services = {
       push: new SyncPushService(pipeline, db, clock),

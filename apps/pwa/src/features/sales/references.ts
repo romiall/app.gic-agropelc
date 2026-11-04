@@ -277,6 +277,13 @@ interface ActivityPayload {
   readonly summary?: string | null;
   readonly nextActionAt?: string | null;
   readonly nextActionNote?: string | null;
+  readonly marketWatch?: readonly {
+    readonly watchType: string;
+    readonly sourceName: string;
+    readonly productId?: string | null;
+    readonly unitCode?: string | null;
+    readonly observedPriceXaf?: number | null;
+  }[];
 }
 
 /** Commandes d'activité de l'appareil que le jeu `crm_activity` ne sert pas encore (ADR-037 §3). */
@@ -315,6 +322,13 @@ export function pendingVisits(
     notes: payload.notes ?? null,
     next_action_at: payload.nextActionAt ?? null,
     next_action_note: payload.nextActionNote ?? null,
+    market_watch: (payload.marketWatch ?? []).map((line) => ({
+      watch_type: line.watchType,
+      source_name: line.sourceName,
+      product_id: line.productId ?? null,
+      unit_code: line.unitCode ?? null,
+      observed_price_xaf: line.observedPriceXaf ?? null,
+    })),
     flags: [],
     status: 'RECORDED',
     occurred_at: command.occurred_at,

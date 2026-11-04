@@ -165,7 +165,7 @@ describe('projections /sync/pull du CRM et du pointage (P3-07)', () => {
     registerPolicyCommands(registry);
     registerRequestCommands(registry, decisions);
     registerCustomerCommands(registry, idGenerator);
-    registerActivityCommands(registry);
+    registerActivityCommands(registry, idGenerator);
     registerTargetCommands(registry);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     pullService = new SyncPullService(db);
@@ -313,12 +313,35 @@ describe('projections /sync/pull du CRM et du pointage (P3-07)', () => {
       'VISIT',
       visitId,
       at('13:00:00'),
-      { customerId, position: { ...CENTER, accuracyM: 9 }, outcomeReasonCodeId: outcomeId },
+      {
+        customerId,
+        position: { ...CENTER, accuracyM: 9 },
+        outcomeReasonCodeId: outcomeId,
+        // Veille marché (PP-D, AV-315) : les relevés suivent la visite dans le jeu hors ligne.
+        marketWatch: [
+          { watchType: 'COMPETITOR', sourceName: 'Ferme Abena', observedPriceXaf: 2900 },
+          { watchType: 'SUPPLIER', sourceName: 'Provenderie du Littoral' },
+        ],
+      },
       { offline: true },
     );
     expect(latest(await pull(cte1, 'crm_activity'), 'VISIT', visitId)?.data).toMatchObject({
       id: visitId,
       user_id: cte1.userId,
+      market_watch: [
+        {
+          watch_type: 'COMPETITOR',
+          source_name: 'Ferme Abena',
+          product_id: null,
+          unit_code: null,
+          observed_price_xaf: 2900,
+        },
+        {
+          watch_type: 'SUPPLIER',
+          source_name: 'Provenderie du Littoral',
+          observed_price_xaf: null,
+        },
+      ],
     });
     expect(latest(await pull(cte2, 'crm_activity'), 'VISIT', visitId)).toBeDefined(); // nouveau titulaire informé
     expect(latest(await pull(rco, 'crm_activity'), 'VISIT', visitId)?.scope_type).toBe('TEAM');

@@ -203,7 +203,7 @@ Lot « Pièces papier » (PP), planifié le 22/10/2026, **non commencé** : cadr
 | REQ-305 | Contrôle de continuité des carnets | AV-308 ; AV-312 | PWA | Numéro de pièce papier | références saisies | lecture à définir | À définir en PP-0 | À rédiger en PP-0 : manque et doublon détectés | PP-B |
 | REQ-306 | Présence du personnel, alimentée par la fiche de pointage | AV-313 | À décider en PP-0 (frontières de modules) | Présence | À créer | À définir | À définir | À rédiger en PP-0 | PP-E |
 | REQ-307 | Bilan hebdomadaire du commercial | AV-314 | À décider en PP-0, coordination P9 | Bilan hebdomadaire | À créer | À définir | À définir | À rédiger en PP-0 | PP-E |
-| REQ-308 | Veille marché dans la visite et profil commercial du client | AV-315 ; AV-316 | crm, PWA | Ligne de veille marché ; compte client | `crm.visits` (table fille à créer), `crm.customers` | commandes de visite et de compte existantes, étendues | Écrans de visite et de compte client existants | À rédiger en PP-0 | PP-D |
+| REQ-308 | Veille marché dans la visite et profil commercial du client | AV-315 ; AV-316 | crm, PWA | Ligne de veille marché ; compte client | `crm.visit_market_watch` (créée le 04/11/2026, veille marché livrée ; profil du client à faire), `crm.customers` | commandes de visite et de compte existantes, étendues | Écrans de visite et de compte client existants | À rédiger en PP-0 | PP-D |
 | REQ-309 | Facture client : exclusion levée le 26/10/2026, facture imprimée (FA) | AV-041 ; AV-451 ; ADR-048 | PWA | Vente | `sales_sales` | — | Détail d'une vente (« Facture ») | `pieces.test.ts` | PP-A, **livré** |
 
 ## 16. Contrôle de couverture

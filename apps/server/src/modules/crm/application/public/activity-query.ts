@@ -43,6 +43,15 @@ export interface ActivityFilter {
   readonly limit: number;
 }
 
+/** Relevé de veille marché d'une visite (AV-315) : fournisseur ou concurrent, produit et prix constatés. */
+export interface MarketWatchLine {
+  readonly watchType: string;
+  readonly sourceName: string;
+  readonly productId: string | null;
+  readonly unitCode: string | null;
+  readonly observedPriceXaf: number | null;
+}
+
 export interface VisitSummary {
   readonly id: string;
   readonly customerId: string;
@@ -62,6 +71,7 @@ export interface VisitSummary {
   readonly nextActionAt: string | null;
   readonly nextActionNote: string | null;
   readonly flags: readonly string[];
+  readonly marketWatch: readonly MarketWatchLine[];
   readonly status: string;
   readonly cancelledAt: Date | null;
   readonly cancelledBy: string | null;
@@ -69,6 +79,42 @@ export interface VisitSummary {
   readonly occurredAt: Date;
   readonly capturedOffline: boolean;
   readonly clockSuspect: boolean;
+}
+
+/** Relevés de veille marché des visites données, dans l'ordre de la fiche, par identifiant de visite. */
+async function marketWatchByVisit(
+  executor: Executor,
+  visitIds: readonly Buffer[],
+): Promise<ReadonlyMap<string, readonly MarketWatchLine[]>> {
+  const byVisit = new Map<string, MarketWatchLine[]>();
+  if (visitIds.length === 0) return byVisit;
+  const lines = await executor
+    .selectFrom('crm_visit_market_watch')
+    .select([
+      'visit_id',
+      'watch_type',
+      'source_name',
+      'product_id',
+      'unit_code',
+      'observed_price_xaf',
+    ])
+    .where('visit_id', 'in', [...visitIds])
+    .orderBy('visit_id')
+    .orderBy('position_no')
+    .execute();
+  for (const line of lines) {
+    const key = fromBin(line.visit_id);
+    const list = byVisit.get(key) ?? [];
+    list.push({
+      watchType: line.watch_type,
+      sourceName: line.source_name,
+      productId: fromBinOrNull(line.product_id),
+      unitCode: line.unit_code,
+      observedPriceXaf: line.observed_price_xaf === null ? null : Number(line.observed_price_xaf),
+    });
+    byVisit.set(key, list);
+  }
+  return byVisit;
 }
 
 const EMPTY_PAGE = { items: [], nextCursor: null } as const;
@@ -104,12 +150,17 @@ export async function listVisits(
     .orderBy('v.id', 'desc')
     .limit(filter.limit + 1)
     .execute();
+  const watch = await marketWatchByVisit(
+    executor,
+    rows.map((row) => row.id),
+  );
   return pageOf(rows, filter.limit, (row) => ({
     id: fromBin(row.id),
     customerId: fromBin(row.customer_id),
     customerZoneId: fromBin(row.customer_zone_id),
     userId: fromBin(row.user_id),
     workSessionId: fromBinOrNull(row.work_session_id),
+    marketWatch: watch.get(fromBin(row.id)) ?? [],
     customerStageAtVisit: row.customer_stage_at_visit,
     position:
       row.lat === null || row.lng === null
