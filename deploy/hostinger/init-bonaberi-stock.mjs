@@ -16,13 +16,19 @@
  * 9. Stock initial de 15 000 poulets à Bonabéri (via recordStockMove OPENING_BALANCE)
  * 10. Rôle COMMERCIAL_SEDENTAIRE global accordé au responsable commercial en complément de
  *     RESP_COMMERCIAL pour lui permettre de vendre depuis tout stock sans restriction
- * 11. Approbation automatique des appareils en attente
+ * 11. Aucune approbation d'appareil : elle se fait dans l'écran Appareils (ECR-ADM-05) ou avec
+ *     approve-device.mjs, appareil par appareil (SM-DEVICE, BR-ADM-005). Ce script ne touche pas à
+ *     l'état des appareils (un balayage de tous les appareils en attente approuvait aussi des appareils
+ *     inconnus et sans trace d'audit : retiré le 04/11/2026).
  *
  * Toutes les écritures passent par les vraies commandes du pipeline et les fonctions de domaine
  * pour garantir l'intégrité de l'audit et du flux de synchronisation (sync_change_feed).
+ * Les valeurs métier ci-dessous (quantités, coût et prix de départ, droits du responsable commercial)
+ * sont des défauts de mise en service à faire valider par le porteur : AV-500.
  *
  * Usage, SUR LE SERVEUR, dans le dossier de l'application :
  *   node --env-file=.env init-bonaberi-stock.mjs [--dry-run]
+ * Avec --dry-run, rien n'est écrit : les lectures ont lieu, chaque écriture est seulement annoncée.
  */
 import { DefaultQueryCompiler } from 'kysely';
 import { SystemClock, Uuidv7Generator } from '@gic/domain';
@@ -70,6 +76,10 @@ let seq = Date.now() % 1_000_000_000;
 
 async function sendCommand(actor, command) {
   const id = command.aggregateId ?? idGenerator.newId();
+  if (dryRun) {
+    console.log(`    (simulé) ${command.type} sur ${id}`);
+    return { id, result: { status: 'DRY_RUN' } };
+  }
   const now = new Date().toISOString();
   seq += 1;
   const result = await pipeline.handle(
@@ -105,7 +115,8 @@ async function sendCommand(actor, command) {
 
 async function run() {
   console.log('== Initialisation Bonabéri, Catalogue & Stock ==');
-  if (dryRun) console.log('(Mode --dry-run : aucune écriture définitive)');
+  if (dryRun)
+    console.log('(Mode --dry-run : aucune écriture, chaque écriture est seulement annoncée)');
 
   // 1. Recherche de l'administrateur et de son appareil
   const admin = await db
@@ -356,11 +367,13 @@ async function run() {
         ruleId = id;
       } else {
         // Mettre à jour la date d'effet du brouillon pour respecter la fenêtre de 5 min
-        await db
-          .updateTable('pricing_price_rules')
-          .set({ valid_from: new Date(Date.now() - 60_000) })
-          .where('id', '=', existing.id)
-          .execute();
+        if (dryRun) console.log(`    (simulé) date d'effet du brouillon ${pr.code}`);
+        else
+          await db
+            .updateTable('pricing_price_rules')
+            .set({ valid_from: new Date(Date.now() - 60_000) })
+            .where('id', '=', existing.id)
+            .execute();
       }
       await sendCommand(actor, {
         type: 'pricing.rule.activate',
@@ -368,7 +381,9 @@ async function run() {
         aggregateId: ruleId,
         payload: {},
       });
-      console.log(`  + Règle de prix active : ${pr.code} (${pr.unitPriceXaf} XAF / ${pr.pricingUnitCode})`);
+      console.log(
+        `  + Règle de prix active : ${pr.code} (${pr.unitPriceXaf} XAF / ${pr.pricingUnitCode})`,
+      );
     }
   }
 
@@ -553,38 +568,42 @@ async function run() {
       if (item.productCode === 'POULET-VIF') {
         // Créer un lot de traçabilité pour le produit biologique (BR-STK-050)
         lotId = idGenerator.newId();
-        await db
-          .insertInto('inventory_stock_lots')
-          .values({
-            id: toBin(lotId),
-            lot_code: 'LOT-BONA-VIF-01',
-            product_id: toBin(prodId),
-            origin_type: 'PRODUCTION_LOT',
-            fifo_rank_at: new Date(Date.now() - 3600_000),
-            status: 'OPEN',
-            sellable_from_rearing: 1,
-            created_by: toBin(adminId),
-          })
-          .execute();
-        console.log(`  + Lot de stock créé pour ${item.productCode} : LOT-BONA-VIF-01 (${lotId})`);
+        if (!dryRun)
+          await db
+            .insertInto('inventory_stock_lots')
+            .values({
+              id: toBin(lotId),
+              lot_code: 'LOT-BONA-VIF-01',
+              product_id: toBin(prodId),
+              origin_type: 'PRODUCTION_LOT',
+              fifo_rank_at: new Date(Date.now() - 3600_000),
+              status: 'OPEN',
+              sellable_from_rearing: 1,
+              created_by: toBin(adminId),
+            })
+            .execute();
+        console.log(
+          `  + Lot de stock ${dryRun ? '(simulé) ' : ''}créé pour ${item.productCode} : LOT-BONA-VIF-01 (${lotId})`,
+        );
       }
 
-      await db.transaction().execute(async (trx) => {
-        await recordStockMove(trx, stockMoveDeps, {
-          productId: prodId,
-          lotId,
-          quantityBase: item.quantity,
-          fromLocationId: openingVirtualLocationId,
-          toLocationId: posLocationId,
-          moveType: 'OPENING_BALANCE',
-          declaredUnitCostXaf: item.unitCost,
-          occurredAt: new Date(Date.now() - 3600_000),
-          sourceDocType: 'INVENTORY_COUNT',
-          sourceDocId: idGenerator.newId(),
-          createdBy: adminId,
-          allowNegative: false,
+      if (!dryRun)
+        await db.transaction().execute(async (trx) => {
+          await recordStockMove(trx, stockMoveDeps, {
+            productId: prodId,
+            lotId,
+            quantityBase: item.quantity,
+            fromLocationId: openingVirtualLocationId,
+            toLocationId: posLocationId,
+            moveType: 'OPENING_BALANCE',
+            declaredUnitCostXaf: item.unitCost,
+            occurredAt: new Date(Date.now() - 3600_000),
+            sourceDocType: 'INVENTORY_COUNT',
+            sourceDocId: idGenerator.newId(),
+            createdBy: adminId,
+            allowNegative: false,
+          });
         });
-      });
       console.log(
         `  + Mouvement OPENING_BALANCE enregistré : 15 000 unités de ${item.productCode} sur POS-BONA.`,
       );
@@ -610,6 +629,8 @@ async function run() {
 
     if (existingAssignment) {
       console.log('  = Rôle COMMERCIAL_SEDENTAIRE déjà attribué à Dessiri.');
+    } else if (dryRun) {
+      console.log('  + (simulé) Rôle COMMERCIAL_SEDENTAIRE (GLOBAL) attribué à Dessiri.');
     } else {
       await db.transaction().execute(async (trx) => {
         const refusal = await insertRoleAssignment(trx, {
@@ -620,40 +641,35 @@ async function run() {
           validFrom: new Date(Date.now() - 3600_000),
           createdBy: adminId,
         });
-        if (refusal) throw new Error(`Refus affectation rôle : ${refusal.code} - ${refusal.message}`);
+        if (refusal)
+          throw new Error(`Refus affectation rôle : ${refusal.code} - ${refusal.message}`);
       });
       invalidateUser(managerId);
       console.log('  + Rôle COMMERCIAL_SEDENTAIRE (GLOBAL) attribué à Dessiri.');
     }
   }
 
-  // 13. Approbation des appareils en attente
-  console.log('\n--- 11. Contrôle des appareils ---');
+  // 13. Appareils : aucune approbation ici (SM-DEVICE, BR-ADM-005). Le script annonce seulement ce qui attend.
+  console.log('\n--- 11. Appareils en attente (non modifiés) ---');
   const pendingDevices = await db
     .selectFrom('identity_devices')
-    .select(['id', 'short_code', 'enrolled_by_user_id'])
+    .select(['short_code'])
     .where('status', '=', 'PENDING')
     .execute();
-
-  for (const d of pendingDevices) {
-    await db
-      .updateTable('identity_devices')
-      .set({
-        status: 'ACTIVE',
-        status_changed_at: new Date(),
-        approved_by: toBin(adminId),
-        updated_at: new Date(),
-        updated_by: toBin(adminId),
-      })
-      .where('id', '=', d.id)
-      .execute();
-    console.log(`  + Appareil ${d.short_code} approuvé avec succès.`);
-  }
   if (pendingDevices.length === 0) {
     console.log('  = Aucun appareil en attente d’approbation.');
+  } else {
+    console.log(
+      `  ${pendingDevices.length} appareil(s) en attente (${pendingDevices.map((d) => d.short_code).join(', ')}) : ` +
+        'à approuver ou refuser un par un dans l’écran Appareils, ou avec approve-device.mjs.',
+    );
   }
 
-  console.log('\n== Tout a été initialisé avec succès ! ==');
+  console.log(
+    dryRun
+      ? '\n== Simulation terminée : rien n’a été écrit. =='
+      : '\n== Tout a été initialisé avec succès ! ==',
+  );
 }
 
 try {
