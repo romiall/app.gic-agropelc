@@ -123,6 +123,40 @@ describe('PaperSlipReportScreen (PP-B)', () => {
     expect(screen.getByText('N° 10 → 13')).toBeInTheDocument();
   });
 
+  it('registre : la continuité se juge par carnet, jamais sur l’ensemble des numéros (AV-312)', async () => {
+    const at = new Date(Date.now() - 3_600_000).toISOString();
+    await submitPaperSlipReport(sale, meta('BV-000140', at), IDS.user);
+    await submitPaperSlipReport(sale, meta('BV-000141', at), IDS.user);
+    await submitPaperSlipReport(
+      {
+        type: 'RE',
+        customerId: IDS.customer,
+        siteId: IDS.site,
+        payment: { methodCode: 'ESPECES', amountXaf: 25_000 },
+      },
+      meta('RE-000099', at),
+      IDS.user,
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(screen.getByRole('radio', { name: /Registre des carnets/i }));
+    await screen.findByText('RE-000099');
+
+    // Un bon de vente n° 141 et un reçu n° 99 ne forment pas 42 « sauts » : deux carnets, aucun manque.
+    const value = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(value('Total reporté')).toBe('3');
+    expect(value('Sauts détectés')).toBe('0');
+    expect(value('Doublons détectés')).toBe('0');
+    expect(value('Plage (Min - Max)')).toBe('—');
+    // État d'envoi en français, pas le code de la file.
+    expect(screen.getAllByText('En attente d’envoi')).toHaveLength(3);
+    expect(screen.queryByText('LOCAL_ONLY')).toBeNull();
+
+    // Filtré sur un carnet : sa plage.
+    await user.selectOptions(screen.getByDisplayValue('Tous les carnets'), 'BV');
+    expect(await screen.findByText('N° 140 → 141')).toBeInTheDocument();
+  });
+
   it('une pièce incomplète n’est pas enregistrée : l’écran dit ce qui manque', async () => {
     const user = userEvent.setup();
     renderScreen();

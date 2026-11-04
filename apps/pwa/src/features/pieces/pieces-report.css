@@ -86,13 +86,13 @@
 
 .report-slip-ref {
   font-weight: 600;
-  font-size: var(--text-base);
-  color: var(--text);
+  font-size: var(--text-md);
+  color: var(--ink);
 }
 
 .report-slip-date {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--ink-3);
 }
 
 .report-slip-meta {
@@ -101,7 +101,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--ink-3);
 }
 
 /* Champs propres à chaque type de pièce (PP-B) : groupes de champs et lignes de pièce */
@@ -145,4 +145,10 @@
 .report-total {
   margin: 0;
   font-weight: 600;
+}
+
+/* Défauts de saisie listés dans la bannière : retrait de liste raisonnable sur téléphone */
+.report-issues {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
 }

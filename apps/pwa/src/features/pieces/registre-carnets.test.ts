@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzeContinuity,
+  analyzeContinuityByType,
   checkInputContinuity,
   evaluateBackdating,
   extractSlipNumber,
@@ -120,5 +121,44 @@ describe('registre-carnets (AV-308, AV-312, AV-078)', () => {
       const evalRes = evaluateBackdating(occurred, now);
       expect(evalRes.isFuture).toBe(true);
     });
+  });
+});
+
+describe('analyzeContinuityByType : une suite par type de pièce (AV-312)', () => {
+  const slip = (slipType: string, paperSlipRef: string) => ({ slipType, paperSlipRef });
+
+  it('des carnets différents ne forment pas une seule suite de numéros', () => {
+    const report = analyzeContinuityByType([
+      slip('BV', 'BV-000140'),
+      slip('BV', 'BV-000141'),
+      slip('BV', 'BV-000142'),
+      slip('RE', 'RE-000099'),
+      slip('BD', 'BD-000055'),
+    ]);
+    expect(report.totalCount).toBe(5);
+    expect(report.missingCount).toBe(0);
+    expect(report.missing).toEqual([]);
+    expect(report.duplicates).toEqual([]);
+    // Plusieurs carnets : pas de plage unique.
+    expect(report.range).toBeNull();
+  });
+
+  it('les sauts et les doublons sont rapportés au carnet qui les porte', () => {
+    const report = analyzeContinuityByType([
+      slip('BV', 'BV-000140'),
+      slip('BV', 'BV-000143'),
+      slip('RE', 'RE-000010'),
+      slip('RE', 'RE-000010'),
+    ]);
+    expect(report.missing).toEqual([{ type: 'BV', numbers: [141, 142] }]);
+    expect(report.missingCount).toBe(2);
+    expect(report.duplicates).toEqual([{ type: 'RE', ref: 'RE-000010', count: 2 }]);
+  });
+
+  it('un seul carnet : sa plage', () => {
+    expect(
+      analyzeContinuityByType([slip('BD', 'BD-000055'), slip('BD', 'BD-000057')]).range,
+    ).toEqual({ min: 55, max: 57 });
+    expect(analyzeContinuityByType([]).range).toBeNull();
   });
 });

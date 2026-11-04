@@ -29,6 +29,7 @@ import {
   Section,
   Segmented,
   Select,
+  type BadgeTone,
   type SegmentedOption,
 } from '../../components/ui/index.js';
 import { clock } from '../../platform/composition.js';
@@ -38,10 +39,15 @@ import { PhotoField } from '../attachments/PhotoField.js';
 import type { PreparedPhoto } from '../attachments/photo.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { useSalesReferences } from '../sales/references.js';
+import { formatDateTime } from '../home/format-home.js';
 import { formatMoney } from '../sales/format.js';
 import { saveErrorKey } from '../sales/submit.js';
 import { PieceAction } from './PieceAction.js';
-import { analyzeContinuity, checkInputContinuity, evaluateBackdating } from './registre-carnets.js';
+import {
+  analyzeContinuityByType,
+  checkInputContinuity,
+  evaluateBackdating,
+} from './registre-carnets.js';
 import {
   REPORTABLE_SLIP_TYPES,
   slipPhotoTarget,
@@ -74,6 +80,14 @@ const SLIP_TYPE_LABELS: Readonly<Record<ReportableSlipType, string>> = {
   BR: 'BR — Bon de réception',
   BT: 'BT — Bon de transfert',
   FP: 'FP — Fiche de perte',
+};
+
+/** Ton du badge d'une pièce reportée selon l'état de son envoi (les autres états restent neutres). */
+const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
+  SYNCED: 'ok',
+  SYNCED_WITH_WARNING: 'warn',
+  CONFLICT: 'warn',
+  REJECTED: 'bad',
 };
 
 /** Types dont le formulaire part d'une ligne vide (produit à choisir). */
@@ -129,7 +143,8 @@ export function PaperSlipReportScreen() {
       ? reportedSlips
       : reportedSlips.filter((s) => s.slipType === slipTypeFilter);
 
-  const continuityReport = analyzeContinuity(filteredSlips.map((s) => s.paperSlipRef));
+  // Une suite de numéros par type de pièce : les carnets ne se comptent jamais ensemble (AV-312).
+  const continuity = analyzeContinuityByType(filteredSlips);
 
   const tabOptions: readonly SegmentedOption<TabMode>[] = [
     { value: 'entry', label: t('piece.report_tab_entry', 'Saisie du report') },
@@ -295,9 +310,11 @@ export function PaperSlipReportScreen() {
           {submitError ? <Banner tone="bad">{submitError}</Banner> : null}
 
           {showIssues && resolution && !resolution.ok ? (
-            <Banner tone="bad">
-              <p>{t('piece.issues_title', 'La pièce ne peut pas encore être enregistrée :')}</p>
-              <ul>
+            <Banner
+              tone="bad"
+              title={t('piece.issues_title', 'La pièce ne peut pas encore être enregistrée :')}
+            >
+              <ul className="report-issues">
                 {resolution.issues.map((issue) => (
                   <li key={issue}>{t(`piece.issue.${issue}`, SLIP_ISSUE_MESSAGES[issue])}</li>
                 ))}
@@ -470,120 +487,116 @@ export function PaperSlipReportScreen() {
           </div>
 
           <div className="report-kpis">
-            <Card>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <Card padded>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-3)' }}>
                 {t('piece.total_slips', 'Total reporté')}
               </div>
               <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 'bold' }}>
-                {continuityReport.totalCount}
+                {continuity.totalCount}
               </div>
             </Card>
 
-            <Card>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <Card padded>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-3)' }}>
                 {t('piece.range', 'Plage (Min - Max)')}
               </div>
               <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'bold' }}>
-                {continuityReport.minNumber !== null && continuityReport.maxNumber !== null
-                  ? `N° ${continuityReport.minNumber} → ${continuityReport.maxNumber}`
-                  : '—'}
+                {continuity.range ? `N° ${continuity.range.min} → ${continuity.range.max}` : '—'}
               </div>
             </Card>
 
-            <Card>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <Card padded>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-3)' }}>
                 {t('piece.gaps_detected', 'Sauts détectés')}
               </div>
               <div
                 style={{
                   fontSize: 'var(--text-2xl)',
                   fontWeight: 'bold',
-                  color: continuityReport.missingNumbers.length > 0 ? 'var(--warning)' : undefined,
+                  color: continuity.missingCount > 0 ? 'var(--warn)' : undefined,
                 }}
               >
-                {continuityReport.missingNumbers.length}
+                {continuity.missingCount}
               </div>
             </Card>
 
-            <Card>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <Card padded>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-3)' }}>
                 {t('piece.duplicates_detected', 'Doublons détectés')}
               </div>
               <div
                 style={{
                   fontSize: 'var(--text-2xl)',
                   fontWeight: 'bold',
-                  color: continuityReport.duplicates.length > 0 ? 'var(--bad)' : undefined,
+                  color: continuity.duplicates.length > 0 ? 'var(--bad)' : undefined,
                 }}
               >
-                {continuityReport.duplicates.length}
+                {continuity.duplicates.length}
               </div>
             </Card>
           </div>
 
-          {continuityReport.duplicates.length > 0 ? (
+          {continuity.duplicates.length > 0 ? (
             <Banner tone="warn">
               {t('piece.duplicates_summary', {
-                refs: continuityReport.duplicates.map((d) => `${d.ref} (${d.count}x)`).join(', '),
-                defaultValue: `Doublons détectés : ${continuityReport.duplicates.map((d) => `${d.ref} (${d.count}x)`).join(', ')}.`,
+                refs: continuity.duplicates.map((d) => `${d.ref} (${d.count}x)`).join(', '),
+                defaultValue: `Doublons détectés : ${continuity.duplicates.map((d) => `${d.ref} (${d.count}x)`).join(', ')}.`,
               })}
             </Banner>
           ) : null}
 
-          {continuityReport.missingNumbers.length > 0 ? (
+          {continuity.missingCount > 0 ? (
             <Banner tone="info">
               {t('piece.gaps_summary', {
-                gaps:
-                  continuityReport.missingNumbers.slice(0, 15).join(', ') +
-                  (continuityReport.missingNumbers.length > 15 ? '…' : ''),
-                defaultValue: `Numéros manquants dans la suite : ${continuityReport.missingNumbers.slice(0, 15).join(', ')}${continuityReport.missingNumbers.length > 15 ? '…' : ''}.`,
+                gaps: continuity.missing
+                  .map(
+                    (entry) =>
+                      `${entry.type} : ${entry.numbers.slice(0, 15).join(', ')}${entry.numbers.length > 15 ? '…' : ''}`,
+                  )
+                  .join(' ; '),
+                defaultValue: `Numéros manquants dans la suite : ${continuity.missing
+                  .map(
+                    (entry) =>
+                      `${entry.type} : ${entry.numbers.slice(0, 15).join(', ')}${entry.numbers.length > 15 ? '…' : ''}`,
+                  )
+                  .join(' ; ')}.`,
               })}
             </Banner>
           ) : null}
 
           {filteredSlips.length === 0 ? (
-            <p
-              style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-6)' }}
-            >
+            <p style={{ color: 'var(--ink-3)', textAlign: 'center', padding: 'var(--space-6)' }}>
               {t('piece.no_slips', 'Aucune pièce papier enregistrée pour ce filtre.')}
             </p>
           ) : (
             <div className="report-slips-list">
               {filteredSlips.map((slip) => (
-                <Card key={slip.commandId} className="report-slip-card">
+                <Card key={slip.commandId} className="report-slip-card" padded>
                   <div className="report-slip-card-header">
                     <div>
                       <Badge tone="muted">{slip.slipType}</Badge>{' '}
                       <span className="report-slip-ref">{slip.paperSlipRef}</span>
                     </div>
-                    <Badge
-                      tone={
-                        slip.status === 'SYNCED'
-                          ? 'ok'
-                          : slip.status === 'CONFLICT'
-                            ? 'warn'
-                            : 'muted'
-                      }
-                    >
-                      {slip.status}
+                    <Badge tone={STATUS_TONE[slip.status] ?? 'muted'}>
+                      {t(`sync.status.${slip.status}`)}
                     </Badge>
                   </div>
 
                   <div className="report-slip-meta">
                     <span>
-                      Date sur pièce : {new Date(slip.occurredAt).toLocaleString('fr-FR')}
+                      {t('piece.slip_date', 'Date sur pièce')} : {formatDateTime(slip.occurredAt)}
                     </span>
                     {slip.amountXaf !== null && slip.amountXaf !== undefined ? (
                       <span style={{ fontWeight: 600 }}>{formatMoney(slip.amountXaf)}</span>
                     ) : null}
                   </div>
 
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink)' }}>
                     {slip.description}
                   </div>
 
                   {slip.backdatedReason ? (
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
                       Motif : {slip.backdatedReason}
                     </div>
                   ) : null}

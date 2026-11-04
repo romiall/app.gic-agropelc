@@ -112,6 +112,51 @@ export function analyzeContinuity(refs: readonly string[]): ContinuityReport {
   };
 }
 
+/** Continuité de plusieurs carnets : chaque type de pièce a sa propre suite de numéros (AV-312). */
+export interface TypedContinuity {
+  readonly totalCount: number;
+  /** Plage des numéros quand un seul type de carnet est concerné, sinon `null` (suites distinctes). */
+  readonly range: { readonly min: number; readonly max: number } | null;
+  readonly missing: readonly { readonly type: string; readonly numbers: readonly number[] }[];
+  readonly missingCount: number;
+  readonly duplicates: readonly {
+    readonly type: string;
+    readonly ref: string;
+    readonly count: number;
+  }[];
+}
+
+/**
+ * Contrôle de continuité d'un registre qui mêle plusieurs carnets : une suite par type de pièce, jamais
+ * une suite unique (le bon de vente n° 142 et le reçu n° 99 ne forment pas un « saut » de 43 numéros).
+ */
+export function analyzeContinuityByType(
+  slips: readonly { readonly slipType: string; readonly paperSlipRef: string }[],
+): TypedContinuity {
+  const byType = new Map<string, string[]>();
+  for (const slip of slips) {
+    byType.set(slip.slipType, [...(byType.get(slip.slipType) ?? []), slip.paperSlipRef]);
+  }
+  const missing: { type: string; numbers: readonly number[] }[] = [];
+  const duplicates: { type: string; ref: string; count: number }[] = [];
+  let range: TypedContinuity['range'] = null;
+  for (const [type, refs] of byType) {
+    const report = analyzeContinuity(refs);
+    if (report.missingNumbers.length > 0) missing.push({ type, numbers: report.missingNumbers });
+    for (const duplicate of report.duplicates) duplicates.push({ type, ...duplicate });
+    if (report.minNumber !== null && report.maxNumber !== null) {
+      range = { min: report.minNumber, max: report.maxNumber };
+    }
+  }
+  return {
+    totalCount: slips.length,
+    range: byType.size === 1 ? range : null,
+    missing,
+    missingCount: missing.reduce((sum, entry) => sum + entry.numbers.length, 0),
+    duplicates,
+  };
+}
+
 /**
  * Vérifie une nouvelle référence en cours de saisie par rapport aux références déjà enregistrées.
  */
