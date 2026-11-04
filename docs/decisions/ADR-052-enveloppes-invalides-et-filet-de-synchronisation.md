@@ -80,8 +80,8 @@ parce que personne n'a rouvert l'écran.
 - Les douze appareils de test déjà en base restent `PENDING` tant qu'ils ne sont pas refusés (aucune commande ne peut
   les viser). Une commande d'installation les refuse, comme `db:approve-device` approuve le premier appareil
   (`bootstrap-legacy-device-cleanup.ts`, `deploy/hostinger/block-legacy-devices.mjs` : liste par défaut, `--apply`
-  pour écrire ; même transition que « Refuser », acteur système, audit `identity.device.block`). À lancer en ligne
-  avec l'accord du porteur.
+  pour écrire ; même transition que « Refuser », acteur système, audit `identity.device.block`). Lancée en ligne le
+  04/11/2026 avec l'accord du porteur : les douze appareils (`TestScript`, enrôlés le 02/11) sont refusés.
 - Les essais d'envoi de la PWA utilisent des identifiants d'utilisateur UUIDv7, comme en production.
 - Le filet ne couvre pas l'application fermée ou gelée par le système (téléphone en veille) : la synchronisation reprend
   à l'ouverture. Non vérifié sur téléphone.
