@@ -13,24 +13,20 @@ import { SystemClock, Uuidv7Generator, businessDayOf } from '@gic/domain';
 import { createDatabase, type DB } from '../src/platform/kysely/database.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { loadLocalEnvForTests } from './test-env.js';
 import type { OperationType } from '../src/modules/approvals/application/commands/operation-types.js';
 import {
   signAccessToken,
   type AccessTokenClaims,
 } from '../src/modules/identity/application/public/jwt.js';
 
-if (!process.env.SERVER_DATABASE_URL) {
-  try {
-    process.loadEnvFile(new URL('../.env', import.meta.url));
-  } catch {
-    // Pas de fichier local .env
-  }
-}
+// Le .env local n'est repris que s'il vise une base jetable (_test, _rp) : jamais la base de développement.
+loadLocalEnvForTests(new URL('../.env', import.meta.url));
 
 const SERVER_DATABASE_URL = process.env.SERVER_DATABASE_URL;
 if (!SERVER_DATABASE_URL) {
   throw new Error(
-    'SERVER_DATABASE_URL non définie : ces tests exigent une base MySQL déjà migrée, identifiants gic_app (voir apps/server/.env.example).',
+    'SERVER_DATABASE_URL non définie : ces tests exigent une base MySQL jetable déjà migrée (nom en _test ou _rp), identifiants gic_app (voir apps/server/.env.example). Le .env local n’est repris que s’il vise une telle base.',
   );
 }
 

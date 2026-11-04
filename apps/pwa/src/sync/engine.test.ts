@@ -631,7 +631,8 @@ describe('sync/engine (cadence, MP-12 / AV-319)', () => {
       const engine = engineOf(net);
       started.push(engine);
       engine.start();
-      await vi.waitFor(() => expect(cycles).toBe(1)); // le cycle de démarrage
+      // Au moins un cycle : le filet (60 ms) peut déjà avoir lancé le suivant quand le sondage passe, sur un poste lent.
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(1)); // le cycle de démarrage
       await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3));
     });
 
@@ -661,16 +662,17 @@ describe('sync/engine (cadence, MP-12 / AV-319)', () => {
 
     it('un cycle lancé à la main repousse le filet', async () => {
       setVisibility('hidden', false);
-      const engine = engineOf({ ...net, heartbeatMs: 400 });
+      // Marges de 400 ms de chaque côté de l'échéance d'origine : un poste saturé peut retarder une minuterie.
+      const engine = engineOf({ ...net, heartbeatMs: 1_000 });
       started.push(engine);
       engine.start();
-      await vi.waitFor(() => expect(cycles).toBe(1));
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await engine.trigger(); // 250 ms : le filet prévu à 400 ms est repoussé à ~650 ms
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(1));
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await engine.trigger(); // 600 ms : le filet prévu à 1 000 ms est repoussé à ~1 600 ms
       expect(cycles).toBe(2);
-      await new Promise((resolve) => setTimeout(resolve, 250)); // ~500 ms : l'échéance d'origine est passée
+      await new Promise((resolve) => setTimeout(resolve, 600)); // ~1 200 ms : l'échéance d'origine est passée
       expect(cycles).toBe(2);
-      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3), { timeout: 2_000 });
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3), { timeout: 4_000 });
     });
 
     it('arrêt : plus de filet', async () => {
@@ -679,7 +681,7 @@ describe('sync/engine (cadence, MP-12 / AV-319)', () => {
       engine.start();
       await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(2));
       engine.stop();
-      await new Promise((resolve) => setTimeout(resolve, 60)); // un cycle en vol se termine
+      await new Promise((resolve) => setTimeout(resolve, 200)); // un cycle en vol se termine
       const settled = cycles;
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(cycles).toBe(settled);

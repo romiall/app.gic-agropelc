@@ -17,17 +17,22 @@ import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs';
 
 /** Masque ce qui ne doit jamais sortir du serveur : URL de base, jetons, secrets, e-mails, numeros camerounais. */
 export function mask(text) {
-  return String(text)
-    .replace(/mysql:\/\/[^\s"']+/gi, 'mysql://[masque]')
-    .replace(/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g, '[jeton]')
-    .replace(/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, '$1 [masque]')
-    .replace(
-      /(authorization|password|passwd|pwd|secret|token|jeton|mot de passe|api[_-]?key)(["']?\s*[:=]\s*|\s+)(?!(?:bearer|basic)\s)("[^"]*"|'[^']*'|[^\s,;}]+)/gi,
-      '$1$2[masque]',
-    )
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[courriel]')
-    .replace(/\+?237[\s.-]?[26]\d(?:[\s.-]?\d{2}){3}/g, '[numero]')
-    .replace(/\b[62]\d{8}\b/g, '[numero]');
+  return (
+    String(text)
+      .replace(/mysql:\/\/[^\s"']+/gi, 'mysql://[masque]')
+      .replace(/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g, '[jeton]')
+      .replace(/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, '$1 [masque]')
+      .replace(
+        /(authorization|password|passwd|pwd|secret|token|jeton|mot de passe|api[_-]?key)(["']?\s*[:=]\s*|\s+)(?!(?:bearer|basic)\s)("[^"]*"|'[^']*'|[^\s,;}]+)/gi,
+        '$1$2[masque]',
+      )
+      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[courriel]')
+      // Numero camerounais : 9 chiffres commencant par 6 ou 2, avec ou sans indicatif, quel que soit le groupement.
+      .replace(/\+?\(?237\)?[\s.-]?[26](?:[\s.-]?\d){8}/g, '[numero]')
+      // Sans indicatif : les chiffres ne sont separes que par des espaces ou des points (jamais par des tirets ni des deux
+      // points) pour ne pas confondre un horodatage ou un identifiant avec un numero.
+      .replace(/(?<![\d.:-])[26](?:[ .]?\d){8}(?![\d.:-])/g, '[numero]')
+  );
 }
 
 function cell(value) {

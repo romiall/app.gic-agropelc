@@ -322,9 +322,12 @@ export function DevicesScreen() {
             const thisDevice = device.id === thisDeviceId;
             const actions = actionsFor(device);
             const site = siteName(device.designatedSiteId);
+            // Un appareil non conforme (`commandable` faux) n'a aucune action pour une autre raison : on ne
+            // lui attribue pas la note « connecté par vous », seule la note d'identifiant non conforme s'applique.
             const selfPending =
               device.status === 'PENDING' &&
               !device.actions.approve &&
+              device.commandable !== false &&
               device.enrolledByUserId === userId;
             return (
               <li

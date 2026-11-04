@@ -33,6 +33,7 @@ import {
   Textarea,
   type BadgeTone,
 } from '../../components/ui/index.js';
+import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { listProjected } from '../../storage/projections.js';
@@ -239,7 +240,7 @@ export function AlertsNotificationsScreen() {
         authorUserId: unlocked.userId,
         commandType: built.commandType,
         aggregateType: 'NOTIFICATION',
-        aggregateId: notificationId ?? crypto.randomUUID(),
+        aggregateId: notificationId ?? idGenerator.newId(),
         payload: built.payload,
       });
       setLastCmdId(sent.command_id);
@@ -268,7 +269,7 @@ export function AlertsNotificationsScreen() {
     const ok = await onlineCommands.send({
       commandType: built.commandType,
       aggregateType: 'ALERT_RULE',
-      aggregateId: crypto.randomUUID(),
+      aggregateId: idGenerator.newId(),
       payload: built.payload,
     });
     if (ok) {

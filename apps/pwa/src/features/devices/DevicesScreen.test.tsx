@@ -259,6 +259,22 @@ describe('Appareils (ECR-ADM-05)', () => {
     expect(within(card).getByText(/Identifiant d’appareil non conforme/)).toBeInTheDocument();
   });
 
+  it('appareil non conforme enrôlé par le lecteur : seule la note d’identifiant non conforme s’affiche', async () => {
+    // Sans `commandable`, la ligne « connecté par moi » s’appliquerait aussi (aucune action, enrôlé par le lecteur) et
+    // donnerait à tort l’Admin comme issue : son approbation revient à lui, alors qu’elle est impossible.
+    serve([
+      device({
+        commandable: false,
+        enrolledByUserId: '01900000-0000-7000-8000-000000000001',
+        actions: { approve: false, block: false, unblock: false, designate: false },
+      }),
+    ]);
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Appareil 7KQ2' });
+    expect(within(card).getByText(/Identifiant d’appareil non conforme/)).toBeInTheDocument();
+    expect(within(card).queryByText(/son approbation revient à l’Admin/)).toBeNull();
+  });
+
   it('hors ligne : écran en ligne seulement ; refus de droit annoncé', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();

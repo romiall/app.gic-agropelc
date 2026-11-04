@@ -30,6 +30,7 @@ import {
   Tabs,
   type BadgeTone,
 } from '../../components/ui/index.js';
+import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAdminRead, useOnlineCommands } from '../admin/admin-online.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -202,7 +203,7 @@ export function AnalyticsExplorerScreen() {
     const ok = await commands.send({
       commandType: built.commandType,
       aggregateType: 'SAVED_VIEW',
-      aggregateId: crypto.randomUUID(),
+      aggregateId: idGenerator.newId(),
       payload: built.payload,
     });
     if (ok) {
@@ -222,7 +223,7 @@ export function AnalyticsExplorerScreen() {
     const ok = await commands.send({
       commandType: built.commandType,
       aggregateType: 'ANALYTICS_EXPORT',
-      aggregateId: crypto.randomUUID(),
+      aggregateId: idGenerator.newId(),
       payload: built.payload,
     });
     if (ok) {

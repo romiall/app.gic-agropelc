@@ -5,7 +5,8 @@ Met l'application en ligne sur Hostinger : construit le paquet, l'envoie, puis l
 Usage, a la racine du depot :
   powershell -ExecutionPolicy Bypass -File deploy\hostinger\deploy.ps1
 Options : -SkipBuild (reutilise la construction existante), -NoDbBackup (ignore la sauvegarde de la base),
-          -HostName, -Port, -User, -KeyPath (valeurs par defaut ci-dessous), -BuildOnly (construit le paquet et s'arrete).
+          -HostName, -Port, -User, -KeyPath (valeurs par defaut ci-dessous), -BuildOnly (construit le paquet et s'arrete),
+          -AllowDirty (livre malgre des fichiers suivis modifies : voir build-bundle.ps1, deconseille).
 
 Aucun secret dans ce fichier : la cle SSH reste dans %USERPROFILE%\.ssh et le .env reste sur le serveur.
 Fichier ASCII volontairement : Windows PowerShell 5.1 lit mal l'UTF-8 sans BOM.
@@ -18,12 +19,13 @@ param(
   [string]$AppDir = 'domains/gic-agropelc.com/nodejs-app',
   [switch]$SkipBuild,
   [switch]$NoDbBackup,
-  [switch]$BuildOnly
+  [switch]$BuildOnly,
+  [switch]$AllowDirty
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $KeyPath)) { throw "Cle SSH introuvable : $KeyPath" }
 
-& "$PSScriptRoot\build-bundle.ps1" -SkipBuild:$SkipBuild
+& "$PSScriptRoot\build-bundle.ps1" -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty
 if ($BuildOnly) { Write-Host 'Construction terminee (-BuildOnly) : rien n''a ete envoye.'; return }
 
 $bundle = Join-Path $env:TEMP 'gic-app-bundle.tar.gz'

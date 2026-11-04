@@ -139,5 +139,23 @@ export default [
       ],
     },
   },
+  {
+    // apps/pwa : tout identifiant (commande, agrégat, document) vient de l'`idGenerator` de la
+    // composition racine (UUIDv7, ADR-002). `crypto.randomUUID()` produit un UUIDv4 : l'enveloppe
+    // de la commande est alors invalide et le serveur refuse le lot entier (ADR-052).
+    files: ['apps/pwa/src/**/*.{ts,tsx}'],
+    ignores: ['apps/pwa/src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'crypto',
+          property: 'randomUUID',
+          message:
+            'Utiliser idGenerator (platform/composition.ts) : crypto.randomUUID() produit un UUIDv4, refusé par le serveur (ADR-002, ADR-052).',
+        },
+      ],
+    },
+  },
   prettierConfig,
 ];

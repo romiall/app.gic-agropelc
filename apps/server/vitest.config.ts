@@ -1,11 +1,9 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import { loadLocalEnvForTests } from './test/test-env.js';
 
-try {
-  process.loadEnvFile(new URL('.env', import.meta.url));
-} catch {
-  // Pas de fichier .env local
-}
+// Le .env local n'est repris que s'il vise une base jetable (_test, _rp) : jamais la base de développement.
+loadLocalEnvForTests(new URL('.env', import.meta.url));
 
 export default defineConfig({
   resolve: {

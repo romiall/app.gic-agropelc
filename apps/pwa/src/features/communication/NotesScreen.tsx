@@ -30,6 +30,7 @@ import {
   Textarea,
   type BadgeTone,
 } from '../../components/ui/index.js';
+import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { listProjected } from '../../storage/projections.js';
@@ -345,7 +346,7 @@ export function NotePublishScreen() {
       setFormError(t('comm.notes.errorRequired'));
       return;
     }
-    const aggregateId = editingNoteId ?? crypto.randomUUID();
+    const aggregateId = editingNoteId ?? idGenerator.newId();
     const ok = await commands.send({
       commandType: built.commandType,
       aggregateType: 'INTERNAL_NOTE',

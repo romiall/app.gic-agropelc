@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { FixedClock, Uuidv7Generator } from '@gic/domain';
+import { FixedClock, isUuidv7, Uuidv7Generator } from '@gic/domain';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   blockLegacyPendingDevices,
@@ -76,6 +76,18 @@ describe('AV-499 : refus des appareils en attente à identifiant non conforme', 
         [legacyId, otherLegacyId].sort(),
       );
       expect(listed.devices.every((device) => device.platform === 'TestScript')).toBe(true);
+      expect(await statusOf(legacyId)).toBe('PENDING');
+
+      // Mode par défaut (aucun code court, simulation : celui de la ligne de commande) : tous les appareils non
+      // conformes en attente, jamais celui qui porte un UUIDv7. D'autres essais peuvent avoir laissé des appareils de ce
+      // genre sur la base : on cherche les nôtres sans exiger la liste exacte, et sans rien écrire.
+      expect(isUuidv7(regularId)).toBe(true);
+      const listedAll = await tx((trx) => blockLegacyPendingDevices(trx, deps, { apply: false }));
+      expect(listedAll.kind).toBe('LISTED');
+      if (listedAll.kind !== 'LISTED') return;
+      const listedAllIds = listedAll.devices.map((device) => device.id);
+      expect(listedAllIds).toEqual(expect.arrayContaining([legacyId, otherLegacyId]));
+      expect(listedAllIds).not.toContain(regularId);
       expect(await statusOf(legacyId)).toBe('PENDING');
 
       // Refus d'un seul, désigné par son code court (minuscules acceptées).

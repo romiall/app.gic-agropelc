@@ -3,12 +3,17 @@ Prepare le paquet de mise en ligne (Hostinger) : construit le serveur, la PWA et
 semis en CommonJS pour MariaDB, puis rassemble le tout dans une archive. Ne se connecte a aucun serveur.
 
 Usage, a la racine du depot :
-  powershell -ExecutionPolicy Bypass -File deploy\hostinger\build-bundle.ps1 [-SkipBuild]
+  powershell -ExecutionPolicy Bypass -File deploy\hostinger\build-bundle.ps1 [-SkipBuild] [-AllowDirty]
+
+Le paquet sort du depot qui contient ce script (jamais d'un autre). Il est refuse si des fichiers suivis de apps, packages,
+db ou deploy sont modifies : le paquet ne correspondrait a aucun commit (une autre session peut avoir des changements non
+commites dans le meme dossier). Livrer depuis une copie propre (git worktree add --detach <dossier> <commit>) ; -AllowDirty
+l'autorise sciemment. Les chemins du paquet (%TEMP%) sont communs a tous les depots : ne pas lancer deux constructions a la fois.
 
 Sortie : %TEMP%\gic-app-bundle.tar.gz (chemin, taille et empreinte SHA-256 affiches).
 Fichier ASCII volontairement : Windows PowerShell 5.1 lit mal l'UTF-8 sans BOM.
 #>
-param([switch]$SkipBuild)
+param([switch]$SkipBuild, [switch]$AllowDirty)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $stage = Join-Path $env:TEMP 'gic-deploy-stage'
@@ -16,12 +21,20 @@ $bundle = Join-Path $env:TEMP 'gic-app-bundle.tar.gz'
 Set-Location $repo
 $utf8 = New-Object System.Text.UTF8Encoding $false
 
+if (-not $AllowDirty) {
+  $modified = @(git status --porcelain --untracked-files=no -- apps packages db deploy)
+  if ($modified.Count -gt 0) {
+    throw ('Arbre de travail modifie (' + $modified.Count + ' fichier(s) suivi(s) sous apps, packages, db, deploy) : le paquet ne correspondrait a aucun commit. Livrer depuis une copie propre (git worktree add --detach <dossier> <commit>) ou, sciemment, relancer avec -AllowDirty.')
+  }
+}
+
 if (-not $SkipBuild) {
   Write-Host '== Construction (pnpm run build : paquets, serveur, PWA)'
   pnpm run build
   if ($LASTEXITCODE -ne 0) { throw 'La construction a echoue (pnpm run build).' }
 }
-foreach ($required in @('apps\server\dist\app.module.js', 'apps\pwa\dist\index.html', 'packages\domain\dist\index.js', 'packages\contracts\dist\index.js')) {
+# sw.js : sans lui, aucun appareil ne recoit la nouvelle version (la livraison du 03/11/2026 est partie sans).
+foreach ($required in @('apps\server\dist\app.module.js', 'apps\pwa\dist\index.html', 'apps\pwa\dist\sw.js', 'packages\domain\dist\index.js', 'packages\contracts\dist\index.js')) {
   if (-not (Test-Path (Join-Path $repo $required))) { throw "Fichier construit introuvable : $required (relancer sans -SkipBuild)." }
 }
 
