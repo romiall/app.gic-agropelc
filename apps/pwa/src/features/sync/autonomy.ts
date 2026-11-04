@@ -72,7 +72,7 @@ export class OfflineReadOnlyError extends Error {
   readonly code = 'OFFLINE_READ_ONLY';
 
   constructor(readonly hours: number) {
-    super(`Lecture seule : aucune synchronisation depuis ${hours} h (AV-009).`);
+    super(`Lecture seule : aucune synchronisation depuis ${hours} h.`);
     this.name = 'OfflineReadOnlyError';
   }
 }

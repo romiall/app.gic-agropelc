@@ -285,7 +285,7 @@ export const fr = {
     account_placeholder: 'Choisir le compte',
     account_server_choice: 'Laisser le serveur choisir',
     account_unknown_hint:
-      'Le compte de réception sera choisi par le serveur. S’il en existe plusieurs de ce type, l’encaissement sera refusé : faites-le désigner par la Finance (AV-218).',
+      'Le compte de réception sera choisi par le serveur. S’il en existe plusieurs de ce type, l’encaissement sera refusé : faites-le désigner par la Finance.',
     payment_issue: {
       AMOUNT_INVALID: 'Montant encaissé invalide (francs entiers).',
       REFERENCE_REQUIRED:
@@ -1177,7 +1177,7 @@ export const fr = {
     comment_required:
       'Un motif de rejet choisi exige une précision : décrivez-la dans les observations.',
     location_override_notice:
-      'Cet emplacement appartient à un autre site que celui du bon de commande : la réception sera mise en quarantaine pour validation par les Achats ou la Direction (AV-096) et n’entrera pas au stock avant décision.',
+      'Cet emplacement appartient à un autre site que celui du bon de commande : la réception sera mise en quarantaine pour validation par les Achats ou la Direction et n’entrera pas au stock avant décision.',
     location_override_reason_required:
       'Un emplacement hors du site du bon de commande exige un motif dans les observations.',
     submit: 'Enregistrer la réception',
@@ -5438,7 +5438,7 @@ export const fr = {
   sync_conflicts: {
     help_title: 'À quoi sert cet écran ?',
     intro:
-      'Examinez et clôturez les conflits et anomalies de synchronisation relevant de votre rôle. Une opération déjà appliquée ne s’annule jamais par une réécriture : elle se régularise par écriture compensatoire motivée ou se classe après contrôle. L’auteur d’une anomalie déjà appliquée ne peut pas la clore lui-même (AV-192).',
+      'Examinez et clôturez les conflits et anomalies de synchronisation relevant de votre rôle. Une opération déjà appliquée ne s’annule jamais par une réécriture : elle se régularise par écriture compensatoire motivée ou se classe après contrôle. L’auteur d’une anomalie déjà appliquée ne peut pas la clore lui-même.',
     online_only:
       'Écran en ligne seulement : reconnectez-vous pour consulter et résoudre les conflits de synchronisation.',
     denied: 'Lecture des conflits refusée : droit insuffisant.',
@@ -5462,7 +5462,7 @@ export const fr = {
     entity_line: 'Entité : {{entityType}} · Rôle responsable : {{ownerRole}}',
     managed_elsewhere: 'Ce doublon de référence de paiement se décide par sa validation dédiée.',
     self_forbidden:
-      'Vous êtes l’auteur de cette opération déjà appliquée : un autre responsable habilité doit clore ce conflit (AV-192).',
+      'Vous êtes l’auteur de cette opération déjà appliquée : un autre responsable habilité doit clore ce conflit.',
     action: {
       RESOLVE: 'Résoudre…',
       DISMISS: 'Classer sans suite…',

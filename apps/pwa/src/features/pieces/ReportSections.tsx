@@ -764,7 +764,7 @@ function ReceiptFields({ form, patch, context }: SectionProps) {
           <Banner tone="warn">
             {t(
               'piece.receipt_override',
-              'Emplacement hors du site du bon de commande : le responsable des achats devra valider la réception. Précisez le motif dans les observations (AV-096).',
+              'Emplacement hors du site du bon de commande : le responsable des achats devra valider la réception. Précisez le motif dans les observations.',
             )}
           </Banner>
         ) : null}
