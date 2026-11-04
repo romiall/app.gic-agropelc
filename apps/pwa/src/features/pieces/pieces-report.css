@@ -103,3 +103,46 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
+
+/* Champs propres à chaque type de pièce (PP-B) : groupes de champs et lignes de pièce */
+
+.report-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.report-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.report-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.report-line-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+@media (min-width: 40rem) {
+  .report-line-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.report-total {
+  margin: 0;
+  font-weight: 600;
+}

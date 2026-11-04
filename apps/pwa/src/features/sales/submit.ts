@@ -19,12 +19,18 @@ import { behindDeviceApproval } from './pending.js';
 export async function submitCommand(
   input: Omit<EnqueueInput, 'capturedOffline' | 'commandVersion'> & {
     readonly commandVersion?: number;
+    /**
+     * Fait accompli saisi hors du système (pièce papier reportée, PP-B, AV-502) : remplace la mesure de
+     * connectivité, qui ne dit rien de l'endroit où l'opération a eu lieu.
+     */
+    readonly capturedOffline?: boolean;
   },
 ): Promise<OutboxCommand> {
+  const { capturedOffline, ...rest } = input;
   const command = await enqueueCommand(
     getDb(),
     { clock, idGenerator },
-    { commandVersion: 1, ...input, capturedOffline: !isEffectivelyOnline() },
+    { commandVersion: 1, ...rest, capturedOffline: capturedOffline ?? !isEffectivelyOnline() },
   );
   void getSyncEngine()?.trigger();
   return command;

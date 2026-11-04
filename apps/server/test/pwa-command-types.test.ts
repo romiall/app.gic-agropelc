@@ -15,20 +15,14 @@ const APPS = fileURLToPath(new URL('../..', import.meta.url));
 const PACKAGES = fileURLToPath(new URL('../../../packages', import.meta.url));
 
 /**
- * Écarts connus, à résorber : types de l'écran de report des pièces papier (PP-B) qui n'existent pas côté serveur.
- * Leurs équivalents : `sales.sale.record`, `sales.order.place`, `sales.order.fulfil`, `finance.cash_transfer.send`,
- * `inventory.transfer.request`, `inventory.loss.declare`, `procurement.receipt.record`
- * (voir `docs/10-development-plan/19-pieces-papier.md`, journal du 04/11/2026). Retirer ici un type dès qu'il est corrigé.
+ * Écarts connus, à résorber : types écrits dans la PWA qui n'existent pas côté serveur. Aucun depuis le
+ * 04/11/2026 : les sept types inventés de l'écran de report des pièces papier (PP-B) sont remplacés par les
+ * commandes réelles (`sales.sale.record`, `sales.order.place`, `sales.order.fulfil`, `finance.cash_transfer.send`,
+ * `inventory.transfer.dispatch`, `inventory.loss.declare`, `procurement.receipt.record`) et rejoués dans le vrai
+ * pipeline par `pwa-paper-slip-commands.test.ts` (voir `docs/10-development-plan/19-pieces-papier.md`, journal).
+ * Un nouvel écart ne s'ajoute ici qu'avec un point `AV-nnn` qui le consigne.
  */
-const KNOWN_GAPS: ReadonlySet<string> = new Set([
-  'sales.sale.create',
-  'sales.sales_order.create',
-  'sales.delivery_note.create',
-  'finance.cash_transfer.create',
-  'inventory.stock_transfer.create',
-  'inventory.loss_declaration.create',
-  'procurement.goods_receipt.create',
-]);
+const KNOWN_GAPS: ReadonlySet<string> = new Set<string>();
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

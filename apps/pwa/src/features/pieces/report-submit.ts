@@ -1,63 +1,78 @@
 /**
- * Envoi et suivi des reports de pièces papier (PP-B ; REQ-303, AV-308, AV-312, AV-078).
- * Construit la commande métier correspondante, applique l'heure du carnet, le motif d'antidatage
- * et la référence de la pièce papier (paper_ref / local_ref).
+ * Envoi et suivi des reports de pièces papier (PP-B ; REQ-303, AV-308, AV-312, AV-078, AV-501 à AV-504).
+ *
+ * Envoi : la pièce résolue (`report-form.ts`) devient la commande du serveur (`report-commands.ts`),
+ * mise dans l'outbox avec l'heure écrite sur la pièce, le motif d'antidatage, la photo de la souche et les
+ * indices locaux (`PAPER_SLIP`, `SLIP_TYPE:*`, `PAPER_REF:*`, `SLIP_AMOUNT:*`). Suivi : le registre des
+ * carnets relit ces indices dans l'outbox de l'appareil.
  */
 
-import { clock, idGenerator } from '../../platform/composition.js';
+import { idGenerator } from '../../platform/composition.js';
 import type { GicDatabase, OutboxCommand } from '../../storage/db.js';
-import type { EnqueueInput, NewAttachment } from '../../sync/outbox.js';
-import { photoAttachment, type PhotoTarget } from '../attachments/attachments.js';
+import type { EnqueueInput } from '../../sync/outbox.js';
+import { photoAttachment } from '../attachments/attachments.js';
 import type { PreparedPhoto } from '../attachments/photo.js';
 import { submitCommand } from '../sales/submit.js';
-import { evaluateBackdating, normalizeSlipRef } from './registre-carnets.js';
+import type { SlipMeta } from './report-form.js';
+import {
+  FLAG_AMOUNT,
+  FLAG_PAPER_REF,
+  FLAG_PAPER_SLIP,
+  FLAG_SLIP_TYPE,
+  REPORTABLE_SLIP_TYPES,
+  buildReportCommand,
+  type ReportCommand,
+  type ReportableSlipType,
+  type ResolvedSlip,
+} from './report-commands.js';
 
-export type ReportableSlipType = 'BV' | 'RE' | 'BD' | 'RF' | 'CC' | 'BL' | 'BR' | 'BT' | 'FP';
+export type { ReportableSlipType } from './report-commands.js';
 
-export interface ReportSlipDraft {
-  readonly slipType: ReportableSlipType;
-  readonly paperSlipRef: string;
-  /** "YYYY-MM-DDTHH:mm" */
-  readonly occurredAt: string;
-  readonly backdatedReason: string;
-  readonly siteId?: string | undefined;
+export type OutboxInput = Omit<EnqueueInput, 'capturedOffline' | 'commandVersion'> & {
+  readonly capturedOffline: boolean;
+};
 
-  // Spécifique Bon de Vente (BV)
-  readonly customerId?: string | undefined;
-  readonly customerName?: string | undefined;
-  readonly productId?: string | undefined;
-  readonly quantity?: number | undefined;
-  readonly unitPriceXaf?: number | undefined;
-  readonly totalAmountXaf?: number | undefined;
-  readonly paymentMethod?: 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT' | undefined;
-  readonly cashAccountId?: string | undefined;
+/** Entrée de l'outbox pour une commande de report, photo de la souche comprise quand le type la porte. */
+export function toOutboxInput(
+  command: ReportCommand,
+  authorUserId: string,
+  photo: PreparedPhoto | null = null,
+): OutboxInput {
+  return {
+    authorUserId,
+    commandType: command.commandType,
+    aggregateType: command.aggregateType,
+    aggregateId: command.aggregateId,
+    ...(command.dependsOn.length > 0 ? { dependsOn: command.dependsOn } : {}),
+    payload: command.payload,
+    occurredAt: command.occurredAt,
+    backdatedReason: command.backdatedReason,
+    capturedOffline: command.capturedOffline,
+    // La photo n'est jointe que si le serveur sait la rattacher à l'opération (AV-504).
+    ...(photo && command.photo
+      ? {
+          attachments: [photoAttachment(photo, { ...command.photo, ownerId: command.aggregateId })],
+        }
+      : {}),
+    localFlags: command.localFlags,
+  };
+}
 
-  // Spécifique Reçu d'encaissement (RE)
-  readonly rePaymentMethod?: 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | undefined;
-  readonly reAmountXaf?: number | undefined;
-  readonly reNotes?: string | undefined;
-
-  // Spécifique Bon de Décaissement / Dépense (BD)
-  readonly bdPayeeName?: string | undefined;
-  readonly bdAmountXaf?: number | undefined;
-  readonly bdDescription?: string | undefined;
-  readonly bdCategoryId?: string | undefined;
-
-  // Spécifique Remise de Fonds (RF)
-  readonly rfSourceAccountId?: string | undefined;
-  readonly rfDestinationAccountId?: string | undefined;
-  readonly rfAmountXaf?: number | undefined;
-
-  // Spécifique Commande Client (CC)
-  readonly ccDeliveryDate?: string | undefined;
-
-  // Spécifique Transfert (BT)
-  readonly btSourceLocationId?: string | undefined;
-  readonly btTargetLocationId?: string | undefined;
-
-  // Spécifique Perte (FP)
-  readonly fpReasonCodeId?: string | undefined;
-  readonly fpNotes?: string | undefined;
+/** Enregistre le report de pièce papier dans l'outbox locale (la commande est celle du serveur). */
+export async function submitPaperSlipReport(
+  slip: ResolvedSlip,
+  meta: SlipMeta,
+  authorUserId: string,
+  photo: PreparedPhoto | null = null,
+): Promise<OutboxCommand> {
+  const command = buildReportCommand(slip, {
+    paperRef: meta.paperRef,
+    occurredAt: meta.occurredAt,
+    backdatedReason: meta.backdatedReason,
+    aggregateId: idGenerator.newId(),
+    dependsOn: meta.dependsOn,
+  });
+  return submitCommand(toOutboxInput(command, authorUserId, photo));
 }
 
 export interface ReportedSlipRecord {
@@ -74,238 +89,46 @@ export interface ReportedSlipRecord {
   readonly backdatedReason?: string | null;
 }
 
-/** Cible photo adaptée selon le type de pièce. */
-function photoTargetFor(slipType: ReportableSlipType, aggregateId: string): PhotoTarget {
-  switch (slipType) {
-    case 'BD':
-      return { kind: 'RECEIPT', ownerType: 'EXPENSE', cited: true, ownerId: aggregateId };
-    case 'FP':
-      return { kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: true, ownerId: aggregateId };
-    case 'BR':
-      return {
-        kind: 'DELIVERY_NOTE',
-        ownerType: 'GOODS_RECEIPT',
-        cited: true,
-        ownerId: aggregateId,
-      };
-    default:
-      return { kind: 'RECEIPT', ownerType: 'EXPENSE', cited: true, ownerId: aggregateId };
-  }
-}
+const isSlipType = (value: string): value is ReportableSlipType =>
+  (REPORTABLE_SLIP_TYPES as readonly string[]).includes(value);
 
-/**
- * Construit l'enveloppe de commande pour l'outbox à partir du brouillon de report.
- */
-export function buildPaperSlipCommandInput(
-  draft: ReportSlipDraft,
-  authorUserId: string,
-  photo?: PreparedPhoto | null,
-  assignedAggregateId?: string,
-): Omit<EnqueueInput, 'capturedOffline' | 'commandVersion'> {
-  const aggregateId = assignedAggregateId ?? idGenerator.newId();
-  const cleanRef = normalizeSlipRef(draft.paperSlipRef);
-  const occurredIso = draft.occurredAt
-    ? new Date(draft.occurredAt).toISOString()
-    : clock.now().toISOString();
+const countOf = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
+const plural = (n: number, singular: string, many: string): string =>
+  `${n} ${n > 1 ? many : singular}`;
 
-  const evalBackdate = evaluateBackdating(occurredIso, clock.now());
-  const effectiveReason =
-    draft.backdatedReason.trim() ||
-    (evalBackdate.isBackdated ? `Report de pièce papier ${cleanRef} (AV-078)` : null);
-
-  const localFlags = ['PAPER_SLIP', `SLIP_TYPE:${draft.slipType}`, `PAPER_REF:${cleanRef}`];
-
-  const attachments: NewAttachment[] = [];
-  if (photo) {
-    attachments.push(photoAttachment(photo, photoTargetFor(draft.slipType, aggregateId)));
-  }
-
-  let commandType: string;
-  let aggregateType: string;
-  let payload: unknown;
-
-  switch (draft.slipType) {
-    case 'BV': {
-      commandType = 'sales.sale.create';
-      aggregateType = 'SALE';
-      const qty = draft.quantity ?? 1;
-      const unitPrice = draft.unitPriceXaf ?? 0;
-      const total = draft.totalAmountXaf ?? qty * unitPrice;
-      payload = {
-        saleId: aggregateId,
-        customerId: draft.customerId ?? null,
-        saleChannel: 'TERRAIN',
-        siteId: draft.siteId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        items: draft.productId
-          ? [
-              {
-                productId: draft.productId,
-                quantity: qty,
-                unitPriceXaf: unitPrice,
-                lineTotalXaf: total,
-                notes: `Pièce ${cleanRef}`,
-              },
-            ]
-          : [],
-        totalAmountXaf: total,
-        payment:
-          draft.paymentMethod && draft.paymentMethod !== 'CREDIT'
-            ? {
-                method: draft.paymentMethod,
-                amountXaf: total,
-                cashAccountId: draft.cashAccountId ?? null,
-              }
-            : null,
-      };
-      break;
-    }
-    case 'RE': {
-      commandType = 'sales.payment.record';
-      aggregateType = 'PAYMENT';
-      payload = {
-        paymentId: aggregateId,
-        customerId: draft.customerId ?? null,
-        amountXaf: draft.reAmountXaf ?? draft.totalAmountXaf ?? 0,
-        paymentMethod: draft.rePaymentMethod ?? 'CASH',
-        cashAccountId: draft.cashAccountId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        notes: draft.reNotes ?? `Reçu papier ${cleanRef}`,
-      };
-      break;
-    }
+/** Libellé d'une pièce reportée, tiré de la charge utile de sa commande. */
+export function describeReportedPayload(type: ReportableSlipType, payload: unknown): string {
+  const p = (typeof payload === 'object' && payload !== null ? payload : {}) as Record<
+    string,
+    unknown
+  >;
+  switch (type) {
+    case 'BV':
+      return `Vente : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'CC':
+      return `Commande client : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'BL':
+      return `Livraison : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'RE':
+      return `Encaissement (${String(p['methodCode'] ?? '')})`;
     case 'BD': {
-      commandType = 'finance.expense.record';
-      aggregateType = 'EXPENSE';
-      payload = {
-        expenseId: aggregateId,
-        siteId: draft.siteId ?? null,
-        cashAccountId: draft.cashAccountId ?? null,
-        amountXaf: draft.bdAmountXaf ?? 0,
-        payeeName: draft.bdPayeeName ?? 'Bénéficiaire sur pièce',
-        description: draft.bdDescription ?? `Dépense sur pièce papier ${cleanRef}`,
-        expenseCategoryId: draft.bdCategoryId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-      };
-      break;
+      const payee = typeof p['payeeName'] === 'string' ? `À : ${p['payeeName']} — ` : '';
+      return `${payee}${typeof p['description'] === 'string' ? p['description'] : 'Dépense'}`;
     }
-    case 'RF': {
-      commandType = 'finance.cash_transfer.create';
-      aggregateType = 'CASH_TRANSFER';
-      payload = {
-        transferId: aggregateId,
-        sourceAccountId: draft.rfSourceAccountId ?? null,
-        destinationAccountId: draft.rfDestinationAccountId ?? null,
-        amountXaf: draft.rfAmountXaf ?? 0,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        notes: `Remise de fonds papier ${cleanRef}`,
-      };
-      break;
-    }
-    case 'CC': {
-      commandType = 'sales.sales_order.create';
-      aggregateType = 'ORDER';
-      payload = {
-        orderId: aggregateId,
-        customerId: draft.customerId ?? null,
-        expectedDeliveryDate: draft.ccDeliveryDate ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        items: draft.productId
-          ? [{ productId: draft.productId, quantity: draft.quantity ?? 1 }]
-          : [],
-      };
-      break;
-    }
-    case 'BL': {
-      commandType = 'sales.delivery_note.create';
-      aggregateType = 'DELIVERY_NOTE';
-      payload = {
-        deliveryNoteId: aggregateId,
-        customerId: draft.customerId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        items: draft.productId
-          ? [{ productId: draft.productId, quantity: draft.quantity ?? 1 }]
-          : [],
-      };
-      break;
-    }
-    case 'BR': {
-      commandType = 'procurement.goods_receipt.create';
-      aggregateType = 'GOODS_RECEIPT';
-      payload = {
-        goodsReceiptId: aggregateId,
-        siteId: draft.siteId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        items: draft.productId
-          ? [{ productId: draft.productId, quantity: draft.quantity ?? 1 }]
-          : [],
-      };
-      break;
-    }
-    case 'BT': {
-      commandType = 'inventory.stock_transfer.create';
-      aggregateType = 'STOCK_TRANSFER';
-      payload = {
-        transferId: aggregateId,
-        sourceLocationId: draft.btSourceLocationId ?? null,
-        targetLocationId: draft.btTargetLocationId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        items: draft.productId
-          ? [{ productId: draft.productId, quantity: draft.quantity ?? 1 }]
-          : [],
-      };
-      break;
-    }
-    case 'FP': {
-      commandType = 'inventory.loss_declaration.create';
-      aggregateType = 'STOCK_LOSS';
-      payload = {
-        lossDeclarationId: aggregateId,
-        reasonCodeId: draft.fpReasonCodeId ?? null,
-        localRef: cleanRef,
-        paperSlipRef: cleanRef,
-        notes: draft.fpNotes ?? `Perte sur fiche papier ${cleanRef}`,
-        items: draft.productId
-          ? [{ productId: draft.productId, quantity: draft.quantity ?? 1 }]
-          : [],
-      };
-      break;
-    }
+    case 'RF':
+      return 'Remise de fonds';
+    case 'BR':
+      return `Réception : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'BT':
+      return `Transfert : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'FP':
+      return `Perte (${String(p['category'] ?? '')})`;
   }
-
-  return {
-    authorUserId,
-    commandType,
-    aggregateType,
-    aggregateId,
-    payload,
-    occurredAt: occurredIso,
-    backdatedReason: effectiveReason,
-    attachments: attachments.length > 0 ? attachments : undefined,
-    localFlags,
-  };
-}
-
-/** Enregistre le report de pièce papier dans l'outbox locale. */
-export async function submitPaperSlipReport(
-  draft: ReportSlipDraft,
-  authorUserId: string,
-  photo?: PreparedPhoto | null,
-): Promise<OutboxCommand> {
-  const input = buildPaperSlipCommandInput(draft, authorUserId, photo);
-  return submitCommand(input);
 }
 
 /**
- * Charge les pièces papier reportées sur cet appareil à partir de l'outbox Dexie.
+ * Charge les pièces papier reportées sur cet appareil à partir de l'outbox Dexie (indices locaux écrits
+ * par `buildReportCommand`).
  */
 export async function loadReportedSlipsFromDb(db: GicDatabase): Promise<ReportedSlipRecord[]> {
   const commands = await db.outbox.toArray();
@@ -313,36 +136,22 @@ export async function loadReportedSlipsFromDb(db: GicDatabase): Promise<Reported
 
   for (const cmd of commands) {
     const flags = cmd.local_flags ?? [];
-    if (!flags.includes('PAPER_SLIP')) continue;
+    if (!flags.includes(FLAG_PAPER_SLIP)) continue;
 
     let slipType: ReportableSlipType = 'BV';
     let paperSlipRef = '';
-
-    for (const flag of flags) {
-      if (flag.startsWith('SLIP_TYPE:')) {
-        slipType = flag.slice('SLIP_TYPE:'.length) as ReportableSlipType;
-      } else if (flag.startsWith('PAPER_REF:')) {
-        paperSlipRef = flag.slice('PAPER_REF:'.length);
-      }
-    }
-
-    if (!paperSlipRef && typeof cmd.payload === 'object' && cmd.payload !== null) {
-      const p = cmd.payload as Record<string, unknown>;
-      paperSlipRef = String(p.paperSlipRef ?? p.localRef ?? '');
-    }
-
-    // Description et montant selon le type
-    let description = `${slipType} ${paperSlipRef}`;
     let amountXaf: number | null = null;
 
-    if (typeof cmd.payload === 'object' && cmd.payload !== null) {
-      const p = cmd.payload as Record<string, unknown>;
-      if (typeof p.totalAmountXaf === 'number') amountXaf = p.totalAmountXaf;
-      else if (typeof p.amountXaf === 'number') amountXaf = p.amountXaf;
-
-      if (typeof p.description === 'string') description = p.description;
-      else if (typeof p.notes === 'string') description = p.notes;
-      else if (typeof p.payeeName === 'string') description = `À : ${p.payeeName}`;
+    for (const flag of flags) {
+      if (flag.startsWith(FLAG_SLIP_TYPE)) {
+        const type = flag.slice(FLAG_SLIP_TYPE.length);
+        if (isSlipType(type)) slipType = type;
+      } else if (flag.startsWith(FLAG_PAPER_REF)) {
+        paperSlipRef = flag.slice(FLAG_PAPER_REF.length);
+      } else if (flag.startsWith(FLAG_AMOUNT)) {
+        const amount = Number(flag.slice(FLAG_AMOUNT.length));
+        if (Number.isFinite(amount)) amountXaf = amount;
+      }
     }
 
     reported.push({
@@ -352,7 +161,7 @@ export async function loadReportedSlipsFromDb(db: GicDatabase): Promise<Reported
       occurredAt: cmd.occurred_at,
       submittedAt: cmd.client_created_at,
       authorUserId: cmd.author_user_id,
-      description,
+      description: describeReportedPayload(slipType, cmd.payload),
       amountXaf,
       status: cmd.status,
       hasAttachment: (cmd.attachment_ids ?? []).length > 0,

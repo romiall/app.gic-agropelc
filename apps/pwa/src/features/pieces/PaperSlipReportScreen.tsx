@@ -1,13 +1,16 @@
 /**
- * ECR-PIE-01 « Reporter une pièce papier » (PP-B ; REQ-303, AV-308, AV-312, AV-078).
+ * ECR-PIE-01 « Reporter une pièce papier » (PP-B ; REQ-303, AV-308, AV-312, AV-078, AV-501 à AV-504).
  *
- * Permet aux opérateurs de terrain de saisir et synchroniser une opération accomplie sur un carnet
- * à souche papier (panne de batterie, zone blanche, habitude de terrain) :
- * - Type de pièce (BV, RE, BD, RF, CC, BL, BR, BT, FP)
- * - Numéro de la pièce papier (souche) avec contrôle dynamique de continuité (AV-312)
- * - Date/heure manuscrite avec évaluation de la fenêtre d'antidatage (AV-078 : 24 h / 72 h)
- * - Justificatif photo de la souche (ADR-012, ADR-046)
- * - Envoi par l'outbox locale via les commandes métier existantes (règle 3)
+ * Permet aux opérateurs de terrain de reporter une opération accomplie sur un carnet à souche papier
+ * (panne de batterie, zone blanche, habitude de terrain) :
+ * - Type de pièce (BV, RE, BD, RF, CC, BL, BR, BT, FP) et champs exigés par la commande du serveur
+ *   correspondante (`report-commands.ts`) : emplacements, comptes, produits, clients… choisis dans les
+ *   référentiels de l'appareil ;
+ * - Numéro de la pièce papier (souche) avec contrôle dynamique de continuité (AV-312) ;
+ * - Date/heure manuscrite avec évaluation de la fenêtre d'antidatage (AV-078 : 24 h / 72 h) ;
+ * - Justificatif photo de la souche, quand le serveur sait le rattacher à l'opération (ADR-012, ADR-046) ;
+ * - Envoi par l'outbox locale via les commandes métier existantes (règle 3), « saisies hors ligne »
+ *   puisque l'opération a eu lieu hors du système (AV-502) ;
  * - Registre des carnets (RC) : historique, détection des sauts et des doublons (AV-312).
  */
 
@@ -23,52 +26,64 @@ import {
   Field,
   Input,
   PageHeader,
+  Section,
   Segmented,
   Select,
-  Textarea,
   type SegmentedOption,
 } from '../../components/ui/index.js';
+import { clock } from '../../platform/composition.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { PhotoField } from '../attachments/PhotoField.js';
 import type { PreparedPhoto } from '../attachments/photo.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { useSalesReferences } from '../sales/references.js';
 import { formatMoney } from '../sales/format.js';
+import { saveErrorKey } from '../sales/submit.js';
 import { PieceAction } from './PieceAction.js';
+import { analyzeContinuity, checkInputContinuity, evaluateBackdating } from './registre-carnets.js';
 import {
-  analyzeContinuity,
-  checkInputContinuity,
-  evaluateBackdating,
-  normalizeSlipRef,
-} from './registre-carnets.js';
+  REPORTABLE_SLIP_TYPES,
+  paperRefPlace,
+  slipPhotoTarget,
+  type ReportableSlipType,
+} from './report-commands.js';
+import {
+  SLIP_ISSUE_MESSAGES,
+  emptySlipForm,
+  resolveSlip,
+  type SlipContext,
+  type SlipForm,
+} from './report-form.js';
 import {
   loadReportedSlipsFromDb,
   submitPaperSlipReport,
-  type ReportableSlipType,
-  type ReportSlipDraft,
   type ReportedSlipRecord,
 } from './report-submit.js';
+import { blankLine } from './report-lines.js';
+import { SlipFields } from './ReportSections.js';
 import type { DemandePiece } from './demande.js';
 import './pieces-report.css';
 
-const SLIP_TYPE_OPTIONS: readonly { readonly value: ReportableSlipType; readonly label: string }[] =
-  [
-    { value: 'BV', label: 'BV — Bon de vente' },
-    { value: 'RE', label: 'RE — Reçu d’encaissement' },
-    { value: 'BD', label: 'BD — Bon de décaissement (dépense)' },
-    { value: 'RF', label: 'RF — Remise de fonds' },
-    { value: 'CC', label: 'CC — Bon de commande client' },
-    { value: 'BL', label: 'BL — Bon de livraison' },
-    { value: 'BR', label: 'BR — Bon de réception' },
-    { value: 'BT', label: 'BT — Bon de transfert' },
-    { value: 'FP', label: 'FP — Fiche de perte' },
-  ];
+const SLIP_TYPE_LABELS: Readonly<Record<ReportableSlipType, string>> = {
+  BV: 'BV — Bon de vente',
+  RE: 'RE — Reçu d’encaissement',
+  BD: 'BD — Bon de décaissement (dépense)',
+  RF: 'RF — Remise de fonds',
+  CC: 'CC — Bon de commande client',
+  BL: 'BL — Bon de livraison',
+  BR: 'BR — Bon de réception',
+  BT: 'BT — Bon de transfert',
+  FP: 'FP — Fiche de perte',
+};
 
-function nowIsoLocal(): string {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-  return now.toISOString().slice(0, 16);
-}
+/** Types dont le formulaire part d'une ligne vide (produit à choisir). */
+const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set(['BV', 'CC', 'BR', 'BT', 'FP']);
+
+const initialForm = (type: ReportableSlipType): SlipForm => ({
+  ...emptySlipForm(clock.now(), type),
+  lines: LINE_TYPES.has(type) ? [blankLine()] : [],
+});
 
 type TabMode = 'entry' | 'register';
 
@@ -77,62 +92,36 @@ export function PaperSlipReportScreen() {
   const { state: authState } = useAuth();
   const userId = authState.status === 'unlocked' ? authState.userId : '';
   const refs = useSalesReferences();
+  const navigation = useRememberedNavigation(userId || undefined);
 
   const [activeTab, setActiveTab] = useState<TabMode>('entry');
   const [slipTypeFilter, setSlipTypeFilter] = useState<string>('ALL');
-
-  // Formulaire de saisie
-  const [slipType, setSlipType] = useState<ReportableSlipType>('BV');
-  const [paperSlipRef, setPaperSlipRef] = useState('');
-  const [occurredAt, setOccurredAt] = useState(nowIsoLocal);
-  const [backdatedReason, setBackdatedReason] = useState('');
-  const [siteId, setSiteId] = useState('');
+  const [form, setForm] = useState<SlipForm>(() => initialForm('BV'));
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
   const [isPhotoBusy, setIsPhotoBusy] = useState(false);
-
-  // Spécifique BV
-  const [customerId, setCustomerId] = useState('');
-  const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [unitPriceXaf, setUnitPriceXaf] = useState<number>(3000);
-  const [paymentMethod, setPaymentMethod] = useState<
-    'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT'
-  >('CASH');
-  const cashAccountId = '';
-
-  // Spécifique RE
-  const [reAmountXaf, setReAmountXaf] = useState<number>(0);
-  const [reNotes, setReNotes] = useState('');
-
-  // Spécifique BD
-  const [bdPayeeName, setBdPayeeName] = useState('');
-  const [bdAmountXaf, setBdAmountXaf] = useState<number>(0);
-  const [bdDescription, setBdDescription] = useState('');
-
-  // Spécifique RF
-  const [rfSourceAccountId, setRfSourceAccountId] = useState('');
-  const rfDestinationAccountId = '';
-  const [rfAmountXaf, setRfAmountXaf] = useState<number>(0);
-
-  // État de soumission
   const [submitting, setSubmitting] = useState(false);
   const [lastSubmittedRef, setLastSubmittedRef] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showIssues, setShowIssues] = useState(false);
+
+  const patch = (change: Partial<SlipForm>) => setForm((current) => ({ ...current, ...change }));
 
   // Pièces déjà enregistrées sur cet appareil (Dexie LiveQuery)
   const reportedSlips = useLiveQuery(async () => loadReportedSlipsFromDb(getDb()), []) ?? [];
 
   // Références existantes pour le type sélectionné
   const existingRefsForType = reportedSlips
-    .filter((s) => s.slipType === slipType)
+    .filter((s) => s.slipType === form.slipType)
     .map((s) => s.paperSlipRef);
 
   // Évaluation de la continuité en direct sur le champ de saisie
-  const continuityCheck = checkInputContinuity(paperSlipRef, existingRefsForType);
+  const continuityCheck = checkInputContinuity(form.paperRef, existingRefsForType);
 
   // Évaluation de l'antidatage en direct
+  const occurredDate = new Date(form.occurredAt);
   const backdatingEval = evaluateBackdating(
-    occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString(),
+    Number.isNaN(occurredDate.getTime()) ? clock.now().toISOString() : occurredDate.toISOString(),
+    clock.now(),
   );
 
   // Analyse globale pour le registre des carnets
@@ -148,73 +137,51 @@ export function PaperSlipReportScreen() {
     { value: 'register', label: t('piece.report_tab_register', 'Registre des carnets (RC)') },
   ];
 
-  const resetForm = () => {
-    setPaperSlipRef('');
-    setOccurredAt(nowIsoLocal());
-    setBackdatedReason('');
+  const context: SlipContext | null = refs
+    ? { refs, userId, roles: navigation ? navigation.roles : null, now: clock.now() }
+    : null;
+  const resolution = context ? resolveSlip(form, context) : null;
+  const photoTarget = slipPhotoTarget(form.slipType);
+
+  const changeType = (slipType: ReportableSlipType) => {
+    setForm((current) => ({
+      ...initialForm(slipType),
+      paperRef: current.paperRef,
+      occurredAt: current.occurredAt,
+      backdatedReason: current.backdatedReason,
+    }));
     setPhoto(null);
-    setReAmountXaf(0);
-    setReNotes('');
-    setBdPayeeName('');
-    setBdAmountXaf(0);
-    setBdDescription('');
-    setRfAmountXaf(0);
+    setShowIssues(false);
+  };
+
+  /** Après un envoi : même carnet, même lieu — seuls la pièce et ses lignes sont à ressaisir. */
+  const resetForm = () => {
+    setForm((current) => ({
+      ...initialForm(current.slipType),
+      locationId: current.locationId,
+      toLocationId: current.toLocationId,
+      siteId: current.siteId,
+      accountId: current.accountId,
+      toAccountId: current.toAccountId,
+    }));
+    setPhoto(null);
+    setShowIssues(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paperSlipRef.trim() || submitting || isPhotoBusy || !userId) return;
-
-    if (backdatingEval.isFuture) {
-      setSubmitError(
-        t('piece.future_date_error', 'La date de la pièce ne peut pas être dans le futur.'),
-      );
-      return;
-    }
-
-    if (backdatingEval.requiresReason && !backdatedReason.trim()) {
-      setSubmitError(
-        t(
-          'piece.backdated_reason_hint',
-          'Un motif est requis car la pièce date de plus de 24 h (AV-078).',
-        ),
-      );
-      return;
-    }
+    if (submitting || isPhotoBusy || !userId) return;
+    setShowIssues(true);
+    setSubmitError(null);
+    if (!resolution || !resolution.ok) return;
 
     setSubmitting(true);
-    setSubmitError(null);
-
-    const draft: ReportSlipDraft = {
-      slipType,
-      paperSlipRef: normalizeSlipRef(paperSlipRef),
-      occurredAt,
-      backdatedReason,
-      siteId: siteId || undefined,
-      customerId: customerId || undefined,
-      productId: productId || undefined,
-      quantity,
-      unitPriceXaf,
-      totalAmountXaf: quantity * unitPriceXaf,
-      paymentMethod,
-      cashAccountId: cashAccountId || undefined,
-      reAmountXaf,
-      rePaymentMethod: paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod,
-      reNotes,
-      bdPayeeName,
-      bdAmountXaf,
-      bdDescription,
-      rfSourceAccountId: rfSourceAccountId || undefined,
-      rfDestinationAccountId: rfDestinationAccountId || undefined,
-      rfAmountXaf,
-    };
-
     try {
-      await submitPaperSlipReport(draft, userId, photo);
-      setLastSubmittedRef(draft.paperSlipRef);
+      await submitPaperSlipReport(resolution.slip, resolution.meta, userId, photo);
+      setLastSubmittedRef(resolution.meta.paperRef);
       resetForm();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Erreur lors de l’enregistrement');
+      setSubmitError(t(saveErrorKey(err)));
     } finally {
       setSubmitting(false);
     }
@@ -314,7 +281,9 @@ export function PaperSlipReportScreen() {
       </div>
 
       {activeTab === 'entry' ? (
-        <form onSubmit={handleSubmit} className="report-form">
+        // Validation faite par `resolveSlip` : un seul message, en français, qui liste tout ce qui manque
+        // (la bulle native du navigateur n'en signale qu'un à la fois, dans la langue de l'appareil).
+        <form onSubmit={handleSubmit} className="report-form" noValidate>
           {lastSubmittedRef ? (
             <Banner tone="ok">
               {t('piece.report_success', {
@@ -326,107 +295,116 @@ export function PaperSlipReportScreen() {
 
           {submitError ? <Banner tone="bad">{submitError}</Banner> : null}
 
-          <Card title={t('piece.section_general', 'Informations du carnet papier')}>
-            <div className="report-grid-2">
-              <Field label={t('piece.slip_type', 'Type de pièce')}>
-                {(ctrl) => (
-                  <Select
-                    {...ctrl}
-                    value={slipType}
-                    onChange={(e) => setSlipType(e.target.value as ReportableSlipType)}
-                  >
-                    {SLIP_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
+          {showIssues && resolution && !resolution.ok ? (
+            <Banner tone="bad">
+              <p>{t('piece.issues_title', 'La pièce ne peut pas encore être enregistrée :')}</p>
+              <ul>
+                {resolution.issues.map((issue) => (
+                  <li key={issue}>{t(`piece.issue.${issue}`, SLIP_ISSUE_MESSAGES[issue])}</li>
+                ))}
+              </ul>
+            </Banner>
+          ) : null}
 
-              <Field
-                label={t('piece.slip_ref', 'Numéro de la pièce (souche)')}
-                hint={t('piece.slip_ref_hint', 'Ex. BV-000142, RE-0045, BD-012…')}
-              >
-                {(ctrl) => (
-                  <Input
-                    {...ctrl}
-                    value={paperSlipRef}
-                    onChange={(e) => setPaperSlipRef(e.target.value)}
-                    placeholder="Ex. 000142"
-                    required
-                  />
-                )}
-              </Field>
-            </div>
-
-            {/* Avertissements de continuité en temps réel (AV-312) */}
-            {continuityCheck.isDuplicate ? (
-              <div className="report-continuity-alert">
-                <Banner tone="warn">
-                  {t(
-                    'piece.duplicate_warning',
-                    'Numéro déjà saisi : cette référence existe déjà sur cet appareil. Le doublon sera signalé sans être rejeté (BR-SYN-007).',
-                  )}
-                </Banner>
-              </div>
-            ) : null}
-
-            {continuityCheck.isGap ? (
-              <div className="report-continuity-alert">
-                <Banner tone="info">
-                  {t('piece.gap_warning', {
-                    last: continuityCheck.lastMaxNumber,
-                    missing: continuityCheck.missingBefore.join(', '),
-                    defaultValue: `Saut détecté : la dernière pièce enregistrée était le n° ${continuityCheck.lastMaxNumber}. Pièces manquantes : ${continuityCheck.missingBefore.join(', ')}.`,
-                  })}
-                </Banner>
-              </div>
-            ) : null}
-
-            <div className="report-grid-2" style={{ marginTop: 'var(--space-3)' }}>
-              <Field label={t('piece.occurred_at', 'Date et heure manuscrite de la pièce')}>
-                {(ctrl) => (
-                  <Input
-                    {...ctrl}
-                    type="datetime-local"
-                    value={occurredAt}
-                    onChange={(e) => setOccurredAt(e.target.value)}
-                    required
-                  />
-                )}
-              </Field>
-
-              {refs?.sites && refs.sites.size > 0 ? (
-                <Field label={t('common.site', 'Site')}>
+          <Section title={t('piece.section_general', 'Informations du carnet papier')}>
+            <div className="report-fields">
+              <div className="report-grid-2">
+                <Field label={t('piece.slip_type', 'Type de pièce')}>
                   {(ctrl) => (
-                    <Select {...ctrl} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-                      <option value="">{t('common.choose_site', 'Choisir un site…')}</option>
-                      {Array.from(refs.sites.values()).map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
+                    <Select
+                      {...ctrl}
+                      value={form.slipType}
+                      onChange={(e) => changeType(e.target.value as ReportableSlipType)}
+                    >
+                      {REPORTABLE_SLIP_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {SLIP_TYPE_LABELS[type]}
                         </option>
                       ))}
                     </Select>
                   )}
                 </Field>
-              ) : null}
-            </div>
 
-            {/* Évaluation de la fenêtre d'antidatage (AV-078) */}
-            {backdatingEval.isCriticalDelay ? (
-              <div className="report-continuity-alert">
-                <Banner tone="warn">
-                  {t(
-                    'piece.critical_delay_warning',
-                    'Attention : le délai de report dépasse 72 h (AV-078). Cette pièce fera l’objet d’une vérification comptable a posteriori.',
+                <Field
+                  label={t('piece.slip_ref', 'Numéro de la pièce (souche)')}
+                  hint={t(
+                    'piece.slip_ref_hint',
+                    'Ex. BV-000142, RE-0045, BD-012… (20 caractères au plus)',
                   )}
-                </Banner>
+                >
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      value={form.paperRef}
+                      onChange={(e) => patch({ paperRef: e.target.value })}
+                      placeholder="Ex. 000142"
+                      maxLength={40}
+                      required
+                    />
+                  )}
+                </Field>
               </div>
-            ) : null}
 
-            {backdatingEval.requiresReason ? (
-              <div style={{ marginTop: 'var(--space-3)' }}>
+              {/* Avertissements de continuité en temps réel (AV-312) */}
+              {continuityCheck.isDuplicate ? (
+                <div className="report-continuity-alert">
+                  <Banner tone="warn">
+                    {t(
+                      'piece.duplicate_warning',
+                      'Numéro déjà saisi : cette référence existe déjà sur cet appareil. Le doublon sera signalé sans être rejeté (BR-SYN-007).',
+                    )}
+                  </Banner>
+                </div>
+              ) : null}
+
+              {paperRefPlace(form.slipType) === 'DEVICE_ONLY' ? (
+                <div className="report-continuity-alert">
+                  <Banner tone="info">
+                    {t(
+                      'piece.ref_device_only',
+                      'Le serveur n’a pas encore de champ pour garder le numéro de ce type de pièce (AV-501) : il reste sur cet appareil. Conservez la souche dans le carnet.',
+                    )}
+                  </Banner>
+                </div>
+              ) : null}
+
+              {continuityCheck.isGap ? (
+                <div className="report-continuity-alert">
+                  <Banner tone="info">
+                    {t('piece.gap_warning', {
+                      last: continuityCheck.lastMaxNumber,
+                      missing: continuityCheck.missingBefore.join(', '),
+                      defaultValue: `Saut détecté : la dernière pièce enregistrée était le n° ${continuityCheck.lastMaxNumber}. Pièces manquantes : ${continuityCheck.missingBefore.join(', ')}.`,
+                    })}
+                  </Banner>
+                </div>
+              ) : null}
+
+              <Field label={t('piece.occurred_at', 'Date et heure manuscrite de la pièce')}>
+                {(ctrl) => (
+                  <Input
+                    {...ctrl}
+                    type="datetime-local"
+                    value={form.occurredAt}
+                    onChange={(e) => patch({ occurredAt: e.target.value })}
+                    required
+                  />
+                )}
+              </Field>
+
+              {/* Évaluation de la fenêtre d'antidatage (AV-078) */}
+              {backdatingEval.isCriticalDelay ? (
+                <div className="report-continuity-alert">
+                  <Banner tone="warn">
+                    {t(
+                      'piece.critical_delay_warning',
+                      'Attention : le délai de report dépasse 72 h (AV-078). Cette pièce fera l’objet d’une vérification comptable a posteriori.',
+                    )}
+                  </Banner>
+                </div>
+              ) : null}
+
+              {backdatingEval.requiresReason ? (
                 <Field
                   label={t('piece.backdated_reason', 'Motif de report / antidatage')}
                   hint={t(
@@ -437,283 +415,51 @@ export function PaperSlipReportScreen() {
                   {(ctrl) => (
                     <Input
                       {...ctrl}
-                      value={backdatedReason}
-                      onChange={(e) => setBackdatedReason(e.target.value)}
+                      value={form.backdatedReason}
+                      onChange={(e) => patch({ backdatedReason: e.target.value })}
                       placeholder="Ex. Retour de tournée terrain, carnet transmis le..."
+                      maxLength={500}
                       required
                     />
                   )}
                 </Field>
-              </div>
-            ) : null}
-          </Card>
+              ) : null}
+            </div>
+          </Section>
 
-          {/* Formulaires contextuels selon la pièce */}
-          {slipType === 'BV' ? (
-            <Card title={t('piece.section_bv', 'Détails du Bon de Vente (BV)')}>
-              <div className="report-grid-2">
-                {refs?.customers && refs.customers.length > 0 ? (
-                  <Field label={t('sales.customer', 'Client')}>
-                    {(ctrl) => (
-                      <Select
-                        {...ctrl}
-                        value={customerId}
-                        onChange={(e) => setCustomerId(e.target.value)}
-                      >
-                        <option value="">
-                          {t('sales.anonymous_customer', 'Client comptoir / non listé')}
-                        </option>
-                        {refs.customers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.display_name} {c.phone_primary ? `(${c.phone_primary})` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
-                ) : null}
+          {/* Champs propres au type de pièce : ce que le serveur exige de la commande */}
+          {context ? (
+            <SlipFields form={form} patch={patch} context={context} />
+          ) : (
+            <p className="field-hint">{t('sales.loading', 'Chargement des référentiels…')}</p>
+          )}
 
-                {refs?.products && refs.products.length > 0 ? (
-                  <Field label={t('sales.product', 'Produit')}>
-                    {(ctrl) => (
-                      <Select
-                        {...ctrl}
-                        value={productId}
-                        onChange={(e) => setProductId(e.target.value)}
-                      >
-                        <option value="">{t('sales.choose_product', 'Choisir un produit…')}</option>
-                        {refs.products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
-                ) : null}
-              </div>
-
-              <div className="report-grid-2" style={{ marginTop: 'var(--space-3)' }}>
-                <Field label={t('sales.quantity', 'Quantité')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      type="number"
-                      min="1"
-                      value={quantity}
-                      onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    />
-                  )}
-                </Field>
-
-                <Field label={t('sales.unit_price', 'Prix unitaire (XAF)')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      type="number"
-                      min="0"
-                      step="50"
-                      value={unitPriceXaf}
-                      onChange={(e) =>
-                        setUnitPriceXaf(Math.max(0, parseInt(e.target.value, 10) || 0))
-                      }
-                    />
-                  )}
-                </Field>
-              </div>
-
-              <div className="report-grid-2" style={{ marginTop: 'var(--space-3)' }}>
-                <Field label={t('sales.payment_method', 'Règlement')}>
-                  {(ctrl) => (
-                    <Select
-                      {...ctrl}
-                      value={paymentMethod}
-                      onChange={(e) =>
-                        setPaymentMethod(
-                          e.target.value as 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT',
-                        )
-                      }
-                    >
-                      <option value="CASH">Espèces</option>
-                      <option value="MOMO">MTN Mobile Money</option>
-                      <option value="OM">Orange Money</option>
-                      <option value="BANK_TRANSFER">Virement bancaire</option>
-                      <option value="CREDIT">À crédit / différé</option>
-                    </Select>
-                  )}
-                </Field>
-
-                <div style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
-                  <span>Total : {formatMoney(quantity * unitPriceXaf)}</span>
-                </div>
-              </div>
-            </Card>
-          ) : null}
-
-          {slipType === 'RE' ? (
-            <Card title={t('piece.section_re', 'Détails du Reçu d’encaissement (RE)')}>
-              <div className="report-grid-2">
-                <Field label={t('sales.amount', 'Montant encaissé (XAF)')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      type="number"
-                      min="0"
-                      value={reAmountXaf}
-                      onChange={(e) =>
-                        setReAmountXaf(Math.max(0, parseInt(e.target.value, 10) || 0))
-                      }
-                      required
-                    />
-                  )}
-                </Field>
-
-                <Field label={t('sales.payment_method', 'Mode de règlement')}>
-                  {(ctrl) => (
-                    <Select
-                      {...ctrl}
-                      value={paymentMethod}
-                      onChange={(e) =>
-                        setPaymentMethod(
-                          e.target.value as 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT',
-                        )
-                      }
-                    >
-                      <option value="CASH">Espèces</option>
-                      <option value="MOMO">MTN Mobile Money</option>
-                      <option value="OM">Orange Money</option>
-                      <option value="BANK_TRANSFER">Virement</option>
-                    </Select>
-                  )}
-                </Field>
-              </div>
-
-              <div style={{ marginTop: 'var(--space-3)' }}>
-                <Field label={t('common.notes', 'Motif / Notes de l’encaissement')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      value={reNotes}
-                      onChange={(e) => setReNotes(e.target.value)}
-                      placeholder="Ex. Règlement partiel solde facture..."
-                    />
-                  )}
-                </Field>
-              </div>
-            </Card>
-          ) : null}
-
-          {slipType === 'BD' ? (
-            <Card title={t('piece.section_bd', 'Détails du Bon de décaissement (BD)')}>
-              <div className="report-grid-2">
-                <Field label={t('finance.payee', 'Bénéficiaire')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      value={bdPayeeName}
-                      onChange={(e) => setBdPayeeName(e.target.value)}
-                      placeholder="Nom du fournisseur ou bénéficiaire"
-                      required
-                    />
-                  )}
-                </Field>
-
-                <Field label={t('finance.amount', 'Montant décaissé (XAF)')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      type="number"
-                      min="0"
-                      value={bdAmountXaf}
-                      onChange={(e) =>
-                        setBdAmountXaf(Math.max(0, parseInt(e.target.value, 10) || 0))
-                      }
-                      required
-                    />
-                  )}
-                </Field>
-              </div>
-
-              <div style={{ marginTop: 'var(--space-3)' }}>
-                <Field label={t('finance.description', 'Description / Motif de la dépense')}>
-                  {(ctrl) => (
-                    <Textarea
-                      {...ctrl}
-                      value={bdDescription}
-                      onChange={(e) => setBdDescription(e.target.value)}
-                      placeholder="Objet de la dépense sur le bon papier..."
-                      rows={2}
-                      required
-                    />
-                  )}
-                </Field>
-              </div>
-            </Card>
-          ) : null}
-
-          {slipType === 'RF' ? (
-            <Card title={t('piece.section_rf', 'Détails de la Remise de fonds (RF)')}>
-              <div className="report-grid-2">
-                <Field label={t('finance.amount', 'Montant remis (XAF)')}>
-                  {(ctrl) => (
-                    <Input
-                      {...ctrl}
-                      type="number"
-                      min="0"
-                      value={rfAmountXaf}
-                      onChange={(e) =>
-                        setRfAmountXaf(Math.max(0, parseInt(e.target.value, 10) || 0))
-                      }
-                      required
-                    />
-                  )}
-                </Field>
-
-                {refs?.cashAccounts && refs.cashAccounts.length > 0 ? (
-                  <Field label={t('finance.cash_account', 'Caisse source')}>
-                    {(ctrl) => (
-                      <Select
-                        {...ctrl}
-                        value={rfSourceAccountId}
-                        onChange={(e) => setRfSourceAccountId(e.target.value)}
-                      >
-                        <option value="">
-                          {t('finance.choose_account', 'Choisir la caisse source…')}
-                        </option>
-                        {refs.cashAccounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
-                ) : null}
-              </div>
-            </Card>
-          ) : null}
-
-          {/* Justificatif photo de la souche papier (MP-10, ADR-012) */}
-          <Card title={t('piece.section_photo', 'Photo de la pièce papier (souche)')}>
-            <PhotoField
-              label={t('piece.photo_label', 'Preuve photo de la souche')}
-              hint={t(
-                'piece.photo_hint',
-                'Recommandé : prenez en photo la souche ou le feuillet du carnet comme justificatif.',
-              )}
-              value={photo}
-              onChange={setPhoto}
-              onBusyChange={setIsPhotoBusy}
-            />
-          </Card>
+          {/* Justificatif photo de la souche papier (MP-10, ADR-012) — seulement là où le serveur le rattache */}
+          <Section title={t('piece.section_photo', 'Photo de la pièce papier (souche)')}>
+            {photoTarget ? (
+              <PhotoField
+                label={t('piece.photo_label', 'Preuve photo de la souche')}
+                hint={t(
+                  'piece.photo_hint',
+                  'Recommandé : prenez en photo la souche ou le feuillet du carnet comme justificatif.',
+                )}
+                value={photo}
+                onChange={setPhoto}
+                onBusyChange={setIsPhotoBusy}
+              />
+            ) : (
+              <Banner tone="info">
+                {t(
+                  'piece.photo_unavailable',
+                  'La photo de la souche ne peut pas encore être rattachée à ce type de pièce sur le serveur (AV-504) : conservez la souche papier dans le carnet.',
+                )}
+              </Banner>
+            )}
+          </Section>
 
           {/* Un seul bouton principal plein par écran (règle refonte) */}
           <ActionBar>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={submitting || isPhotoBusy || !paperSlipRef.trim()}
-            >
+            <Button type="submit" variant="primary" disabled={submitting || isPhotoBusy || !refs}>
               {submitting
                 ? t('common.saving', 'Enregistrement…')
                 : t('piece.submit_report', 'Enregistrer le report')}
@@ -727,9 +473,9 @@ export function PaperSlipReportScreen() {
             <span>{t('piece.filter_by_type', 'Filtrer par type :')}</span>
             <Select value={slipTypeFilter} onChange={(e) => setSlipTypeFilter(e.target.value)}>
               <option value="ALL">Tous les carnets</option>
-              {SLIP_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
+              {REPORTABLE_SLIP_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {SLIP_TYPE_LABELS[type]}
                 </option>
               ))}
             </Select>
