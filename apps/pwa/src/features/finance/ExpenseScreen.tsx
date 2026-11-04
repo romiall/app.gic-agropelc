@@ -37,7 +37,11 @@ import { PhotoField } from '../attachments/PhotoField.js';
 import { useOwnerPhotos } from '../attachments/attachments.js';
 import { AttachPhoto, PhotoStatus } from '../attachments/PhotoViews.js';
 import { useAuth } from '../auth/AuthContext.js';
-import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
+import {
+  cashPaymentBlocked,
+  cashSessionCoverage,
+  cashSessionRequired,
+} from '../cash/cash-session.js';
 import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { overIndicativeBalance, transferSourceBalance } from '../cash/transfers.js';
 import { formatClockTime, formatDateTime } from '../home/format-home.js';
@@ -232,6 +236,7 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
   const coverage =
     paidFromPos && account
       ? cashSessionCoverage({
+          required: cashSessionRequired(refs.settings, account.site_id, now),
           atPointOfSale: true,
           accounts: refs.cashAccounts,
           sessions: refs.cashSessions,

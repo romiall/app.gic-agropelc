@@ -55,10 +55,12 @@ import {
 } from './helpers.js';
 import { OfflineDevice } from './device-harness.js';
 import {
+  balanceOf,
   codeOf,
   newAccount,
   newActor,
   newPosSite,
+  requireCashSession,
   runCommand,
   tx,
   type Actor,
@@ -153,8 +155,14 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     ],
   });
 
-  async function newPos(): Promise<Pos> {
+  /**
+   * Point de vente d'essai. AV-509 : l'exigence d'une caisse ouverte (BR-DIS-005) n'existe que si le
+   * paramètre `finance.cash_session_required` du site la rétablit ; ce fichier éprouve l'exigence, elle
+   * est donc rétablie sur chaque site d'essai, sauf `sessionRequired: false` (comportement par défaut).
+   */
+  async function newPos(options: { readonly sessionRequired?: boolean } = {}): Promise<Pos> {
     const siteId = await newPosSite(root, zoneId);
+    if (options.sessionRequired !== false) await requireCashSession(siteId, root);
     const seller = await newActor('VENDEUR_PDV', root, { scopeType: 'SITE', scopeSiteId: siteId });
     const seller2 = await newActor('VENDEUR_PDV', root, { scopeType: 'SITE', scopeSiteId: siteId });
     const accountId = await newAccount({ type: 'CAISSE_PDV', responsible: seller.userId, siteId });
@@ -493,6 +501,119 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     expect((await tx((trx) => verifyCashLedger(trx, { cashAccountIds: [pos.accountId] }))).ok).toBe(
       true,
     );
+  });
+
+  it('AV-509 : par défaut une vente n’attend pas la caisse — espèces au PDV sans session appliquées en ligne comme hors ligne (vente, encaissement hors vente, acompte), sans refus ni conflit ; avec une session, l’index est posé et l’écart se voit à l’ouverture', async () => {
+    const pos = await newPos({ sessionRequired: false });
+    const hasFlag = (row: { readonly flags: unknown }, flag: string) =>
+      row.flags !== null && flagsOf(row).includes(flag);
+
+    // Vente directe en ligne, aucune session : appliquée, sans avertissement, sans index de session.
+    const onlineId = freshUuid();
+    const online = await ok(
+      pos.seller,
+      'sales.sale.record',
+      'SALE',
+      onlineId,
+      at('09:00'),
+      saleBody(pos, 2),
+    );
+    expect(online.status).toBe('APPLIED');
+    const onlineSale = await sale(onlineId);
+    expect(onlineSale.cash_session_id).toBeNull();
+    expect(hasFlag(onlineSale, 'CASH_SESSION_MISSING')).toBe(false);
+    const [onlinePayment] = await paymentsOf(onlineId);
+    expect(onlinePayment!.cash_session_id).toBeNull();
+    expect(await conflictsOf(fromBin(onlinePayment!.id), 'CASH_SESSION_MISSING')).toEqual([]);
+
+    // Hors ligne : fait accompli, appliqué sans avertissement ni conflit `CASH_SESSION_MISSING`.
+    const tablet = new OfflineDevice(services, pos.seller.deviceId, clock);
+    const offlineId = freshUuid();
+    tablet.enqueue(pos.seller.userId, {
+      type: 'sales.sale.record',
+      aggregateType: 'SALE',
+      aggregateId: offlineId,
+      occurredAt: at('09:30'),
+      payload: saleBody(pos, 3),
+    });
+    const [synced] = await tablet.sync(pos.seller.userId);
+    expect(synced?.status, JSON.stringify(synced)).toBe('APPLIED');
+    const offlineSale = await sale(offlineId);
+    expect(hasFlag(offlineSale, 'CASH_SESSION_MISSING')).toBe(false);
+    const [offlinePayment] = await paymentsOf(offlineId);
+    expect(await conflictsOf(fromBin(offlinePayment!.id), 'CASH_SESSION_MISSING')).toEqual([]);
+
+    // Encaissement hors vente (sales.payment.record) : en ligne comme hors ligne.
+    const s1 = freshUuid();
+    await ok(
+      pos.seller,
+      'sales.sale.record',
+      'SALE',
+      s1,
+      at('09:40'),
+      unpaidSaleBody(pos, 4),
+      true,
+    );
+    const payOnline = await payAnonymousSale(pos, s1, 1_000, at('09:50'));
+    expect(payOnline.result.status, JSON.stringify(payOnline.result)).toBe('APPLIED');
+    expect((await paymentRow(payOnline.id))!.cash_session_id).toBeNull();
+    const payOffline = await payAnonymousSale(pos, s1, 1_000, at('09:55'), true);
+    expect(payOffline.result.status, JSON.stringify(payOffline.result)).toBe('APPLIED');
+    expect(await conflictsOf(payOffline.id, 'CASH_SESSION_MISSING')).toEqual([]);
+
+    // Acompte d'une commande (sales.order.place) : en ligne comme hors ligne.
+    const commercial = await newActor('COMMERCIAL_SEDENTAIRE', root);
+    const customerId = await newCustomer();
+    const place = async (occurredAt: string, offline: boolean) => {
+      const id = freshUuid();
+      const result = await run(
+        commercial,
+        'sales.order.place',
+        'SALES_ORDER',
+        id,
+        occurredAt,
+        {
+          customerId,
+          fulfilmentLocationId: pos.counterId,
+          lines: [line(2)],
+          advancePayments: [
+            { methodCode: 'ESPECES', amountXaf: 1_000, cashAccountId: pos.accountId },
+          ],
+        },
+        offline,
+      );
+      return { id, result };
+    };
+    expect((await place(at('09:58'), false)).result.status).toMatch(/^APPLIED/);
+    const advanceOffline = await place(at('09:59'), true);
+    expect(advanceOffline.result.status, JSON.stringify(advanceOffline.result)).toMatch(/^APPLIED/);
+    expect(warningsOf(advanceOffline.result)).not.toContain('CASH_SESSION_MISSING');
+
+    // Tout l'argent est au registre de la caisse du PDV, sans une seule session : 2×500 + 3×500 (ventes),
+    // 2 × 1 000 (encaissements hors vente) et 2 × 1 000 (acomptes) = 6 500.
+    expect(await balanceOf(pos.accountId)).toBe(6_500);
+    expect(
+      await tx((trx) => verifyCashLedger(trx, { cashAccountIds: [pos.accountId] })),
+    ).toMatchObject({ ok: true });
+    // Aucun conflit `CASH_SESSION_MISSING` sur le site.
+    const missing = await db
+      .selectFrom('sync_sync_conflicts')
+      .select('id')
+      .where('conflict_type', '=', 'CASH_SESSION_MISSING')
+      .where('site_id', '=', toBin(pos.siteId))
+      .execute();
+    expect(missing).toEqual([]);
+
+    // La caisse est ouverte ensuite, avec 6 000 comptés pour 6 500 attendus : la session existe, l'index se pose
+    // sur ce qui la suit, et l'écart de 500 se voit à l'ouverture (fonds compté face au registre).
+    const sessionId = await openSession(pos, at('10:00'), 6_000);
+    const opened = await session(sessionId);
+    expect(Number(opened.opening_expected_xaf)).toBe(6_500);
+    expect(Number(opened.opening_variance_xaf)).toBe(-500);
+    const laterId = freshUuid();
+    await ok(pos.seller, 'sales.sale.record', 'SALE', laterId, at('10:30'), saleBody(pos, 1));
+    expect(fromBin((await sale(laterId)).cash_session_id!)).toBe(sessionId);
+    expect(fromBin((await paymentsOf(laterId))[0]!.cash_session_id!)).toBe(sessionId);
   });
 
   it('BR-VEN-028 : session ouverte → annulation directe et remboursement dans la session ; session close → demande CANCEL_SESSION_CLOSED', async () => {

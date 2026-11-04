@@ -10,6 +10,7 @@ import type { CommandResult } from '@gic/contracts';
 import type { DB } from '../src/platform/kysely/database.js';
 import type { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { recordCashMovement } from '../src/modules/finance/application/public/index.js';
+import { jsonValue } from '../src/platform/kysely/json-value.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -55,6 +56,37 @@ export async function newActor(
 
 export async function newPosSite(createdBy: string, zoneId: string): Promise<string> {
   return tx((trx) => insertTestSite(trx, createdBy, zoneId, { siteType: 'POINT_DE_VENTE' }));
+}
+
+/**
+ * AV-509 (décision du porteur du 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
+ * caisse, le paramètre `finance.cash_session_required` vaut `false` par défaut. Ceci le rétablit à `true`
+ * **pour ce site d'essai seulement** (réglage de site : base partagée, les autres suites gardent le
+ * défaut) afin d'éprouver le refus en ligne `CASH_SESSION_REQUIRED` et le conflit hors ligne
+ * `CASH_SESSION_MISSING` de BR-DIS-005.
+ */
+export async function requireCashSession(
+  siteId: string,
+  createdBy: string,
+  value: unknown = true,
+  validFrom: string = '2026-01-01T00:00:00.000Z',
+): Promise<void> {
+  await db
+    .insertInto('organization_system_settings')
+    .values({
+      id: toBin(freshUuid()),
+      key: 'finance.cash_session_required',
+      value: jsonValue(value),
+      scope_type: 'SITE',
+      scope_id: toBin(siteId),
+      valid_from: new Date(validFrom),
+      // Non visible de l'appareil : le seed publie dans le jeu `me` toute version visible, et ces réglages
+      // de site d'essai n'ont rien à y faire (les suites du seed comptent les lignes publiées).
+      is_client_visible: 0,
+      reason: 'Essai AV-509',
+      created_by: toBin(createdBy),
+    })
+    .execute();
 }
 
 export async function siteCode(siteId: string): Promise<string> {

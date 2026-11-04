@@ -46,6 +46,7 @@ import {
   newAccount,
   newActor,
   newPosSite,
+  requireCashSession,
   siteCode,
   tx,
   type Actor,
@@ -186,9 +187,16 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
       .where('operation_type', '=', 'EXPENSE')
       .execute();
 
-  /** Point de vente : site, vendeur du site, caisse de PDV alimentée, session ouverte à 06:00 si demandé. */
-  async function newPdv(options: { readonly session?: boolean } = {}) {
+  /**
+   * Point de vente : site, vendeur du site, caisse de PDV alimentée, session ouverte à 06:00 si demandé.
+   * `sessionRequired` : rétablit pour ce site l'exigence d'une caisse ouverte (BR-DIS-005, AV-509 et
+   * AV-510 : faux par défaut, ni une vente ni une dépense n'attendent la caisse).
+   */
+  async function newPdv(
+    options: { readonly session?: boolean; readonly sessionRequired?: boolean } = {},
+  ) {
     const siteId = await newPosSite(root.userId, zoneId);
+    if (options.sessionRequired === true) await requireCashSession(siteId, root.userId);
     const seller = await newActor('VENDEUR_PDV', root.userId, {
       scopeType: 'SITE',
       scopeSiteId: siteId,
@@ -362,7 +370,7 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
     expect(await refused({ categoryId: category.NON_JUSTIFIEE, amountXaf: 1_000 })).toBe(
       'EXPENSE_CATEGORY_INACTIVE',
     );
-    const closed = await newPdv({ session: false });
+    const closed = await newPdv({ session: false, sessionRequired: true });
     const { result } = await record(closed.seller, {
       ...base,
       siteId: closed.siteId,
@@ -379,7 +387,7 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
   });
 
   it('PDV hors ligne non conforme : appliquée, validation a posteriori, CASH_SESSION_MISSING résolu par l’ouverture après coup', async () => {
-    const pdv = await newPdv({ session: false });
+    const pdv = await newPdv({ session: false, sessionRequired: true });
     const { id, result } = await record(
       pdv.seller,
       {
@@ -423,6 +431,60 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
     );
     expect(codeOf(open)).toMatch(/^APPLIED/);
     expect((await conflictsOf(id, 'CASH_SESSION_MISSING'))[0]?.status).toBe('RESOLVED');
+  });
+
+  it('AV-509, AV-510 : par défaut une dépense n’attend pas la caisse — payée par la caisse du PDV sans session, en ligne, hors ligne et payée ensuite par la Finance, sans refus ni conflit ; une session ouverte reçoit l’index', async () => {
+    const pdv = await newPdv({ session: false });
+    const base = {
+      categoryId: category.TRANSPORT,
+      description: 'Transport',
+      siteId: pdv.siteId,
+    };
+    const paidBase = { ...base, paidNow: true, paidFromAccountId: pdv.pos };
+
+    // En ligne, aucune session ouverte : appliquée, mouvement sans index de session.
+    const online = await record(pdv.seller, { ...paidBase, amountXaf: 1_000 });
+    expect(online.result.status, JSON.stringify(online.result)).toBe('APPLIED');
+    const [onlineMovement] = await movementsOf(online.id);
+    expect(onlineMovement).toMatchObject({ direction: 'OUT', cash_session_id: null });
+    expect(Number(onlineMovement!.amount_xaf)).toBe(1_000);
+
+    // Hors ligne : fait accompli appliqué, sans avertissement ni conflit `CASH_SESSION_MISSING`.
+    const offline = await record(
+      pdv.seller,
+      { ...paidBase, amountXaf: 2_000 },
+      { offline: true, occurredAt: at('09:00') },
+    );
+    expect(offline.result.status, JSON.stringify(offline.result)).toBe('APPLIED');
+    expect(await conflictsOf(offline.id, 'CASH_SESSION_MISSING')).toEqual([]);
+
+    // Dépense à payer, payée ensuite par la Finance depuis la caisse du PDV (en ligne, sans session).
+    const due = await record(pdv.seller, { ...base, amountXaf: 3_000, paidNow: false });
+    expect(due.result.status, JSON.stringify(due.result)).toBe('APPLIED');
+    const paid = await run(fin, 'finance.expense.pay', due.id, at('15:00'), {
+      paidFromAccountId: pdv.pos,
+    });
+    expect(paid.status, JSON.stringify(paid)).toBe('APPLIED');
+    expect(await movementsOf(due.id)).toMatchObject([{ cash_session_id: null }]);
+    expect(await balanceOf(pdv.pos)).toBe(94_000);
+
+    // Une session ouverte ensuite reçoit l'index de ce qui la suit.
+    const sessionId = await tx((trx) =>
+      openTestCashSession(trx, {
+        cashAccountId: pdv.pos,
+        siteId: pdv.siteId,
+        openedBy: pdv.seller.userId,
+        openedAt: new Date(at('16:00')),
+      }),
+    );
+    const later = await record(
+      pdv.seller,
+      { ...paidBase, amountXaf: 500 },
+      { occurredAt: at('16:30') },
+    );
+    expect(later.result.status, JSON.stringify(later.result)).toBe('APPLIED');
+    const [laterMovement] = await movementsOf(later.id);
+    expect(fromBin(laterMovement!.cash_session_id!)).toBe(sessionId);
   });
 
   it('caisse personnelle : CASH_INSUFFICIENT en ligne, CASH_NEGATIVE hors ligne ; compte d’un autre et site hors périmètre refusés', async () => {

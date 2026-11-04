@@ -14,7 +14,14 @@ import {
   previewTargetedAllocation,
   sortDues,
 } from './collect.js';
-import { IDS, posCashAccountRow, SALE_ID, saleRow, seedSalesFixtures } from './fixtures.js';
+import {
+  IDS,
+  meSettingRow,
+  posCashAccountRow,
+  SALE_ID,
+  saleRow,
+  seedSalesFixtures,
+} from './fixtures.js';
 import type { SaleData } from './types.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -370,8 +377,24 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     expect(screen.queryByText(/La vente désignée n’a plus de reste dû/)).not.toBeInTheDocument();
   });
 
-  it('site du PDV, caisse fermée : en ligne, encaissement en espèces bloqué, invite « Ouvrir la caisse »', async () => {
+  it('AV-509 : site du PDV, caisse fermée, exigence par défaut absente : ni invite, ni blocage de l’encaissement en espèces', async () => {
     await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    expect(await screen.findByLabelText('Montant reçu (F CFA)')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Montant reçu (F CFA)'), '1500');
+    expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeEnabled();
+  });
+
+  it('paramètre `finance.cash_session_required`, site du PDV, caisse fermée : en ligne, encaissement en espèces bloqué, invite « Ouvrir la caisse »', async () => {
+    await getDb().projections.put(posCashAccountRow());
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     const user = userEvent.setup();
     renderAt(`/encaisser?client=${IDS.customer}`);
     expect(
@@ -386,10 +409,13 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeDisabled();
   });
 
-  it('site laissé au serveur : celui de la vente réglée, un PDV, espèces bloquées en ligne', async () => {
+  it('paramètre `finance.cash_session_required`, site laissé au serveur : celui de la vente réglée, un PDV, espèces bloquées en ligne', async () => {
     // Plus aucun stock de l'utilisateur : le site de l'encaissement n'est plus déduit de son PDV.
     await getDb().projections.where('dataset').equals('stock').delete();
     await getDb().projections.put(posCashAccountRow());
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     const user = userEvent.setup();
     renderAt(`/encaisser?client=${IDS.customer}`);
     expect(await screen.findByText(/VTE-2026-000123/)).toBeInTheDocument();

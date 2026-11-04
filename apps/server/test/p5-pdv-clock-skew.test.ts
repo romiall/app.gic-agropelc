@@ -103,7 +103,9 @@ describe(
     };
 
     beforeAll(async () => {
-      world = await PosWorld.create({ now: at('04:00'), sellers: 3 });
+      // AV-509 : ce scénario éprouve l'exigence d'une caisse ouverte (`CASH_SESSION_MISSING`, BR-DIS-005) ;
+      // elle est rétablie sur le PDV (faux par défaut).
+      world = await PosWorld.create({ now: at('04:00'), sellers: 3, sessionRequired: true });
       [A, B, C] = world.sellers as [Actor, Actor, Actor];
       product = await world.product();
       customer = await world.customer('Client des tablettes');

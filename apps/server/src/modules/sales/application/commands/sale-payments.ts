@@ -10,12 +10,15 @@
  *   la Finance (validation `PAYMENT_DUPLICATE`) ; la vente reste enregistrée avec un reste dû.
  * - Doublon probable sans référence (même client, même montant, fenêtre paramétrée) : c'est un
  *   fait, l'encaissement est enregistré, une anomalie informative est ouverte pour la Finance.
- * - **Session de caisse** (P5-14 ; BR-DIS-005, ADR-032 §8, AV-184) : un encaissement en espèces sur
- *   une caisse de PDV exige, **en ligne**, une session ouverte couvrant son heure (refus sans effet
- *   `CASH_SESSION_REQUIRED`) ; **hors ligne**, le fait est appliqué : sans session couvrant sa date,
- *   avertissement et conflit `CASH_SESSION_MISSING` (Finance) ; couvert par une session close depuis,
- *   il est réévalué par `finance` (P5-13). L'index `cash_session_id` de l'encaissement est celui que
- *   `recordCashMovement` a posé sur le mouvement, sous le verrou du compte.
+ * - **Session de caisse** (P5-14 ; BR-DIS-005, ADR-032 §8, AV-184 ; **AV-509, ADR-054** : jamais
+ *   exigée par défaut) : une vente n'est pas conditionnée par l'ouverture d'une caisse. Seul le
+ *   paramètre `finance.cash_session_required` du site (faux par défaut) rétablit l'exigence : alors un
+ *   encaissement en espèces sur une caisse de PDV exige, **en ligne**, une session ouverte couvrant son
+ *   heure (refus sans effet `CASH_SESSION_REQUIRED`) ; **hors ligne**, le fait est appliqué : sans
+ *   session couvrant sa date, avertissement et conflit `CASH_SESSION_MISSING` (Finance). Exigée ou non,
+ *   un encaissement couvert par une session close depuis est réévalué par `finance` (P5-13), et
+ *   l'index `cash_session_id` de l'encaissement est celui que `recordCashMovement` a posé sur le
+ *   mouvement, sous le verrou du compte (nul sans session : l'écart se voit à l'ouverture suivante).
  */
 import { isProbableDuplicatePayment, normalizePaymentReference, xaf } from '@gic/domain';
 import type { IdGenerator } from '@gic/domain';
@@ -31,6 +34,7 @@ import {
   cashAccountFor,
   findCashSessionCovering,
   findPaymentMethod,
+  isCashSessionRequired,
   recordCashMovement,
 } from '../../../finance/application/public/index.js';
 import {
@@ -53,8 +57,14 @@ export interface PlannedPayment {
   readonly input: SalePaymentInput;
   readonly referenceNormalized: string | null;
   readonly accountId: string;
-  /** Type du compte crédité ; `CAISSE_PDV` : espèces au point de vente, sous session (P5-14). */
+  /** Type du compte crédité ; `CAISSE_PDV` : espèces au point de vente (session : P5-14, AV-509). */
   readonly accountType: string;
+  /**
+   * AV-509 : une session ouverte est exigée pour cet encaissement. Vrai seulement pour des espèces sur
+   * une caisse de PDV **et** si le paramètre `finance.cash_session_required` du site, en vigueur à
+   * l'heure de l'encaissement, le demande (faux par défaut : une vente n'attend jamais une caisse).
+   */
+  readonly sessionRequired: boolean;
   readonly status: 'RECORDED' | 'SUSPECT_DUPLICATE';
   /** Encaissement déjà enregistré portant la même référence (doublon). */
   readonly duplicateOfPaymentId: string | null;
@@ -90,6 +100,7 @@ export async function planPayments(
   );
   const planned: PlannedPayment[] = [];
   const keysInCommand = new Set<string>();
+  let sessionRequiredAtSite: boolean | undefined;
   for (const [index, input] of payments.entries()) {
     const method = await findPaymentMethod(uow, input.methodCode);
     if (!method || (!method.isActive && !context.offline)) {
@@ -172,16 +183,22 @@ export async function planPayments(
       if (probable) probableDuplicateOf = fromBin(probable.id);
     }
     const status = duplicateOf !== null ? 'SUSPECT_DUPLICATE' : 'RECORDED';
-    // P5-14, BR-DIS-005 : en ligne, des espèces au PDV exigent une session ouverte qui couvre l'heure de
-    // l'encaissement. Refus précoce sur une lecture simple ; le contrôle est repris sous le verrou du
-    // compte après l'écriture du mouvement (`cashSessionLostOnline`). Une lecture verrouillante ici,
-    // avant le verrou du compte, inverserait l'ordre compte puis session de la clôture (ADR-032 §10).
-    // Hors ligne, rien n'est refusé : l'absence de session se constate à l'écriture.
-    if (
-      status === 'RECORDED' &&
-      resolution.account.accountType === 'CAISSE_PDV' &&
-      !context.offline
-    ) {
+    // AV-509 : l'exigence d'une session ne vaut que pour des espèces sur une caisse de PDV, et seulement
+    // si le paramètre du site la rétablit (faux par défaut). Lu une fois par commande.
+    let sessionRequired = false;
+    if (resolution.account.accountType === 'CAISSE_PDV') {
+      sessionRequiredAtSite ??= await isCashSessionRequired(uow, {
+        siteId: context.siteId,
+        at: context.at,
+      });
+      sessionRequired = sessionRequiredAtSite;
+    }
+    // P5-14, BR-DIS-005 (si exigée, AV-509) : en ligne, des espèces au PDV exigent une session ouverte qui
+    // couvre l'heure de l'encaissement. Refus précoce sur une lecture simple ; le contrôle est repris sous
+    // le verrou du compte après l'écriture du mouvement (`cashSessionLostOnline`). Une lecture
+    // verrouillante ici, avant le verrou du compte, inverserait l'ordre compte puis session de la
+    // clôture (ADR-032 §10). Hors ligne, rien n'est refusé : l'absence de session se constate à l'écriture.
+    if (status === 'RECORDED' && sessionRequired && !context.offline) {
       const covering = await findCashSessionCovering(uow, resolution.account.id, context.at);
       if (covering?.status !== 'OPEN') {
         return {
@@ -202,6 +219,7 @@ export async function planPayments(
       referenceNormalized,
       accountId: resolution.account.id,
       accountType: resolution.account.accountType,
+      sessionRequired,
       status,
       duplicateOfPaymentId: duplicateOf,
       probableDuplicateOfPaymentId: probableDuplicateOf,
@@ -242,13 +260,21 @@ export interface PaymentWriteResult {
  * postérieur, AV-171 ; l'encaissement aurait été refusé après la clôture) : refus, la transaction est
  * annulée. Une clôture datée **après** l'heure de l'encaissement le laisse dans cette session, qui est
  * réévaluée (ordre « encaissement puis clôture », P5-13) : accepté. Hors ligne, jamais de refus.
+ * AV-509 : sans exigence (`required` faux, le défaut), jamais de refus.
  */
 export function cashSessionLostOnline(input: {
   readonly offline: boolean;
   readonly accountType: string;
   readonly cashSessionId: string | null;
+  /** `PlannedPayment.sessionRequired` : l'exigence d'une session vaut pour cet encaissement. */
+  readonly required: boolean;
 }): CommandHandlerOutcome | null {
-  if (input.offline || input.accountType !== 'CAISSE_PDV' || input.cashSessionId !== null) {
+  if (
+    !input.required ||
+    input.offline ||
+    input.accountType !== 'CAISSE_PDV' ||
+    input.cashSessionId !== null
+  ) {
     return null;
   }
   return rejected(
@@ -262,13 +288,16 @@ export function cashSessionLostOnline(input: {
  * (index nul posé par `recordCashMovement`) ouvre le conflit informatif `CASH_SESSION_MISSING`
  * (Finance), résolu si une ouverture appliquée après coup couvre sa date (`finance.cash_session.open`).
  * En ligne, ce cas est refusé (`cashSessionLostOnline`) : les appelants n'appellent cette fonction que
- * hors ligne. Renvoie vrai si le conflit est ouvert.
+ * hors ligne. Renvoie vrai si le conflit est ouvert. AV-509 : sans exigence (`required` faux, le
+ * défaut), rien n'est signalé.
  */
 export async function flagCashSessionMissing(
   uow: Uow,
   deps: { readonly idGenerator: IdGenerator },
   input: {
     readonly accountType: string;
+    /** `PlannedPayment.sessionRequired` : l'exigence d'une session vaut pour cet encaissement. */
+    readonly required: boolean;
     readonly cashSessionId: string | null;
     readonly paymentId: string;
     readonly cashAccountId: string;
@@ -280,7 +309,9 @@ export async function flagCashSessionMissing(
     readonly documentRef: Record<string, string>;
   },
 ): Promise<boolean> {
-  if (input.accountType !== 'CAISSE_PDV' || input.cashSessionId !== null) return false;
+  if (!input.required || input.accountType !== 'CAISSE_PDV' || input.cashSessionId !== null) {
+    return false;
+  }
   await recordConflict(uow, {
     id: deps.idGenerator.newId(),
     commandId: input.commandId,
@@ -371,6 +402,7 @@ export async function writePayments(
     const lost = cashSessionLostOnline({
       offline: context.offline,
       accountType: payment.accountType,
+      required: payment.sessionRequired,
       cashSessionId: movement.cashSessionId,
     });
     if (lost) {
@@ -409,6 +441,7 @@ export async function writePayments(
       context.offline &&
       (await flagCashSessionMissing(uow, deps, {
         accountType: payment.accountType,
+        required: payment.sessionRequired,
         cashSessionId: movement.cashSessionId,
         paymentId: payment.id,
         cashAccountId: payment.accountId,

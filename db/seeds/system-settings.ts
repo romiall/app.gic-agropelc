@@ -170,6 +170,12 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   // Nombre de sessions par PDV et par jour métier (AV-154) ; lu par l'appareil à l'ouverture.
   // AV-154, tranché le 13/10/2026 : 0 = sans limite (une seule session ouverte à la fois).
   { key: 'finance.cash_sessions_per_day_max', value: 0, isClientVisible: true, ref: 'AV-154' },
+  // AV-509 (décision du porteur, 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
+  // caisse. `true` rétablit, pour un site (réglage de site) ou pour tous, l'exigence de BR-DIS-005 :
+  // refus en ligne et conflit `CASH_SESSION_MISSING` hors ligne pour des espèces sur la caisse d'un PDV
+  // sans session ouverte. Lu par l'appareil (bandeau « Ouvrir la caisse », blocage en ligne) et par le
+  // serveur ; absent, il vaut `false` des deux côtés.
+  { key: 'finance.cash_session_required', value: false, isClientVisible: true, ref: 'AV-509' },
   // Au-delà de ces heures, une session ouverte est signalée et la Finance peut la clôturer d'office.
   {
     key: 'finance.cash_session_force_close_hours',

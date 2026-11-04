@@ -137,7 +137,7 @@ Fichier : [`domaines/D05-DIS-distribution-points-de-vente.md`](domaines/D05-DIS-
 | BR-DIS-002 | Mode de garde de l'emplacement de vente (BR-STK-010) : `EXCLUSIVE_DEVICE` si le PDV fonctionne avec un seul appareil désigné (recommandé pa… | D (CM §39) / AV-035 |
 | BR-DIS-003 | Les vendeurs d'un PDV sont les utilisateurs qui ont le rôle `VENDEUR_PDV` avec une portée `SITE` sur ce PDV. Un vendeur ne vend que dans le… | C (CM §12) / D |
 | BR-DIS-004 | Les prix du PDV sont résolus par le moteur de tarification avec le contexte du PDV : PDV > zone du PDV > zones parentes > global (D10). | C (CM §12, §29) |
-| BR-DIS-005 | Un encaissement en espèces au PDV exige une session de caisse ouverte. Sans session ouverte, l'écran de vente propose d'abord « Ouvrir la c… | AV-057 |
+| BR-DIS-005 | Une vente n'est jamais conditionnée par l'ouverture d'une caisse (décision du porteur du 04/11/2026, AV-509, [ADR-054](../../decisions/ADR-… | AV-509 (remplace AV-057 pour la vente), AV-510 |
 | BR-DIS-006 | Au plus une session ouverte par compte de caisse (INV-FIN-06) ; seule une caisse de PDV ouvre une session (AV-165). Une ouverture qui cheva… | D (P5-12) / AV-154 |
 | BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds compté à l'ouverture + Σ entrées − Σ sorties des mouvements du registre… | C (CM §54 « anomalie de caisse ») / D (ADR-032) / AV-057 |
 | BR-DIS-008 | Une session validée est immuable. Une vente hors ligne tardive rattachée à une session validée ouvre un écart complémentaire, lui aussi à v… | D |

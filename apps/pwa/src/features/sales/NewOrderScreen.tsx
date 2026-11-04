@@ -28,7 +28,11 @@ import {
   paymentPayload,
   type PaymentFieldsValue,
 } from './payment.js';
-import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
+import {
+  cashPaymentBlocked,
+  cashSessionCoverage,
+  cashSessionRequired,
+} from '../cash/cash-session.js';
 import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
 import { deduceChannel, openWorkSession } from './pricing.js';
@@ -152,9 +156,10 @@ export function NewOrderScreen() {
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
   const advance = withAdvance ? parseXaf(advancePayment.amountText ?? '') : 0;
-  // Commande servie au PDV (emplacement `POS`) : un acompte en espèces exige une caisse ouverte
-  // (BR-DIS-005, AV-233).
+  // Commande servie au PDV (emplacement `POS`) : un acompte en espèces n'exige une caisse ouverte que si
+  // le paramètre du site le demande (BR-DIS-005, AV-233 ; AV-509 : faux par défaut).
   const cashSession = cashSessionCoverage({
+    required: cashSessionRequired(refs.settings, location?.site_id, now),
     atPointOfSale: location?.location_type === 'POS',
     accounts: refs.cashAccounts,
     sessions: refs.cashSessions,

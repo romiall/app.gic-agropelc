@@ -47,7 +47,11 @@ import {
   paymentPayload,
   type PaymentFieldsValue,
 } from './payment.js';
-import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
+import {
+  cashPaymentBlocked,
+  cashSessionCoverage,
+  cashSessionRequired,
+} from '../cash/cash-session.js';
 import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
 import { isWaiting, stillInFlight } from './pending.js';
@@ -343,6 +347,7 @@ export function CollectScreen() {
     customer?.home_site_id ??
     undefined;
   const cashSession = cashSessionCoverage({
+    required: cashSessionRequired(refs.settings, cashSiteId, clock.now()),
     atPointOfSale: cashSiteId ? refs.sites.get(cashSiteId)?.site_type === 'POINT_DE_VENTE' : false,
     accounts: refs.cashAccounts,
     sessions: refs.cashSessions,

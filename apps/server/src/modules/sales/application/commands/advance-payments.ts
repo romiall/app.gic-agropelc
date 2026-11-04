@@ -117,6 +117,7 @@ export async function writeAdvancePayments(
     const lost = cashSessionLostOnline({
       offline: context.offline,
       accountType: payment.accountType,
+      required: payment.sessionRequired,
       cashSessionId: movement.cashSessionId,
     });
     if (lost) return { advanceXaf: 0, docNumbers, warnings: [], rejection: lost };
@@ -144,6 +145,7 @@ export async function writeAdvancePayments(
       context.offline &&
       (await flagCashSessionMissing(uow, deps, {
         accountType: payment.accountType,
+        required: payment.sessionRequired,
         cashSessionId: movement.cashSessionId,
         paymentId: payment.id,
         cashAccountId: payment.accountId,

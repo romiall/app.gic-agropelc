@@ -39,7 +39,7 @@ import {
 import { verifyCashSessionVariance } from '../src/modules/finance/application/cash-session-validation.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { OfflineDevice, type DeviceServices } from './device-harness.js';
-import { newActor, tx, type Actor } from './cash-transfer-fixtures.js';
+import { newActor, requireCashSession, tx, type Actor } from './cash-transfer-fixtures.js';
 import {
   db,
   freshPhone,
@@ -165,11 +165,14 @@ export class PosWorld {
 
   /**
    * Monte l'application et le monde. `now` : heure de l'horloge fixe au départ (passée : jamais
-   * d'horloge serveur dans le futur sur la base partagée) ; `sellers` : nombre de vendeurs du PDV.
+   * d'horloge serveur dans le futur sur la base partagée) ; `sellers` : nombre de vendeurs du PDV ;
+   * `sessionRequired` : rétablit pour ce PDV l'exigence d'une caisse ouverte (BR-DIS-005, AV-509 : faux par
+   * défaut, une vente n'attend pas la caisse).
    */
   static async create(options: {
     readonly now: string;
     readonly sellers: number;
+    readonly sessionRequired?: boolean;
   }): Promise<PosWorld> {
     const app = await sharedApp(options.now);
     try {
@@ -182,7 +185,11 @@ export class PosWorld {
 
   private static async build(
     { app, clock, idGenerator, pipeline, services }: NonNullable<typeof shared>,
-    options: { readonly now: string; readonly sellers: number },
+    options: {
+      readonly now: string;
+      readonly sellers: number;
+      readonly sessionRequired?: boolean;
+    },
   ): Promise<PosWorld> {
     const root = await tx((trx) => insertTestUser(trx));
     const places = await tx(async (trx) => {
@@ -229,6 +236,7 @@ export class PosWorld {
         .execute();
       return { zoneId, siteP, siteS, counter, store, categoryId };
     });
+    if (options.sessionRequired === true) await requireCashSession(places.siteP, root);
     const site = (siteId: string) => ({ scopeType: 'SITE' as const, scopeSiteId: siteId });
     const admin = await newActor('ADMIN', root);
     const fin = await newActor('FINANCE', root);

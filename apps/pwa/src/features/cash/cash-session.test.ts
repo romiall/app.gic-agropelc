@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboxCommand } from '../../storage/db.js';
-import type { CashAccountData, CashSessionData } from '../sales/types.js';
+import type { CashAccountData, CashSessionData, SettingData } from '../sales/types.js';
 import {
   cashOpenPlan,
   cashPaymentBlocked,
   cashSessionCoverage,
+  cashSessionRequired,
   deviceCash,
   foreignClose,
   indicativeBalanceXaf,
@@ -554,9 +555,64 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     });
   });
 
-  it('encaissement en espèces au PDV : caisse ouverte exigée, bloqué en ligne seulement (BR-DIS-005, AV-233)', () => {
+  it('AV-509 : par défaut une vente n’attend pas la caisse ; le paramètre du site (ou global) rétablit l’exigence', () => {
+    const NOW = new Date('2026-11-04T10:00:00.000Z');
+    const setting = (
+      value: unknown,
+      scope: { type: 'SITE' | 'GLOBAL'; id: string | null },
+      validFrom = '2026-11-01T00:00:00.000Z',
+    ): SettingData => ({
+      id: `s-${seq++}`,
+      key: 'finance.cash_session_required',
+      value,
+      scope_type: scope.type,
+      scope_id: scope.id,
+      valid_from: validFrom,
+    });
+    const GLOBAL = { type: 'GLOBAL', id: null } as const;
+    const site = (id: string) => ({ type: 'SITE', id }) as const;
+    // Absent, mal formé ou faux : jamais exigée.
+    expect(cashSessionRequired([], SITE, NOW)).toBe(false);
+    expect(cashSessionRequired([setting(false, GLOBAL)], SITE, NOW)).toBe(false);
+    expect(cashSessionRequired([setting('true', GLOBAL)], SITE, NOW)).toBe(false);
+    expect(cashSessionRequired([setting(1, GLOBAL)], SITE, NOW)).toBe(false);
+    // Exigée pour tous, ou pour un seul site ; le réglage du site l'emporte sur le global.
+    expect(cashSessionRequired([setting(true, GLOBAL)], SITE, NOW)).toBe(true);
+    expect(cashSessionRequired([setting(true, site(SITE))], SITE, NOW)).toBe(true);
+    expect(cashSessionRequired([setting(true, site(SITE))], 'site-dla', NOW)).toBe(false);
+    expect(
+      cashSessionRequired([setting(true, GLOBAL), setting(false, site(SITE))], SITE, NOW),
+    ).toBe(false);
+    // Une version pas encore en vigueur ne compte pas.
+    expect(
+      cashSessionRequired([setting(true, GLOBAL, '2026-11-05T00:00:00.000Z')], SITE, NOW),
+    ).toBe(false);
+
+    // Sans exigence : ni invite « Ouvrir la caisse », ni blocage, même au PDV sans aucune session et même
+    // quand la caisse n'est pas servie à l'appareil.
+    const base = {
+      required: false,
+      atPointOfSale: true,
+      accounts: [account],
+      sessions: [],
+      outbox: [],
+      cashPulledAt: PULLED,
+      siteId: SITE,
+      userId: USER,
+    };
+    expect(cashSessionCoverage(base)).toBe('NONE');
+    expect(cashSessionCoverage({ ...base, siteId: 'site-dla' })).toBe('NONE');
+    expect(cashSessionCoverage({ ...base, accounts: [] })).toBe('NONE');
+    expect(cashSessionCoverage({ ...base, sessions: [session()] })).toBe('NONE');
+    expect(cashPaymentBlocked(cashSessionCoverage(base), true)).toBe(false);
+    // Exigée : le même contexte est bloqué en ligne.
+    expect(cashPaymentBlocked(cashSessionCoverage({ ...base, required: true }), true)).toBe(true);
+  });
+
+  it('encaissement en espèces au PDV, caisse ouverte exigée (paramètre) : bloqué en ligne seulement (BR-DIS-005, AV-233)', () => {
     const coverage = (overrides: Partial<Parameters<typeof cashSessionCoverage>[0]> = {}) =>
       cashSessionCoverage({
+        required: true,
         atPointOfSale: true,
         accounts: [account],
         sessions: [],

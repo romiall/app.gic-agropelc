@@ -6,9 +6,10 @@
  *
  * - **Seuils** (AV-058) : validation et justificatif au-delà des paramètres, comparaisons strictes ;
  *   la politique `EXPENSE` dit qui approuve ; sans politique, aucune validation (AV-264).
- * - **Caisse de PDV** (BR-DIS-013, AV-266, AV-267) : catégorie permise au PDV, plafond, session ouverte
- *   qui couvre l'heure de la dépense, comme un encaissement en espèces (P5-14) : refus précoce sur une
- *   lecture simple, puis contrôle repris sous le verrou du compte (`recordCashMovement`).
+ * - **Caisse de PDV** (BR-DIS-013, AV-266, AV-267) : catégorie permise au PDV, plafond, et, **si le
+ *   paramètre `finance.cash_session_required` du site l'exige** (faux par défaut, AV-509, AV-510), session
+ *   ouverte qui couvre l'heure de la dépense, comme un encaissement en espèces (P5-14) : refus précoce
+ *   sur une lecture simple, puis contrôle repris sous le verrou du compte (`recordCashMovement`).
  * - **Hors ligne** (BR-SYN-007, ADR-042 §6, AV-265) : jamais de refus pour une raison d'état métier ;
  *   une règle que seul le serveur peut juger place la dépense en validation a posteriori (motifs dans
  *   `review_reasons`, avertissement `EXPENSE_REVIEW_REQUIRED`) ; caisse négative `CASH_NEGATIVE`,
@@ -68,7 +69,7 @@ import {
 import { findSupplier } from '../../../procurement/application/public/index.js';
 import { recordCashMovement } from '../public/cash-movements.js';
 import { findCashAccount } from '../public/cash-accounts.js';
-import { findCashSessionCovering } from '../public/cash-sessions.js';
+import { findCashSessionCovering, isCashSessionRequired } from '../public/cash-sessions.js';
 import type { CashAccountSummary } from '../public/cash-accounts.js';
 import {
   CASH_ACCOUNT_FORBIDDEN,
@@ -245,6 +246,10 @@ export function registerExpenseCommands(
       }
     }
     const paidFromPos = account?.accountType === 'CAISSE_PDV';
+    // AV-510 (AV-509) : une session ouverte n'est exigée qu'à la demande du paramètre du site (faux par
+    // défaut), comme pour un encaissement.
+    const sessionIsRequired =
+      paidFromPos && (await isCashSessionRequired(uow, { siteId: account?.siteId ?? null, at }));
 
     const settings = await expenseSettingsAt(uow, at);
     const reasons = expenseReviewReasons({
@@ -260,8 +265,9 @@ export function registerExpenseCommands(
       const reason = reasons[0]!;
       return rejected(EXPENSE_REVIEW_ERROR_CODES[reason], REVIEW_MESSAGES[reason]);
     }
-    // P5-14 (BR-DIS-005) : en ligne, refus précoce sur une lecture simple, repris sous le verrou du compte.
-    if (paidFromPos && !offline) {
+    // P5-14 (BR-DIS-005, si exigée) : en ligne, refus précoce sur une lecture simple, repris sous le verrou
+    // du compte.
+    if (sessionIsRequired && !offline) {
       const covering = await findCashSessionCovering(uow, account!.id, at);
       if (covering?.status !== 'OPEN') return sessionRequired(covering !== null);
     }
@@ -314,7 +320,7 @@ export function registerExpenseCommands(
         })
       : null;
     // Contrôle repris sous le verrou du compte (une clôture validée entre-temps, P5-14).
-    if (movement !== null && paidFromPos && !offline && movement.cashSessionId === null) {
+    if (movement !== null && sessionIsRequired && !offline && movement.cashSessionId === null) {
       return sessionRequired(true);
     }
 
@@ -447,8 +453,9 @@ export function registerExpenseCommands(
       });
       warnings.add('CASH_NEGATIVE');
     }
-    // AV-267 : hors ligne, espèces de PDV sans session couvrant l'heure → conflit informatif.
-    if (movement !== null && paidFromPos && offline && movement.cashSessionId === null) {
+    // AV-267 : hors ligne, espèces de PDV sans session couvrant l'heure → conflit informatif (si la
+    // session est exigée, AV-510).
+    if (movement !== null && sessionIsRequired && offline && movement.cashSessionId === null) {
       await recordConflict(uow, {
         id: idGenerator.newId(),
         commandId: envelope.command_id,
@@ -548,6 +555,9 @@ export function registerExpenseCommands(
       return CASH_ACCOUNT_FORBIDDEN;
     }
     const category = (await loadExpenseCategory(uow, expense.categoryId)) as ExpenseCategoryRow;
+    const sessionIsRequired =
+      account.accountType === 'CAISSE_PDV' &&
+      (await isCashSessionRequired(uow, { siteId: account.siteId, at }));
     if (account.accountType === 'CAISSE_PDV') {
       const settings = await expenseSettingsAt(uow, at);
       if (!category.allowedOnPos) {
@@ -562,8 +572,10 @@ export function registerExpenseCommands(
           REVIEW_MESSAGES.POS_CAP_EXCEEDED,
         );
       }
-      const covering = await findCashSessionCovering(uow, account.id, at);
-      if (covering?.status !== 'OPEN') return sessionRequired(covering !== null);
+      if (sessionIsRequired) {
+        const covering = await findCashSessionCovering(uow, account.id, at);
+        if (covering?.status !== 'OPEN') return sessionRequired(covering !== null);
+      }
     }
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     const movement = await recordCashMovement(uow, deps, {
@@ -580,8 +592,7 @@ export function registerExpenseCommands(
       capturedOffline: false,
       allowNegative: false,
     });
-    if (account.accountType === 'CAISSE_PDV' && movement.cashSessionId === null)
-      return sessionRequired(true);
+    if (sessionIsRequired && movement.cashSessionId === null) return sessionRequired(true);
     await uow
       .updateTable('finance_expenses')
       .set({

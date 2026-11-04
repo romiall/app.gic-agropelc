@@ -246,7 +246,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     );
   });
 
-  it('sème la caisse sans limite par jour (AV-154) et le pas d’enregistrement du pull (AV-319), en vigueur en base', async () => {
+  it('sème la caisse sans limite par jour (AV-154), sans exigence de caisse ouverte pour vendre (AV-509) et le pas d’enregistrement du pull (AV-319), en vigueur en base', async () => {
     const seeded = new Map(SYSTEM_SETTINGS.map((setting) => [setting.key, setting]));
     // Un retour accidentel de `finance.cash_sessions_per_day_max` à 1 rétablirait le blocage du PDV
     // après la clôture de sa caisse (vérification des écrans du 13/10/2026, C9) sans que rien ne rougisse.
@@ -254,11 +254,21 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: 0,
       isClientVisible: true,
     });
+    // Un retour accidentel de `finance.cash_session_required` à `true` rétablirait, pour tous les PDV, le refus
+    // et le bandeau « la caisse doit être ouverte » : une vente n'est jamais conditionnée par la caisse (AV-509).
+    expect(seeded.get('finance.cash_session_required')).toMatchObject({
+      value: false,
+      isClientVisible: true,
+    });
     expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({
       value: 60,
       isClientVisible: false,
     });
-    for (const key of ['finance.cash_sessions_per_day_max', 'sync.pull_record_grain_seconds']) {
+    for (const key of [
+      'finance.cash_sessions_per_day_max',
+      'finance.cash_session_required',
+      'sync.pull_record_grain_seconds',
+    ]) {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
         [key],

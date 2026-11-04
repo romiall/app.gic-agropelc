@@ -564,6 +564,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const lost = cashSessionLostOnline({
       offline,
       accountType: payment.accountType,
+      required: payment.sessionRequired,
       cashSessionId: movement.cashSessionId,
     });
     if (lost) return lost;
@@ -649,6 +650,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       offline &&
       (await flagCashSessionMissing(uow, deps, {
         accountType: payment.accountType,
+        required: payment.sessionRequired,
         cashSessionId: movement.cashSessionId,
         paymentId,
         cashAccountId: payment.accountId,

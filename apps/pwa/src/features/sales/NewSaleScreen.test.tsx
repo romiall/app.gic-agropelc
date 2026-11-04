@@ -206,9 +206,32 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     ]);
   });
 
-  it('caisse du PDV fermée : « Ouvrir la caisse » proposé d’abord ; en ligne, espèces bloquées (BR-DIS-005)', async () => {
+  it('AV-509 : par défaut, aucune caisse ouverte n’est exigée : ni invite, ni blocage, la vente en espèces part', async () => {
     await seedSalesFixtures(getDb());
     await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    await waitFor(() => expect(record).toBeEnabled());
+    expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Encaissement en espèces impossible/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ouvrir la caisse' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/la caisse du PDV doit être ouverte/)).not.toBeInTheDocument();
+    await user.click(record);
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({ command_type: 'sales.sale.record' });
+    expect((command?.payload as { payments: { methodCode: string }[] }).payments[0]).toMatchObject({
+      methodCode: 'ESPECES',
+    });
+  });
+
+  it('paramètre `finance.cash_session_required` : caisse du PDV fermée, « Ouvrir la caisse » proposé d’abord ; en ligne, espèces bloquées (BR-DIS-005)', async () => {
+    await seedSalesFixtures(getDb());
+    await getDb().projections.put(posCashAccountRow());
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     const user = userEvent.setup();
     const { unmount } = renderScreen();
     const prompt = await screen.findByText(
@@ -241,10 +264,13 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
   });
 
-  it('hors ligne, caisse fermée : la vente en espèces est enregistrée, l’invite l’annonce signalée (AV-233)', async () => {
+  it('paramètre `finance.cash_session_required`, hors ligne, caisse fermée : la vente en espèces est enregistrée, l’invite l’annonce signalée (AV-233)', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await seedSalesFixtures(getDb(), { posCustody: 'EXCLUSIVE_USER' });
     await getDb().projections.put(posCashAccountRow());
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     const user = userEvent.setup();
     renderScreen();
     expect(

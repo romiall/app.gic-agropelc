@@ -58,7 +58,7 @@ import { findSupplier } from '../../../procurement/application/public/index.js';
 import { CashMovementError, recordCashMovement } from '../public/cash-movements.js';
 import { findCashAccount, type CashAccountSummary } from '../public/cash-accounts.js';
 import { findPaymentMethod } from '../public/cash-account-resolution.js';
-import { findCashSessionCovering } from '../public/cash-sessions.js';
+import { findCashSessionCovering, isCashSessionRequired } from '../public/cash-sessions.js';
 import {
   CASH_ACCOUNT_FORBIDDEN,
   canActOnCashAccount,
@@ -178,7 +178,11 @@ export function registerSupplierPaymentCommands(
 ): void {
   const deps = { idGenerator };
 
-  /** Décaissement : session de caisse au PDV, sortie `SUPPLIER_PAYMENT` (refus sans écrire sinon). */
+  /**
+   * Décaissement : sortie `SUPPLIER_PAYMENT` ; au PDV, session de caisse ouverte **si le paramètre
+   * `finance.cash_session_required` du site l'exige** (faux par défaut, AV-509, AV-510) : refus sans
+   * écrire sinon.
+   */
   async function payOut(
     uow: Uow,
     input: {
@@ -198,7 +202,10 @@ export function registerSupplierPaymentCommands(
       messageFr:
         'Aucune session de caisse ouverte sur ce point de vente : ouvrir la caisse avant de payer en espèces.',
     };
-    if (input.account.accountType === 'CAISSE_PDV') {
+    const sessionIsRequired =
+      input.account.accountType === 'CAISSE_PDV' &&
+      (await isCashSessionRequired(uow, { siteId: input.account.siteId, at: input.at }));
+    if (sessionIsRequired) {
       const covering = await findCashSessionCovering(uow, input.account.id, input.at);
       if (covering?.status !== 'OPEN') return { refusal: sessionRefusal };
     }
@@ -216,7 +223,7 @@ export function registerSupplierPaymentCommands(
       allowNegative: false,
     });
     // Contrôle repris sous le verrou du compte (une clôture validée entre-temps, P5-14).
-    if (input.account.accountType === 'CAISSE_PDV' && movement.cashSessionId === null) {
+    if (sessionIsRequired && movement.cashSessionId === null) {
       return { refusal: sessionRefusal };
     }
     return { movementId: movement.movementId };

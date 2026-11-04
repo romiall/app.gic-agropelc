@@ -6,6 +6,7 @@ import { getDb } from '../../storage/db.js';
 import { DeliverScreen } from './DeliverScreen.js';
 import {
   IDS,
+  meSettingRow,
   ORDER_ID,
   ORDER_LINE_ID,
   orderRow,
@@ -126,8 +127,30 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
     // Saisie longue (une vingtaine d'interactions) : marge contre la lenteur d'une machine chargée.
   }, 20_000);
 
-  it('commande servie au PDV, caisse fermée : en ligne, acompte en espèces bloqué (BR-DIS-005)', async () => {
+  it('AV-509 : commande servie au PDV, caisse fermée, exigence par défaut absente : acompte en espèces sans invite ni blocage', async () => {
     await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderAt('/commandes/nouvelle');
+    await user.type(await screen.findByPlaceholderText(/Rechercher un client/), 'Mvog');
+    await user.click(screen.getByRole('button', { name: /Boutique Mvog-Mbi/ }));
+    await user.click(screen.getByRole('button', { name: '+ Ajouter un article' }));
+    await user.click(screen.getByRole('button', { name: /Poulet de chair/ }));
+    await user.click(screen.getByLabelText('Encaisser un acompte'));
+    await user.type(screen.getByLabelText('Montant de l’acompte (F CFA)'), '1000');
+    expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Passer la commande' })).toBeEnabled(),
+    );
+  }, 20_000);
+
+  it('paramètre `finance.cash_session_required`, commande servie au PDV, caisse fermée : en ligne, acompte en espèces bloqué (BR-DIS-005)', async () => {
+    await getDb().projections.put(posCashAccountRow());
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     const user = userEvent.setup();
     renderAt('/commandes/nouvelle');
     await user.type(await screen.findByPlaceholderText(/Rechercher un client/), 'Mvog');
@@ -145,7 +168,10 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
     expect(screen.getByRole('button', { name: 'Passer la commande' })).toBeDisabled();
   }, 20_000);
 
-  it('commercial sans la caisse du PDV : acompte en espèces au PDV rappelé, sans blocage ni lien', async () => {
+  it('paramètre `finance.cash_session_required`, commercial sans la caisse du PDV : acompte en espèces au PDV rappelé, sans blocage ni lien', async () => {
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     await rememberNavigation(
       getDb(),
       new FixedClock(new Date('2026-10-10T08:00:00.000Z')),

@@ -304,8 +304,27 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     );
   });
 
-  it('caisse du PDV fermée : dépense payée bloquée en ligne ; à payer par la Finance, elle part sans caisse', async () => {
+  it('AV-509 : caisse du PDV fermée, exigence par défaut absente : la dépense payée part en ligne, sans invite ni blocage', async () => {
     await getDb().projections.delete(cashSessionRow().key);
+    const user = userEvent.setup();
+    renderAt();
+    await fillExpense(user, '3000');
+    expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/la dépense sera enregistrée et signalée/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enregistrer la dépense' })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la dépense' }));
+    expect(await screen.findByText('Dépense en cours d’envoi…')).toBeInTheDocument();
+    const [expense] = await outbox();
+    expect(expense).toMatchObject({ payload: { paidNow: true } });
+  });
+
+  it('paramètre `finance.cash_session_required`, caisse du PDV fermée : dépense payée bloquée en ligne ; à payer par la Finance, elle part sans caisse', async () => {
+    await getDb().projections.delete(cashSessionRow().key);
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     const user = userEvent.setup();
     renderAt();
     await fillExpense(user, '3000');
@@ -328,8 +347,11 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     expect(expense!.payload).not.toHaveProperty('paidFromAccountId');
   });
 
-  it('hors ligne sans caisse ouverte : la dépense payée part, signalée à la Finance', async () => {
+  it('paramètre `finance.cash_session_required`, hors ligne sans caisse ouverte : la dépense payée part, signalée à la Finance', async () => {
     await getDb().projections.delete(cashSessionRow().key);
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+    );
     offline();
     const user = userEvent.setup();
     renderAt();

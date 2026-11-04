@@ -96,7 +96,9 @@ interface DayResult {
 
 /** Monde neuf, matin en ligne, journée hors ligne en file, synchronisation du soir dans `order`. */
 async function playDay(order: readonly TabletName[], worlds: PosWorld[]): Promise<DayResult> {
-  const world = await PosWorld.create({ now: at('05:00'), sellers: 3 });
+  // AV-509 : ce scénario éprouve l'exigence d'une caisse ouverte (`CASH_SESSION_MISSING`, BR-DIS-005) ; elle
+  // est rétablie sur le PDV (faux par défaut).
+  const world = await PosWorld.create({ now: at('05:00'), sellers: 3, sessionRequired: true });
   worlds.push(world);
   const [A, B, C] = world.sellers as [Actor, Actor, Actor];
   const actors: Record<TabletName, Actor> = { A, B, C };

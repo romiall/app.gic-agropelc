@@ -27,12 +27,14 @@ import {
 import type { OutboxCommand } from '../../storage/db.js';
 import { CASH_METHOD_ACCOUNT_TYPE } from '../sales/payment.js';
 import { isAccepted, isWaiting, stillInFlight } from '../sales/pending.js';
+import { settingValue } from '../sales/stock.js';
 import type {
   CashAccountData,
   CashTransferData,
   CashSessionData,
   LocationData,
   PaymentMethodData,
+  SettingData,
 } from '../sales/types.js';
 
 /**
@@ -43,13 +45,30 @@ import type {
 export const CASH_COUNT_BLIND: boolean = true;
 
 /**
- * AV-233 (défaut) : encaissement en espèces au PDV sans caisse ouverte vue par l'appareil. L'écran
- * propose d'abord « Ouvrir la caisse » (BR-DIS-005) ; en ligne, l'encaissement est bloqué (le serveur
- * le refuserait, `CASH_SESSION_REQUIRED`) ; hors ligne, `WARN` : enregistré, le serveur l'applique et
- * le signale à la Finance (`CASH_SESSION_MISSING`, AV-184, BR-SYN-007). `BLOCK` : bloqué hors ligne
- * aussi.
+ * AV-233 (défaut), **quand la caisse ouverte est exigée** (AV-509, `cashSessionRequired`) : encaissement
+ * en espèces au PDV sans caisse ouverte vue par l'appareil. L'écran propose d'abord « Ouvrir la caisse »
+ * (BR-DIS-005) ; en ligne, l'encaissement est bloqué (le serveur le refuserait,
+ * `CASH_SESSION_REQUIRED`) ; hors ligne, `WARN` : enregistré, le serveur l'applique et le signale à la
+ * Finance (`CASH_SESSION_MISSING`, AV-184, BR-SYN-007). `BLOCK` : bloqué hors ligne aussi.
  */
 export const OFFLINE_CASH_WITHOUT_SESSION: 'WARN' | 'BLOCK' = 'WARN';
+
+/** Paramètre qui rétablit l'exigence d'une caisse ouverte pour les espèces au PDV (AV-509, faux par défaut). */
+export const CASH_SESSION_REQUIRED_SETTING = 'finance.cash_session_required';
+
+/**
+ * AV-509 (décision du porteur, 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
+ * caisse. L'exigence de BR-DIS-005 (session ouverte pour encaisser ou payer en espèces au PDV) n'existe
+ * que si le paramètre `finance.cash_session_required` du site, ou global, vaut `true` ; absent ou mal
+ * formé, il vaut `false`, comme au serveur (`isCashSessionRequired`).
+ */
+export function cashSessionRequired(
+  settings: readonly SettingData[],
+  siteId: string | null | undefined,
+  now: Date,
+): boolean {
+  return settingValue(settings, CASH_SESSION_REQUIRED_SETTING, siteId, now) === true;
+}
 
 /** Longueur maximale du commentaire d'une ouverture ou d'une clôture (`cashSessionOpenPayloadSchema`). */
 export const MAX_CASH_COMMENT = 500;
@@ -585,7 +604,8 @@ export function cashOpenPlan(input: {
 }
 
 /**
- * Session exigée par un encaissement en espèces au PDV (BR-DIS-005). `NONE` : pas au point de vente ;
+ * Session exigée par un encaissement en espèces au PDV (BR-DIS-005). `NONE` : pas au point de vente, ou
+ * session non exigée (`required` faux : AV-509, le défaut — aucun bandeau, aucun blocage) ;
  * `UNKNOWN` : au point de vente, mais la caisse du PDV n'est pas servie à l'appareil (rôle sans
  * `finance.cash.read` sur le site) : son état n'est pas connu ; `MISSING` : aucune session ouverte vue
  * par l'appareil (l'ouverture d'un autre utilisateur de la tablette, pas encore envoyée, ne compte
@@ -593,6 +613,8 @@ export function cashOpenPlan(input: {
  * ouverte au serveur ; l'ouverture de l'utilisateur part avant l'encaissement, dans l'ordre de la file.
  */
 export function cashSessionCoverage(input: {
+  /** AV-509 : `cashSessionRequired(settings, siteId, now)`, jamais une valeur par défaut. */
+  readonly required: boolean;
   readonly atPointOfSale: boolean;
   readonly accounts: readonly CashAccountData[];
   readonly sessions: readonly CashSessionData[];
@@ -602,7 +624,7 @@ export function cashSessionCoverage(input: {
   readonly userId: string;
   readonly maxSessionsPerDay?: unknown;
 }): CashCoverage {
-  if (!input.atPointOfSale || !input.siteId) return 'NONE';
+  if (!input.required || !input.atPointOfSale || !input.siteId) return 'NONE';
   const account = posCashAccounts(input.accounts).find(
     (candidate) => candidate.site_id === input.siteId,
   );
