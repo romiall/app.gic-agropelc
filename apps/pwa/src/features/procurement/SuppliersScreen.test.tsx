@@ -80,6 +80,15 @@ describe('Fournisseurs (ECR-APP-01)', () => {
     await getDb().outbox.clear();
   });
 
+  it('propose le chargement par fichier : le menu ne le montre pas au responsable des achats', async () => {
+    renderScreen();
+    await screen.findByRole('listitem', { name: 'Provenderie du Centre' });
+    expect(screen.getByRole('link', { name: 'Charger un fichier' })).toHaveAttribute(
+      'href',
+      '/chargement',
+    );
+  });
+
   it('création avec code unique, puis modification des seuls champs changés et désactivation', async () => {
     const user = userEvent.setup();
     renderScreen();

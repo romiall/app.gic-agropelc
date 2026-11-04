@@ -17,6 +17,26 @@ describe('decodeCsv', () => {
     expect(decodeCsv(withBom)).toBe('nom;ville\nŒufs;Yaoundé');
   });
 
+  it('lit l’UTF-16 (« Texte Unicode » d’Excel), petit ou grand boutiste, par sa marque d’ordre des octets', () => {
+    const text = 'nom\tville\r\nŒufs\tYaoundé\r\n';
+    const littleEndian: number[] = [0xff, 0xfe];
+    const bigEndian: number[] = [0xfe, 0xff];
+    for (const char of text) {
+      const code = char.charCodeAt(0);
+      littleEndian.push(code & 0xff, code >> 8);
+      bigEndian.push(code >> 8, code & 0xff);
+    }
+    expect(decodeCsv(new Uint8Array(littleEndian))).toBe(text);
+    expect(decodeCsv(new Uint8Array(bigEndian))).toBe(text);
+    // Lu ensuite comme un CSV à tabulations.
+    const parsed = parseCsv(decodeCsv(new Uint8Array(littleEndian)));
+    expect(parsed.separator).toBe('\t');
+    expect(parsed.header).toEqual(['nom', 'ville']);
+    expect(parsed.rows[0]!.cells).toEqual(['Œufs', 'Yaoundé']);
+    // Un ArrayBuffer se lit comme les octets qu'il contient.
+    expect(decodeCsv(new Uint8Array(littleEndian).buffer)).toBe(text);
+  });
+
   it('un fichier enregistré par un Excel français en Windows-1252 garde ses accents', () => {
     // « Yaoundé » et « é » en Windows-1252 : l'octet 0xE9 seul n'est pas de l'UTF-8 valide.
     const ansi = new Uint8Array([
@@ -37,6 +57,14 @@ describe('detectSeparator', () => {
     expect(detectSeparator('code\tnom\tunité\nA\tB\tC')).toBe('\t');
     // Les virgules d'un champ entre guillemets ne comptent pas.
     expect(detectSeparator('"a,b,c";d;e\n1;2;3')).toBe(';');
+  });
+
+  it('saute les lignes vides du début : le séparateur est celui de la première ligne non vide', () => {
+    expect(detectSeparator('\r\n\r\ncode,nom,unité\nA,B,C')).toBe(',');
+    expect(detectSeparator('\n\ncode\tnom\nA\tB')).toBe('\t');
+    const parsed = parseCsv('\n\ncode,nom\nA,B\n');
+    expect(parsed.separator).toBe(',');
+    expect(parsed.header).toEqual(['code', 'nom']);
   });
 
   it('point-virgule à égalité ou sans séparateur', () => {
@@ -79,6 +107,20 @@ describe('parseCsv', () => {
   it('accepte LF seul, CR seul et une dernière ligne sans fin de ligne', () => {
     expect(parseCsv('a;b\nc;d').rows).toEqual([{ line: 2, cells: ['c', 'd'] }]);
     expect(parseCsv('a;b\rc;d\r').rows).toEqual([{ line: 2, cells: ['c', 'd'] }]);
+  });
+
+  it('un guillemet jamais refermé est signalé avec la ligne où il s’ouvre ; les guillemets refermés ne le sont pas', () => {
+    const open = parseCsv('code;nom\nA;"Œufs\nB;Volaille\n');
+    expect(open.unclosedQuoteLine).toBe(2);
+    // Ouvert plus loin : la ligne du guillemet, pas celle de la fin du fichier.
+    expect(parseCsv('code;nom\nA;Œufs\nB;"Volaille\nC;x\n').unclosedQuoteLine).toBe(3);
+    const closed = parseCsv('code;nom\nA;"Œufs, frais\nsur deux lignes"\nB;Volaille\n');
+    expect(closed.unclosedQuoteLine).toBeUndefined();
+    expect(closed.rows.map((row) => row.cells[1])).toEqual([
+      'Œufs, frais\nsur deux lignes',
+      'Volaille',
+    ]);
+    expect(parseCsv('code;nom\nA;B\n')).not.toHaveProperty('unclosedQuoteLine');
   });
 
   it('un fichier vide n’a ni en-tête ni ligne', () => {

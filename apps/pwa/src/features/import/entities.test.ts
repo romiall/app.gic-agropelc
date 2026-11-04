@@ -14,13 +14,17 @@ import {
   PRODUCTS_ENTITY,
   SUPPLIERS_ENTITY,
 } from './entities.js';
-import { importEntityId } from './ids.js';
-import { planImport, templateRows, type ImportEntity } from './model.js';
+import { authorImportId } from './ids.js';
+import { exampleRow, planImport, templateRows, type ImportEntity } from './model.js';
 import { EMPTY_IMPORT_REFS, type ImportRefs } from './refs.js';
 import { toCsv } from './csv.js';
 
+/** Utilisateur qui charge : les identifiants dérivés d'un chargement lui sont propres (`authorImportId`). */
+const AUTHOR = '01900000-0000-7000-8000-0000000000aa';
+
 const refs = (overrides: Partial<ImportRefs> = {}): ImportRefs => ({
   ...EMPTY_IMPORT_REFS,
+  authorUserId: AUTHOR,
   unitCodes: new Set(['KG', 'PIECE']),
   categories: [{ id: '01900000-0000-7000-8000-0000000000c1', code: 'VOLAILLE', name: 'Volaille' }],
   ...overrides,
@@ -39,11 +43,23 @@ describe('catégories de produit', () => {
       aggregateType: 'PRODUCT_CATEGORY',
       payload: { code: 'OEUFS', name: 'Œufs' },
     });
-    expect(command!.aggregateId).toBe(await importEntityId('category', 'OEUFS'));
+    expect(command!.aggregateId).toBe(await authorImportId(AUTHOR, 'category', 'OEUFS'));
     expect(isUuidv7(command!.aggregateId)).toBe(true);
     // Le code est normalisé en majuscules, comme à l'écran.
     const lower = await plan(CATEGORIES_ENTITY, 'code;nom\noeufs;Œufs');
     expect(lower.rows[0]!.commands[0]!.payload).toMatchObject({ code: 'OEUFS' });
+  });
+
+  it('deux auteurs qui chargent le même fichier n’écrivent jamais le même agrégat', async () => {
+    const mine = await plan(CATEGORIES_ENTITY, 'code;nom\nOEUFS;Œufs');
+    const theirs = await plan(
+      CATEGORIES_ENTITY,
+      'code;nom\nOEUFS;Œufs',
+      refs({ authorUserId: '01900000-0000-7000-8000-0000000000ab' }),
+    );
+    expect(theirs.rows[0]!.commands[0]!.aggregateId).not.toBe(
+      mine.rows[0]!.commands[0]!.aggregateId,
+    );
   });
 
   it('une catégorie déjà présente n’est pas rechargée ; une en attente non plus', async () => {
@@ -79,7 +95,7 @@ describe('catégories de produit', () => {
       parentId: '01900000-0000-7000-8000-0000000000c1',
     });
     expect(result.rows[1]!.commands[0]!.payload).toMatchObject({
-      parentId: await importEntityId('category', 'POULETS'),
+      parentId: await authorImportId(AUTHOR, 'category', 'POULETS'),
     });
     expect(result.rows[2]!.issues[0]).toMatch(/INCONNUE.*inconnue/);
     // Un parent placé plus bas dans le fichier n'est pas encore connu de la ligne qui le cite.
@@ -120,7 +136,7 @@ describe('produits', () => {
       },
     });
     expect(command!.payload).not.toHaveProperty('species');
-    expect(command!.aggregateId).toBe(await importEntityId('product', 'P1'));
+    expect(command!.aggregateId).toBe(await authorImportId(AUTHOR, 'product', 'P1'));
   });
 
   it('reconnaît les en-têtes d’Excel (accents, majuscules, alias) et les valeurs en français', async () => {
@@ -199,7 +215,7 @@ describe('produits', () => {
       refs({ pendingCategoryIds: new Map([['OEUFS', fromCatalogScreen]]) }),
     );
     expect(result.rows[0]!.commands[0]!.payload).toMatchObject({ categoryId: fromCatalogScreen });
-    expect(fromCatalogScreen).not.toBe(await importEntityId('category', 'OEUFS'));
+    expect(fromCatalogScreen).not.toBe(await authorImportId(AUTHOR, 'category', 'OEUFS'));
   });
 
   it('une catégorie ni connue ni en attente : la ligne est refusée, les catégories se chargent avant les produits', async () => {
@@ -233,7 +249,7 @@ describe('fournisseurs', () => {
         notes: 'Livre le mardi',
       },
     });
-    expect(command!.aggregateId).toBe(await importEntityId('supplier', 'F-PROV'));
+    expect(command!.aggregateId).toBe(await authorImportId(AUTHOR, 'supplier', 'F-PROV'));
   });
 
   it('e-mail ou délai invalides : erreurs ; code déjà pris : déjà présent', async () => {
@@ -307,7 +323,7 @@ describe('clients', () => {
         categoryId: '01900000-0000-7000-8000-0000000000b1',
       },
     });
-    expect(command!.aggregateId).toBe(await importEntityId('customer', '+237677123456'));
+    expect(command!.aggregateId).toBe(await authorImportId(AUTHOR, 'customer', '+237677123456'));
   });
 
   it('la source, le type et la position ont des défauts ; le même numéro écrit autrement est le même client', async () => {
@@ -475,7 +491,15 @@ describe('contrôle d’un fichier', () => {
     expect(result.missingColumns).toEqual(['Code', 'Nom']);
   });
 
-  it('chaque fichier modèle se charge sans erreur (garde contre un exemple que le contrôle refuserait)', async () => {
+  it('le fichier modèle ne contient que l’en-tête : rien de chargeable si on l’oublie dans le fichier rempli', () => {
+    for (const entity of IMPORT_ENTITIES) {
+      const rows = templateRows(entity);
+      expect(rows, entity.id).toHaveLength(1);
+      expect(rows[0], entity.id).toEqual(entity.columns.map((column) => column.label));
+    }
+  });
+
+  it('chaque exemple de l’aide des colonnes est une ligne que le contrôle accepte (garde contre un exemple refusé)', async () => {
     for (const entity of IMPORT_ENTITIES) {
       // Les pièces papier se contrôlent avec les référentiels d'un appareil (emplacements, produits, comptes) :
       // leur fichier modèle est gardé dans `slips.test.ts`, colonne par colonne.
@@ -487,7 +511,7 @@ describe('contrôle d’un fichier', () => {
           : refs({
               zones: [{ id: '01900000-0000-7000-8000-0000000000a1', label: 'Douala › Bonabéri' }],
             });
-      const rows = templateRows(entity);
+      const rows = [templateRows(entity)[0]!, exampleRow(entity)];
       expect(rows[0]).toHaveLength(entity.columns.length);
       const result = await planImport(entity, parseCsv(toCsv(rows)), context);
       expect(result.missingColumns, entity.id).toEqual([]);
@@ -514,5 +538,83 @@ describe('contrôle d’un fichier', () => {
     for (const role of ROLE_SETS.dataImport) {
       expect(union.has(role), role).toBe(true);
     }
+  });
+});
+
+describe('défauts du fichier lui-même', () => {
+  it('une valeur plus longue que le serveur ne l’accepte est refusée avant le chargement', async () => {
+    const long = 'x'.repeat(201);
+    const category = await plan(CATEGORIES_ENTITY, `code;nom\nOEUFS;${long}`);
+    expect(category.rows[0]!.status).toBe('ERROR');
+    expect(category.rows[0]!.issues.join(' ')).toMatch(
+      /« Nom » : 200 caractères au plus \(201 saisis\)/,
+    );
+
+    const supplier = await plan(
+      SUPPLIERS_ENTITY,
+      `code;nom;telephone\n${'F'.repeat(41)};Provenderie;${'6'.repeat(21)}`,
+    );
+    const issues = supplier.rows[0]!.issues.join(' ');
+    expect(supplier.rows[0]!.status).toBe('ERROR');
+    expect(issues).toMatch(/« Code » : 40 caractères au plus \(41 saisis\)/);
+    expect(issues).toMatch(/« Téléphone » : 20 caractères au plus \(21 saisis\)/);
+
+    // À la limite : accepté.
+    const edge = await plan(CATEGORIES_ENTITY, `code;nom\nOEUFS;${'x'.repeat(200)}`);
+    expect(edge.rows[0]!.status).toBe('READY');
+  });
+
+  it('une ligne en erreur ne réserve pas son code et ne fournit pas sa catégorie aux lignes suivantes', async () => {
+    const result = await plan(
+      CATEGORIES_ENTITY,
+      `code;nom;parent\nPARENT;${'x'.repeat(201)};\nENFANT;Enfant;PARENT\nPARENT;Parent corrigé;`,
+    );
+    // La première ligne est refusée (nom trop long) : elle ne fournit pas PARENT, et la 4e n'est pas un doublon.
+    expect(result.rows.map((row) => row.status)).toEqual(['ERROR', 'ERROR', 'READY']);
+    expect(result.rows[1]!.issues[0]).toMatch(/Catégorie parente « PARENT » inconnue/);
+  });
+
+  it('une cellule au-delà de l’en-tête (séparateur dans une valeur) est signalée, la ligne n’est pas chargée', async () => {
+    // « Œufs; frais; gros » : un point-virgule dans la valeur, non entre guillemets, ajoute deux cellules.
+    const result = await plan(
+      CATEGORIES_ENTITY,
+      'code;nom\nOEUFS;Œufs; frais; gros\nPORCS;Porcs\n',
+    );
+    expect(result.rows.map((row) => row.status)).toEqual(['ERROR', 'READY']);
+    expect(result.rows[0]!.issues.join(' ')).toMatch(
+      /Ligne 2 : 2 cellule\(s\) au-delà des colonnes de l’en-tête/,
+    );
+  });
+
+  it('un guillemet jamais refermé rend le fichier entier non chargeable, avec la ligne où il s’ouvre', async () => {
+    const result = await plan(CATEGORIES_ENTITY, 'code;nom\nOEUFS;"Œufs\nVOLAILLE;Volaille\n');
+    expect(result.rows).toEqual([]);
+    expect(result.fileIssues).toHaveLength(1);
+    expect(result.fileIssues[0]).toMatch(/guillemet s’ouvre à la ligne 2/);
+    // Un fichier sain n’a aucun défaut de fichier.
+    expect((await plan(CATEGORIES_ENTITY, 'code;nom\nOEUFS;Œufs\n')).fileIssues).toEqual([]);
+  });
+
+  it('des séparateurs en fin de ligne (colonnes vides d’un tableur) ne sont pas des colonnes à signaler', async () => {
+    const result = await plan(CATEGORIES_ENTITY, 'code;nom;;;\nOEUFS;Œufs;;;\n');
+    expect(result.unknownColumns).toEqual([]);
+    expect(result.rows.map((row) => row.status)).toEqual(['READY']);
+    // Une vraie colonne inconnue reste signalée.
+    expect(
+      (await plan(CATEGORIES_ENTITY, 'code;nom;;couleur\nOEUFS;Œufs;;rouge\n')).unknownColumns,
+    ).toEqual(['couleur']);
+  });
+
+  it('une colonne « Prix » ou « Lot » n’est plus prise pour le mode de prix ou le suivi de lot', async () => {
+    const result = await plan(
+      PRODUCTS_ENTITY,
+      'code;nom;categorie;unite_de_base;prix;lot\nP1;Poulet;VOLAILLE;KG;3500;L-42\n',
+    );
+    expect(result.unknownColumns).toEqual(['prix', 'lot']);
+    expect(result.rows[0]!.status).toBe('READY');
+    expect(result.rows[0]!.commands[0]!.payload).toMatchObject({
+      pricingMode: 'PER_UNIT',
+      lotTracking: 'NONE',
+    });
   });
 });

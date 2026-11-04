@@ -16,7 +16,10 @@ const NAMESPACE = 'gic-agropelc|chargement';
 
 const hex = (byte: number): string => byte.toString(16).padStart(2, '0');
 
-/** UUIDv7 stable pour `(kind, key)`. La clé est comparée telle quelle : l'appelant la normalise. */
+/**
+ * UUIDv7 stable pour `(kind, key)`. La clé est comparée telle quelle : l'appelant la normalise. Les chargements
+ * passent par `authorImportId`, qui rattache l'identifiant à celui qui charge.
+ */
 export async function importEntityId(kind: string, key: string): Promise<string> {
   const data = new TextEncoder().encode(`${NAMESPACE}|${kind}|${key}`);
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
@@ -33,4 +36,15 @@ export async function importEntityId(kind: string, key: string): Promise<string>
   for (let index = 9; index < 16; index += 1) bytes[index] = digest[index - 6]!;
   const text = Array.from(bytes, hex).join('');
   return `${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
+}
+
+/**
+ * Identifiant d'un élément chargé par `authorUserId` : propre à l'auteur. Le même auteur qui recharge le même fichier
+ * retombe sur le même identifiant (rien n'est créé deux fois) ; deux auteurs qui chargent la même clé (un même
+ * téléphone, un même code) ne partagent jamais un agrégat, de sorte que le serveur juge le doublon (code pris,
+ * téléphone connu) au lieu de reconnaître à tort un « rejeu » et d'avaler la seconde ligne en silence (revue du
+ * 04/11/2026).
+ */
+export function authorImportId(authorUserId: string, kind: string, key: string): Promise<string> {
+  return importEntityId(kind, `${authorUserId}|${key}`);
 }

@@ -108,3 +108,8 @@
   color: var(--ink-2);
   font-size: var(--text-md);
 }
+
+/* Le focus passe au résultat à la fin de l'envoi (annonce et lecture au clavier) : pas de cadre sur le bloc entier. */
+.import-result:focus {
+  outline: none;
+}

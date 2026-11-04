@@ -54,7 +54,15 @@ export function PortfolioScreen() {
     <section className="sale crm-screen">
       <PageHeader
         title={t('nav.screens.portfolio')}
-        actions={<LinkButton to={ROUTES.newProspect}>{t('nav.screens.new_prospect')}</LinkButton>}
+        actions={
+          <>
+            {/* Point d'entrée du chargement par fichier pour les rôles de terrain (le menu ne le propose pas, UX-01). */}
+            <LinkButton to={ROUTES.dataImport} variant="outline" icon="file">
+              {t('data_import.open_link')}
+            </LinkButton>
+            <LinkButton to={ROUTES.newProspect}>{t('nav.screens.new_prospect')}</LinkButton>
+          </>
+        }
       />
       <div className="filter-bar">
         <div className="field">

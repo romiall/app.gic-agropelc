@@ -121,8 +121,13 @@ export async function pendingSkipDeclarations(
     .filter(
       (command) =>
         !command.skip_declared_at &&
+        // Un numéro que le serveur n'accepterait pas ferait refuser tout l'envoi (HTTP 400) à chaque cycle : écarté.
+        Number.isSafeInteger(command.device_seq) &&
+        command.device_seq > 0 &&
         (command.refused_locally === true ||
-          command.last_error?.message_fr.startsWith(LOCAL_REFUSAL_PREFIX) === true),
+          // Un motif absent (ligne ancienne ou abîmée) ne doit pas faire échouer l'envoi : il n'est pas local.
+          (typeof command.last_error?.message_fr === 'string' &&
+            command.last_error.message_fr.startsWith(LOCAL_REFUSAL_PREFIX))),
     )
     .sort((a, b) => a.device_seq - b.device_seq)
     .slice(0, MAX_DECLARED_SKIPS_PER_PUSH);
@@ -148,7 +153,14 @@ export async function runPushCycle(
   options: { readonly skip?: ReadonlySet<string> } = {},
 ): Promise<PushCycleResult> {
   let batch = await pendingOutbox(db, 50, deps.userId, options.skip);
-  if (batch.length === 0) return { outcome: 'NOTHING_TO_PUSH' };
+  if (batch.length === 0) {
+    // Plus rien à envoyer : un refus en bloc signalé plus tôt n'a plus d'objet (les commandes en cause ont été
+    // classées ou ont disparu de la file), le bandeau ne doit pas rester affiché jusqu'au prochain envoi réussi.
+    if ((await db.syncMeta.get('device'))?.push_refusal) {
+      await db.syncMeta.update('device', { push_refusal: null });
+    }
+    return { outcome: 'NOTHING_TO_PUSH' };
+  }
 
   // Une enveloppe que le serveur refuserait ferait refuser tout le lot (HTTP 400) à chaque cycle : les
   // commandes en cause sont refusées ici, avec leur motif, et le reste du lot part.

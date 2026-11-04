@@ -94,6 +94,7 @@ export function buildImportRefs({
   }
 
   return {
+    authorUserId: userId,
     unitCodes: new Set(
       [...references.units.values()].filter((unit) => unit.is_active).map((unit) => unit.code),
     ),

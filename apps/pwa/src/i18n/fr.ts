@@ -5835,6 +5835,7 @@ export const fr = {
     },
   },
   data_import: {
+    open_link: 'Charger un fichier',
     intro:
       'Chargez des données depuis un fichier CSV (dans Excel : « Enregistrer sous », format CSV). Chaque ligne est contrôlée avant tout envoi, et recharger le même fichier ne crée rien en double.',
     kind_label: 'Type de données',
@@ -5844,6 +5845,12 @@ export const fr = {
     columns_title: 'Colonnes du fichier',
     column_required: 'obligatoire',
     column_optional: 'facultative',
+    column_example: 'Exemple : {{example}}',
+    check_failed:
+      'Le contrôle du fichier a échoué. Choisissez de nouveau le fichier ; si cela se reproduit, signalez-le.',
+    reason_changed:
+      'Le motif commun a changé depuis le contrôle : touchez « Appliquer le motif » pour recontrôler le fichier avec lui.',
+    reason_apply: 'Appliquer le motif',
     reason_label: 'Motif d’antidatage commun',
     reason_hint:
       'Pour les pièces de plus de 24 h dont le fichier ne donne pas de motif (colonne « Motif d’antidatage »).',

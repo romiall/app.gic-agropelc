@@ -16,7 +16,7 @@ export interface ColumnDef {
   /** Libellé donné à l'en-tête du fichier modèle. */
   readonly label: string;
   readonly required: boolean;
-  /** Valeur d'exemple du fichier modèle. */
+  /** Valeur d'exemple, affichée dans l'aide des colonnes (le fichier modèle ne porte que l'en-tête). */
   readonly example: string;
   /** Aide à la saisie (valeurs permises, format). */
   readonly hint: string;
@@ -76,6 +76,11 @@ export interface ImportPlan {
   readonly missingColumns: readonly string[];
   /** En-têtes du fichier qu'aucune colonne du modèle ne reconnaît : ignorés, listés au rapport (AV-317). */
   readonly unknownColumns: readonly string[];
+  /**
+   * Défauts du fichier entier, avant toute ligne : rien n'est chargeable tant qu'ils durent (un guillemet resté ouvert
+   * avale la fin du fichier en une seule cellule).
+   */
+  readonly fileIssues: readonly string[];
   readonly counts: Readonly<Record<RowStatus, number>>;
 }
 
@@ -83,6 +88,8 @@ export interface ImportPlan {
 export interface FileRecord {
   readonly line: number;
   readonly record: Readonly<Record<string, string>>;
+  /** Cellules remplies au-delà des colonnes de l'en-tête (un séparateur dans une valeur non entre guillemets). */
+  readonly extraCells?: number;
 }
 
 export interface ImportEntity {
@@ -92,6 +99,11 @@ export interface ImportEntity {
   readonly columns: readonly ColumnDef[];
   /** Ordre de chargement conseillé : les catégories avant les produits qui les citent. */
   readonly order: number;
+  /**
+   * Longueur maximale (en caractères) de certaines colonnes, clé de colonne → maximum : celles du serveur. L'écran de
+   * saisie borne la frappe ; un fichier ne borne rien, et le serveur refuserait la commande d'une ligne « à charger ».
+   */
+  readonly limits?: Readonly<Record<string, number>>;
   /**
    * Rôles qui peuvent charger ce type : ceux de l'écran de saisie correspondant (01-rbac.md). Ils composent l'écran,
    * jamais l'autorisation : le serveur revérifie chaque commande.
@@ -130,6 +142,11 @@ export function mapHeader(
   const keys: (string | null)[] = [];
   const unknown: string[] = [];
   for (const name of header) {
+    // Un en-tête vide (séparateurs en fin de ligne, que les tableurs ajoutent) n'est pas une colonne à signaler.
+    if (name.trim() === '') {
+      keys.push(null);
+      continue;
+    }
     const key = byName.get(normalizeHeaderName(name)) ?? null;
     // Une colonne répétée : la première compte, les suivantes sont ignorées et signalées.
     if (key === null || seen.has(key)) {
@@ -178,7 +195,13 @@ export async function planImport(
     .map((column) => column.label);
   const counts: Record<RowStatus, number> = { READY: 0, EXISTS: 0, ERROR: 0, DUPLICATE_IN_FILE: 0 };
   const rows: RowPlan[] = [];
-  if (missingColumns.length === 0) {
+  const fileIssues: string[] = [];
+  if (csv.unclosedQuoteLine !== undefined) {
+    fileIssues.push(
+      `Un guillemet s’ouvre à la ligne ${csv.unclosedQuoteLine} et n’est jamais refermé : tout ce qui suit est lu comme une seule cellule et le fichier est incomplet. Corrigez le fichier.`,
+    );
+  }
+  if (missingColumns.length === 0 && fileIssues.length === 0) {
     const firstLineOf = new Map<string, number>();
     const planned = new Map<string, Set<string>>();
     const records: FileRecord[] = csv.rows.map((row) => {
@@ -186,16 +209,28 @@ export async function planImport(
       keys.forEach((key, index) => {
         if (key !== null) record[key] = row.cells[index] ?? '';
       });
-      return { line: row.line, record };
+      const extraCells = row.cells.slice(csv.header.length).filter((value) => value !== '').length;
+      return { line: row.line, record, ...(extraCells > 0 ? { extraCells } : {}) };
     });
     for (const group of groupRecords(entity, records)) {
       const row = group[0]!;
       const outcome = entity.planGroup
         ? await entity.planGroup(group, refs, planned)
         : await entity.planRow(row.record, refs, planned);
+      // Défauts propres au fichier, que le contrôle du type ne voit pas : cellules en trop, valeurs trop longues.
+      const fileLevel: string[] = [];
+      for (const member of group) {
+        if ((member.extraCells ?? 0) > 0) {
+          fileLevel.push(
+            `Ligne ${member.line} : ${member.extraCells} cellule(s) au-delà des colonnes de l’en-tête (un séparateur dans une valeur ? mettez la valeur entre guillemets).`,
+          );
+        }
+        fileLevel.push(...tooLong(member.record, entity));
+      }
+      const blocked = outcome.issues.length > 0 || fileLevel.length > 0;
       let status: RowStatus;
-      let issues = outcome.issues;
-      if (outcome.issues.length > 0) {
+      let issues = blocked ? [...outcome.issues, ...fileLevel] : outcome.issues;
+      if (blocked) {
         status = 'ERROR';
       } else if (firstLineOf.has(outcome.key)) {
         status = 'DUPLICATE_IN_FILE';
@@ -203,7 +238,8 @@ export async function planImport(
       } else {
         status = outcome.exists === true ? 'EXISTS' : 'READY';
       }
-      if (!firstLineOf.has(outcome.key) && outcome.issues.length === 0) {
+      // Une ligne en erreur ne réserve pas sa clé et ne fournit rien aux lignes suivantes.
+      if (!blocked && !firstLineOf.has(outcome.key)) {
         firstLineOf.set(outcome.key, row.line);
         for (const provided of outcome.provides ?? []) {
           const keysOfKind = planned.get(provided.kind) ?? new Set<string>();
@@ -221,12 +257,40 @@ export async function planImport(
       });
     }
   }
-  return { entityId: entity.id, rows, missingColumns, unknownColumns: unknown, counts };
+  return {
+    entityId: entity.id,
+    rows,
+    missingColumns,
+    unknownColumns: unknown,
+    fileIssues,
+    counts,
+  };
 }
 
-/** Fichier modèle d'un type : l'en-tête et une ligne d'exemple, à remplir dans Excel et à enregistrer en CSV. */
+/** Cellules plus longues que le serveur ne l'accepte (`ImportEntity.limits`), une phrase par cellule. */
+export function tooLong(record: Readonly<Record<string, string>>, entity: ImportEntity): string[] {
+  const issues: string[] = [];
+  for (const [key, max] of Object.entries(entity.limits ?? {})) {
+    const value = cell(record, key);
+    if (value !== undefined && value.length > max) {
+      const label = entity.columns.find((column) => column.key === key)?.label ?? key;
+      issues.push(`« ${label} » : ${max} caractères au plus (${value.length} saisis).`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * Fichier modèle d'un type : l'en-tête seul, à remplir dans Excel et à enregistrer en CSV. Une ligne d'exemple s'y
+ * chargerait comme une vraie donnée si on l'oubliait : les exemples sont affichés dans l'aide des colonnes.
+ */
 export function templateRows(entity: ImportEntity): string[][] {
-  return [entity.columns.map((c) => c.label), entity.columns.map((c) => c.example)];
+  return [entity.columns.map((c) => c.label)];
+}
+
+/** Ligne d'exemple d'un type (celle de l'aide des colonnes) : une ligne que le contrôle accepte. */
+export function exampleRow(entity: ImportEntity): string[] {
+  return entity.columns.map((c) => c.example);
 }
 
 // --- Lecture des valeurs d'une cellule ------------------------------------------------------------------------------

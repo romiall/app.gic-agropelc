@@ -273,6 +273,11 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     renderAt('/clients');
 
     const first = await screen.findByRole('link', { name: /Boutique Mvog-Mbi/ });
+    // Point d'entrée du chargement de clients par fichier pour les rôles de terrain (absent du menu).
+    expect(screen.getByRole('link', { name: 'Charger un fichier' })).toHaveAttribute(
+      'href',
+      '/chargement',
+    );
     // Le nom accessible porte la prochaine action et l'encours corrigé (12 000 + 3 000 en attente).
     expect(first).toHaveAccessibleName(/À faire le lundi 12 octobre Livrer 10 plateaux/);
     expect(first).toHaveAccessibleName(/Encours 15\s000\sF\sCFA/);
@@ -359,6 +364,185 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
         },
       },
     });
+  });
+
+  it('profil d’un compte créé sur l’appareil : la modification attend sa création et ne porte pas de version', async () => {
+    const NEW = '01900000-0000-7000-8000-0000000000f1';
+    const CREATE = '01900000-0000-7000-8000-0000000000f2';
+    await getDb().outbox.add({
+      command_id: CREATE,
+      device_seq: 1,
+      command_type: 'crm.customer.create',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'CUSTOMER',
+      aggregate_id: NEW,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {
+        displayName: 'Épicerie du carrefour',
+        zoneId: IDS.zone,
+        phonePrimary: '+237677000009',
+      },
+      status: 'LOCAL_ONLY',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    const user = userEvent.setup();
+    renderAt(`/clients/${NEW}`);
+    expect(
+      await screen.findByRole('heading', { name: 'Épicerie du carrefour' }),
+    ).toBeInTheDocument();
+    const profile = within(
+      screen.getByRole('heading', { name: 'Profil commercial' }).parentElement!,
+    );
+    await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
+    await user.selectOptions(profile.getByLabelText('Paiement habituel (facultatif)'), 'ESPECES');
+    await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    expect(await screen.findByText('Espèces')).toBeInTheDocument();
+
+    const [update] = (await getDb().outbox.toArray()).filter(
+      (entry) => entry.command_type === 'crm.customer.update',
+    );
+    expect(update).toMatchObject({
+      aggregate_id: NEW,
+      // Compte pas encore servi : pas de version de base ; la modification attend la création.
+      base_version: null,
+      depends_on: [CREATE],
+      payload: { patch: { usualPaymentMethodCode: 'ESPECES' } },
+    });
+  });
+
+  it('profil : deux éditions du même champ avant la synchronisation partent toutes deux, chacune contre ce que l’écran montrait', async () => {
+    const user = userEvent.setup();
+    renderAt(`/clients/${PROSPECT}`);
+    expect(await screen.findByRole('heading', { name: 'Alimentation Essos' })).toBeInTheDocument();
+    const profile = within(
+      screen.getByRole('heading', { name: 'Profil commercial' }).parentElement!,
+    );
+    const request = () =>
+      profile.getByLabelText('Demander un paiement différé pour ce client', { exact: false });
+
+    await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
+    await user.click(request());
+    await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    expect(
+      await screen.findByText('Demandé : en attente de la décision du responsable.'),
+    ).toBeInTheDocument();
+
+    // Seconde édition, avant que le serveur ait répondu : la case montre la demande en attente, on la retire.
+    await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
+    expect(request()).toBeChecked();
+    await user.click(request());
+    await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    expect(await screen.findByText('Non demandé.')).toBeInTheDocument();
+
+    const updates = (await getDb().outbox.orderBy('device_seq').toArray()).filter(
+      (entry) => entry.command_type === 'crm.customer.update',
+    );
+    expect(updates.map((entry) => entry.payload)).toEqual([
+      { patch: { creditRequested: true } },
+      { patch: { creditRequested: false } },
+    ]);
+    // Même version de base : le serveur reconnaît que la seconde remplace la première du même appareil.
+    expect(updates.map((entry) => entry.base_version)).toEqual([1, 1]);
+  });
+
+  it('profil : un compte relu du serveur pendant l’édition ne fait pas écrire les champs non touchés', async () => {
+    const put = (overrides: Partial<CustomerData>) =>
+      getDb().projections.put({
+        key: `customers:CUSTOMER:${PROSPECT}`,
+        dataset: 'customers',
+        entity_type: 'CUSTOMER',
+        entity_id: PROSPECT,
+        scope_type: 'USER',
+        scope_id: IDS.user,
+        row_version: 1,
+        seq: 1,
+        data: asData(customer(overrides)),
+      });
+    await put({
+      potential_qty_per_day: 10,
+      potential_unit_code: 'PLATEAU',
+      usual_payment_method_code: 'ESPECES',
+    });
+    const user = userEvent.setup();
+    renderAt(`/clients/${PROSPECT}`);
+    expect(await screen.findByRole('heading', { name: 'Alimentation Essos' })).toBeInTheDocument();
+    const profile = within(
+      screen.getByRole('heading', { name: 'Profil commercial' }).parentElement!,
+    );
+    await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
+
+    // Pendant la saisie, un tirage apporte la modification d'un autre appareil : potentiel porté à 20, version 2.
+    await put({
+      display_name: 'Alimentation Essos (relu)',
+      version: 2,
+      potential_qty_per_day: 20,
+      potential_unit_code: 'PLATEAU',
+      usual_payment_method_code: 'ESPECES',
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'Alimentation Essos (relu)' }),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(
+      profile.getByLabelText('Paiement habituel (facultatif)'),
+      'MOBILE_MONEY_ORANGE',
+    );
+    await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    expect(await screen.findByText('Orange Money')).toBeInTheDocument();
+
+    const [update] = (await getDb().outbox.toArray()).filter(
+      (entry) => entry.command_type === 'crm.customer.update',
+    );
+    // Seul ce que l'utilisateur a changé part, contre la version qu'il avait sous les yeux à l'ouverture.
+    expect(update).toMatchObject({
+      base_version: 1,
+      payload: { patch: { usualPaymentMethodCode: 'MOBILE_MONEY_ORANGE' } },
+    });
+    expect(Object.keys((update!.payload as { patch: object }).patch)).toEqual([
+      'usualPaymentMethodCode',
+    ]);
+  });
+
+  it('profil : un moyen de paiement désactivé depuis reste visible et peut être retiré', async () => {
+    const db = getDb();
+    // Le catalogue de l'appareil ne contient plus ce moyen (désactivé) : le compte le porte encore.
+    await db.projections.put({
+      key: `customers:CUSTOMER:${PROSPECT}`,
+      dataset: 'customers',
+      entity_type: 'CUSTOMER',
+      entity_id: PROSPECT,
+      scope_type: 'USER',
+      scope_id: IDS.user,
+      row_version: 1,
+      seq: 1,
+      data: asData(customer({ usual_payment_method_code: 'CHEQUE' })),
+    });
+    const user = userEvent.setup();
+    renderAt(`/clients/${PROSPECT}`);
+    expect(await screen.findByRole('heading', { name: 'Alimentation Essos' })).toBeInTheDocument();
+    const profile = within(
+      screen.getByRole('heading', { name: 'Profil commercial' }).parentElement!,
+    );
+    await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
+    const select = profile.getByLabelText('Paiement habituel (facultatif)') as HTMLSelectElement;
+    expect(select.value).toBe('CHEQUE');
+    await user.selectOptions(select, '');
+    await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    await screen.findByText('Non demandé.');
+    const [update] = (await db.outbox.toArray()).filter(
+      (entry) => entry.command_type === 'crm.customer.update',
+    );
+    expect(update).toMatchObject({ payload: { patch: { usualPaymentMethodCode: null } } });
   });
 
   it('compte conservé après fusion : activité et opérations de l’absorbé rattachées ; vente refusée sans « reste »', async () => {

@@ -41,6 +41,26 @@ describe('état de la version en attente', () => {
     expect(isUpdateWaiting()).toBe(false);
   });
 
+  it('une activation qui échoue remet l’offre et ne lève pas : la version attend toujours', async () => {
+    const failing = vi.fn(async () => {
+      throw new Error('activation impossible');
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    setUpdateApplier(failing);
+    markUpdateWaiting(true);
+    const listener = vi.fn();
+    const unsubscribe = subscribeUpdateWaiting(listener);
+
+    await expect(applyUpdateNow()).resolves.toBe(false);
+
+    expect(isUpdateWaiting()).toBe(true);
+    // Retirée pendant l'activation, remise à l'échec : le bandeau reparaît.
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalled();
+    unsubscribe();
+    error.mockRestore();
+  });
+
   it('rien n’attend, ou rien pour l’appliquer : aucune action', async () => {
     const applier = vi.fn(async () => undefined);
     setUpdateApplier(applier);

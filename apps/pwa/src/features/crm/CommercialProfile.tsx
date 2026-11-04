@@ -3,13 +3,17 @@
  * ce qu'il peut écouler par jour, sa façon habituelle de payer, et la demande de paiement différé du commercial —
  * distincte de la décision du responsable (`credit_allowed`). La modification part en `crm.customer.update`, qui ne
  * porte que les champs changés ; elle se voit aussitôt sur la fiche, hors ligne comme en ligne.
+ *
+ * Le profil de départ et la version du compte sont ceux de l'ouverture de l'édition : un compte relu du serveur
+ * pendant la saisie ne fait pas écrire des champs que l'utilisateur n'a pas touchés, et la fusion champ par champ du
+ * serveur compare ce qu'il a changé à la version qu'il avait sous les yeux.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Banner, Button, Card, Checkbox, Field, Input, Select } from '../../components/ui/index.js';
 import type { SalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
-import { submitCommand } from '../sales/submit.js';
+import { saveErrorKey, submitCommand } from '../sales/submit.js';
 import type { CustomerData } from '../sales/types.js';
 import { checkProfile, profileOf, profilePatch, type ProfileDraft } from './profile.js';
 
@@ -21,12 +25,35 @@ interface Props {
   readonly canEdit: boolean;
 }
 
+/** Une édition en cours : le brouillon et ce qu'il y avait sous les yeux de l'utilisateur à l'ouverture. */
+interface Edit {
+  readonly draft: ProfileDraft;
+  readonly base: ProfileDraft;
+  /** Version du compte à l'ouverture ; `null` : compte créé sur l'appareil, pas encore servi. */
+  readonly baseVersion: number | null;
+  /** Création du compte encore dans l'outbox : la modification attend son application. */
+  readonly dependsOn: readonly string[];
+}
+
 export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
   const { t } = useTranslation();
   const saved = profileOf(customer);
-  const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const [edit, setEdit] = useState<Edit | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  /** Message de l'échec de l'enregistrement local : lecture seule (autonomie dépassée) ou base locale. */
+  const [failure, setFailure] = useState<string | null>(null);
+
+  // Le focus suit l'édition : sur le premier champ à l'ouverture, sur le bouton « Modifier » à la fermeture
+  // (le bouton qu'on vient d'activer disparaît du DOM, le focus tomberait sinon sur la page).
+  const form = useRef<HTMLDivElement>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  const editing = edit !== null;
+  useEffect(() => {
+    if (editing) form.current?.querySelector<HTMLElement>('select, input')?.focus();
+    else if (wasEditing.current) editButton.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
 
   const products = [...refs.products].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const productName = (id: string) =>
@@ -48,7 +75,7 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
       ? t('customer.profile.credit_requested')
       : t('customer.profile.credit_not_requested');
 
-  if (draft === null) {
+  if (edit === null) {
     return (
       <Card padded>
         <h3 className="crm-profile-title">{t('customer.profile.title')}</h3>
@@ -65,7 +92,20 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
           <dd>{creditState}</dd>
         </dl>
         {canEdit && userId ? (
-          <Button variant="outline" size="sm" icon="edit" onClick={() => setDraft(saved)}>
+          <Button
+            ref={editButton}
+            variant="outline"
+            size="sm"
+            icon="edit"
+            onClick={() =>
+              setEdit({
+                draft: saved,
+                base: saved,
+                baseVersion: customer.pending_command_id ? null : customer.version,
+                dependsOn: customer.pending_command_id ? [customer.pending_command_id] : [],
+              })
+            }
+          >
             {t('customer.profile.edit')}
           </Button>
         ) : null}
@@ -73,8 +113,9 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
     );
   }
 
+  const { draft } = edit;
   const issues = checkProfile(draft);
-  const patch = profilePatch(draft, saved);
+  const patch = profilePatch(draft, edit.base);
   const product = products.find((candidate) => candidate.id === draft.interestProductId);
   // Unités proposées pour le potentiel : celles du produit d'intérêt, à défaut les unités actives du catalogue.
   const units = product
@@ -84,28 +125,40 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
     draft.potentialUnitCode && !units.includes(draft.potentialUnitCode)
       ? [draft.potentialUnitCode, ...units]
       : units;
-  const methods = refs.paymentMethods.filter((method) => method.is_active);
+  // Moyens actifs, plus le moyen déjà enregistré s'il a été désactivé depuis : sans cette option le champ afficherait
+  // « — » tout en gardant le code, et le moyen ne pourrait plus être retiré.
+  const methods = refs.paymentMethods
+    .filter((method) => method.is_active)
+    .map((method) => ({ code: method.code, label: method.label }));
+  const methodOptions =
+    draft.usualPaymentMethodCode && !methods.some((m) => m.code === draft.usualPaymentMethodCode)
+      ? [
+          { code: draft.usualPaymentMethodCode, label: methodLabel(draft.usualPaymentMethodCode) },
+          ...methods,
+        ]
+      : methods;
   const update = (change: Partial<ProfileDraft>) =>
-    setDraft((current) => (current === null ? current : { ...current, ...change }));
+    setEdit((current) =>
+      current === null ? current : { ...current, draft: { ...current.draft, ...change } },
+    );
 
   const save = async () => {
     if (!userId || issues.length > 0 || Object.keys(patch).length === 0) return;
     setBusy(true);
-    setFailed(false);
+    setFailure(null);
     try {
       await submitCommand({
         authorUserId: userId,
         commandType: 'crm.customer.update',
         aggregateType: 'CUSTOMER',
         aggregateId: customer.id,
-        // Compte créé sur l'appareil : pas encore de version servie, et la modification attend sa création.
-        baseVersion: customer.pending_command_id ? null : customer.version,
-        ...(customer.pending_command_id ? { dependsOn: [customer.pending_command_id] } : {}),
+        baseVersion: edit.baseVersion,
+        ...(edit.dependsOn.length > 0 ? { dependsOn: [...edit.dependsOn] } : {}),
         payload: { patch },
       });
-      setDraft(null);
-    } catch {
-      setFailed(true);
+      setEdit(null);
+    } catch (error) {
+      setFailure(saveErrorKey(error));
     } finally {
       setBusy(false);
     }
@@ -114,7 +167,7 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
   return (
     <Card padded>
       <h3 className="crm-profile-title">{t('customer.profile.title')}</h3>
-      <div className="crm-inline-form">
+      <div className="crm-inline-form" ref={form}>
         <Field label={t('customer.profile.interest')} optional>
           {(control) => (
             <Select
@@ -132,7 +185,13 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
           )}
         </Field>
         <div className="crm-pair">
-          <Field label={t('customer.profile.potential')} optional>
+          <Field
+            label={t('customer.profile.potential')}
+            optional
+            error={
+              issues.includes('QTY_INVALID') ? t('customer.profile.issue.QTY_INVALID') : undefined
+            }
+          >
             {(control) => (
               <Input
                 {...control}
@@ -142,7 +201,15 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
               />
             )}
           </Field>
-          <Field label={t('customer.profile.potential_unit')} optional>
+          <Field
+            label={t('customer.profile.potential_unit')}
+            optional
+            error={
+              issues.includes('UNIT_REQUIRED')
+                ? t('customer.profile.issue.UNIT_REQUIRED')
+                : undefined
+            }
+          >
             {(control) => (
               <Select
                 {...control}
@@ -167,7 +234,7 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
               onChange={(event) => update({ usualPaymentMethodCode: event.target.value })}
             >
               <option value="">—</option>
-              {methods.map((method) => (
+              {methodOptions.map((method) => (
                 <option key={method.code} value={method.code}>
                   {method.label}
                 </option>
@@ -185,13 +252,7 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
             onChange={(event) => update({ creditRequested: event.target.checked })}
           />
         )}
-        {issues.includes('QTY_INVALID') ? (
-          <p className="field-error">{t('customer.profile.issue.QTY_INVALID')}</p>
-        ) : null}
-        {issues.includes('UNIT_REQUIRED') ? (
-          <p className="field-error">{t('customer.profile.issue.UNIT_REQUIRED')}</p>
-        ) : null}
-        {failed ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+        {failure !== null ? <Banner tone="bad">{t(failure)}</Banner> : null}
         <div className="chip-row">
           <Button
             size="sm"
@@ -201,7 +262,7 @@ export function CommercialProfile({ customer, refs, userId, canEdit }: Props) {
           >
             {t('customer.profile.save')}
           </Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setDraft(null)}>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEdit(null)}>
             {t('customer.profile.cancel')}
           </Button>
         </div>

@@ -41,6 +41,14 @@ export function subscribeUpdateWaiting(listener: Listener): () => void {
 export async function applyUpdateNow(): Promise<boolean> {
   if (!waiting || !applier) return false;
   markUpdateWaiting(false);
-  await applier(true);
-  return true;
+  try {
+    await applier(true);
+    return true;
+  } catch (error) {
+    // L'activation a échoué : la version attend toujours, l'offre est remise (sans quoi plus rien ne la proposerait
+    // avant le prochain démarrage) et l'erreur ne remonte pas en rejet non traité.
+    console.error('Mise à jour : l’activation de la nouvelle version a échoué', error);
+    markUpdateWaiting(true);
+    return false;
+  }
 }

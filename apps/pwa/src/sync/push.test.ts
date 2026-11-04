@@ -583,6 +583,21 @@ describe('sync/push (runPushCycle)', () => {
       expect((await db.syncMeta.get('device'))?.push_refusal).toBeNull();
     });
 
+    it('plus rien à envoyer : le signalement d’un refus en bloc antérieur est effacé', async () => {
+      const command = await enqueueOne(db, 'refusée en bloc puis classée');
+      refuse();
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+      expect((await db.syncMeta.get('device'))?.push_refusal).not.toBeNull();
+
+      // L'utilisateur classe la commande en cause : la file ne contient plus rien d'envoyable.
+      await db.outbox.update(command.command_id, { status: 'REJECTED' });
+      const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+      expect(result).toEqual({ outcome: 'NOTHING_TO_PUSH' });
+      expect((await db.syncMeta.get('device'))?.push_refusal).toBeNull();
+    });
+
     it('un refus qui désigne une commande (REJECTED) ou une coupure réseau n’est pas un refus en bloc', async () => {
       await enqueueOne(db, 'coupure');
       vi.stubGlobal(
@@ -828,6 +843,31 @@ describe('sync/push (runPushCycle)', () => {
 
         expect(bodyOf(fetchSpy).skipped_device_seqs).toEqual([legacy.device_seq]);
         expect((await db.outbox.get(byServer.command_id))?.skip_declared_at ?? null).toBeNull();
+      });
+
+      it('une ligne refusée sans motif lisible, ou au numéro invalide, ne bloque pas l’envoi', async () => {
+        // Ligne abîmée : refusée, mais sans `message_fr` (la lecture du préfixe ne doit pas lever).
+        const damaged = await enqueueOn(idGenerator.newId(), 'sans motif');
+        await db.outbox.update(damaged.command_id, {
+          status: 'REJECTED',
+          last_error: { code: 'VALIDATION_ERROR' } as never,
+        });
+        // Numéro que le serveur refuserait (zéro) : jamais déclaré, il ferait refuser tout l'envoi en HTTP 400.
+        const invalidSeq = await enqueueOn(idGenerator.newId(), 'numéro nul');
+        await db.outbox.update(invalidSeq.command_id, {
+          status: 'REJECTED',
+          refused_locally: true,
+          device_seq: 0,
+          last_error: { code: 'VALIDATION_ERROR', message_fr: `${LOCAL_REFUSAL_PREFIX} : x` },
+        });
+        const good = await enqueueOn(idGenerator.newId(), 'bonne');
+        const fetchSpy = answerAll([good.command_id]);
+        vi.stubGlobal('fetch', fetchSpy);
+
+        const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+        expect(result).toMatchObject({ outcome: 'PUSHED' });
+        expect(bodyOf(fetchSpy)).not.toHaveProperty('skipped_device_seqs');
       });
 
       it('au plus 200 numéros par envoi, les plus anciens d’abord ; le reste suit', async () => {

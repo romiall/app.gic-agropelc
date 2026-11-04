@@ -62,16 +62,29 @@ export function checkProfile(draft: ProfileDraft): ProfileIssue[] {
   return issues;
 }
 
-/** Ce qui a changé par rapport au profil enregistré, au format de la commande ; vide si rien n'a changé. */
+/** Quantité du profil comme valeur : `null` pour « aucune » (ou une saisie invalide, que `checkProfile` écarte). */
+const quantityOf = (text: string): number | null => parseProfileQty(text) ?? null;
+
+/**
+ * Ce qui a changé par rapport au profil de départ `before` (celui que l'utilisateur avait sous les yeux en ouvrant
+ * l'édition, non le profil du moment : un compte relu pendant la saisie ne fait pas écrire des champs non touchés),
+ * au format de la commande ; vide si rien n'a changé.
+ */
 export function profilePatch(draft: ProfileDraft, before: ProfileDraft): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (draft.interestProductId !== before.interestProductId) {
     patch['interestProductId'] = draft.interestProductId === '' ? null : draft.interestProductId;
   }
-  if (draft.potentialQtyText.trim() !== before.potentialQtyText.trim()) {
-    patch['potentialQtyPerDay'] = parseProfileQty(draft.potentialQtyText) ?? null;
-  }
-  if (draft.potentialUnitCode !== before.potentialUnitCode) {
+  // La quantité se compare en valeur, non en texte : « 12.5 », « 12,50 » et « 12,5 » sont le même potentiel.
+  const quantity = quantityOf(draft.potentialQtyText);
+  const quantityChanged = quantity !== quantityOf(before.potentialQtyText);
+  if (quantityChanged) patch['potentialQtyPerDay'] = quantity;
+  // Quantité et unité forment un couple : une quantité envoyée emporte son unité, sans quoi le serveur refuserait un
+  // potentiel dont l'unité aurait été retirée entre-temps depuis un autre appareil (POTENTIAL_UNIT_REQUIRED).
+  if (
+    draft.potentialUnitCode !== before.potentialUnitCode ||
+    (quantityChanged && quantity !== null)
+  ) {
     patch['potentialUnitCode'] = draft.potentialUnitCode === '' ? null : draft.potentialUnitCode;
   }
   if (draft.usualPaymentMethodCode !== before.usualPaymentMethodCode) {

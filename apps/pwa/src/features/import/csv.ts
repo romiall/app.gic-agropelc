@@ -14,6 +14,11 @@ export interface ParsedCsv {
   /** Lignes de données (cellules brutes, espaces rognés) avec leur numéro de ligne dans le fichier (1 = en-tête). */
   readonly rows: readonly { readonly line: number; readonly cells: readonly string[] }[];
   readonly separator: CsvSeparator;
+  /**
+   * Ligne où s'ouvre un guillemet que rien ne referme : tout ce qui suit a été lu comme une seule cellule, le fichier
+   * est incomplet. Absent si les guillemets sont tous refermés.
+   */
+  readonly unclosedQuoteLine?: number;
 }
 
 /** Plafond de lignes de données lues : au-delà, le fichier est refusé (une erreur claire vaut mieux qu'un blocage). */
@@ -28,11 +33,17 @@ export class CsvTooLargeError extends Error {
 
 const SEPARATORS: readonly CsvSeparator[] = [';', ',', '\t'];
 
-/** Séparateur le plus fréquent dans la première ligne, hors guillemets (point-virgule à égalité). */
+/**
+ * Séparateur le plus fréquent dans la première ligne non vide, hors guillemets (point-virgule à égalité). Les lignes
+ * vides du début (fréquentes dans un export) ne comptent pas pour la première ligne.
+ */
 export function detectSeparator(text: string): CsvSeparator {
   const counts = new Map<CsvSeparator, number>(SEPARATORS.map((separator) => [separator, 0]));
   let quoted = false;
+  let started = false;
   for (const char of text) {
+    if (!started && (char === '\n' || char === '\r')) continue;
+    started = true;
     if (char === '"') quoted = !quoted;
     else if (!quoted && (char === '\n' || char === '\r')) break;
     else if (!quoted && (char === ';' || char === ',' || char === '\t')) {
@@ -51,11 +62,15 @@ function splitRecords(
   text: string,
   separator: CsvSeparator,
   limit: number,
-): { readonly line: number; readonly cells: string[] }[] {
+): {
+  readonly records: { readonly line: number; readonly cells: string[] }[];
+  readonly unclosedQuoteLine: number | undefined;
+} {
   const records: { line: number; cells: string[] }[] = [];
   let cells: string[] = [];
   let cell = '';
   let quoted = false;
+  let quoteLine = 1;
   let line = 1;
   let startLine = 1;
   let touched = false;
@@ -92,6 +107,7 @@ function splitRecords(
     }
     if (char === '"' && cell === '') {
       quoted = true;
+      quoteLine = line;
       touched = true;
     } else if (char === separator) {
       touched = true;
@@ -107,15 +123,24 @@ function splitRecords(
     }
   }
   if (cell !== '' || cells.length > 0 || touched) endRecord();
-  return records;
+  return { records, unclosedQuoteLine: quoted ? quoteLine : undefined };
 }
 
 /**
- * Texte d'un fichier lu en octets : UTF-8 s'il en est, sinon Windows-1252. L'enregistrement « CSV (séparateur :
- * point-virgule) » d'un Excel français n'est pas de l'UTF-8 : lu comme tel, chaque accent deviendrait « � » et le
- * fichier serait chargé abîmé sans que rien ne le signale.
+ * Texte d'un fichier lu en octets : UTF-16 (marque d'ordre des octets), UTF-8 s'il en est, sinon Windows-1252.
+ * L'enregistrement « CSV (séparateur : point-virgule) » d'un Excel français n'est pas de l'UTF-8 : lu comme tel,
+ * chaque accent deviendrait « � » et le fichier serait chargé abîmé sans que rien ne le signale.
  */
 export function decodeCsv(bytes: ArrayBuffer | Uint8Array): string {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  // L'enregistrement « Texte Unicode » d'Excel est de l'UTF-16 (tabulations) : sa marque d'ordre des octets le dit.
+  // Lu comme du Windows-1252 il donnerait un texte plein de caractères nuls, donc aucune colonne reconnue.
+  if (view.length >= 2 && view[0] === 0xff && view[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(view);
+  }
+  if (view.length >= 2 && view[0] === 0xfe && view[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(view);
+  }
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
@@ -130,13 +155,14 @@ export function decodeCsv(bytes: ArrayBuffer | Uint8Array): string {
 export function parseCsv(input: string, limit: number = MAX_CSV_ROWS): ParsedCsv {
   const text = input.replace(/^\uFEFF/, '');
   const separator = detectSeparator(text);
-  const records = splitRecords(text, separator, limit);
+  const { records, unclosedQuoteLine } = splitRecords(text, separator, limit);
   const [head, ...data] = records;
   if (head === undefined) return { header: [], rows: [], separator };
   return {
     header: head.cells,
     rows: data.map((record) => ({ line: record.line, cells: record.cells })),
     separator,
+    ...(unclosedQuoteLine !== undefined ? { unclosedQuoteLine } : {}),
   };
 }
 

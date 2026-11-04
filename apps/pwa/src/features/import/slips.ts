@@ -7,8 +7,9 @@
  * (`SlipForm`), résolue par la même fonction (`resolveSlip` : mêmes référentiels, mêmes prix à la date de la pièce,
  * mêmes contrôles, même fenêtre d'antidatage), puis transformée en commande par la même correspondance
  * (`buildReportCommand`, prouvée contre le serveur). Un fait accompli saisi hors du système : la commande part « saisie
- * hors ligne », jamais refusée pour un état métier (BR-SYN-007). L'identifiant de la pièce est dérivé de son type et de
- * son numéro : recharger le fichier ne reporte rien deux fois.
+ * hors ligne », jamais refusée pour un état métier (BR-SYN-007). L'identifiant de la pièce est dérivé de son auteur, de
+ * son type, de son numéro et de son contenu : recharger le même fichier ne reporte rien deux fois, et une autre pièce de
+ * même numéro n'est jamais confondue avec la première.
  *
  * Non chargée par fichier : la livraison (BL), qui vise une commande précise ligne par ligne ; elle se reporte pièce
  * par pièce à l'écran de report.
@@ -31,7 +32,7 @@ import { saleUnitsOf } from '../sales/sale-form.js';
 import type { CustomerData } from '../sales/types.js';
 import { DEVICE_LOSS_CATEGORIES, lossReasons, type LossCategory } from '../stock/loss.js';
 import { normalizeHeaderName } from './csv.js';
-import { importEntityId } from './ids.js';
+import { authorImportId } from './ids.js';
 import {
   cell,
   entityCode,
@@ -299,6 +300,11 @@ const HEADER_KEYS = SLIP_COLUMNS.map((column) => column.key).filter(
 
 const two = (value: number): string => String(value).padStart(2, '0');
 
+/** Jour (`AAAA-MM-JJ`) et heure (`HH:mm`) locaux d'un instant, comme le champ de date de l'écran de report. */
+const localDay = (date: Date): string =>
+  `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
+const localTime = (date: Date): string => `${two(date.getHours())}:${two(date.getMinutes())}`;
+
 function validDay(year: number, month: number, day: number): boolean {
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
@@ -307,14 +313,15 @@ function validDay(year: number, month: number, day: number): boolean {
 }
 
 /**
- * `JJ/MM/AAAA` ou `AAAA-MM-JJ` (séparateurs `/`, `-` ou `.`), puis `HH:mm` s'il est donné : `{ day, time }` au format
- * du champ de date de l'écran (`AAAA-MM-JJ`, `HH:mm`), ou `null`. L'heure vaut midi à défaut.
+ * `JJ/MM/AAAA` ou `AAAA-MM-JJ` (séparateurs `/`, `-` ou `.` ; le jour vient avant le mois dans la forme à l'année en
+ * dernier), puis `HH:mm` s'il est donné (les secondes, que certains exports ajoutent, sont ignorées) : `{ day, time,
+ * timeGiven }` au format du champ de date de l'écran (`AAAA-MM-JJ`, `HH:mm`), ou `null`. L'heure vaut midi à défaut.
  */
 export function parseSlipDate(
   text: string,
-): { readonly day: string; readonly time: string } | null {
+): { readonly day: string; readonly time: string; readonly timeGiven: boolean } | null {
   const match =
-    /^(?:(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})|(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}))(?:[\sT]+(\d{1,2})[:h](\d{2}))?$/.exec(
+    /^(?:(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})|(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}))(?:[\sT]+(\d{1,2})[:h](\d{2})(?::\d{2})?)?$/.exec(
       text.trim(),
     );
   if (!match) return null;
@@ -325,7 +332,11 @@ export function parseSlipDate(
   const hour = match[7] === undefined ? 12 : Number(match[7]);
   const minute = match[8] === undefined ? 0 : Number(match[8]);
   if (!validDay(year, month, day) || hour > 23 || minute > 59) return null;
-  return { day: `${year}-${two(month)}-${two(day)}`, time: `${two(hour)}:${two(minute)}` };
+  return {
+    day: `${year}-${two(month)}-${two(day)}`,
+    time: `${two(hour)}:${two(minute)}`,
+    timeGiven: match[7] !== undefined,
+  };
 }
 
 type Found<T> = { readonly item: T } | { readonly problem: string };
@@ -383,6 +394,12 @@ interface Built {
   readonly issues: readonly string[];
 }
 
+/** Deux écritures identiques à la casse et aux espaces près (un téléphone « 677 12 » n'est pas « 67712 » : signalé). */
+const sameWriting = (a: string, b: string): boolean => {
+  const canonical = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return canonical(a) === canonical(b);
+};
+
 /** Valeurs d'en-tête de la pièce, avec les lignes qui se contredisent. */
 function headerOf(group: readonly FileRecord[]): {
   readonly header: Record<string, string>;
@@ -396,7 +413,7 @@ function headerOf(group: readonly FileRecord[]): {
       if (value === undefined) continue;
       const known = header[key];
       if (known === undefined) header[key] = value;
-      else if (normalizeHeaderName(known) !== normalizeHeaderName(value)) {
+      else if (sameWriting(known, value) === false) {
         const label = SLIP_COLUMNS.find((column) => column.key === key)?.label ?? key;
         issues.push(
           `Ligne ${line} : « ${label} » diffère de celui de la première ligne de la pièce.`,
@@ -441,7 +458,14 @@ function buildForm(
         : `Date « ${header['date']} » invalide : JJ/MM/AAAA ou AAAA-MM-JJ, puis HH:mm.`,
     );
   } else {
-    form = { ...form, occurredAt: `${date.day}T${date.time}` };
+    // Une pièce d'aujourd'hui sans heure ne reçoit pas midi si midi n'est pas encore venu : « dans le futur » serait
+    // un faux défaut. Elle prend l'heure du contrôle.
+    const now = context.now;
+    const time =
+      !date.timeGiven && date.day === localDay(now) && localTime(now) < date.time
+        ? localTime(now)
+        : date.time;
+    form = { ...form, occurredAt: `${date.day}T${time}` };
   }
 
   const locations =
@@ -647,6 +671,14 @@ function buildForm(
         );
         continue;
       }
+      // `resolveReceipt` (l'écran de report) prend la quantité et le prix d'une réception pour l'unité de base du
+      // produit : une autre unité donnerait un stock et un coût faux d'un facteur. Refusée, jamais convertie en silence.
+      if (type === 'BR' && unitCode !== product.base_unit_code) {
+        problems.push(
+          `Ligne ${line} : une réception s’écrit dans l’unité de base du produit (« ${product.base_unit_code} »), pas en « ${unitCode} ».`,
+        );
+        continue;
+      }
       lines.push({
         key: String(line),
         productId: product.id,
@@ -710,13 +742,27 @@ async function planSlip(
     return fail(...resolution.issues.map((issue) => SLIP_ISSUE_MESSAGES[issue]));
   }
   const { slip, meta } = resolution;
-  const command = buildReportCommand(slip, {
+  const base = buildReportCommand(slip, {
     paperRef: meta.paperRef,
     occurredAt: meta.occurredAt,
     backdatedReason: meta.backdatedReason,
-    aggregateId: await importEntityId('slip', `${type}|${meta.paperRef}`),
+    aggregateId: '',
     dependsOn: meta.dependsOn,
   });
+  // L'identifiant de la pièce tient à son auteur, à son type et à son numéro, **et à son contenu** : recharger le même
+  // fichier retombe sur la même pièce (rien n'est reporté deux fois, même après la purge de l'outbox), mais une autre
+  // pièce portant le même numéro (un autre carnet, une erreur de saisie) a un autre identifiant. Le serveur la
+  // reçoit alors comme un numéro répété — enregistrée, avec l'avertissement `LOCAL_REF_DUPLICATE` —, au lieu de
+  // reconnaître à tort un rejeu et d'avaler la seconde pièce en silence (revue du 04/11/2026).
+  const fingerprint = JSON.stringify([base.commandType, base.payload, base.occurredAt]);
+  const command = {
+    ...base,
+    aggregateId: await authorImportId(
+      refs.authorUserId,
+      'slip',
+      `${type}|${meta.paperRef}|${fingerprint}`,
+    ),
+  };
   return {
     key: `${type} ${meta.paperRef}`,
     issues: [],

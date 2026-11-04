@@ -6,7 +6,7 @@
  * sans doublon si le même fichier est rechargé (identifiants stables, `importEntityId`).
  */
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActionBar,
@@ -44,6 +44,7 @@ import {
   type ImportPlan,
   type RowStatus,
 } from './model.js';
+import type { ImportRefs } from './refs.js';
 import './import.css';
 
 /** Lignes listées au rapport de contrôle : le reste est compté, pas détaillé. */
@@ -89,7 +90,13 @@ function downloadCsv(name: string, text: string): void {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Certains navigateurs lisent l'adresse après le clic : la révoquer aussitôt annulerait le téléchargement.
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+/** Les mêmes référentiels, avec l'heure du contrôle : « maintenant » sert aux fenêtres d'antidatage et au futur. */
+function withNow(refs: ImportRefs, now: Date): ImportRefs {
+  return refs.slipContext ? { ...refs, slipContext: { ...refs.slipContext, now } } : refs;
 }
 
 function ColumnsHelp({ entity }: { entity: ImportEntity }) {
@@ -107,6 +114,11 @@ function ColumnsHelp({ entity }: { entity: ImportEntity }) {
               </Badge>
             </span>
             {column.hint ? <p className="import-column-hint">{column.hint}</p> : null}
+            {column.example ? (
+              <p className="import-column-hint">
+                {t('data_import.column_example', { example: column.example })}
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -123,6 +135,11 @@ function PlanView({ plan, fileName }: { plan: ImportPlan; fileName: string }) {
   return (
     <>
       <p className="import-file-name">{t('data_import.file_name', { name: fileName })}</p>
+      {plan.fileIssues.map((issue) => (
+        <Banner key={issue} tone="bad">
+          {issue}
+        </Banner>
+      ))}
       {plan.missingColumns.length > 0 ? (
         <Banner tone="bad">
           {t('data_import.missing_columns', { columns: plan.missingColumns.join(', ') })}
@@ -133,7 +150,9 @@ function PlanView({ plan, fileName }: { plan: ImportPlan; fileName: string }) {
           {t('data_import.unknown_columns', { columns: plan.unknownColumns.join(', ') })}
         </Banner>
       ) : null}
-      {plan.missingColumns.length === 0 && plan.rows.length === 0 ? (
+      {plan.missingColumns.length === 0 &&
+      plan.fileIssues.length === 0 &&
+      plan.rows.length === 0 ? (
         <Banner tone="warn" role="status">
           {t('data_import.no_rows')}
         </Banner>
@@ -308,8 +327,16 @@ export function ImportScreen() {
   const [stopped, setStopped] = useState<string>();
   /** Motif d'antidatage commun aux pièces papier de plus de 24 h dont le fichier ne donne pas de motif. */
   const [commonReason, setCommonReason] = useState('');
+  /** Motif commun pris en compte par le dernier contrôle : s'il a changé depuis, « Charger » recontrôle d'abord. */
+  const [checkedReason, setCheckedReason] = useState('');
   /** Numéro du dernier contrôle lancé : le résultat d'un contrôle dépassé est ignoré. */
   const checkTicket = useRef(0);
+  const result = useRef<HTMLDivElement>(null);
+
+  // « Charger » disparaît à la fin de l'envoi : le focus passe au résultat, qui s'annonce.
+  useEffect(() => {
+    if (phase === 'sent') result.current?.focus();
+  }, [phase]);
 
   const available = useMemo(
     () => IMPORT_ENTITIES.filter((entity) => holdsAnyRole(roles, entity.roles)),
@@ -336,6 +363,8 @@ export function ImportScreen() {
   }
 
   const busy = phase === 'checking' || phase === 'sending';
+  /** Le motif commun a changé depuis le dernier contrôle : le plan affiché ne le prend pas encore en compte. */
+  const reasonChanged = commonReason.trim() !== checkedReason;
   const total = plan
     ? plan.rows.reduce((sum, row) => sum + (row.status === 'READY' ? row.commands.length : 0), 0)
     : 0;
@@ -345,15 +374,25 @@ export function ImportScreen() {
     const ticket = checkTicket.current;
     setPhase('checking');
     setPlan(undefined);
+    setFileError(undefined);
     const reason = commonReason.trim();
-    const result = await planImport(
-      target,
-      csv,
-      reason === '' ? importRefs : { ...importRefs, defaultBackdatedReason: reason },
-    );
-    if (ticket !== checkTicket.current) return;
-    setPlan(result);
-    setPhase('ready');
+    const current = withNow(importRefs, clock.now());
+    try {
+      const checked = await planImport(
+        target,
+        csv,
+        reason === '' ? current : { ...current, defaultBackdatedReason: reason },
+      );
+      if (ticket !== checkTicket.current) return;
+      setCheckedReason(reason);
+      setPlan(checked);
+      setPhase('ready');
+    } catch {
+      // Un contrôle qui échoue ne fige pas l'écran en « contrôle en cours ».
+      if (ticket !== checkTicket.current) return;
+      setFileError(t('data_import.check_failed'));
+      setPhase('idle');
+    }
   };
 
   const reset = () => {
@@ -381,10 +420,13 @@ export function ImportScreen() {
     event.target.value = '';
     if (!chosen || !entity) return;
     reset();
+    // Occupé dès la lecture : le type de données ne peut pas changer sous le fichier en cours de lecture.
+    setPhase('checking');
     try {
       const csv = parseCsv(decodeCsv(await readBytes(chosen)));
       if (csv.header.length === 0) {
         setFileError(t('data_import.file_error_empty'));
+        setPhase('idle');
         return;
       }
       setFile({ name: chosen.name, csv });
@@ -402,6 +444,12 @@ export function ImportScreen() {
 
   const load = async () => {
     if (!plan || phase !== 'ready') return;
+    // Le motif commun a changé depuis le contrôle : le fichier est recontrôlé avec lui, et l'utilisateur voit ce qui
+    // sera chargé avant de confirmer (rien ne part sur un contrôle qui ne tient plus).
+    if (entity && file && reasonChanged) {
+      await check(entity, file.csv);
+      return;
+    }
     setPhase('sending');
     setStopped(undefined);
     setProgress(0);
@@ -488,25 +536,36 @@ export function ImportScreen() {
             </div>
             <ColumnsHelp entity={entity} />
             {entity.id === 'slips' ? (
-              <Field
-                label={t('data_import.reason_label')}
-                hint={t('data_import.reason_hint')}
-                optional
-              >
-                {(control) => (
-                  <Input
-                    {...control}
-                    value={commonReason}
-                    maxLength={MAX_BACKDATED_REASON}
-                    disabled={busy}
-                    onChange={(event) => setCommonReason(event.target.value)}
-                    // Le contrôle déjà fait est refait avec le nouveau motif.
-                    onBlur={() => {
-                      if (file && phase === 'ready') void check(entity, file.csv);
-                    }}
-                  />
-                )}
-              </Field>
+              <>
+                <Field
+                  label={t('data_import.reason_label')}
+                  hint={t('data_import.reason_hint')}
+                  optional
+                >
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={commonReason}
+                      maxLength={MAX_BACKDATED_REASON}
+                      disabled={busy}
+                      onChange={(event) => setCommonReason(event.target.value)}
+                    />
+                  )}
+                </Field>
+                {/* Bouton explicite plutôt qu'un recontrôle au départ du champ : celui-ci faisait disparaître « Charger »
+                    sous le doigt, et le clic se perdait. */}
+                {file && phase === 'ready' && reasonChanged ? (
+                  <div className="import-actions">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void check(entity, file.csv)}
+                    >
+                      {t('data_import.reason_apply')}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             ) : null}
             <Field
               label={t('data_import.file_label')}
@@ -534,6 +593,11 @@ export function ImportScreen() {
             </div>
           ) : null}
           {plan && file ? <PlanView plan={plan} fileName={file.name} /> : null}
+          {plan && phase === 'ready' && reasonChanged ? (
+            <Banner tone="info" role="status">
+              {t('data_import.reason_changed')}
+            </Banner>
+          ) : null}
           {phase === 'sending' ? (
             <p className="import-progress" role="status">
               {t('data_import.loading', { done: progress, total })}
@@ -542,7 +606,9 @@ export function ImportScreen() {
           {stopped ? <Banner tone="bad">{stopped}</Banner> : null}
           {phase === 'sent' ? (
             <>
-              <ResultView sent={sent} />
+              <div ref={result} tabIndex={-1} className="import-result">
+                <ResultView sent={sent} />
+              </div>
               <div className="import-actions">
                 <Button variant="outline" onClick={reset}>
                   {t('data_import.another')}
@@ -554,7 +620,12 @@ export function ImportScreen() {
             <ActionBar>
               <Button
                 loading={phase === 'sending'}
-                disabled={busy || total === 0 || plan.missingColumns.length > 0}
+                disabled={
+                  busy ||
+                  total === 0 ||
+                  plan.missingColumns.length > 0 ||
+                  plan.fileIssues.length > 0
+                }
                 onClick={() => void load()}
               >
                 {t('data_import.load_action', { count: total })}

@@ -26,6 +26,8 @@ export interface ImportSite {
 }
 
 export interface ImportRefs {
+  /** Utilisateur qui charge : ses identifiants dérivés ne se confondent pas avec ceux d'un autre (`authorImportId`). */
+  readonly authorUserId: string;
   /** Codes des unités du catalogue (une unité n'est jamais créée par un chargement de produits). */
   readonly unitCodes: ReadonlySet<string>;
   /** Catégories de produit connues de l'appareil. */
@@ -73,6 +75,7 @@ export interface ImportRefs {
 }
 
 export const EMPTY_IMPORT_REFS: ImportRefs = {
+  authorUserId: '',
   unitCodes: new Set(),
   categories: [],
   pendingCategoryIds: new Map(),

@@ -8,8 +8,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDb, type Projection } from '../../storage/db.js';
-import { DEVICE_ID, IDS, seedSalesFixtures } from '../sales/fixtures.js';
-import { importEntityId } from './ids.js';
+import { DEVICE_ID, IDS, posCashAccountRow, seedSalesFixtures } from '../sales/fixtures.js';
+import { CATEGORIES_ENTITY } from './entities.js';
+import { authorImportId } from './ids.js';
 import { ImportScreen } from './ImportScreen.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -132,8 +133,8 @@ describe('ImportScreen (RP-2, PP-C)', () => {
     ]);
     // Identifiants stables : ceux que le serveur reconnaîtra si le fichier est chargé deux fois.
     expect(queued.map((command) => command.aggregate_id)).toEqual([
-      await importEntityId('category', 'OEUFS'),
-      await importEntityId('category', 'CALIBRES'),
+      await authorImportId(IDS.user, 'category', 'OEUFS'),
+      await authorImportId(IDS.user, 'category', 'CALIBRES'),
     ]);
     expect(queued[1]!.payload).toMatchObject({ parentId: queued[0]!.aggregate_id });
     expect(await screen.findByText('2 en attente d’envoi ou de réponse')).toBeInTheDocument();
@@ -276,15 +277,127 @@ describe('ImportScreen (RP-2, PP-C)', () => {
       );
       expect(create).toHaveBeenCalledTimes(1);
       expect(click).toHaveBeenCalledTimes(1);
-      expect(revoke).toHaveBeenCalledWith('blob:modele');
-      // L'en-tête et un exemple, dans l'ordre des colonnes du type choisi.
+      // L'adresse temporaire n'est révoquée qu'après le départ du téléchargement.
+      expect(revoke).not.toHaveBeenCalled();
+      await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:modele'), { timeout: 3_000 });
+      // L'en-tête seul, dans l'ordre des colonnes du type choisi : une ligne d'exemple oubliée se chargerait.
       const text = await create.mock.calls[0]![0].text();
       expect(text).toContain('Code;Nom;Catégorie parente');
-      expect(text).toContain('VOLAILLE;Volaille;');
+      expect(text).not.toContain('VOLAILLE');
+      // Les exemples sont dans l'aide des colonnes.
+      expect(screen.getByText('Exemple : VOLAILLE')).toBeInTheDocument();
     } finally {
       URL.createObjectURL = previous.create;
       URL.revokeObjectURL = previous.revoke;
       click.mockRestore();
     }
+  });
+
+  it('un guillemet jamais refermé : le fichier est dit incomplet, rien n’est chargeable', async () => {
+    await asRoles(['ADMIN']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.upload(await fileField(), csvFile('Code;Nom\nOEUFS;"Œufs\nVOLAILLE;Volaille\n'));
+    expect(await screen.findByText(/Un guillemet s’ouvre à la ligne 2/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Charger 0 ligne(s)' })).toBeDisabled();
+    expect(await getDb().outbox.count()).toBe(0);
+  });
+
+  it('un fichier « Texte Unicode » d’Excel (UTF-16, tabulations) est lu', async () => {
+    await asRoles(['ADMIN']);
+    const user = userEvent.setup();
+    renderScreen();
+    const text = 'Code\tNom\r\nOEUFS\tŒufs\r\n';
+    const bytes: number[] = [0xff, 0xfe];
+    for (const char of text) bytes.push(char.charCodeAt(0) & 0xff, char.charCodeAt(0) >> 8);
+    await user.upload(
+      await fileField(),
+      new File([new Uint8Array(bytes)], 'unicode.txt', { type: 'text/plain' }),
+    );
+    expect(await screen.findByText('1 à charger')).toBeInTheDocument();
+    expect(screen.queryByText(/Colonnes ignorées/)).not.toBeInTheDocument();
+  });
+
+  it('des colonnes vides en fin de ligne (tableur) ne sont pas signalées comme colonnes ignorées', async () => {
+    await asRoles(['ADMIN']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.upload(await fileField(), csvFile('Code;Nom;;;\nOEUFS;Œufs;;;\n'));
+    expect(await screen.findByText('1 à charger')).toBeInTheDocument();
+    expect(screen.queryByText(/Colonnes ignorées/)).not.toBeInTheDocument();
+  });
+
+  it('un contrôle qui échoue ne fige pas l’écran : message, puis un autre fichier se contrôle', async () => {
+    await asRoles(['ADMIN']);
+    const user = userEvent.setup();
+    const broken = vi.spyOn(CATEGORIES_ENTITY, 'planRow').mockRejectedValue(new Error('panne'));
+    renderScreen();
+    await user.upload(await fileField(), csvFile('Code;Nom\nOEUFS;Œufs\n'));
+    expect(await screen.findByText(/Le contrôle du fichier a échoué/)).toBeInTheDocument();
+    // Ni « contrôle en cours » ni champ bloqué.
+    expect(screen.queryByText('Contrôle du fichier…')).not.toBeInTheDocument();
+    expect(await fileField()).toBeEnabled();
+
+    broken.mockRestore();
+    await user.upload(await fileField(), csvFile('Code;Nom\nOEUFS;Œufs\n'));
+    expect(await screen.findByText('1 à charger')).toBeInTheDocument();
+    expect(screen.queryByText(/Le contrôle du fichier a échoué/)).not.toBeInTheDocument();
+  });
+
+  it('à la fin de l’envoi, le focus passe au résultat (le bouton « Charger » a disparu)', async () => {
+    await asRoles(['ADMIN']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.upload(await fileField(), csvFile('Code;Nom\nOEUFS;Œufs\n'));
+    await user.click(await screen.findByRole('button', { name: 'Charger 1 ligne(s)' }));
+    const result = await screen.findByText('Résultat du chargement');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(result.closest('.import-result') as HTMLElement),
+    );
+  });
+
+  describe('pièces papier : motif d’antidatage commun', () => {
+    const HEADER =
+      'Type de pièce;Numéro de la pièce;Date de la pièce;Motif d’antidatage;Emplacement;Destination;Site;Client;Produit;Unité;Quantité;Prix unitaire;Moyen de paiement;Montant;Compte;Catégorie;Description';
+    const two = (value: number) => String(value).padStart(2, '0');
+    const old = new Date(Date.now() - 20 * 24 * 3_600_000);
+    const written = `${two(old.getDate())}/${two(old.getMonth() + 1)}/${old.getFullYear()} 10:00`;
+    const line = `BV;BV-000700;${written};;PDV-YDE-POS;;;;OEUF;;1;;ESPECES;;;;`;
+
+    it('un motif saisi après le contrôle s’applique par « Appliquer le motif » ; « Charger » le recontrôle de même', async () => {
+      await asRoles(['ADMIN', 'VENDEUR_PDV']);
+      await getDb().projections.put(posCashAccountRow());
+      const user = userEvent.setup();
+      renderScreen();
+      await user.selectOptions(await screen.findByLabelText(/Type de données/i), 'slips');
+      await user.upload(await fileField(), csvFile(`${HEADER}\n${line}\n`));
+      // Pièce de 20 jours sans motif : refusée.
+      expect(await screen.findByText('0 à charger')).toBeInTheDocument();
+      expect(screen.getByText('1 en erreur')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Appliquer le motif' })).not.toBeInTheDocument();
+
+      await user.type(
+        screen.getByLabelText(/Motif d’antidatage commun/),
+        'Report du carnet de septembre',
+      );
+      // Le plan affiché ne tient pas encore compte du motif : dit, avec le bouton qui le règle.
+      expect(screen.getByText(/Le motif commun a changé depuis le contrôle/)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Appliquer le motif' }));
+      expect(await screen.findByText('1 à charger')).toBeInTheDocument();
+      expect(screen.queryByText(/Le motif commun a changé/)).not.toBeInTheDocument();
+
+      // Changer le motif de nouveau, puis « Charger » : recontrôle d'abord, rien ne part sur un contrôle périmé.
+      await user.type(screen.getByLabelText(/Motif d’antidatage commun/), ' (corrigé)');
+      await user.click(screen.getByRole('button', { name: 'Charger 1 ligne(s)' }));
+      const again = await screen.findByRole('button', { name: 'Charger 1 ligne(s)' });
+      expect(screen.queryByText(/Le motif commun a changé/)).not.toBeInTheDocument();
+      expect(await getDb().outbox.count()).toBe(0);
+      await user.click(again);
+      await waitFor(async () => {
+        const [command] = await getDb().outbox.toArray();
+        expect(command?.command_type).toBe('sales.sale.record');
+        expect(command?.backdated_reason).toBe('Report du carnet de septembre (corrigé)');
+      });
+    });
   });
 });

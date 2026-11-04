@@ -145,7 +145,60 @@ describe('profilePatch', () => {
         { ...before, usualPaymentMethodCode: '', creditRequested: true, potentialQtyText: '12,5' },
         before,
       ),
-    ).toEqual({ usualPaymentMethodCode: null, creditRequested: true, potentialQtyPerDay: 12.5 });
+    ).toEqual({
+      usualPaymentMethodCode: null,
+      creditRequested: true,
+      potentialQtyPerDay: 12.5,
+      // La quantité emporte son unité, même inchangée.
+      potentialUnitCode: 'KG',
+    });
+  });
+
+  it('la quantité se compare en valeur, non en texte : une reformulation n’envoie rien', () => {
+    const saved = profileOf(customer({ potential_qty_per_day: 12.5, potential_unit_code: 'KG' }));
+    for (const text of ['12.5', '12,50', ' 12,5 ', '12,500']) {
+      expect(profilePatch({ ...saved, potentialQtyText: text }, saved), text).toEqual({});
+    }
+    const thousand = profileOf(
+      customer({ potential_qty_per_day: 1000, potential_unit_code: 'KG' }),
+    );
+    expect(profilePatch({ ...thousand, potentialQtyText: '1 000' }, thousand)).toEqual({});
+    // Un vrai changement part, avec son unité.
+    expect(profilePatch({ ...saved, potentialQtyText: '13' }, saved)).toEqual({
+      potentialQtyPerDay: 13,
+      potentialUnitCode: 'KG',
+    });
+  });
+
+  it('une quantité vidée n’emporte pas l’unité ; une unité changée seule part seule', () => {
+    expect(profilePatch({ ...before, potentialQtyText: '' }, before)).toEqual({
+      potentialQtyPerDay: null,
+    });
+    expect(profilePatch({ ...before, potentialUnitCode: 'PLATEAU' }, before)).toEqual({
+      potentialUnitCode: 'PLATEAU',
+    });
+  });
+
+  it('le patch se calcule contre le profil de départ : un champ relu entre-temps n’est pas réécrit', () => {
+    // À l'ouverture, le potentiel valait 10 ; un autre appareil l'a porté à 20 pendant la saisie. L'utilisateur n'a
+    // touché que le moyen de paiement : seul celui-là part, calculé contre le profil de départ (non le profil du moment).
+    const opened = before;
+    const draft = { ...opened, usualPaymentMethodCode: 'MOBILE_MONEY_MTN' };
+    expect(profilePatch(draft, opened)).toEqual({ usualPaymentMethodCode: 'MOBILE_MONEY_MTN' });
+    const reread = profileOf(
+      customer({
+        interest_product_id: PRODUCT_ID,
+        potential_qty_per_day: 20,
+        potential_unit_code: 'KG',
+        usual_payment_method_code: 'ESPECES',
+      }),
+    );
+    // Le piège : comparer le brouillon au profil relu ferait aussi partir potentialQtyPerDay: 10.
+    expect(Object.keys(profilePatch(draft, reread)).sort()).toEqual([
+      'potentialQtyPerDay',
+      'potentialUnitCode',
+      'usualPaymentMethodCode',
+    ]);
   });
 
   it('retirer le produit et le potentiel', () => {

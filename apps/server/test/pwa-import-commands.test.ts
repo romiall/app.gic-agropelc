@@ -100,6 +100,7 @@ describe('chargement par fichier : le serveur accepte les commandes, une seule f
     siteCode = site.code;
     refs = {
       ...EMPTY_IMPORT_REFS,
+      authorUserId: author,
       unitCodes: new Set([unit.code]),
       zones: [{ id: zoneId, label: `Essai ${suffix}` }],
       sites: [{ id: siteId, code: site.code, name: site.name }],

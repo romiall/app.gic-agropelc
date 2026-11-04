@@ -2,7 +2,7 @@
  * Types de données chargeables par fichier CSV (RP-2 ; AV-072, AV-508) : catégories de produit, produits,
  * fournisseurs. Chaque type reprend les contrôles et la charge de l'écran de saisie correspondant
  * (`catalog.ts`, `suppliers.ts`) : ce que l'écran refuse, le chargement le refuse ; ce que l'écran envoie, le
- * chargement l'envoie. Les identifiants sont stables (`importEntityId`) : charger deux fois le même fichier ne crée
+ * chargement l'envoie. Les identifiants sont stables (`authorImportId`) : charger deux fois le même fichier ne crée
  * rien de plus.
  */
 import { ROLE_SETS } from '../../app/screens.js';
@@ -22,6 +22,7 @@ import {
   checkSupplier,
   createPayload as supplierPayload,
   EMPTY_SUPPLIER,
+  SUPPLIER_LIMITS,
   type SupplierForm,
   type SupplierIssue,
 } from '../procurement/suppliers.js';
@@ -34,7 +35,7 @@ import {
   type ProspectIssue,
 } from '../crm/prospect.js';
 import { normalizeHeaderName } from './csv.js';
-import { importEntityId } from './ids.js';
+import { authorImportId } from './ids.js';
 import {
   cell,
   entityCode,
@@ -124,6 +125,8 @@ export const CATEGORIES_ENTITY: ImportEntity = {
   description: 'Classement des produits du catalogue. À charger avant les produits.',
   columns: CATEGORY_COLUMNS,
   order: 10,
+  // Bornes du serveur (`catalog.product_category.create`).
+  limits: { code: 40, nom: 200 },
   roles: ROLE_SETS.catalog,
   async planRow(record, refs, planned): Promise<RowOutcome> {
     const code = entityCode(cell(record, 'code') ?? '');
@@ -143,7 +146,7 @@ export const CATEGORIES_ENTITY: ImportEntity = {
       if (known !== undefined) parentId = known.id;
       else if (pending !== undefined) parentId = pending;
       else if (planned.get('category')?.has(parentCode)) {
-        parentId = await importEntityId('category', parentCode);
+        parentId = await authorImportId(refs.authorUserId, 'category', parentCode);
       } else {
         issues.push(
           `Catégorie parente « ${parentCode} » inconnue : elle doit exister ou précéder cette ligne dans le fichier.`,
@@ -160,7 +163,7 @@ export const CATEGORIES_ENTITY: ImportEntity = {
         {
           commandType: 'catalog.product_category.create',
           aggregateType: 'PRODUCT_CATEGORY',
-          aggregateId: await importEntityId('category', code),
+          aggregateId: await authorImportId(refs.authorUserId, 'category', code),
           payload: categoryPayload({ code, name, parentId }),
         },
       ],
@@ -216,7 +219,7 @@ const PRODUCT_COLUMNS: readonly ColumnDef[] = [
     required: false,
     example: 'NONE',
     hint: `${LOT_TRACKINGS.join(', ')} (défaut NONE ; aucun, facultatif et obligatoire sont compris).`,
-    aliases: ['suivi_lot', 'lot'],
+    aliases: ['suivi_lot'],
   },
   {
     key: 'suivi_de_peremption',
@@ -261,7 +264,6 @@ const PRODUCT_COLUMNS: readonly ColumnDef[] = [
     required: false,
     example: 'PER_UNIT',
     hint: `${PRICING_MODES.join(', ')} (défaut PER_UNIT ; à l’unité ou au poids sont compris).`,
-    aliases: ['prix'],
   },
   {
     key: 'espece',
@@ -278,6 +280,8 @@ export const PRODUCTS_ENTITY: ImportEntity = {
   description: 'Catalogue des produits. Les catégories et les unités citées doivent exister.',
   columns: PRODUCT_COLUMNS,
   order: 20,
+  // Bornes du serveur (`catalog.product.create`).
+  limits: { code: 40, nom: 200 },
   roles: ROLE_SETS.catalog,
   async planRow(record, refs, planned): Promise<RowOutcome> {
     const issues: string[] = [];
@@ -291,7 +295,7 @@ export const PRODUCTS_ENTITY: ImportEntity = {
       if (known !== undefined) categoryId = known.id;
       else if (pending !== undefined) categoryId = pending;
       else if (planned.get('category')?.has(categoryCode)) {
-        categoryId = await importEntityId('category', categoryCode);
+        categoryId = await authorImportId(refs.authorUserId, 'category', categoryCode);
       } else {
         issues.push(`Catégorie « ${categoryCode} » inconnue : à charger avant les produits.`);
       }
@@ -381,7 +385,7 @@ export const PRODUCTS_ENTITY: ImportEntity = {
             {
               commandType: 'catalog.product.create',
               aggregateType: 'PRODUCT',
-              aggregateId: await importEntityId('product', code),
+              aggregateId: await authorImportId(refs.authorUserId, 'product', code),
               payload: productPayload(form),
             },
           ],
@@ -459,6 +463,17 @@ export const SUPPLIERS_ENTITY: ImportEntity = {
   description: 'Fiches des fournisseurs de GIC.',
   columns: SUPPLIER_COLUMNS,
   order: 30,
+  // Bornes du serveur, que l'écran des fournisseurs applique à la frappe (`SUPPLIER_LIMITS`).
+  limits: {
+    code: SUPPLIER_LIMITS.code,
+    nom: SUPPLIER_LIMITS.name,
+    contact: SUPPLIER_LIMITS.contactName,
+    telephone: SUPPLIER_LIMITS.phone,
+    email: SUPPLIER_LIMITS.email,
+    adresse: SUPPLIER_LIMITS.address,
+    numero_fiscal: SUPPLIER_LIMITS.taxId,
+    notes: SUPPLIER_LIMITS.notes,
+  },
   roles: ROLE_SETS.suppliers,
   async planRow(record, refs): Promise<RowOutcome> {
     const code = (cell(record, 'code') ?? '').trim();
@@ -486,7 +501,7 @@ export const SUPPLIERS_ENTITY: ImportEntity = {
         {
           commandType: 'procurement.supplier.create',
           aggregateType: 'SUPPLIER',
-          aggregateId: await importEntityId('supplier', code),
+          aggregateId: await authorImportId(refs.authorUserId, 'supplier', code),
           payload: supplierPayload(form),
         },
       ],
@@ -606,6 +621,8 @@ export const CUSTOMERS_ENTITY: ImportEntity = {
     'Comptes clients. Les doublons se repèrent par le téléphone, comme à l’écran de saisie.',
   columns: CUSTOMER_COLUMNS,
   order: 40,
+  // Bornes du serveur (`crm.customer.create`).
+  limits: { nom: 200, telephone: 30, contact: 200, activite: 200, adresse: 2000 },
   roles: ROLE_SETS.customerCreate,
   async planRow(record, refs): Promise<RowOutcome> {
     const issues: string[] = [];
@@ -718,7 +735,7 @@ export const CUSTOMERS_ENTITY: ImportEntity = {
         {
           commandType: 'crm.customer.create',
           aggregateType: 'CUSTOMER',
-          aggregateId: await importEntityId('customer', key),
+          aggregateId: await authorImportId(refs.authorUserId, 'customer', key),
           // Le téléphone part normalisé (E.164) : la clé du doublon est la même des deux côtés.
           payload: prospectPayload(
             { ...draft, phone: check.normalizedPhone ?? draft.phone },

@@ -20,10 +20,12 @@ import {
   EmptyState,
   Field,
   Input,
+  LinkButton,
   PageHeader,
   Section,
   SkeletonRows,
 } from '../../components/ui/index.js';
+import { ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -243,9 +245,15 @@ export function SuppliersScreen() {
         title={t('nav.screens.suppliers')}
         actions={
           suppliers && !editing ? (
-            <Button disabled={blocked} onClick={() => setEditing({ supplier: null })}>
-              {t('suppliers.new')}
-            </Button>
+            <>
+              {/* Point d'entrée du chargement par fichier pour ce rôle (le menu ne le propose pas à tous, UX-01). */}
+              <LinkButton to={ROUTES.dataImport} variant="outline" icon="file">
+                {t('data_import.open_link')}
+              </LinkButton>
+              <Button disabled={blocked} onClick={() => setEditing({ supplier: null })}>
+                {t('suppliers.new')}
+              </Button>
+            </>
           ) : undefined
         }
       />
