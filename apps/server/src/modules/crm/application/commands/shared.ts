@@ -4,7 +4,7 @@
  * « rôle commercial » (BR-CRM-003), paramètres système et historique de stade (BR-CRM-008).
  */
 import { sql, type RawBuilder, type Selectable, type Transaction } from 'kysely';
-import { DomainError, normalizePhone } from '@gic/domain';
+import { DomainError, normalizePhone, type FieldVersion } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import type { CrmCustomers } from '../../../../platform/kysely/schema.generated.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
@@ -222,18 +222,35 @@ export async function recordStageChange(
     .execute();
 }
 
-/** Dernière écriture connue de chaque champ modifiable (`field_versions`, dictionnaire). */
-export function fieldVersionsOf(
-  customer: CustomerRow,
-): Record<string, { readonly version: number; readonly occurredAt: string }> {
-  const raw = customer.field_versions;
+/**
+ * Dernière écriture connue de chaque champ modifiable (`field_versions`, dictionnaire). MariaDB (la version en ligne)
+ * rend une colonne `JSON` en chaîne de caractères, MySQL en objet : les deux se lisent. Une colonne illisible vaut
+ * « aucune écriture connue ».
+ */
+export function fieldVersionsOf(customer: CustomerRow): Record<string, FieldVersion> {
+  let raw: unknown = customer.field_versions;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw) as unknown;
+    } catch {
+      return {};
+    }
+  }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
-  const result: Record<string, { version: number; occurredAt: string }> = {};
+  const result: Record<string, FieldVersion> = {};
   for (const [field, value] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof value !== 'object' || value === null) continue;
-    const { version, occurredAt } = value as { version?: unknown; occurredAt?: unknown };
+    const { version, occurredAt, deviceId } = value as {
+      version?: unknown;
+      occurredAt?: unknown;
+      deviceId?: unknown;
+    };
     if (typeof version === 'number' && typeof occurredAt === 'string') {
-      result[field] = { version, occurredAt };
+      result[field] = {
+        version,
+        occurredAt,
+        ...(typeof deviceId === 'string' ? { deviceId } : {}),
+      };
     }
   }
   return result;

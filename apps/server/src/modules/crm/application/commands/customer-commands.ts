@@ -20,7 +20,12 @@
  */
 import { z } from 'zod';
 import { sql, type Updateable } from 'kysely';
-import { mergeFieldPatch, type FieldCollision, type IdGenerator } from '@gic/domain';
+import {
+  mergeFieldPatch,
+  type FieldCollision,
+  type FieldVersion,
+  type IdGenerator,
+} from '@gic/domain';
 import type { CrmCustomers } from '../../../../platform/kysely/schema.generated.js';
 import type {
   CommandHandler,
@@ -101,7 +106,8 @@ const customerFields = {
     .number()
     .nonnegative()
     .max(MAX_POTENTIAL_QTY)
-    .refine((value) => Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-6, {
+    // Trois décimales au plus, jugées sur l'écriture du nombre (jamais en notation scientifique : « 1e-10 » refusé).
+    .refine((value) => /^\d+(\.\d{1,3})?$/.test(String(value)), {
       message: 'Trois décimales au plus.',
     })
     .nullable(),
@@ -329,16 +335,25 @@ async function phoneHolder(
     .executeTakeFirst();
 }
 
-function withVersions(
+/**
+ * `field_versions` après l'écriture de `fields` par la commande `commandId` : version de la ligne, heure métier et
+ * appareil de la commande (un appareil ne se heurte pas à sa propre écriture, `mergeFieldPatch`).
+ */
+async function withVersions(
+  uow: Uow,
   customer: CustomerRow,
   fields: readonly string[],
   occurredAt: Date,
-): ReturnType<typeof jsonValue> {
-  const versions: Record<string, { version: number; occurredAt: string }> = {
-    ...fieldVersionsOf(customer),
-  };
+  commandId: string,
+): Promise<ReturnType<typeof jsonValue>> {
+  const { deviceId } = await loadCommandOrigin(uow, commandId);
+  const versions: Record<string, FieldVersion> = { ...fieldVersionsOf(customer) };
   for (const field of fields) {
-    versions[field] = { version: customer.version + 1, occurredAt: occurredAt.toISOString() };
+    versions[field] = {
+      version: customer.version + 1,
+      occurredAt: occurredAt.toISOString(),
+      ...(deviceId !== null ? { deviceId } : {}),
+    };
   }
   return jsonValue(versions);
 }
@@ -581,6 +596,7 @@ function buildHandlers(idGenerator: IdGenerator) {
       patch: normalized.value,
       baseVersion: envelope.base_version,
       clientOccurredAt: at,
+      clientDeviceId: (await loadCommandOrigin(uow, envelope.command_id)).deviceId,
       fieldVersions: fieldVersionsOf(customer),
       currentValues: current,
     });
@@ -614,7 +630,7 @@ function buildHandlers(idGenerator: IdGenerator) {
         .updateTable('crm_customers')
         .set({
           ...columns,
-          field_versions: withVersions(customer, appliedFields, at),
+          field_versions: await withVersions(uow, customer, appliedFields, at, envelope.command_id),
           updated_by: toBin(author),
           version: sql`version + 1`,
         })
@@ -693,7 +709,13 @@ function buildHandlers(idGenerator: IdGenerator) {
         .updateTable('crm_customers')
         .set({
           pipeline_step_id: step.id,
-          field_versions: withVersions(customer, ['pipelineStepId'], at),
+          field_versions: await withVersions(
+            uow,
+            customer,
+            ['pipelineStepId'],
+            at,
+            envelope.command_id,
+          ),
           updated_by: toBin(author),
           version: sql`version + 1`,
         })
@@ -790,7 +812,13 @@ function buildHandlers(idGenerator: IdGenerator) {
         stage: 'PROSPECT',
         pipeline_step_id: stepId,
         lost_reason_code_id: null,
-        field_versions: withVersions(customer, ['pipelineStepId'], at),
+        field_versions: await withVersions(
+          uow,
+          customer,
+          ['pipelineStepId'],
+          at,
+          envelope.command_id,
+        ),
         updated_by: toBin(author),
         version: sql`version + 1`,
       })
@@ -1094,6 +1122,20 @@ function buildHandlers(idGenerator: IdGenerator) {
         credit_allowed: p.creditAllowed ? 1 : 0,
         credit_limit_xaf: p.creditLimitXaf,
         payment_terms_days: p.paymentTermsDays,
+        // La décision du responsable, accordée ou refusée, solde la demande du commercial (AV-316) : une demande
+        // jugée ne reste pas « en attente ».
+        ...(customer.credit_requested
+          ? {
+              credit_requested: 0,
+              field_versions: await withVersions(
+                uow,
+                customer,
+                ['creditRequested'],
+                at,
+                envelope.command_id,
+              ),
+            }
+          : {}),
         updated_by: toBin(author),
         version: sql`version + 1`,
       })

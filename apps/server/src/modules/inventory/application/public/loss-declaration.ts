@@ -615,15 +615,44 @@ export async function lossDeclarationLocator(
     : undefined;
 }
 
+/** Déclaration de perte existante, avec de quoi juger si une commande qui la crée de nouveau en est le rejeu. */
+export interface LossDeclarationRecord {
+  readonly docNumber: string;
+  readonly status: string;
+  readonly declaredBy: string;
+  readonly locationId: string;
+  readonly productId: string;
+  readonly quantityBase: number;
+  readonly category: string;
+}
+
 /** Déclaration de perte par identifiant : rejeu d'une commande qui la crée (revue P7). */
 export async function findLossDeclaration(
   executor: Kysely<DB> | Transaction<DB>,
   lossId: string,
-): Promise<{ readonly docNumber: string; readonly status: string } | undefined> {
+): Promise<LossDeclarationRecord | undefined> {
   const row = await executor
     .selectFrom('inventory_loss_declarations')
-    .select(['doc_number', 'status'])
+    .select([
+      'doc_number',
+      'status',
+      'declared_by',
+      'location_id',
+      'product_id',
+      'quantity_base',
+      'category',
+    ])
     .where('id', '=', toBin(lossId))
     .executeTakeFirst();
-  return row ? { docNumber: row.doc_number, status: row.status } : undefined;
+  return row
+    ? {
+        docNumber: row.doc_number,
+        status: row.status,
+        declaredBy: fromBin(row.declared_by),
+        locationId: fromBin(row.location_id),
+        productId: fromBin(row.product_id),
+        quantityBase: Number(row.quantity_base),
+        category: row.category,
+      }
+    : undefined;
 }

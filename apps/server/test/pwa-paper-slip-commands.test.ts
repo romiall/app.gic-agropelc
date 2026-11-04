@@ -516,8 +516,8 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
   });
 
   it('rechargement (PP-C) : la même pièce, sous le même identifiant et un autre command_id, n’est reportée qu’une fois', async () => {
-    // Le chargement par fichier dérive l'identifiant d'une pièce de son type et de son numéro (`importEntityId`) :
-    // recharger le fichier renvoie la même commande sous un autre `command_id`. Le serveur doit la reconnaître,
+    // Le chargement par fichier dérive l'identifiant d'une pièce de son auteur, de son type, de son numéro et de son
+    // contenu (`authorImportId`) : recharger le fichier renvoie la même commande sous un autre `command_id`. Le serveur doit la reconnaître,
     // sans doublon ni exception (une écriture qui échouerait serait rejouée sans fin par l'appareil).
     const cases: readonly {
       readonly type: string;
@@ -645,5 +645,61 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
         .execute();
       expect(rows, entry.type).toHaveLength(1);
     }
+  });
+
+  it('un autre contenu sous le même identifiant n’est jamais pris pour un rejeu (transfert direct, perte)', async () => {
+    // Le rejeu est reconnu à l'identité de la pièce, pas au seul identifiant : une autre quantité, un autre
+    // produit ou un autre déclarant qui réutiliserait l'identifiant est refusé, jamais avalé en silence.
+    const transferId = freshUuid();
+    const dispatch = (quantityBase: number) =>
+      report(
+        {
+          type: 'BT',
+          fromLocationId: world.store,
+          toLocationId: world.counter,
+          lines: [{ productId: product.id, unitCode: 'PIECE', quantityBase }],
+        },
+        'IDEM-BT-2',
+        at('15:00'),
+        { aggregateId: transferId },
+      );
+    applied((await dispatch(1)).result);
+    expect(codeOf((await dispatch(1)).result)).toMatch(/^APPLIED/); // même contenu : rejeu reconnu
+    expect(codeOf((await dispatch(2)).result)).toBe('TRANSFER_ID_TAKEN'); // autre quantité
+    const lines = await db
+      .selectFrom('inventory_stock_transfer_lines')
+      .select('dispatched_qty_base')
+      .where('transfer_id', '=', toBin(transferId))
+      .execute();
+    expect(lines.map((row) => Number(row.dispatched_qty_base))).toEqual([1]);
+
+    const lossId = freshUuid();
+    const loss = (quantity: number, category = 'CASSE') =>
+      report(
+        {
+          type: 'FP',
+          locationId: world.store,
+          productId: product.id,
+          unitCode: 'PIECE',
+          quantity,
+          quantityBase: quantity,
+          category,
+        },
+        'IDEM-FP-2',
+        at('15:05'),
+        { aggregateId: lossId },
+      );
+    applied((await loss(1)).result);
+    expect(codeOf((await loss(1)).result)).toMatch(/^APPLIED/);
+    expect(codeOf((await loss(3)).result)).toBe('LOSS_ID_TAKEN');
+    expect(codeOf((await loss(1, 'DETERIORATION')).result)).toBe('LOSS_ID_TAKEN');
+    const declarations = await db
+      .selectFrom('inventory_loss_declarations')
+      .select(['quantity_base', 'category'])
+      .where('id', '=', toBin(lossId))
+      .execute();
+    expect(declarations.map((row) => [Number(row.quantity_base), row.category])).toEqual([
+      [1, 'CASSE'],
+    ]);
   });
 });

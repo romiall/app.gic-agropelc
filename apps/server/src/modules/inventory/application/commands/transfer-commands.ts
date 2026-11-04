@@ -285,29 +285,45 @@ async function transferExists(uow: UnitOfWork, transferId: string): Promise<bool
 }
 
 /**
- * Rejeu d'une expédition directe déjà appliquée : même identifiant, même paire d'emplacements, même expéditeur. Le
- * chargement par lots des pièces papier (PP-C) dérive l'identifiant du type et du numéro de la pièce : recharger le
- * fichier renvoie la même expédition sous un autre `command_id`, qui doit être reconnue (rien n'est refait) et non
- * refusée comme un identifiant « pris » par un autre transfert.
+ * Rejeu d'une expédition directe déjà appliquée : même identifiant, même paire d'emplacements, même expéditeur **et
+ * mêmes lignes** (produit et quantité). Le chargement par lots des pièces papier (PP-C) dérive l'identifiant de la
+ * pièce : recharger le fichier renvoie la même expédition sous un autre `command_id`, qui doit être reconnue (rien
+ * n'est refait) et non refusée comme un identifiant « pris ». Une autre expédition qui réutiliserait l'identifiant
+ * (autre expéditeur, autre paire, autres lignes) n'est pas un rejeu : elle reste refusée, jamais avalée en silence.
  */
 async function isDispatchReplay(
   uow: UnitOfWork,
   transferId: string,
   pair: TransferPair,
   author: string,
+  lines: readonly { readonly productId: string; readonly quantityBase: number }[],
 ): Promise<boolean> {
   const row = await uow
     .selectFrom('inventory_stock_transfers')
     .select(['from_location_id', 'to_location_id', 'dispatched_by'])
     .where('id', '=', toBin(transferId))
     .executeTakeFirst();
-  return (
-    row !== undefined &&
-    row.dispatched_by !== null &&
-    fromBin(row.from_location_id).toLowerCase() === pair.fromLocationId.toLowerCase() &&
-    fromBin(row.to_location_id).toLowerCase() === pair.toLocationId.toLowerCase() &&
-    fromBin(row.dispatched_by).toLowerCase() === author.toLowerCase()
-  );
+  if (
+    row === undefined ||
+    row.dispatched_by === null ||
+    fromBin(row.from_location_id).toLowerCase() !== pair.fromLocationId.toLowerCase() ||
+    fromBin(row.to_location_id).toLowerCase() !== pair.toLocationId.toLowerCase() ||
+    fromBin(row.dispatched_by).toLowerCase() !== author.toLowerCase()
+  ) {
+    return false;
+  }
+  const stored = await uow
+    .selectFrom('inventory_stock_transfer_lines')
+    .select(['product_id', 'dispatched_qty_base'])
+    .where('transfer_id', '=', toBin(transferId))
+    .execute();
+  const keyOf = (productId: string, quantity: number): string =>
+    `${productId.toLowerCase()}:${quantity}`;
+  const expected = lines.map((line) => keyOf(line.productId, line.quantityBase)).sort();
+  const actual = stored
+    .map((line) => keyOf(fromBin(line.product_id), Number(line.dispatched_qty_base)))
+    .sort();
+  return expected.length === actual.length && expected.every((key, index) => key === actual[index]);
 }
 
 /** Réceptions sans document `UNMATCHED` de la paire, avec leurs lignes (verrouillées). */
@@ -588,7 +604,13 @@ ${refusal}`
         .execute();
     } else {
       if (closedRequest === undefined && (await transferExists(uow, envelope.aggregate_id))) {
-        return (await isDispatchReplay(uow, envelope.aggregate_id, pair, envelope.author_user_id))
+        return (await isDispatchReplay(
+          uow,
+          envelope.aggregate_id,
+          pair,
+          envelope.author_user_id,
+          lines,
+        ))
           ? { status: 'APPLIED' }
           : TRANSFER_ID_TAKEN;
       }

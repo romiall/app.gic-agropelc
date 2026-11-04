@@ -61,7 +61,7 @@
 | `usual_payment_method_code` | varchar(40) | Oui | — | Moyen de paiement habituel, **à titre indicatif** (pas de FK : `crm` ne lit pas la table de `finance`) |
 | `credit_requested` | boolean | Non | false | Demande de paiement différé du commercial, **distincte** de `credit_allowed` (décision du responsable, AV-028) |
 | `last_sale_at` | ts | Oui | — | Dénormalisé (actif / inactif, KPI) |
-| `field_versions` | json | Non | `{}` | DÉDUIT (P3-02), donnée technique : dernière écriture (`version`, `occurred_at`) de chaque champ modifiable, pour la fusion champ par champ d'un compte modifié sur deux appareils (matrice des conflits ; `mergeFieldPatch`, `packages/domain`) |
+| `field_versions` | json | Non | `{}` | DÉDUIT (P3-02), donnée technique : dernière écriture (`version`, `occurred_at`, et `deviceId` : l'appareil de la commande, depuis le 04/11/2026) de chaque champ modifiable, pour la fusion champ par champ d'un compte modifié sur deux appareils (matrice des conflits ; `mergeFieldPatch`, `packages/domain`) : un appareil ne se heurte jamais à sa propre écriture. Rendue en chaîne de caractères par MariaDB, en objet par MySQL : les deux se lisent |
 | `kommo_contact_ref` | — | — | — | *(absent : dans `integrations.external_links`)* |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |

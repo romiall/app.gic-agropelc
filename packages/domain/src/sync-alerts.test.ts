@@ -9,6 +9,7 @@ import {
   deviceStaleness,
   gapsExplainedByPending,
   isSyncErrorAlertable,
+  MAX_DECLARED_SKIP_RANGES,
   mergeDeclaredSkips,
   missingSequenceCount,
   nextKnownGaps,
@@ -242,7 +243,15 @@ describe('trous de séquence (AV-423)', () => {
     ).toEqual([[7, 8]]);
     expect(parseKnownGaps(null)).toEqual([]);
     expect(parseKnownGaps({})).toEqual([]);
-    expect(parseKnownGaps('[[1,2]]')).toEqual([]);
+    // MariaDB rend une colonne JSON en texte : il se lit comme le tableau qu'il contient (AV-507) ;
+    // un texte qui n'est pas du JSON, ou pas un tableau, ne vaut rien.
+    expect(parseKnownGaps('[[1,2],[7,9]]')).toEqual([
+      [1, 2],
+      [7, 9],
+    ]);
+    expect(parseKnownGaps('{oups')).toEqual([]);
+    expect(parseKnownGaps('"texte"')).toEqual([]);
+    expect(parseKnownGaps('{"a":1}')).toEqual([]);
   });
 
   it('une plage nouvelle ou plus large est à signaler, une plage déjà signalée ou réduite non', () => {
@@ -453,9 +462,28 @@ describe('numéros déclarés refusés sur l’appareil (AV-507, ADR-052)', () =
       const once = mergeDeclaredSkips([], [7, 8, 12]);
       expect(mergeDeclaredSkips(once, [7, 8, 12])).toEqual(once);
     });
+
+    it('plafonne le nombre de plages gardées : les plus anciennes sortent, les récentes restent', () => {
+      const isolated = Array.from({ length: MAX_DECLARED_SKIP_RANGES + 20 }, (_, i) => 2 * i + 1);
+      const merged = mergeDeclaredSkips([], isolated);
+      expect(merged).toHaveLength(MAX_DECLARED_SKIP_RANGES);
+      expect(merged[0]).toEqual([isolated[20], isolated[20]]);
+      expect(merged[merged.length - 1]).toEqual([
+        isolated[isolated.length - 1],
+        isolated[isolated.length - 1],
+      ]);
+    });
   });
 
   describe('parseDeclaredSkips', () => {
+    it('lit aussi le texte JSON que MariaDB rend pour une colonne JSON (sinon la déclaration serait perdue en ligne)', () => {
+      expect(parseDeclaredSkips('[[2,3],[3,4],[9,9]]')).toEqual([
+        [2, 4],
+        [9, 9],
+      ]);
+      expect(parseDeclaredSkips('pas du json')).toEqual([]);
+    });
+
     it('lit les paires valides, fusionnées et triées ; le reste est ignoré', () => {
       expect(parseDeclaredSkips([[5, 6], [1, 2], [2, 3], 'x', [4], [0, 1], [9, 4]])).toEqual([
         [1, 3],

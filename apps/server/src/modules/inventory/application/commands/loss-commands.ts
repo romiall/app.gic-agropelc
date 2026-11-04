@@ -85,6 +85,13 @@ function notFound(): CommandHandlerOutcome {
     messageFr: 'Déclaration de perte introuvable.',
   };
 }
+function lossIdTaken(): CommandHandlerOutcome {
+  return {
+    status: 'REJECTED',
+    errorCode: 'LOSS_ID_TAKEN',
+    messageFr: 'Cet identifiant désigne déjà une autre déclaration de perte.',
+  };
+}
 function badStatus(expected: string): CommandHandlerOutcome {
   return {
     status: 'REJECTED',
@@ -106,8 +113,20 @@ function buildLossCommands(
     const p = envelope.payload;
     // Rejeu sous un autre `command_id` (fichier de pièces papier rechargé, PP-C) : la déclaration existe déjà, rien
     // n'est refait. Sans cette garde, l'écriture échouerait sur la clé primaire et l'appareil la renverrait sans fin.
+    // Ce n'est un rejeu que si c'est la même déclaration (même déclarant, même emplacement, même produit, même
+    // quantité, même nature) : un autre contenu sous le même identifiant est refusé, jamais avalé en silence.
     const replay = await findLossDeclaration(uow, envelope.aggregate_id);
-    if (replay) return { status: 'APPLIED', serverRefs: { docNumber: replay.docNumber } };
+    if (replay) {
+      const same =
+        replay.declaredBy.toLowerCase() === envelope.author_user_id.toLowerCase() &&
+        replay.locationId.toLowerCase() === p.locationId.toLowerCase() &&
+        replay.productId.toLowerCase() === p.productId.toLowerCase() &&
+        replay.quantityBase === p.quantityBase &&
+        replay.category === p.category;
+      return same
+        ? { status: 'APPLIED', serverRefs: { docNumber: replay.docNumber } }
+        : lossIdTaken();
+    }
     const result = await declareLoss(
       uow,
       { idGenerator, documentSequences },

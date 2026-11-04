@@ -33,10 +33,12 @@ export function normalizePhone(raw: string, defaultCountryCode: string): string 
   return value;
 }
 
-/** Dernière écriture connue d'un champ du compte : version de la ligne et heure métier. */
+/** Dernière écriture connue d'un champ du compte : version de la ligne, heure métier et appareil écrivain. */
 export interface FieldVersion {
   readonly version: number;
   readonly occurredAt: string;
+  /** Appareil de la commande qui a écrit le champ ; absent d'une écriture ancienne ou d'origine inconnue. */
+  readonly deviceId?: string;
 }
 
 export interface FieldCollision {
@@ -62,11 +64,17 @@ function sameFieldValue(a: unknown, b: unknown): boolean {
  * champ modifié des deux côtés, la valeur de `occurred_at` la plus récente l'emporte et l'autre
  * est rapportée comme collision (conflit informatif `VERSION_CONFLICT`). Sans `baseVersion`
  * (écriture en ligne sur l'état courant), tout le patch s'applique.
+ *
+ * Un appareil ne se heurte jamais à sa propre écriture : ses commandes s'appliquent dans l'ordre de leur numéro
+ * d'appareil, la dernière remplace la précédente. Sans cette règle, deux modifications successives du même champ avant
+ * que l'appareil ait relu le compte (même `baseVersion`) seraient prises pour un conflit entre deux appareils.
  */
 export function mergeFieldPatch(input: {
   readonly patch: Readonly<Record<string, unknown>>;
   readonly baseVersion: number | null;
   readonly clientOccurredAt: Date;
+  /** Appareil qui envoie la commande, s'il est connu (voir `FieldVersion.deviceId`). */
+  readonly clientDeviceId?: string | null;
   readonly fieldVersions: Readonly<Record<string, FieldVersion>>;
   readonly currentValues: Readonly<Record<string, unknown>>;
 }): { readonly applied: Record<string, unknown>; readonly collisions: readonly FieldCollision[] } {
@@ -74,10 +82,16 @@ export function mergeFieldPatch(input: {
   const collisions: FieldCollision[] = [];
   for (const [field, clientValue] of Object.entries(input.patch)) {
     const serverWrite = input.fieldVersions[field];
+    const ownEarlierWrite =
+      serverWrite?.deviceId !== undefined &&
+      input.clientDeviceId !== undefined &&
+      input.clientDeviceId !== null &&
+      serverWrite.deviceId === input.clientDeviceId;
     const changedSinceBase =
       input.baseVersion !== null &&
       serverWrite !== undefined &&
-      serverWrite.version > input.baseVersion;
+      serverWrite.version > input.baseVersion &&
+      !ownEarlierWrite;
     if (!changedSinceBase) {
       applied[field] = clientValue;
       continue;

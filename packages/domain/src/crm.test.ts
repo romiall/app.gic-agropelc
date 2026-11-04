@@ -93,4 +93,46 @@ describe('mergeFieldPatch — matrice des conflits (compte modifié sur deux app
       }).applied,
     ).toEqual({ display_name: 'Chez Mama' });
   });
+
+  it('un appareil ne se heurte pas à sa propre écriture : la dernière édition remplace la précédente', () => {
+    // Le champ a été écrit par l'appareil A (version 3) ; A envoie une seconde édition du même champ avec la même
+    // version de base, faute d'avoir relu le compte entre les deux.
+    const own = {
+      display_name: { version: 3, occurredAt: '2026-10-01T10:00:00.000Z', deviceId: 'appareil-a' },
+    };
+    const sameDevice = mergeFieldPatch({
+      patch: { display_name: 'Chez Mama 2' },
+      baseVersion: 2,
+      clientOccurredAt: new Date('2026-10-01T09:30:00Z'),
+      clientDeviceId: 'appareil-a',
+      fieldVersions: own,
+      currentValues: current,
+    });
+    expect(sameDevice).toEqual({ applied: { display_name: 'Chez Mama 2' }, collisions: [] });
+
+    // Le même champ écrit par l'appareil B : la collision reste une collision.
+    const otherDevice = mergeFieldPatch({
+      patch: { display_name: 'Chez Mama 2' },
+      baseVersion: 2,
+      clientOccurredAt: new Date('2026-10-01T09:30:00Z'),
+      clientDeviceId: 'appareil-b',
+      fieldVersions: own,
+      currentValues: current,
+    });
+    expect(otherDevice.applied).toEqual({});
+    expect(otherDevice.collisions).toHaveLength(1);
+
+    // Écriture ancienne (appareil inconnu) ou commande sans appareil connu : comportement d'avant.
+    for (const clientDeviceId of ['appareil-a', null, undefined] as const) {
+      const legacy = mergeFieldPatch({
+        patch: { display_name: 'Chez Mama 2' },
+        baseVersion: 2,
+        clientOccurredAt: new Date('2026-10-01T09:30:00Z'),
+        ...(clientDeviceId === undefined ? {} : { clientDeviceId }),
+        fieldVersions,
+        currentValues: current,
+      });
+      expect(legacy.collisions, String(clientDeviceId)).toHaveLength(1);
+    }
+  });
 });

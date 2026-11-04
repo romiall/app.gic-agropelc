@@ -23,6 +23,17 @@ import { logStructured, type StructuredLogFields } from '../observability/logger
 /** Longueur maximale du motif de validation reporté dans le journal. */
 const VALIDATION_DETAIL_MAX = 300;
 
+/**
+ * Le motif sans les valeurs reçues : les messages de validation citent la valeur refusée entre guillemets (« valeur
+ * inconnue « x » », `received 'x'`). Le journal dit ce qui est refusé, jamais ce que l'appelant a envoyé.
+ */
+function withoutReceivedValues(message: string): string {
+  return message
+    .replace(/«[^»]*»/g, '« … »')
+    .replace(/'[^']*'/g, "' … '")
+    .replace(/"[^"]*"/g, '" … "');
+}
+
 /** Ce que le journal d'un refus a besoin de lire sur la requête. */
 export type RefusedRequest = Pick<FastifyRequest, 'method' | 'url' | 'correlationId'> & {
   readonly auth?: { readonly sub: string; readonly device_id: string } | undefined;
@@ -35,7 +46,8 @@ export function refusalLogEntry(
   request: RefusedRequest,
 ): { readonly fields: StructuredLogFields; readonly line: string } {
   const path = request.url.split('?')[0] ?? '';
-  const detail = status === 400 ? ` : ${message.slice(0, VALIDATION_DETAIL_MAX)}` : '';
+  const detail =
+    status === 400 ? ` : ${withoutReceivedValues(message).slice(0, VALIDATION_DETAIL_MAX)}` : '';
   return {
     fields: {
       module: 'http',

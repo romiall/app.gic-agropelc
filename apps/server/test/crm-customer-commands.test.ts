@@ -13,6 +13,7 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { registerCustomerCommands } from '../src/modules/crm/application/commands/customer-commands.js';
 import { registerPipelineCommands } from '../src/modules/crm/application/commands/pipeline-commands.js';
+import { fieldVersionsOf } from '../src/modules/crm/application/commands/shared.js';
 import {
   convertOnConfirmedSale,
   markConversionReverted,
@@ -52,6 +53,8 @@ describe('crm.customer.* (P3-04)', () => {
   let otherZoneId: string;
   let siteId: string;
   let cte1: Actor;
+  /** Le même commercial sur un second appareil (tablette) : « un autre appareil » de la matrice des conflits. */
+  let cte1Tablet: Actor;
   let cte2: Actor;
   let rco: Actor;
   let ven: Actor;
@@ -198,6 +201,10 @@ describe('crm.customer.* (P3-04)', () => {
         return { userId, deviceId };
       };
       cte1 = await actor(roles.cte, { scopeType: 'ZONE', scopeZoneId: zoneId });
+      cte1Tablet = {
+        userId: cte1.userId,
+        deviceId: await insertTestDevice(trx, cte1.userId, { status: 'ACTIVE' }),
+      };
       cte2 = await actor(roles.cte, { scopeType: 'ZONE', scopeZoneId: zoneId });
       // Responsable commercial : portée TEAM sur l'équipe qu'il dirige (cte1, cte2).
       const rcoUser = await insertTestUser(trx);
@@ -441,7 +448,7 @@ describe('crm.customer.* (P3-04)', () => {
 
     // Autre appareil, hors ligne, depuis la version 1 : adresse appliquée, nom en collision perdue.
     const older = await run(
-      cte1,
+      cte1Tablet,
       'crm.customer.update',
       id,
       at('09:00:00'),
@@ -475,7 +482,7 @@ describe('crm.customer.* (P3-04)', () => {
 
     // Collision plus récente que l'écriture serveur : la valeur du client est appliquée.
     const newer = await run(
-      cte1,
+      cte1Tablet,
       'crm.customer.update',
       id,
       at('11:00:00'),
@@ -807,6 +814,7 @@ describe('crm.customer.* (P3-04)', () => {
       for (const extra of [
         { potentialQtyPerDay: 5 },
         { potentialQtyPerDay: 1.2345, potentialUnitCode: 'TETE' },
+        { potentialQtyPerDay: 1e-10, potentialUnitCode: 'TETE' },
         { potentialQtyPerDay: -1, potentialUnitCode: 'TETE' },
         { usualPaymentMethodCode: 'mobile money' },
       ]) {
@@ -894,6 +902,34 @@ describe('crm.customer.* (P3-04)', () => {
       ).toBe('POTENTIAL_UNIT_REQUIRED');
     });
 
+    it('la décision du responsable solde la demande de crédit, accordée ou refusée', async () => {
+      const { id } = await createCustomer(cte1, { creditRequested: true });
+      expect((await customer(id)).credit_requested).toBe(1);
+      const refused = await run(fin, 'crm.customer.set_credit_terms', id, at('10:00:00'), {
+        creditAllowed: false,
+        creditLimitXaf: null,
+        paymentTermsDays: null,
+      });
+      expect(status(refused)).toBe('APPLIED');
+      expect(await customer(id)).toMatchObject({ credit_requested: 0, credit_allowed: 0 });
+      // Le commercial peut redemander ; une nouvelle décision la solde de nouveau.
+      expect(
+        status(
+          await run(cte1, 'crm.customer.update', id, at('10:30:00'), {
+            patch: { creditRequested: true },
+          }),
+        ),
+      ).toBe('APPLIED');
+      expect((await customer(id)).credit_requested).toBe(1);
+      const granted = await run(fin, 'crm.customer.set_credit_terms', id, at('11:00:00'), {
+        creditAllowed: true,
+        creditLimitXaf: 150_000,
+        paymentTermsDays: 30,
+      });
+      expect(status(granted)).toBe('APPLIED');
+      expect(await customer(id)).toMatchObject({ credit_requested: 0, credit_allowed: 1 });
+    });
+
     it('deux appareils qui changent des champs différents depuis la même version : les deux changements sont gardés', async () => {
       const { id } = await createCustomer(cte1);
       const base = (await customer(id)).version;
@@ -919,6 +955,86 @@ describe('crm.customer.* (P3-04)', () => {
         usual_payment_method_code: 'ESPECES',
         credit_requested: 1,
       });
+    });
+
+    const conflictsOf = async (id: string) =>
+      db
+        .selectFrom('sync_sync_conflicts')
+        .select('conflict_type')
+        .where('entity_id', '=', toBin(id))
+        .execute();
+
+    it('deux éditions du même champ par le même appareil, avant qu’il ait relu le compte : aucun conflit, la dernière gagne', async () => {
+      const { id } = await createCustomer(cte1);
+      const base = (await customer(id)).version;
+      const first = await run(
+        cte1,
+        'crm.customer.update',
+        id,
+        at('10:00:00'),
+        { patch: { creditRequested: true } },
+        { offline: true, baseVersion: base },
+      );
+      const second = await run(
+        cte1,
+        'crm.customer.update',
+        id,
+        at('10:05:00'),
+        { patch: { creditRequested: false } },
+        { offline: true, baseVersion: base },
+      );
+      expect(status(first)).toBe('APPLIED');
+      // Pas de VERSION_CONFLICT : la seconde commande remplace la première du même appareil.
+      expect(status(second)).toBe('APPLIED');
+      expect((await customer(id)).credit_requested).toBe(0);
+      expect(await conflictsOf(id)).toEqual([]);
+    });
+
+    it('le même champ écrit par un autre appareil depuis la même version reste un conflit', async () => {
+      const { id } = await createCustomer(cte1);
+      const base = (await customer(id)).version;
+      await run(
+        cte1,
+        'crm.customer.update',
+        id,
+        at('10:00:00'),
+        { patch: { creditRequested: true } },
+        { offline: true, baseVersion: base },
+      );
+      const second = await run(
+        cte1Tablet,
+        'crm.customer.update',
+        id,
+        at('10:05:00'),
+        { patch: { creditRequested: false } },
+        { offline: true, baseVersion: base },
+      );
+      expect(status(second)).toBe('APPLIED_WITH_WARNINGS');
+      expect(await conflictsOf(id)).toEqual([{ conflict_type: 'VERSION_CONFLICT' }]);
+    });
+
+    it('l’appareil écrivain est consigné par champ, et la colonne se lit aussi en chaîne (MariaDB)', async () => {
+      const { id } = await createCustomer(cte1);
+      await run(
+        cte1,
+        'crm.customer.update',
+        id,
+        at('10:00:00'),
+        { patch: { usualPaymentMethodCode: 'ESPECES' } },
+        { baseVersion: (await customer(id)).version },
+      );
+      const row = await customer(id);
+      const versions = fieldVersionsOf(row);
+      expect(versions['usualPaymentMethodCode']).toMatchObject({ deviceId: cte1.deviceId });
+      // Même contenu rendu comme chaîne de caractères, comme le fait MariaDB pour une colonne JSON.
+      const asString = {
+        ...row,
+        field_versions: JSON.stringify(versions),
+      } as unknown as typeof row;
+      expect(fieldVersionsOf(asString)).toEqual(versions);
+      expect(
+        fieldVersionsOf({ ...row, field_versions: '{pas du JSON' } as unknown as typeof row),
+      ).toEqual({});
     });
   });
 });

@@ -27,7 +27,7 @@
  * déclare ce qu'il lui reste à envoyer, par auteur (`pending_by_author`) : c'est ce que lit la
  * règle « l'ancien appareil a tout synchronisé » (BR-DIS-014).
  */
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   clampClockSkewMs,
   clockSkewThresholdMsFrom,
@@ -75,6 +75,8 @@ export interface SyncPushContext {
 
 @Injectable()
 export class SyncPushService {
+  private readonly logger = new Logger(SyncPushService.name);
+
   constructor(
     @Inject(CommandPipelineService) private readonly pipeline: CommandPipelineService,
     @Inject(DATABASE) private readonly db: Database,
@@ -242,7 +244,16 @@ export class SyncPushService {
       })
       .execute();
 
-    await this.recordDeclaredSkips(deviceId, fields.skippedDeviceSeqs);
+    // La déclaration arrive après l'application du lot : si son écriture échoue (colonne absente avant la migration,
+    // interblocage), le lot n'est pas refusé en 500 — ses commandes sont déjà appliquées — et la déclaration repart
+    // au prochain envoi (l'appareil la redéclare jusqu'à une réponse lue).
+    try {
+      await this.recordDeclaredSkips(deviceId, fields.skippedDeviceSeqs);
+    } catch (error) {
+      this.logger.error(
+        `Déclaration des numéros refusés sur l'appareil non enregistrée : ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     if (declared === undefined) return;
     const others = Object.entries(declared).filter(

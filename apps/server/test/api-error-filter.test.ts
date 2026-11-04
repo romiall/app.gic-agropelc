@@ -39,6 +39,21 @@ describe('journal d’un refus de requête', () => {
     expect(entry.line).not.toContain('secret');
   });
 
+  it('le motif ne reproduit jamais une valeur reçue (énumération, texte libre) : guillemets français, simples ou doubles', () => {
+    const entry = refusalLogEntry(
+      'VALIDATION_ERROR',
+      400,
+      "platform : valeur inconnue « motdepasse-123 » (attendu : « web », « pwa ») ; status : Invalid enum value. Expected 'A' | 'B', received 'jeton-secret' ; note : \"texte privé\" refusé",
+      request(),
+    );
+    for (const secret of ['motdepasse-123', 'jeton-secret', 'texte privé', 'web']) {
+      expect(entry.line, secret).not.toContain(secret);
+    }
+    // Ce qui est refusé (le champ, la nature du défaut) reste lisible.
+    expect(entry.line).toContain('platform : valeur inconnue');
+    expect(entry.line).toContain('Invalid enum value');
+  });
+
   it('le motif est borné', () => {
     const entry = refusalLogEntry('VALIDATION_ERROR', 400, 'x'.repeat(2000), request());
     expect(entry.line.length).toBeLessThan(400);

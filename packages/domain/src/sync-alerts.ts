@@ -164,11 +164,25 @@ export function gapsExplainedByPending(
 /** Plage mémorisée `[début, fin]` d'un trou déjà signalé (`known_gaps`). */
 export type KnownGap = readonly [number, number];
 
+/**
+ * Valeur d'une colonne JSON lue de la base : le tableau déjà analysé (MySQL 8.4) ou son texte (MariaDB, où `JSON` est
+ * un alias de `LONGTEXT` que le pilote rend en chaîne). Un texte qui n'est pas du JSON vaut « rien ».
+ */
+function jsonColumnValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 /** Paires `[début, fin]` mémorisées d'une valeur JSON (`known_gaps`) ; ce qui n'est pas une paire valide est ignoré. */
 export function parseKnownGaps(value: unknown): readonly KnownGap[] {
-  if (!Array.isArray(value)) return [];
+  const parsed = jsonColumnValue(value);
+  if (!Array.isArray(parsed)) return [];
   const pairs: [number, number][] = [];
-  for (const item of value) {
+  for (const item of parsed) {
     if (
       Array.isArray(item) &&
       item.length === 2 &&
@@ -185,6 +199,12 @@ export function parseKnownGaps(value: unknown): readonly KnownGap[] {
 
 /** Nombre maximal de numéros qu'un appareil déclare refusés sur lui dans un même envoi (AV-507). */
 export const MAX_DECLARED_SKIPS_PER_PUSH = 200;
+
+/**
+ * Nombre maximal de plages gardées par appareil : au-delà, les plus anciennes (les numéros les plus bas) sortent. Un
+ * appareil défaillant ne fait pas grossir sans fin la ligne technique relue à chaque envoi.
+ */
+export const MAX_DECLARED_SKIP_RANGES = 500;
 
 /**
  * Numéros de `device_seq` que l'appareil a **déclarés refusés sur lui** avant l'envoi (enveloppe invalide, ADR-052) :
@@ -214,7 +234,9 @@ export function mergeDeclaredSkips(
     if (last !== undefined && from <= last[1] + 1) last[1] = Math.max(last[1], to);
     else merged.push([from, to]);
   }
-  return merged;
+  return merged.length > MAX_DECLARED_SKIP_RANGES
+    ? merged.slice(merged.length - MAX_DECLARED_SKIP_RANGES)
+    : merged;
 }
 
 /**
