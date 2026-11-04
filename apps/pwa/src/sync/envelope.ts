@@ -39,12 +39,19 @@ export function toEnvelope(command: OutboxCommand): RawCommandEnvelope {
 export type EnvelopeCheck =
   { readonly ok: true } | { readonly ok: false; readonly message_fr: string };
 
+/**
+ * Début du motif d'une commande refusée sur l'appareil avant l'envoi. Sert aussi à reconnaître, parmi les commandes
+ * `REJECTED`, celles qui n'ont jamais atteint le serveur (refus local) : leur numéro est déclaré au serveur
+ * (`skipped_device_seqs`, ADR-052, AV-507), y compris pour celles refusées par une version antérieure de l'application.
+ */
+export const LOCAL_REFUSAL_PREFIX = "Commande non envoyable, refusée sur l'appareil";
+
 /** La commande passerait-elle la validation du serveur ? Sinon, pourquoi (en français, sans le contenu). */
 export function checkEnvelope(command: OutboxCommand): EnvelopeCheck {
   const parsed = rawCommandEnvelopeSchema.safeParse(toEnvelope(command));
   if (parsed.success) return { ok: true };
   return {
     ok: false,
-    message_fr: `Commande non envoyable, refusée sur l'appareil : ${describeIssuesFr(parsed.error.issues)}`,
+    message_fr: `${LOCAL_REFUSAL_PREFIX} : ${describeIssuesFr(parsed.error.issues)}`,
   };
 }

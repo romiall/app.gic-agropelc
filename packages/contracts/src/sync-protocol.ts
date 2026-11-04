@@ -3,7 +3,7 @@
  * BR-SYN-005, BR-SYN-006).
  */
 import { z } from 'zod';
-import { isUuidv7 } from '@gic/domain';
+import { isUuidv7, MAX_DECLARED_SKIPS_PER_PUSH } from '@gic/domain';
 import { commandEnvelopeBaseSchema } from './command-envelope.js';
 import { errorCodeSchema, warningCodeSchema } from './error-codes.js';
 
@@ -38,6 +38,13 @@ export const pushRequestSchema = z.object({
     .refine((value) => Object.keys(value).length <= MAX_PENDING_AUTHORS, {
       message: `Au plus ${MAX_PENDING_AUTHORS} auteurs déclarés.`,
     })
+    .optional(),
+  // Numéros `device_seq` de commandes que l'appareil a **refusées chez lui** avant l'envoi (enveloppe invalide,
+  // ADR-052, AV-507) : elles n'arriveront jamais. Déclarés pour que le serveur n'y voie pas des commandes perdues
+  // (alerte `DEVICE_SEQ_GAP`, BR-SYN-003). Absent = rien à déclarer. Un serveur plus ancien ignore ce champ.
+  skipped_device_seqs: z
+    .array(z.number().int().min(1).max(Number.MAX_SAFE_INTEGER))
+    .max(MAX_DECLARED_SKIPS_PER_PUSH)
     .optional(),
 });
 export type PushRequest = z.infer<typeof pushRequestSchema>;

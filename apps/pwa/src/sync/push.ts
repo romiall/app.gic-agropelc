@@ -5,11 +5,11 @@
  */
 import type { PushRequest, PushResponse } from '@gic/contracts';
 import { deviceStateAfterResult, syncResultStatusSchema } from '@gic/contracts';
-import type { Clock, IdGenerator } from '@gic/domain';
-import type { GicDatabase } from '../storage/db.js';
+import { MAX_DECLARED_SKIPS_PER_PUSH, type Clock, type IdGenerator } from '@gic/domain';
+import type { GicDatabase, PushRefusal } from '../storage/db.js';
 import { pendingAfterBatch, pendingOutbox, REPEATED_FAILURE_ATTEMPTS } from './outbox.js';
 import { authorizedRequest } from './api-client.js';
-import { checkEnvelope, toEnvelope } from './envelope.js';
+import { checkEnvelope, LOCAL_REFUSAL_PREFIX, toEnvelope } from './envelope.js';
 
 export type PushCycleResult =
   | { readonly outcome: 'NOTHING_TO_PUSH' }
@@ -42,6 +42,33 @@ export const PUSH_TIMEOUT_MS = 60_000;
  */
 export const IN_PROGRESS_GRACE_MS = 120_000;
 
+/** Longueur maximale du motif du serveur conservé sur l'appareil. */
+const REFUSAL_MESSAGE_MAX = 300;
+
+/**
+ * Ce que le serveur a répondu à un lot qu'il refuse en bloc (`{ error: { code, message, correlation_id } }`,
+ * @gic/contracts `apiErrorSchema`), lu sans rien supposer : le corps peut manquer ou avoir une autre forme.
+ */
+function readRefusal(status: number, body: unknown, at: string): PushRefusal {
+  const error =
+    typeof body === 'object' && body !== null && 'error' in body
+      ? (body as { error: unknown }).error
+      : null;
+  const field = (name: string): string | null => {
+    if (typeof error !== 'object' || error === null) return null;
+    const value = (error as Record<string, unknown>)[name];
+    return typeof value === 'string' && value !== '' ? value : null;
+  };
+  const message = field('message');
+  return {
+    at,
+    status,
+    code: field('code'),
+    message: message === null ? null : message.slice(0, REFUSAL_MESSAGE_MAX),
+    correlation_id: field('correlation_id'),
+  };
+}
+
 /** Motif d'une commande refusée sur l'appareil parce qu'elle dépend d'une autre qui l'a été. */
 const DEPENDENCY_REJECTED_MESSAGE =
   "Commande non envoyable, refusée sur l'appareil : elle dépend d'une commande refusée.";
@@ -73,11 +100,36 @@ async function rejectUnsendable(
       await db.outbox.update(commandId, {
         status: 'REJECTED',
         busy_retries: 0,
+        refused_locally: true,
         last_error: { code: 'VALIDATION_ERROR', message_fr },
       });
     }
   });
   return new Set(rejected.keys());
+}
+
+/**
+ * Commandes refusées sur l'appareil dont le numéro n'a pas encore été déclaré au serveur (ADR-052, AV-507) : elles
+ * n'atteindront jamais le serveur, dont le détecteur de trous de séquence (BR-SYN-003) y verrait sinon des commandes
+ * perdues. Reconnues au drapeau `refused_locally` ou, pour celles qu'une version antérieure a refusées, à leur motif.
+ * Au plus `MAX_DECLARED_SKIPS_PER_PUSH` par envoi, les plus anciennes d'abord ; le reste suit aux envois suivants.
+ */
+export async function pendingSkipDeclarations(
+  db: GicDatabase,
+): Promise<{ readonly seqs: readonly number[]; readonly commandIds: readonly string[] }> {
+  const refused = (await db.outbox.where('status').equals('REJECTED').toArray())
+    .filter(
+      (command) =>
+        !command.skip_declared_at &&
+        (command.refused_locally === true ||
+          command.last_error?.message_fr.startsWith(LOCAL_REFUSAL_PREFIX) === true),
+    )
+    .sort((a, b) => a.device_seq - b.device_seq)
+    .slice(0, MAX_DECLARED_SKIPS_PER_PUSH);
+  return {
+    seqs: refused.map((command) => command.device_seq),
+    commandIds: refused.map((command) => command.command_id),
+  };
 }
 
 export async function runPushCycle(
@@ -123,12 +175,15 @@ export async function runPushCycle(
     .anyOf(batch.map((c) => c.command_id))
     .modify({ status: 'SYNCING', sent_at: deps.clock.now().toISOString() });
 
+  // Numéros des commandes refusées sur l'appareil : déclarés au serveur avec ce lot (ADR-052, AV-507).
+  const declarations = await pendingSkipDeclarations(db);
   const request: PushRequest = {
     device_id: deps.deviceId,
     batch_id: deps.idGenerator.newId(),
     device_sent_at: deps.clock.now().toISOString(),
     commands: batch.map(toEnvelope),
     pending_by_author: await pendingAfterBatch(db, batch),
+    ...(declarations.seqs.length > 0 ? { skipped_device_seqs: [...declarations.seqs] } : {}),
   };
 
   const result = await authorizedRequest<PushResponse>(db, '/api/v1/sync/push', {
@@ -169,13 +224,29 @@ export async function runPushCycle(
     if (result.reason === 'HTTP_ERROR' && result.status === 400) {
       // Lot refusé en bloc alors que chaque enveloppe est valide ici (version de l'application plus ancienne
       // que le serveur, identifiant d'appareil ou d'auteur non conforme) : le détail du serveur reste dans la
-      // console de l'appareil, faute de pouvoir désigner une commande.
+      // console de l'appareil et, pour l'utilisateur, dans un témoin que le bandeau de la coque affiche
+      // (`PushRefusalBanner`), faute de pouvoir désigner une commande.
       console.error('Sync : lot refusé par le serveur (HTTP 400)', result.body);
+      await db.syncMeta.update('device', {
+        push_refusal: readRefusal(result.status, result.body, deps.clock.now().toISOString()),
+      });
     }
     return result.reason === 'HTTP_ERROR' ? { outcome: 'SERVER_ERROR' } : { outcome: 'OFFLINE' };
   }
 
-  await db.syncMeta.update('device', { clock_skew_ms: result.data.clock_skew_ms });
+  // Le serveur a lu le lot : un refus en bloc antérieur n'a plus lieu d'être signalé, et les numéros refusés
+  // sur l'appareil qui l'accompagnaient sont déclarés (pas de redéclaration inutile aux envois suivants).
+  await db.syncMeta.update('device', {
+    clock_skew_ms: result.data.clock_skew_ms,
+    push_refusal: null,
+  });
+  if (declarations.commandIds.length > 0) {
+    const declaredAt = deps.clock.now().toISOString();
+    await db.outbox
+      .where('command_id')
+      .anyOf([...declarations.commandIds])
+      .modify({ skip_declared_at: declaredAt });
+  }
 
   const syncedAt = deps.clock.now().toISOString();
   const nowMs = deps.clock.now().getTime();

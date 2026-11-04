@@ -49,6 +49,20 @@ parce que personne n'a rouvert l'écran.
    sans) ou depuis un arbre de travail aux fichiers suivis modifiés (`-AllowDirty` pour passer outre) : une autre session
    peut avoir des changements non commités dans le même dossier. Livrer depuis une copie propre (`git worktree add
    --detach`).
+7. **Mise à jour à la demande** (AV-505) : un bandeau « nouvelle version disponible » (`UpdateBanner`) annonce la
+   version qui attend et offre « Mettre à jour maintenant », avec le nombre d'opérations en attente (elles restent dans
+   la base locale et partent après la mise à jour : le serveur accepte les commandes de la version précédente,
+   BR-SYN-016). L'activation automatique après vidage de la file est inchangée. Sans le bandeau, un appareil à la file
+   bloquée ne recevait la correction qu'après une fermeture complète de l'application.
+8. **Refus en bloc signalé** (AV-506) : un lot que le serveur refuse (HTTP 400) sans qu'une commande soit désignée
+   laisse un témoin sur l'appareil (`SyncMeta.push_refusal`) qu'affiche un bandeau d'alerte avec le code et le numéro de
+   corrélation, effacé au premier envoi lu par le serveur. Le journal du serveur nomme désormais la méthode, le chemin
+   sans paramètres, l'appareil, l'utilisateur pseudonymisé et, pour une requête mal formée, le motif rendu à l'appelant
+   (`refusalLogEntry`).
+9. **Numéros refusés sur l'appareil déclarés** (AV-507) : l'appareil déclare à l'envoi les `device_seq` de ses commandes
+   refusées avant l'envoi (`skipped_device_seqs`, 200 au plus par envoi) ; le serveur les garde en plages
+   (`sync_device_sync_state.declared_skips`) et le détecteur `sync.devices.seq_gap_check` les retire des plages
+   manquantes : plus d'alerte critique `DEVICE_SEQ_GAP` pour un trou qui n'est pas une perte.
 
 ## Alternatives étudiées
 
@@ -71,12 +85,14 @@ parce que personne n'a rouvert l'écran.
   onglets ; sur téléphone, la retirer des applications récentes) ; la rouvrir. Le premier cycle refuse alors la commande
   empoisonnée et la file repart.
 - Une commande refusée sur l'appareil n'est jamais envoyée : son `device_seq` manque au serveur, qui lève une alerte
-  critique `DEVICE_SEQ_GAP` environ 24 h après le premier envoi réussi de l'appareil (BR-SYN-003). C'est attendu pour
-  l'appareil de l'Admin : vérifier que le nombre de numéros manquants (`missing_from` à `missing_to`) correspond aux
-  commandes refusées, puis clore l'alerte (`communication.alert.resolve`). Durable, à décider : un champ facultatif du lot
-  par lequel l'appareil déclare les numéros refusés, pour que le serveur ne les tienne pas pour perdus.
+  critique `DEVICE_SEQ_GAP` environ 24 h après le premier envoi réussi de l'appareil (BR-SYN-003). **Tant que
+  l'appareil n'a pas la version qui déclare ces numéros (décision 9, livrée après la mise en ligne du 04/11/2026)**, cette
+  alerte est attendue pour l'appareil de l'Admin : vérifier que le nombre de numéros manquants (`missing_from` à
+  `missing_to`) correspond aux commandes refusées, puis la clore (`communication.alert.resolve`). Avec la version qui
+  les déclare, y compris pour les refus d'une version antérieure, elle ne se lève plus.
 - Un lot refusé en bloc par le serveur alors que chaque enveloppe est valide (cas qu'aucune donnée plausible ne
-  déclenche) n'est signalé que dans la console de l'appareil ; il repart toutes les ~130 s.
+  déclenche) repart toutes les ~130 s ; l'utilisateur en est averti par le bandeau (décision 8) et le journal du serveur
+  dit d'où il vient.
 - Les douze appareils de test déjà en base restent `PENDING` tant qu'ils ne sont pas refusés (aucune commande ne peut
   les viser). Une commande d'installation les refuse, comme `db:approve-device` approuve le premier appareil
   (`bootstrap-legacy-device-cleanup.ts`, `deploy/hostinger/block-legacy-devices.mjs` : liste par défaut, `--apply`

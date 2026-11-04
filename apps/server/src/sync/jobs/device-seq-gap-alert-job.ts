@@ -9,6 +9,10 @@
  *   suite d'un appareil démarre à 1). Il est **ouvert** depuis la réception de la première commande de numéro
  *   supérieur ; une commande tardive qui le comble le fait disparaître. Les commandes retenues ou hors délai
  *   d'un lot ne sont pas enregistrées mais suivent le dernier numéro enregistré : elles ne créent pas de trou.
+ * - **Numéros refusés sur l'appareil** (ADR-052, AV-507) : une commande dont l'enveloppe est invalide est refusée
+ *   avant l'envoi et n'atteint jamais le serveur ; l'appareil déclare son numéro (`skipped_device_seqs`, gardé en
+ *   plages dans `declared_skips`) et le détecteur le retire des plages manquantes. Une plage entièrement déclarée
+ *   ne produit aucune alerte ; une plage en partie déclarée se réduit ou se scinde.
  * - **Explication par les restes déclarés** : l'appareil déclare à chaque envoi ce qui lui reste à envoyer, par
  *   auteur. Si le total déclaré couvre tous les numéros manquants, ce sont des commandes encore dans l'outbox
  *   (tablette partagée dont un auteur n'a pas ouvert sa session, envoi interrompu), pas des commandes perdues :
@@ -36,8 +40,10 @@ import {
   gapsExplainedByPending,
   missingSequenceCount,
   nextKnownGaps,
+  parseDeclaredSkips,
   parseKnownGaps,
   sameSequenceGaps,
+  subtractDeclaredSkips,
   syncSeqGapAlertHoursOrDefault,
   unsignaledSequenceGaps,
   type Clock,
@@ -177,7 +183,7 @@ export async function runDeviceSeqGapCheck(
 
   const states = await uow
     .selectFrom('sync_device_sync_state')
-    .select(['device_id', 'pending_reported', 'known_gaps'])
+    .select(['device_id', 'pending_reported', 'known_gaps', 'declared_skips'])
     .where('dataset', '=', DEVICE_DATASET)
     .where(
       'device_id',
@@ -192,8 +198,13 @@ export async function runDeviceSeqGapCheck(
   let published = 0;
   for (const deviceId of [...gapsOf.keys()].sort()) {
     const device = devices.get(deviceId)!;
-    const gaps = gapsOf.get(deviceId)!;
     const state = stateOf.get(deviceId);
+    // Les numéros que l'appareil a déclarés refusés chez lui (enveloppe invalide, ADR-052) n'arriveront jamais :
+    // ce ne sont pas des commandes perdues.
+    const gaps = subtractDeclaredSkips(
+      gapsOf.get(deviceId)!,
+      parseDeclaredSkips(state?.declared_skips ?? null),
+    );
     const explained = gapsExplainedByPending(gaps, state?.pending_reported ?? null);
     const current = explained ? [] : agedSequenceGaps(gaps, now, hours);
     const known = parseKnownGaps(state?.known_gaps ?? null);

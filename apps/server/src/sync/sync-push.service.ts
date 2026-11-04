@@ -32,6 +32,8 @@ import {
   clampClockSkewMs,
   clockSkewThresholdMsFrom,
   isClockSkewSuspect,
+  mergeDeclaredSkips,
+  parseDeclaredSkips,
   type Clock,
 } from '@gic/domain';
 import type { CommandResult, PushRequest, PushResponse } from '@gic/contracts';
@@ -39,6 +41,7 @@ import { sql } from 'kysely';
 import { CommandPipelineService } from '../commands/command-pipeline.service.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
+import { jsonValue } from '../platform/kysely/json-value.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
 import { currentSettingValue } from '../modules/organization/application/public/index.js';
 import {
@@ -144,6 +147,7 @@ export class SyncPushService {
       lastClockSkewMs: clockSkewMs,
       pendingByAuthor: request.pending_by_author,
       unsettled,
+      skippedDeviceSeqs: request.skipped_device_seqs,
     });
 
     return {
@@ -182,6 +186,8 @@ export class SyncPushService {
       readonly pendingByAuthor: Readonly<Record<string, number>> | undefined;
       /** Commandes de ce lot que le serveur n'a pas réglées (`RETRY_LATER`), de l'auteur du lot. */
       readonly unsettled: number;
+      /** `device_seq` de commandes refusées sur l'appareil avant l'envoi (ADR-052, AV-507). */
+      readonly skippedDeviceSeqs: readonly number[] | undefined;
     },
   ): Promise<void> {
     const deviceId = toBin(ctx.authenticatedDeviceId);
@@ -236,6 +242,8 @@ export class SyncPushService {
       })
       .execute();
 
+    await this.recordDeclaredSkips(deviceId, fields.skippedDeviceSeqs);
+
     if (declared === undefined) return;
     const others = Object.entries(declared).filter(
       ([userId]) => userId !== ctx.authenticatedUserId,
@@ -257,6 +265,36 @@ export class SyncPushService {
       .where('dataset', 'like', AUTHOR_DATASET_LIKE);
     if (declaredDatasets.length > 0) cleared = cleared.where('dataset', 'not in', declaredDatasets);
     await cleared.execute();
+  }
+
+  /**
+   * Numéros de commandes que l'appareil a refusées chez lui avant l'envoi (ADR-052, AV-507) : ajoutés, en plages
+   * fusionnées, à `declared_skips` de la ligne technique de l'appareil. Le détecteur `sync.devices.seq_gap_check`
+   * les retire des plages manquantes. Idempotent (redéclarer un numéro ne change rien) ; sous verrou de ligne, car
+   * deux envois du même appareil peuvent se croiser. Une déclaration n'est jamais refusée : au pire elle masque,
+   * pour cet appareil, un trou que l'appareil dit n'être pas une perte.
+   */
+  private async recordDeclaredSkips(
+    deviceId: Buffer,
+    seqs: readonly number[] | undefined,
+  ): Promise<void> {
+    if (seqs === undefined || seqs.length === 0) return;
+    await this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .selectFrom('sync_device_sync_state')
+        .select('declared_skips')
+        .where('device_id', '=', deviceId)
+        .where('dataset', '=', DEVICE_DATASET)
+        .forUpdate()
+        .executeTakeFirst();
+      const merged = mergeDeclaredSkips(parseDeclaredSkips(row?.declared_skips ?? null), seqs);
+      await trx
+        .updateTable('sync_device_sync_state')
+        .set({ declared_skips: jsonValue(merged) })
+        .where('device_id', '=', deviceId)
+        .where('dataset', '=', DEVICE_DATASET)
+        .execute();
+    });
   }
 }
 

@@ -4467,6 +4467,18 @@ export const fr = {
       'Aucune synchronisation depuis {{hours}} h : connectez-vous dès que possible. Au-delà de {{max}} h, ce téléphone passera en lecture seule.',
     autonomy_read_only:
       'Lecture seule : aucune synchronisation depuis {{hours}} h (plus de {{max}} h). Les nouvelles opérations sont bloquées jusqu’à une synchronisation réussie ; celles déjà enregistrées restent sur ce téléphone et partiront au retour du réseau.',
+    update_available:
+      'Une nouvelle version de l’application est disponible. Elle s’installera d’elle-même quand toutes vos opérations auront été envoyées, ou à la prochaine ouverture.',
+    update_pending_one:
+      '1 opération attend encore son envoi : elle reste sur ce téléphone et partira après la mise à jour. Les saisies d’un formulaire ouvert, non enregistrées, seraient perdues.',
+    update_pending_other:
+      '{{count}} opérations attendent encore leur envoi : elles restent sur ce téléphone et partiront après la mise à jour. Les saisies d’un formulaire ouvert, non enregistrées, seraient perdues.',
+    update_now: 'Mettre à jour maintenant',
+    update_applying: 'Mise à jour en cours…',
+    push_refused:
+      'Le serveur refuse l’envoi de vos opérations ({{code}}). Elles restent sur ce téléphone, rien n’est perdu. Si une nouvelle version de l’application est annoncée, installez-la ; sinon, donnez ce numéro à l’administrateur : {{reference}}.',
+    push_refused_no_ref:
+      'Le serveur refuse l’envoi de vos opérations ({{code}}). Elles restent sur ce téléphone, rien n’est perdu. Si une nouvelle version de l’application est annoncée, installez-la ; sinon, prévenez l’administrateur.',
     held_behind_failure:
       'Cette opération attend une opération précédente que le serveur renvoie sans l’appliquer ({{reason}}). Elle partira dès que celle-ci passera, ou au plus tard quand le serveur l’aura écartée.',
     foreign_pending:

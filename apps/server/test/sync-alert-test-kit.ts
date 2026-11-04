@@ -166,6 +166,8 @@ export async function syncState(
     readonly lastClockSkewMs?: number | null;
     readonly pendingReported?: number | null;
     readonly knownGaps?: unknown;
+    /** Numéros que l'appareil a déclarés refusés chez lui (ADR-052, AV-507) : paires `[début, fin]`. */
+    readonly declaredSkips?: unknown;
   },
 ): Promise<void> {
   await uow
@@ -178,6 +180,7 @@ export async function syncState(
       last_clock_skew_ms: fields.lastClockSkewMs ?? null,
       pending_reported: fields.pendingReported ?? null,
       known_gaps: fields.knownGaps === undefined ? null : jsonValue(fields.knownGaps),
+      declared_skips: fields.declaredSkips === undefined ? null : jsonValue(fields.declaredSkips),
     })
     .execute();
 }

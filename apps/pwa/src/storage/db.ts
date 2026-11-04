@@ -84,6 +84,17 @@ export interface OutboxCommand {
    * échec (S-45). Non indexé, hors enveloppe.
    */
   unanswered_at?: string | null;
+  /**
+   * Vrai pour une commande refusée sur l'appareil avant l'envoi (enveloppe invalide, ADR-052) : le serveur ne l'a
+   * jamais reçue et son `device_seq` manque à la suite qu'il voit. Les refus d'une version antérieure, qui ne
+   * posaient pas ce drapeau, se reconnaissent à leur motif (`LOCAL_REFUSAL_PREFIX`). Non indexé, hors enveloppe.
+   */
+  refused_locally?: boolean;
+  /**
+   * Heure à laquelle le numéro de cette commande refusée sur l'appareil a été déclaré au serveur
+   * (`skipped_device_seqs`, AV-507) ; absent : pas encore déclaré. Non indexé, hors enveloppe.
+   */
+  skip_declared_at?: string | null;
 }
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */
@@ -119,6 +130,21 @@ export interface SyncCursor {
   readonly pulled_at?: string;
 }
 
+/**
+ * Refus d'un lot par le serveur qui ne vise aucune commande précise (ADR-052) : chaque enveloppe est valide ici et le
+ * serveur refuse pourtant le lot entier (HTTP 400). La file ne bouge plus et rien ne le dit à l'utilisateur sans ce
+ * témoin, que `PushRefusalBanner` affiche et que le premier envoi réussi efface.
+ */
+export interface PushRefusal {
+  readonly at: string;
+  readonly status: number;
+  readonly code: string | null;
+  /** Motif rendu par le serveur (borné) : jamais le contenu des opérations. */
+  readonly message: string | null;
+  /** Numéro à donner à l'administrateur : il retrouve la ligne du journal du serveur. */
+  readonly correlation_id: string | null;
+}
+
 export interface SyncMeta {
   readonly key: 'device'; // singleton
   device_id: string;
@@ -126,6 +152,8 @@ export interface SyncMeta {
   last_sync_at: string | null;
   /** Utilisateur dont l'appareil détient les jeux téléchargés (ADR-037). */
   data_user_id?: string | null;
+  /** Dernier lot refusé en bloc sans qu'une commande soit désignée ; `null` ou absent : aucun. */
+  push_refusal?: PushRefusal | null;
 }
 
 export interface SessionRecord {

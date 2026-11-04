@@ -183,6 +183,65 @@ export function parseKnownGaps(value: unknown): readonly KnownGap[] {
   return pairs;
 }
 
+/** Nombre maximal de numéros qu'un appareil déclare refusés sur lui dans un même envoi (AV-507). */
+export const MAX_DECLARED_SKIPS_PER_PUSH = 200;
+
+/**
+ * Numéros de `device_seq` que l'appareil a **déclarés refusés sur lui** avant l'envoi (enveloppe invalide, ADR-052) :
+ * ces commandes n'arriveront jamais, ce ne sont pas des commandes perdues. Paires `[début, fin]` fusionnées, mêmes
+ * que `known_gaps` (colonne `declared_skips` de la ligne technique de l'appareil).
+ */
+export type DeclaredSkips = readonly KnownGap[];
+
+/** Plages déclarées d'une valeur JSON (`declared_skips`) ; ce qui n'est pas une paire valide est ignoré. */
+export function parseDeclaredSkips(value: unknown): DeclaredSkips {
+  return mergeDeclaredSkips(parseKnownGaps(value), []);
+}
+
+/** Ajoute des numéros aux plages déclarées : triées, fusionnées quand elles se touchent. Ignore ce qui n'est pas un entier ≥ 1. */
+export function mergeDeclaredSkips(
+  existing: DeclaredSkips,
+  seqs: readonly number[],
+): DeclaredSkips {
+  const ranges: [number, number][] = existing.map(([from, to]) => [from, to]);
+  for (const seq of seqs) {
+    if (Number.isSafeInteger(seq) && seq >= 1) ranges.push([seq, seq]);
+  }
+  ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged: [number, number][] = [];
+  for (const [from, to] of ranges) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && from <= last[1] + 1) last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
+  }
+  return merged;
+}
+
+/**
+ * Plages manquantes une fois retirés les numéros que l'appareil a déclarés refusés sur lui : une plage entièrement
+ * déclarée disparaît, une plage en partie déclarée se réduit ou se scinde. La date d'ouverture est conservée.
+ */
+export function subtractDeclaredSkips(
+  gaps: readonly SequenceGap[],
+  skips: DeclaredSkips,
+): readonly SequenceGap[] {
+  if (skips.length === 0) return gaps;
+  const sorted = mergeDeclaredSkips(skips, []);
+  const result: SequenceGap[] = [];
+  for (const gap of gaps) {
+    let start = gap.from;
+    for (const [from, to] of sorted) {
+      if (to < start) continue;
+      if (from > gap.to) break;
+      if (from > start) result.push({ ...gap, from: start, to: from - 1 });
+      start = Math.max(start, to + 1);
+      if (start > gap.to) break;
+    }
+    if (start <= gap.to) result.push({ ...gap, from: start, to: gap.to });
+  }
+  return result;
+}
+
 /**
  * Plages de `current` que la mémoire ne couvre pas encore : une plage **contenue** dans une plage déjà signalée
  * n'est pas nouvelle (le trou s'est réduit parce qu'une commande tardive est arrivée, ou scindé), alors qu'une

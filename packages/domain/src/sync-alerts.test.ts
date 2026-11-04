@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SYNC_ERROR_EXCLUDED_CODES,
+  MAX_DECLARED_SKIPS_PER_PUSH,
   MAX_SYNC_ALERT_HOURS,
   MAX_SYNC_STALE_HORIZON_DAYS,
   agedSequenceGaps,
@@ -8,10 +9,13 @@ import {
   deviceStaleness,
   gapsExplainedByPending,
   isSyncErrorAlertable,
+  mergeDeclaredSkips,
   missingSequenceCount,
   nextKnownGaps,
+  parseDeclaredSkips,
   parseKnownGaps,
   sameSequenceGaps,
+  subtractDeclaredSkips,
   syncErrorAlertWindowHoursOrDefault,
   syncErrorCodeOf,
   syncErrorExcludedCodesOrDefault,
@@ -424,5 +428,92 @@ describe('clockSkewMinutes', () => {
     expect(clockSkewMinutes(2_147_483_647)).toBe(35_792);
     // Un écart qui dépasse le seuil (en millisecondes) ne s'affiche jamais égal à lui.
     expect(clockSkewMinutes(300_400)).toBeGreaterThan(5);
+  });
+});
+
+describe('numéros déclarés refusés sur l’appareil (AV-507, ADR-052)', () => {
+  const gap = (from: number, to: number, openedAt = '2026-11-03T10:00:00.000Z') => ({
+    from,
+    to,
+    openedAt: at(openedAt),
+  });
+
+  describe('mergeDeclaredSkips', () => {
+    it('trie, fusionne les numéros qui se touchent et ignore ce qui n’est pas un entier ≥ 1', () => {
+      expect(mergeDeclaredSkips([], [9, 3, 4, 4, 5, 11])).toEqual([
+        [3, 5],
+        [9, 9],
+        [11, 11],
+      ]);
+      expect(mergeDeclaredSkips([[3, 5]], [6, 0, -2, 1.5, Number.NaN])).toEqual([[3, 6]]);
+      expect(mergeDeclaredSkips([[1, 2]], [])).toEqual([[1, 2]]);
+    });
+
+    it('rejouer la même déclaration ne change rien (idempotent)', () => {
+      const once = mergeDeclaredSkips([], [7, 8, 12]);
+      expect(mergeDeclaredSkips(once, [7, 8, 12])).toEqual(once);
+    });
+  });
+
+  describe('parseDeclaredSkips', () => {
+    it('lit les paires valides, fusionnées et triées ; le reste est ignoré', () => {
+      expect(parseDeclaredSkips([[5, 6], [1, 2], [2, 3], 'x', [4], [0, 1], [9, 4]])).toEqual([
+        [1, 3],
+        [5, 6],
+      ]);
+      expect(parseDeclaredSkips(null)).toEqual([]);
+      expect(parseDeclaredSkips('pas un tableau')).toEqual([]);
+    });
+  });
+
+  describe('subtractDeclaredSkips', () => {
+    it('sans déclaration : les plages restent telles quelles', () => {
+      const gaps = [gap(5, 9)];
+      expect(subtractDeclaredSkips(gaps, [])).toBe(gaps);
+    });
+
+    it('une plage entièrement déclarée disparaît', () => {
+      expect(subtractDeclaredSkips([gap(5, 9)], [[1, 20]])).toEqual([]);
+      expect(subtractDeclaredSkips([gap(5, 5)], [[5, 5]])).toEqual([]);
+    });
+
+    it('une plage en partie déclarée se réduit ou se scinde, avec sa date d’ouverture', () => {
+      const opened = '2026-11-02T08:00:00.000Z';
+      expect(subtractDeclaredSkips([gap(5, 9, opened)], [[6, 7]])).toEqual([
+        gap(5, 5, opened),
+        gap(8, 9, opened),
+      ]);
+      expect(subtractDeclaredSkips([gap(5, 9, opened)], [[1, 6]])).toEqual([gap(7, 9, opened)]);
+      expect(subtractDeclaredSkips([gap(5, 9, opened)], [[9, 12]])).toEqual([gap(5, 8, opened)]);
+    });
+
+    it('plusieurs plages et plusieurs déclarations, dans le désordre', () => {
+      expect(
+        subtractDeclaredSkips(
+          [gap(2, 4), gap(10, 14)],
+          [
+            [12, 12],
+            [3, 3],
+            [14, 15],
+          ],
+        ),
+      ).toEqual([gap(2, 2), gap(4, 4), gap(10, 11), gap(13, 13)]);
+    });
+
+    it('une déclaration hors de toute plage est sans effet', () => {
+      expect(
+        subtractDeclaredSkips(
+          [gap(5, 9)],
+          [
+            [1, 4],
+            [10, 20],
+          ],
+        ),
+      ).toEqual([gap(5, 9)]);
+    });
+  });
+
+  it('la borne d’un envoi est de 200 numéros', () => {
+    expect(MAX_DECLARED_SKIPS_PER_PUSH).toBe(200);
   });
 });

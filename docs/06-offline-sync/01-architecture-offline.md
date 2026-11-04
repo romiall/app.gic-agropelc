@@ -138,7 +138,7 @@ L'outbox est **FIFO par appareil**. Une commande n'est jamais supprimée avant `
 | Changement d'utilisateur (appareil partagé) | Déverrouillage par le PIN de l'autre utilisateur ; jeux de données de l'appareil (PDV) partagés ; jeux personnels (`me`, `customers` propres, `cash` personnel) cloisonnés par utilisateur |
 | Déconnexion | Avertissement s'il reste des commandes en attente ; aucune suppression de l'outbox |
 | Révocation (bloqué, perdu) | Au prochain contact, le serveur répond `DEVICE_REVOKED` ; l'application efface ses données locales **sauf** l'outbox chiffrée, qu'elle tente d'envoyer pour quarantaine et enquête (INV-ADM-03) |
-| Mise à jour de l'application | Nouveau service worker activé **après** vidage de l'outbox, ou migration du schéma local ; commandes de version N-1 acceptées par le serveur (BR-SYN-016) |
+| Mise à jour de l'application | Nouveau service worker activé **après** vidage de l'outbox, ou migration du schéma local ; commandes de version N-1 acceptées par le serveur (BR-SYN-016). Un bandeau « nouvelle version disponible » annonce la version qui attend et offre de l'installer tout de suite, avec le nombre d'opérations en attente (elles restent dans la base locale et partent après la mise à jour ; la saisie non enregistrée d'un formulaire ouvert est perdue) : sans lui, un appareil à la file bloquée ne recevrait jamais la correction qui la débloque (AV-505, ADR-052) |
 
 ## 7. Performance sur appareils modestes
 

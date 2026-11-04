@@ -66,6 +66,33 @@ describe('pushRequestSchema', () => {
     );
   });
 
+  describe('skipped_device_seqs (commandes refusées sur l’appareil, ADR-052, AV-507)', () => {
+    it('est facultatif : absent, rien n’est déclaré', () => {
+      const parsed = pushRequestSchema.safeParse(validRequest());
+      expect(parsed.success && parsed.data.skipped_device_seqs).toBeUndefined();
+    });
+
+    it('accepte des numéros entiers ≥ 1, jusqu’à 200', () => {
+      expect(
+        pushRequestSchema.safeParse(validRequest({ skipped_device_seqs: [3, 4, 9] })).success,
+      ).toBe(true);
+      const max = Array.from({ length: 200 }, (_, index) => index + 1);
+      expect(pushRequestSchema.safeParse(validRequest({ skipped_device_seqs: max })).success).toBe(
+        true,
+      );
+    });
+
+    it('rejette plus de 200 numéros, un numéro nul, négatif ou non entier', () => {
+      const tooMany = Array.from({ length: 201 }, (_, index) => index + 1);
+      for (const skipped of [tooMany, [0], [-3], [1.5], ['4']]) {
+        expect(
+          pushRequestSchema.safeParse(validRequest({ skipped_device_seqs: skipped })).success,
+          JSON.stringify(skipped).slice(0, 30),
+        ).toBe(false);
+      }
+    });
+  });
+
   describe('pending_by_author (tablette partagée, AV-007)', () => {
     it('est facultatif : absent, rien n’est déclaré', () => {
       const parsed = pushRequestSchema.safeParse(validRequest());

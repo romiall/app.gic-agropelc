@@ -2751,6 +2751,7 @@ export interface SyncDeviceSyncState {
   bootstrapped_at: Date | null;
   cursor_seq: Generated<number>;
   dataset: string;
+  declared_skips: Json | null;
   device_id: Buffer;
   known_gaps: Json | null;
   last_clock_skew_ms: number | null;

@@ -66,6 +66,8 @@ export interface DeviceServices {
 
 export class OfflineDevice {
   private seq = 0;
+  /** Numéros de commandes refusées chez l'appareil, déclarés au prochain envoi (ADR-052, AV-507). */
+  private refusedLocally: number[] = [];
   private lostResponses = 0;
   private networkUp = true;
   private readonly queue: QueuedCommand[] = [];
@@ -121,6 +123,17 @@ export class OfflineDevice {
     };
     this.queue.push({ envelope, author, settled: false });
     return envelope;
+  }
+
+  /**
+   * Une commande refusée chez l'appareil avant l'envoi (enveloppe invalide, ADR-052) : son `device_seq` est
+   * consommé, elle n'est jamais envoyée, et son numéro est déclaré (`skipped_device_seqs`) à chaque envoi jusqu'à
+   * ce que le serveur ait répondu. Renvoie le numéro consommé.
+   */
+  refuseLocally(): number {
+    const seq = this.nextSeq();
+    this.refusedLocally.push(seq);
+    return seq;
   }
 
   /** Commandes qui restent à envoyer pour `author` (toute la file si omis). */
@@ -193,6 +206,8 @@ export class OfflineDevice {
         this.lostResponses -= 1;
         throw new NetworkDownError('RESPONSE_LOST');
       }
+      // Le serveur a répondu : il a lu les numéros refusés chez l'appareil, plus rien à redéclarer.
+      this.refusedLocally = [];
       let retry = false;
       for (const result of response.results) {
         const queued = batch.find((q) => q.envelope.command_id === result.command_id);
@@ -267,6 +282,7 @@ export class OfflineDevice {
       device_sent_at: this.deviceNow().toISOString(),
       commands: batch.map((q) => q.envelope),
       pending_by_author: remaining,
+      ...(this.refusedLocally.length > 0 ? { skipped_device_seqs: [...this.refusedLocally] } : {}),
     };
   }
 

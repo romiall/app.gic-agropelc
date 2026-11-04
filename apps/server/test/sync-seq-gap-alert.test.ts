@@ -238,6 +238,55 @@ describe('DEVICE_SEQ_GAP : trou de séquence non comblé (P9-10)', () => {
     });
   });
 
+  it('les numéros que l’appareil a déclarés refusés chez lui ne sont pas des commandes perdues (ADR-052, AV-507)', async () => {
+    await rolledBack(async (uow) => {
+      const { admin } = await world(uow);
+      const user = await insertTestUser(uow);
+      const make = async (declaredSkips: unknown, pending: number | null = 0) => {
+        const tablet = await device(uow, admin);
+        await receive(uow, tablet.id, user, [1, 2], 90);
+        await receive(uow, tablet.id, user, [6], 50);
+        // 3, 4 et 5 manquants.
+        await syncState(uow, tablet.id, { pendingReported: pending, declaredSkips });
+        return tablet;
+      };
+      const all = await make([[3, 5]]);
+      const part = await make([[4, 4]]);
+      const outside = await make([[10, 12]]);
+      const none = await make(undefined);
+      const beyond = await make([[1, 99]]);
+      // Une plage déclarée ne remplace pas les restes : des commandes encore dans l'outbox restent expliquées.
+      const mixed = await make([[3, 3]], 2);
+      await pass(uow);
+
+      expect(await gapsOf(uow, all.id)).toEqual([]);
+      expect(await knownGaps(uow, all.id)).toBeNull();
+      expect(await gapsOf(uow, beyond.id)).toEqual([]);
+      expect(await gapsOf(uow, mixed.id)).toEqual([]);
+
+      // En partie déclarée : le trou se scinde, 3 et 5 restent des commandes perdues.
+      const [event] = await gapsOf(uow, part.id);
+      expect(event!.payload).toMatchObject({
+        missing_from: 3,
+        missing_to: 3,
+        gaps_count: 2,
+        missing_count: 2,
+        new_ranges: [
+          [3, 3],
+          [5, 5],
+        ],
+      });
+      expect(await knownGaps(uow, part.id)).toEqual([
+        [3, 3],
+        [5, 5],
+      ]);
+
+      // Une déclaration qui ne couvre pas le trou, ou aucune déclaration : alerte comme avant.
+      expect(await gapsOf(uow, outside.id)).toHaveLength(1);
+      expect(await gapsOf(uow, none.id)).toHaveLength(1);
+    });
+  });
+
   it('une plage déjà signalée ne l’est plus ; une plage nouvelle l’est, la mémoire garde les deux', async () => {
     await rolledBack(async (uow) => {
       const { admin } = await world(uow);

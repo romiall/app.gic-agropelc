@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import type { PushResponse } from '@gic/contracts';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
+import { LOCAL_REFUSAL_PREFIX } from './envelope.js';
 import { enqueueCommand } from './outbox.js';
 import { IN_PROGRESS_GRACE_MS, nextBusyRetries, runPushCycle } from './push.js';
 import { clearSessionRuntime, setSessionRuntime } from '../features/auth/session-runtime.js';
@@ -505,6 +506,94 @@ describe('sync/push (runPushCycle)', () => {
     expect((await db.outbox.get(command.command_id))?.status).toBe('PENDING_SYNC');
   });
 
+  describe('lot refusé en bloc sans désigner de commande (HTTP 400) : signalé à l’utilisateur (ADR-052)', () => {
+    const refuse = () =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                error: {
+                  code: 'VALIDATION_ERROR',
+                  message: 'Corps de requête invalide : commands.0.aggregate_id : UUIDv7 attendu.',
+                  correlation_id: '01900000-0000-7000-8000-000000000abc',
+                },
+              }),
+              { status: 400 },
+            ),
+        ),
+      );
+
+    it('le refus du serveur est conservé sur l’appareil, la file reste intacte', async () => {
+      const command = await enqueueOne(db, 'refusée en bloc');
+      refuse();
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+      expect((await db.syncMeta.get('device'))?.push_refusal).toEqual({
+        at: clock.now().toISOString(),
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Corps de requête invalide : commands.0.aggregate_id : UUIDv7 attendu.',
+        correlation_id: '01900000-0000-7000-8000-000000000abc',
+      });
+      // Rien n'est supprimé ni modifié : la commande repart au prochain cycle.
+      expect((await db.outbox.get(command.command_id))?.status).toBe('PENDING_SYNC');
+    });
+
+    it('un corps de réponse illisible ne fait pas échouer l’envoi : le refus est noté sans motif', async () => {
+      await enqueueOne(db, 'corps illisible');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('<html>erreur</html>', { status: 400 })),
+      );
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+      expect(result).toEqual({ outcome: 'SERVER_ERROR' });
+      expect((await db.syncMeta.get('device'))?.push_refusal).toMatchObject({
+        status: 400,
+        code: null,
+        message: null,
+        correlation_id: null,
+      });
+    });
+
+    it('le premier envoi lu par le serveur efface le signalement', async () => {
+      const command = await enqueueOne(db, 'puis acceptée');
+      refuse();
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+      expect((await db.syncMeta.get('device'))?.push_refusal).not.toBeNull();
+
+      const response: PushResponse = {
+        results: [{ command_id: command.command_id, status: 'APPLIED' }],
+        server_time: clock.now().toISOString(),
+        clock_skew_ms: 0,
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify(response), { status: 200 })),
+      );
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+      expect((await db.syncMeta.get('device'))?.push_refusal).toBeNull();
+    });
+
+    it('un refus qui désigne une commande (REJECTED) ou une coupure réseau n’est pas un refus en bloc', async () => {
+      await enqueueOne(db, 'coupure');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))),
+      );
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+      expect((await db.syncMeta.get('device'))?.push_refusal ?? null).toBeNull();
+    });
+  });
+
   it('passerelle sans serveur (503) : OFFLINE', async () => {
     await enqueueOne(db, 'passerelle');
     vi.stubGlobal(
@@ -655,6 +744,119 @@ describe('sync/push (runPushCycle)', () => {
       const refused = await db.outbox.get(command.command_id);
       expect(refused?.status).toBe('REJECTED');
       expect(refused?.last_error?.message_fr).toMatch(/backdated_reason/);
+    });
+
+    describe('numéros refusés sur l’appareil, déclarés au serveur (AV-507)', () => {
+      const bodyOf = (fetchSpy: ReturnType<typeof answerAll>, call = 0) =>
+        JSON.parse(String(fetchSpy.mock.calls[call]?.[1]?.body)) as {
+          commands: { command_id: string }[];
+          skipped_device_seqs?: number[];
+        };
+
+      it('le numéro de la commande refusée part avec le lot, une seule fois : le serveur l’a lu', async () => {
+        const before = await enqueueOn(idGenerator.newId(), 'avant');
+        const poison = await enqueueOn(NOT_UUIDV7, 'appareil v4');
+        const after = await enqueueOn(idGenerator.newId(), 'après');
+        const fetchSpy = answerAll([before.command_id, after.command_id]);
+        vi.stubGlobal('fetch', fetchSpy);
+
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect(bodyOf(fetchSpy).skipped_device_seqs).toEqual([poison.device_seq]);
+        const declared = await db.outbox.get(poison.command_id);
+        expect(declared?.refused_locally).toBe(true);
+        expect(declared?.skip_declared_at).toBe(clock.now().toISOString());
+
+        // Envoi suivant : plus rien à déclarer.
+        const next = await enqueueOn(idGenerator.newId(), 'suivante');
+        const nextSpy = answerAll([next.command_id]);
+        vi.stubGlobal('fetch', nextSpy);
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect(bodyOf(nextSpy)).not.toHaveProperty('skipped_device_seqs');
+      });
+
+      it('un lot entièrement refusé ne part pas : le numéro est déclaré avec le premier lot qui part', async () => {
+        const poison = await enqueueOn(NOT_UUIDV7, 'appareil v4');
+        const fetchSpy = vi.fn();
+        vi.stubGlobal('fetch', fetchSpy);
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect((await db.outbox.get(poison.command_id))?.skip_declared_at ?? null).toBeNull();
+
+        const next = await enqueueOn(idGenerator.newId(), 'suivante');
+        const nextSpy = answerAll([next.command_id]);
+        vi.stubGlobal('fetch', nextSpy);
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect(bodyOf(nextSpy).skipped_device_seqs).toEqual([poison.device_seq]);
+        expect((await db.outbox.get(poison.command_id))?.skip_declared_at).toBeTruthy();
+      });
+
+      it('sans réponse du serveur (coupure), la déclaration n’est pas tenue pour faite : elle repart', async () => {
+        const good = await enqueueOn(idGenerator.newId(), 'bonne');
+        const poison = await enqueueOn(NOT_UUIDV7, 'appareil v4');
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))),
+        );
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect((await db.outbox.get(poison.command_id))?.skip_declared_at ?? null).toBeNull();
+
+        const fetchSpy = answerAll([good.command_id]);
+        vi.stubGlobal('fetch', fetchSpy);
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect(bodyOf(fetchSpy).skipped_device_seqs).toEqual([poison.device_seq]);
+      });
+
+      it('un refus d’une version antérieure (sans drapeau) est reconnu à son motif ; un refus du serveur ne l’est pas', async () => {
+        const legacy = await enqueueOn(idGenerator.newId(), 'ancien refus local');
+        const byServer = await enqueueOn(idGenerator.newId(), 'refus du serveur');
+        await db.outbox.update(legacy.command_id, {
+          status: 'REJECTED',
+          last_error: {
+            code: 'VALIDATION_ERROR',
+            message_fr: `${LOCAL_REFUSAL_PREFIX} : aggregate_id : UUIDv7 attendu.`,
+          },
+        });
+        await db.outbox.update(byServer.command_id, {
+          status: 'REJECTED',
+          last_error: { code: 'NOT_FOUND', message_fr: 'Cible introuvable.' },
+        });
+        const good = await enqueueOn(idGenerator.newId(), 'bonne');
+        const fetchSpy = answerAll([good.command_id]);
+        vi.stubGlobal('fetch', fetchSpy);
+
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+        expect(bodyOf(fetchSpy).skipped_device_seqs).toEqual([legacy.device_seq]);
+        expect((await db.outbox.get(byServer.command_id))?.skip_declared_at ?? null).toBeNull();
+      });
+
+      it('au plus 200 numéros par envoi, les plus anciens d’abord ; le reste suit', async () => {
+        const refused: { command_id: string; device_seq: number }[] = [];
+        for (let index = 0; index < 205; index += 1) {
+          const command = await enqueueOn(idGenerator.newId(), `refus ${index}`);
+          await db.outbox.update(command.command_id, {
+            status: 'REJECTED',
+            refused_locally: true,
+            last_error: { code: 'VALIDATION_ERROR', message_fr: `${LOCAL_REFUSAL_PREFIX} : x` },
+          });
+          refused.push(command);
+        }
+        const first = await enqueueOn(idGenerator.newId(), 'première');
+        const spy = answerAll([first.command_id]);
+        vi.stubGlobal('fetch', spy);
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        const sent = bodyOf(spy).skipped_device_seqs ?? [];
+        expect(sent).toHaveLength(200);
+        expect(sent).toEqual(refused.slice(0, 200).map((command) => command.device_seq));
+
+        const second = await enqueueOn(idGenerator.newId(), 'seconde');
+        const spyTwo = answerAll([second.command_id]);
+        vi.stubGlobal('fetch', spyTwo);
+        await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+        expect(bodyOf(spyTwo).skipped_device_seqs).toEqual(
+          refused.slice(200).map((command) => command.device_seq),
+        );
+      });
     });
   });
 });

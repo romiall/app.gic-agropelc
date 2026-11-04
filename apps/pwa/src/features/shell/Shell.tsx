@@ -13,6 +13,8 @@ import { useAuth } from '../auth/AuthContext.js';
 import { DeviceApprovalBanner } from '../devices/DeviceApprovalBanner.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { AutonomyBanner } from '../sync/AutonomyBanner.js';
+import { PushRefusalBanner } from '../sync/PushRefusalBanner.js';
+import { UpdateBanner } from '../sync/UpdateBanner.js';
 import { Sidebar, TabBar, TopBar } from './Bars.js';
 import {
   activeScreenPath,
@@ -70,6 +72,8 @@ export function Shell({ onLogout, children }: ShellProps) {
           className={cx('shell-main', pathname === ROUTES.home && 'shell-main-wide')}
         >
           <AutonomyBanner />
+          <PushRefusalBanner />
+          <UpdateBanner />
           <DeviceApprovalBanner />
           {children}
         </main>
