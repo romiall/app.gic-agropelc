@@ -1,8 +1,9 @@
 /**
  * Orchestration push → pull (WF-16, squelette) : déclenchée au démarrage, au retour du
- * réseau (`online`), au retour d'un onglet masqué, périodiquement, et manuellement (ECR-SYN-01 « forcer
- * la synchronisation »). Cadence (MP-12, AV-319 ; NFR-09, RISK-16) : 30 s au premier plan, aucun cycle
- * périodique pendant qu'un onglet est masqué, et attente progressive (30 s doublées à chaque cycle qui
+ * réseau (`online`), au retour d'un onglet masqué, périodiquement, par un filet de sécurité toutes les
+ * 5 minutes (AV-498), et manuellement (ECR-SYN-01 « forcer la synchronisation »). Cadence (MP-12, AV-319 ;
+ * NFR-09, RISK-16) : 30 s au premier plan, aucun cycle périodique pendant qu'un onglet est masqué (le
+ * filet y pourvoit, à 5 min), et attente progressive (30 s doublées à chaque cycle qui
  * échoue, plafonnée à 2 min) tant que le réseau ou le serveur ne répond pas. Le retour du réseau, une
  * action de l'utilisateur ou le retour au premier plan (si aucun cycle récent n'a eu lieu depuis) relance
  * aussitôt et remet l'attente à 30 s. Une seule exécution à la fois (`running`) : un déclenchement
@@ -30,16 +31,25 @@ export interface SyncEngineTiming {
   readonly maxBackoffMs: number;
   /** Un onglet qui redevient visible relance un cycle si le dernier date de plus que cela. */
   readonly visibleResyncMs: number;
+  /**
+   * Filet de sécurité (AV-498) : si aucun cycle n'a eu lieu depuis cette durée — onglet masqué, donc sans cycle
+   * périodique (NFR-09) —, un cycle part, pourvu que l'appareil ait une interface réseau (`navigator.onLine`).
+   * Sans lui, des opérations saisies hors ligne resteraient sur l'appareil des jours durant tant que personne
+   * ne rouvre l'écran. Le cycle lui-même juge de la joignabilité réelle du serveur (`connectivity.ts`).
+   */
+  readonly heartbeatMs: number;
 }
 export const DEFAULT_SYNC_TIMING: SyncEngineTiming = {
   intervalMs: 30_000,
   maxBackoffMs: 2 * 60_000,
   visibleResyncMs: 15_000,
+  heartbeatMs: 5 * 60_000,
 };
 /** Attente avant le prochain cycle périodique après `failureStreak` cycles consécutifs en échec. */
 export function nextCycleDelayMs(
   failureStreak: number,
-  timing: SyncEngineTiming = DEFAULT_SYNC_TIMING,
+  timing: Pick<SyncEngineTiming, 'intervalMs' | 'maxBackoffMs'> &
+    Partial<SyncEngineTiming> = DEFAULT_SYNC_TIMING,
 ): number {
   const doublings = Math.min(Math.max(0, Math.floor(failureStreak)), 10);
   return Math.min(timing.maxBackoffMs, timing.intervalMs * 2 ** doublings);
@@ -174,6 +184,9 @@ export class SyncEngine {
   private started = false;
   private stopped = false;
   private timerId: ReturnType<typeof setTimeout> | undefined;
+  /** Minuterie du filet de sécurité : 5 min après la fin du dernier cycle, quelle que soit son issue. */
+  private heartbeatId: ReturnType<typeof setTimeout> | undefined;
+  private readonly timing: SyncEngineTiming;
   /** Cycles consécutifs en échec (hors réseau, erreur du serveur) : allonge l'attente périodique. */
   private failureStreak = 0;
   private lastCycleEndedAt = -Infinity;
@@ -211,8 +224,10 @@ export class SyncEngine {
 
   constructor(
     private readonly deps: SyncEngineDeps,
-    private readonly timing: SyncEngineTiming = DEFAULT_SYNC_TIMING,
-  ) {}
+    timing: Partial<SyncEngineTiming> = {},
+  ) {
+    this.timing = { ...DEFAULT_SYNC_TIMING, ...timing };
+  }
 
   /** Attente prévue avant le prochain cycle périodique (allongée après des échecs). */
   get nextDelayMs(): number {
@@ -226,6 +241,7 @@ export class SyncEngine {
       document.addEventListener('visibilitychange', this.visibilityListener);
     }
     this.scheduleNext();
+    this.scheduleHeartbeat();
     // Le premier cycle reprend les envois interrompus (onglet fermé, appareil éteint pendant l'envoi).
     void this.trigger();
   }
@@ -237,6 +253,7 @@ export class SyncEngine {
       document.removeEventListener('visibilitychange', this.visibilityListener);
     }
     if (this.timerId !== undefined) clearTimeout(this.timerId);
+    if (this.heartbeatId !== undefined) clearTimeout(this.heartbeatId);
   }
 
   /**
@@ -256,6 +273,32 @@ export class SyncEngine {
       if (!pageHidden() && !this.stopped) await this.trigger();
     } finally {
       this.scheduleNext();
+    }
+  }
+
+  /**
+   * Arme (ou réarme) le filet de sécurité : `heartbeatMs` après la fin du dernier cycle. Chaque cycle, d'où
+   * qu'il vienne, le repousse ; il ne part donc que si plus rien ne s'est passé depuis `heartbeatMs`.
+   */
+  private scheduleHeartbeat(): void {
+    if (this.heartbeatId !== undefined) clearTimeout(this.heartbeatId);
+    this.heartbeatId = undefined;
+    if (this.stopped || !this.started) return;
+    this.heartbeatId = setTimeout(() => void this.heartbeatTick(), this.timing.heartbeatMs);
+  }
+
+  /**
+   * Échéance du filet : vérifie qu'il y a un réseau, puis lance un cycle (même onglet masqué). Hors ligne ou
+   * cycle déjà en cours, rien ne part et le filet est réarmé pour la prochaine échéance.
+   */
+  private async heartbeatTick(): Promise<void> {
+    this.heartbeatId = undefined;
+    try {
+      const interfaceUp = typeof navigator === 'undefined' || navigator.onLine !== false;
+      if (!this.stopped && !this.running && interfaceUp) await this.trigger();
+    } finally {
+      // Un cycle réarme le filet en se terminant ; sans cycle (hors ligne, cycle en cours), on le réarme ici.
+      if (this.heartbeatId === undefined) this.scheduleHeartbeat();
     }
   }
 
@@ -293,6 +336,7 @@ export class SyncEngine {
       else if (outcome === 'SYNCED' || outcome === 'NOTHING_TO_DO') this.failureStreak = 0;
       // Le délai du prochain cycle périodique suit le décompte d'échecs, quelle que soit l'origine du cycle.
       this.scheduleNext();
+      this.scheduleHeartbeat();
       // Un cycle interrompu ne dit rien de l'état du serveur.
       if (outcome !== 'STOPPED') this.deps.onCycleComplete?.(outcome);
     } while (

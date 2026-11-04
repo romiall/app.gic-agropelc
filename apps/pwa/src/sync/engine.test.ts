@@ -283,7 +283,13 @@ describe('sync/engine (runSyncCycle)', () => {
 
 describe('sync/engine (cadence, MP-12 / AV-319)', () => {
   let db: GicDatabase;
-  const timing = { intervalMs: 1_000, maxBackoffMs: 8_000, visibleResyncMs: 15_000 };
+  // Filet de sécurité d'une heure : hors de ses propres essais (ci-dessous), il ne joue pas dans ceux-ci.
+  const timing = {
+    intervalMs: 1_000,
+    maxBackoffMs: 8_000,
+    visibleResyncMs: 15_000,
+    heartbeatMs: 3_600_000,
+  };
   /** Moteurs démarrés par un test : arrêtés à la fin (minuteries et écouteurs). */
   const started: SyncEngine[] = [];
   /** Cycles menés à leur terme par les moteurs du test (un cycle en vol d'un test précédent ne compte pas). */
@@ -340,6 +346,7 @@ describe('sync/engine (cadence, MP-12 / AV-319)', () => {
       intervalMs: 30_000,
       maxBackoffMs: 120_000,
       visibleResyncMs: 15_000,
+      heartbeatMs: 300_000, // filet de sécurité : un cycle au moins toutes les 5 min (AV-498)
     });
     // Une série négative ou fractionnaire ne fait jamais descendre sous l'intervalle.
     expect(nextCycleDelayMs(-3)).toBe(30_000);
@@ -609,5 +616,73 @@ describe('sync/engine (cadence, MP-12 / AV-319)', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     await new Promise((resolve) => setTimeout(resolve, 120));
     expect(pullMock.mock.calls.length).toBe(settled);
+  });
+
+  describe('filet de sécurité toutes les 5 minutes (AV-498)', () => {
+    // Durées réduites : le filet part `heartbeatMs` après la fin du dernier cycle, onglet masqué compris.
+    const net = { intervalMs: 60_000, maxBackoffMs: 120_000, visibleResyncMs: 0, heartbeatMs: 60 };
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('onglet masqué, aucun cycle périodique : le filet lance un cycle, encore et encore', async () => {
+      setVisibility('hidden', false);
+      const engine = engineOf(net);
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBe(1)); // le cycle de démarrage
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3));
+    });
+
+    it('sans réseau (navigator.onLine faux) : rien ne part ; il repart au retour de l’interface réseau', async () => {
+      setVisibility('hidden', false);
+      const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const engine = engineOf(net);
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBe(1));
+      await new Promise((resolve) => setTimeout(resolve, 300)); // plusieurs échéances du filet
+      expect(cycles).toBe(1);
+
+      online.mockReturnValue(true);
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(2));
+    });
+
+    it('un cycle en échec (serveur injoignable) n’arrête pas le filet', async () => {
+      setVisibility('hidden', false);
+      pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+      const engine = engineOf(net);
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3));
+      expect(outcomes.every((outcome) => outcome === 'OFFLINE')).toBe(true);
+    });
+
+    it('un cycle lancé à la main repousse le filet', async () => {
+      setVisibility('hidden', false);
+      const engine = engineOf({ ...net, heartbeatMs: 400 });
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBe(1));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await engine.trigger(); // 250 ms : le filet prévu à 400 ms est repoussé à ~650 ms
+      expect(cycles).toBe(2);
+      await new Promise((resolve) => setTimeout(resolve, 250)); // ~500 ms : l'échéance d'origine est passée
+      expect(cycles).toBe(2);
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3), { timeout: 2_000 });
+    });
+
+    it('arrêt : plus de filet', async () => {
+      setVisibility('hidden', false);
+      const engine = engineOf(net);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(2));
+      engine.stop();
+      await new Promise((resolve) => setTimeout(resolve, 60)); // un cycle en vol se termine
+      const settled = cycles;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(cycles).toBe(settled);
+    });
   });
 });

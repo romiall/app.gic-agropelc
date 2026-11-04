@@ -2593,6 +2593,8 @@ export const fr = {
     reason: 'Motif : {{reason}}',
     self_pending:
       'Vous avez connecté cet appareil : son approbation revient à l’Admin ou à un autre responsable.',
+    not_commandable:
+      'Identifiant d’appareil non conforme (appareil de test) : aucune décision n’est possible sur cet appareil.',
     action: {
       APPROVE: 'Approuver l’appareil {{code}}',
       REFUSE: 'Refuser l’appareil {{code}}',

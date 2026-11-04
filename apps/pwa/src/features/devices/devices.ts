@@ -28,6 +28,8 @@ export interface DeviceView {
   readonly createdAt: string;
   readonly lastContactAt: string | null;
   readonly stale: boolean;
+  /** Faux : identifiant qui n'est pas un UUIDv7, aucune commande ne peut viser cet appareil (le serveur le déclare). */
+  readonly commandable?: boolean;
   readonly actions: {
     readonly approve: boolean;
     readonly block: boolean;

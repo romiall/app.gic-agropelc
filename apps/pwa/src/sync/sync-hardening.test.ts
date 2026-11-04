@@ -14,9 +14,12 @@ import {
 
 const clock = new FixedClock(new Date('2026-10-10T09:00:00.000Z'));
 const idGenerator = new Uuidv7Generator(clock);
+// Les identifiants d'utilisateur sont des UUIDv7 comme en production : l'enveloppe est vérifiée avant l'envoi.
+const USER_1 = idGenerator.newId();
+const USER_2 = idGenerator.newId();
 const DEVICE_ID = idGenerator.newId();
 
-function stubValidSession(userId = 'user-1'): void {
+function stubValidSession(userId = USER_1): void {
   setSessionRuntime({
     userId,
     deviceId: DEVICE_ID,
@@ -33,7 +36,7 @@ async function enqueueSale(db: GicDatabase, capturedOffline = false) {
     db,
     { clock, idGenerator },
     {
-      authorUserId: 'user-1',
+      authorUserId: USER_1,
       commandType: 'sales.sale.record',
       commandVersion: 1,
       aggregateType: 'SALE',
@@ -120,7 +123,7 @@ describe('synchronisation durcie (ADR-037)', () => {
       db,
       { clock, idGenerator },
       {
-        authorUserId: 'user-2',
+        authorUserId: USER_2,
         commandType: 'sales.sale.record',
         commandVersion: 1,
         aggregateType: 'SALE',
@@ -137,7 +140,7 @@ describe('synchronisation durcie (ADR-037)', () => {
         throw new TypeError('network');
       }),
     );
-    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID, userId: 'user-1' });
+    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID, userId: USER_1 });
     expect(sent).toEqual([mine.command_id]);
     expect((await db.outbox.get(other.command_id))?.status).toBe('LOCAL_ONLY');
   });
@@ -202,22 +205,22 @@ describe('synchronisation durcie (ADR-037)', () => {
       entity_type: 'CUSTOMER',
       entity_id: 'c1',
       scope_type: 'USER',
-      scope_id: 'user-1',
+      scope_id: USER_1,
       row_version: 1,
       data: { display_name: 'Client de user-1' },
       seq: 1,
     });
     await db.syncCursors.put({ dataset: 'customers', cursor: 10 });
     // Appareil antérieur au champ : les jeux sont adoptés par l'utilisateur courant, sans effacement.
-    expect(await ensureDataOwner(db, 'user-1')).toBe(false);
+    expect(await ensureDataOwner(db, USER_1)).toBe(false);
     expect(await db.syncCursors.count()).toBe(1);
     expect(await db.projections.count()).toBe(1);
-    expect(await ensureDataOwner(db, 'user-1')).toBe(false);
+    expect(await ensureDataOwner(db, USER_1)).toBe(false);
 
-    expect(await ensureDataOwner(db, 'user-2')).toBe(true);
+    expect(await ensureDataOwner(db, USER_2)).toBe(true);
     expect(await db.projections.count()).toBe(0);
     expect(await db.syncCursors.count()).toBe(0);
     expect(await db.outbox.get(command.command_id)).toBeDefined();
-    expect((await db.syncMeta.get('device'))?.data_user_id).toBe('user-2');
+    expect((await db.syncMeta.get('device'))?.data_user_id).toBe(USER_2);
   });
 });

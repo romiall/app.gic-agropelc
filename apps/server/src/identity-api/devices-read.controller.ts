@@ -14,7 +14,7 @@
  */
 import { Controller, Get, HttpCode, Inject, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import type { Clock, IdGenerator } from '@gic/domain';
+import { isUuidv7, type Clock, type IdGenerator } from '@gic/domain';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
@@ -202,6 +202,10 @@ export class DevicesReadController {
       });
       const approveScope = await scope(DEVICE_APPROVE, device);
       const blockScope = await scope(DEVICE_BLOCK, device);
+      // Un appareil dont l'identifiant n'est pas un UUIDv7 (enrôlé avant que la connexion l'exige) ne peut être
+      // visé par aucune commande : son enveloppe ferait refuser en bloc le lot qui la porte (HTTP 400), et la
+      // file de l'Admin resterait bloquée. Aucune décision n'est donc proposée sur lui.
+      const commandable = isUuidv7(device.id);
       presented.push({
         ...device,
         enrolledByName: names.get(device.enrolledByUserId) ?? null,
@@ -215,11 +219,12 @@ export class DevicesReadController {
         // Droits du lecteur sur cet appareil, quel que soit son état (l'écran croise avec SM-DEVICE) :
         // approuver et débloquer excluent l'appareil qu'on a connecté soi-même (AV-258, sauf l'Admin) ;
         // rattacher suit la permission d'approbation (le site cible est vérifié à la commande, AV-259).
+        commandable,
         actions: {
-          approve: approveScope && !self,
-          block: blockScope,
-          unblock: blockScope && !self,
-          designate: approveScope,
+          approve: commandable && approveScope && !self,
+          block: commandable && blockScope,
+          unblock: commandable && blockScope && !self,
+          designate: commandable && approveScope,
         },
       });
     }

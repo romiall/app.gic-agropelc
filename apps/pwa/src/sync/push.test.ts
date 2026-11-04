@@ -8,11 +8,14 @@ import { clearSessionRuntime, setSessionRuntime } from '../features/auth/session
 
 const clock = new FixedClock(new Date('2026-09-25T09:00:00.000Z'));
 const idGenerator = new Uuidv7Generator(clock);
+// Les identifiants d'utilisateur sont des UUIDv7 comme en production : l'enveloppe est vérifiée avant l'envoi.
+const USER_1 = idGenerator.newId();
+const USER_2 = idGenerator.newId();
 const DEVICE_ID = idGenerator.newId();
 
 function stubValidSession(): void {
   setSessionRuntime({
-    userId: 'user-1',
+    userId: USER_1,
     deviceId: DEVICE_ID,
     deviceStatus: 'ACTIVE',
     refreshToken: 'refresh-token',
@@ -27,7 +30,7 @@ async function enqueueOne(db: GicDatabase, note: string) {
     db,
     { clock, idGenerator },
     {
-      authorUserId: 'user-1',
+      authorUserId: USER_1,
       commandType: 'organization.setting.set',
       commandVersion: 1,
       aggregateType: 'SETTING',
@@ -100,7 +103,7 @@ describe('sync/push (runPushCycle)', () => {
       db,
       { clock, idGenerator },
       {
-        authorUserId: 'user-1',
+        authorUserId: USER_1,
         commandType: 'procurement.receipt.record',
         commandVersion: 1,
         aggregateType: 'GOODS_RECEIPT',
@@ -154,7 +157,7 @@ describe('sync/push (runPushCycle)', () => {
     await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
     const init = fetchSpy.mock.calls[0] as unknown as [string, { body: string }];
     const body = JSON.parse(init[1].body) as { pending_by_author?: Record<string, number> };
-    expect(body.pending_by_author).toEqual({ 'user-1': 0 });
+    expect(body.pending_by_author).toEqual({ [USER_1]: 0 });
   });
 
   it('RETRY_LATER, statut hors protocole ou résultat manquant : la commande repart, rien de réglé', async () => {
@@ -336,7 +339,7 @@ describe('sync/push (runPushCycle)', () => {
     const command = await enqueueOne(db, 'vente de user-1');
     // La session est désormais celle de user-2 (déconnexion de user-1, connexion de user-2).
     setSessionRuntime({
-      userId: 'user-2',
+      userId: USER_2,
       deviceId: DEVICE_ID,
       deviceStatus: 'ACTIVE',
       refreshToken: 'refresh-token-2',
@@ -349,7 +352,7 @@ describe('sync/push (runPushCycle)', () => {
       clock,
       idGenerator,
       deviceId: DEVICE_ID,
-      userId: 'user-1',
+      userId: USER_1,
     });
     expect(result).toEqual({ outcome: 'SESSION_CHANGED' });
     expect(fetch).not.toHaveBeenCalled();
@@ -515,7 +518,7 @@ describe('sync/push (runPushCycle)', () => {
   it('session révoquée (rafraîchissement refusé) : SESSION_INVALID', async () => {
     // Jeton d'accès déjà expiré : force `ensureAccessToken` à tenter un rafraîchissement.
     setSessionRuntime({
-      userId: 'user-1',
+      userId: USER_1,
       deviceId: DEVICE_ID,
       deviceStatus: 'ACTIVE',
       refreshToken: 'refresh-token',
@@ -537,5 +540,121 @@ describe('sync/push (runPushCycle)', () => {
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
     expect(result).toEqual({ outcome: 'SESSION_INVALID' });
     expect((await db.outbox.get(command.command_id))?.status).toBe('PENDING_SYNC');
+  });
+
+  describe('enveloppe invalide : refusée sur l’appareil, la file n’est pas bloquée', () => {
+    // Constaté en ligne le 04/11/2026 : une commande visant un appareil enrôlé avec un identifiant UUIDv4 fait
+    // refuser le lot entier par le serveur (HTTP 400), à chaque cycle, et bloque toutes les suivantes.
+    async function enqueueOn(aggregateId: string, note: string, dependsOn: string[] = []) {
+      return enqueueCommand(
+        db,
+        { clock, idGenerator },
+        {
+          authorUserId: USER_1,
+          commandType: 'identity.device.approve',
+          commandVersion: 1,
+          aggregateType: 'DEVICE',
+          aggregateId,
+          dependsOn,
+          payload: { note },
+          capturedOffline: false,
+        },
+      );
+    }
+    const NOT_UUIDV7 = 'f47ac10b-58cc-4372-a567-0e02b2c3d479'; // UUIDv4
+
+    function answerAll(ids: string[]) {
+      const response: PushResponse = {
+        results: ids.map((command_id) => ({ command_id, status: 'APPLIED' as const })),
+        server_time: clock.now().toISOString(),
+        clock_skew_ms: 0,
+      };
+      return vi.fn(
+        async (_url: string, _init?: RequestInit) =>
+          new Response(JSON.stringify(response), { status: 200 }),
+      );
+    }
+
+    it('une commande invalide est refusée avec son motif ; les autres du lot partent', async () => {
+      const before = await enqueueOn(idGenerator.newId(), 'avant');
+      const poison = await enqueueOn(NOT_UUIDV7, 'appareil v4');
+      const after = await enqueueOn(idGenerator.newId(), 'après');
+      const fetchSpy = answerAll([before.command_id, after.command_id]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+      expect(result).toEqual({ outcome: 'PUSHED', count: 2, settled: 2, stalled: [] });
+      const sent = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body)) as {
+        commands: { command_id: string }[];
+      };
+      expect(sent.commands.map((c) => c.command_id)).toEqual([before.command_id, after.command_id]);
+      const refused = await db.outbox.get(poison.command_id);
+      expect(refused?.status).toBe('REJECTED');
+      expect(refused?.last_error?.code).toBe('VALIDATION_ERROR');
+      expect(refused?.last_error?.message_fr).toMatch(/refusée sur l'appareil/);
+      expect(refused?.last_error?.message_fr).toMatch(/aggregate_id/);
+      expect((await db.outbox.get(before.command_id))?.status).toBe('SYNCED');
+      expect((await db.outbox.get(after.command_id))?.status).toBe('SYNCED');
+    });
+
+    it('un lot entièrement invalide ne contacte pas le serveur ; la file se vide au tour suivant', async () => {
+      const poison = await enqueueOn(NOT_UUIDV7, 'appareil v4');
+      const fetchSpy = vi.fn();
+      vi.stubGlobal('fetch', fetchSpy);
+
+      expect(await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID })).toEqual({
+        outcome: 'PUSHED',
+        count: 0,
+        settled: 1,
+        stalled: [],
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect((await db.outbox.get(poison.command_id))?.status).toBe('REJECTED');
+      expect(await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID })).toEqual({
+        outcome: 'NOTHING_TO_PUSH',
+      });
+    });
+
+    it('une commande qui dépend d’une commande refusée l’est aussi (le serveur ne recevrait jamais sa dépendance)', async () => {
+      const poison = await enqueueOn(NOT_UUIDV7, 'appareil v4');
+      const dependent = await enqueueOn(idGenerator.newId(), 'dépendante', [poison.command_id]);
+      const free = await enqueueOn(idGenerator.newId(), 'libre');
+      const fetchSpy = answerAll([free.command_id]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+
+      expect((await db.outbox.get(poison.command_id))?.status).toBe('REJECTED');
+      const refused = await db.outbox.get(dependent.command_id);
+      expect(refused?.status).toBe('REJECTED');
+      expect(refused?.last_error?.message_fr).toMatch(/dépend d'une commande refusée/);
+      expect((await db.outbox.get(free.command_id))?.status).toBe('SYNCED');
+      const sent = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body)) as {
+        commands: unknown[];
+      };
+      expect(sent.commands).toHaveLength(1);
+    });
+
+    it('un motif de rétrodatage vide est aussi refusé sur l’appareil', async () => {
+      const command = await enqueueCommand(
+        db,
+        { clock, idGenerator },
+        {
+          authorUserId: USER_1,
+          commandType: 'sales.sale.record',
+          commandVersion: 1,
+          aggregateType: 'SALE',
+          backdatedReason: '',
+          payload: {},
+          capturedOffline: false,
+        },
+      );
+      vi.stubGlobal('fetch', vi.fn());
+      await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+      const refused = await db.outbox.get(command.command_id);
+      expect(refused?.status).toBe('REJECTED');
+      expect(refused?.last_error?.message_fr).toMatch(/backdated_reason/);
+    });
   });
 });

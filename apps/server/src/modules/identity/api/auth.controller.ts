@@ -20,6 +20,7 @@ import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestj
 import { z } from 'zod';
 import type { FastifyRequest } from 'fastify';
 import {
+  isUuidv7,
   LOGIN_PASSWORD_MAX_LENGTH,
   newPasswordProblem,
   type Clock,
@@ -57,7 +58,10 @@ const loginSchema = z.object({
   // Téléphone (E.164) ou adresse e-mail du compte (RP-3, 200 caractères au plus).
   phone: z.string().min(1).max(200),
   password: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
-  device_id: z.string().uuid(),
+  // UUIDv7 (ADR-002), comme dans le jeton d'accès, le lot d'envoi et l'agrégat des décisions de l'Admin : un autre
+  // UUID enrôlerait un appareil qu'aucune commande ne peut viser et qui ne peut rien synchroniser (douze
+  // appareils de test en attente, constatés en ligne le 04/11/2026, bloquaient la file de l'administrateur).
+  device_id: z.string().refine(isUuidv7, { message: 'UUIDv7 attendu (ADR-002).' }),
   device_label: z.string().max(200).optional(),
   platform: z.string().max(100).optional(),
   app_version: z.string().max(20).optional(),

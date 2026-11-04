@@ -3,12 +3,13 @@
  * §3). Un seul lot par appel (≤ 50 commandes, `pushRequestSchema`) ; l'appelant (`engine.ts`)
  * boucle tant qu'il reste des commandes en attente.
  */
-import type { PushRequest, PushResponse, RawCommandEnvelope } from '@gic/contracts';
+import type { PushRequest, PushResponse } from '@gic/contracts';
 import { deviceStateAfterResult, syncResultStatusSchema } from '@gic/contracts';
 import type { Clock, IdGenerator } from '@gic/domain';
-import type { GicDatabase, OutboxCommand } from '../storage/db.js';
+import type { GicDatabase } from '../storage/db.js';
 import { pendingAfterBatch, pendingOutbox, REPEATED_FAILURE_ATTEMPTS } from './outbox.js';
 import { authorizedRequest } from './api-client.js';
+import { checkEnvelope, toEnvelope } from './envelope.js';
 
 export type PushCycleResult =
   | { readonly outcome: 'NOTHING_TO_PUSH' }
@@ -41,24 +42,42 @@ export const PUSH_TIMEOUT_MS = 60_000;
  */
 export const IN_PROGRESS_GRACE_MS = 120_000;
 
-function toEnvelope(command: OutboxCommand): RawCommandEnvelope {
-  return {
-    command_id: command.command_id,
-    device_seq: command.device_seq,
-    command_type: command.command_type,
-    command_version: command.command_version,
-    author_user_id: command.author_user_id,
-    aggregate_type: command.aggregate_type,
-    aggregate_id: command.aggregate_id,
-    base_version: command.base_version,
-    depends_on: [...command.depends_on],
-    occurred_at: command.occurred_at,
-    client_created_at: command.client_created_at,
-    captured_offline: command.captured_offline,
-    backdated_reason: command.backdated_reason,
-    attachment_ids: [...command.attachment_ids],
-    payload: command.payload,
-  };
+/** Motif d'une commande refusée sur l'appareil parce qu'elle dépend d'une autre qui l'a été. */
+const DEPENDENCY_REJECTED_MESSAGE =
+  "Commande non envoyable, refusée sur l'appareil : elle dépend d'une commande refusée.";
+
+/**
+ * Refuse sur l'appareil les commandes dont l'enveloppe est invalide, et celles qui en dépendent (le serveur
+ * ne recevrait jamais leur dépendance). Elles passent à `REJECTED` avec leur motif — elles ne sont ni
+ * supprimées (BR-SYN-009 : visibles, « classables ») ni renvoyées —, ce qui libère le reste de la file.
+ * Renvoie les identifiants refusés.
+ */
+async function rejectUnsendable(
+  db: GicDatabase,
+  invalid: ReadonlyMap<string, string>,
+): Promise<ReadonlySet<string>> {
+  const rejected = new Map(invalid);
+  const waiting = await db.outbox.where('status').anyOf(['LOCAL_ONLY', 'PENDING_SYNC']).toArray();
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const command of waiting) {
+      if (rejected.has(command.command_id)) continue;
+      if (command.depends_on.some((dependency) => rejected.has(dependency))) {
+        rejected.set(command.command_id, DEPENDENCY_REJECTED_MESSAGE);
+        grew = true;
+      }
+    }
+  }
+  await db.transaction('rw', db.outbox, async () => {
+    for (const [commandId, message_fr] of rejected) {
+      await db.outbox.update(commandId, {
+        status: 'REJECTED',
+        busy_retries: 0,
+        last_error: { code: 'VALIDATION_ERROR', message_fr },
+      });
+    }
+  });
+  return new Set(rejected.keys());
 }
 
 export async function runPushCycle(
@@ -76,8 +95,28 @@ export async function runPushCycle(
   },
   options: { readonly skip?: ReadonlySet<string> } = {},
 ): Promise<PushCycleResult> {
-  const batch = await pendingOutbox(db, 50, deps.userId, options.skip);
+  let batch = await pendingOutbox(db, 50, deps.userId, options.skip);
   if (batch.length === 0) return { outcome: 'NOTHING_TO_PUSH' };
+
+  // Une enveloppe que le serveur refuserait ferait refuser tout le lot (HTTP 400) à chaque cycle : les
+  // commandes en cause sont refusées ici, avec leur motif, et le reste du lot part.
+  const invalid = new Map<string, string>();
+  for (const command of batch) {
+    const check = checkEnvelope(command);
+    if (!check.ok) invalid.set(command.command_id, check.message_fr);
+  }
+  if (invalid.size > 0) {
+    const rejected = await rejectUnsendable(db, invalid);
+    console.warn(
+      `Sync : ${rejected.size} commande(s) refusée(s) sur l'appareil (enveloppe invalide)`,
+      batch.filter((command) => rejected.has(command.command_id)).map((c) => c.command_type),
+    );
+    batch = batch.filter((command) => !rejected.has(command.command_id));
+    // Le lot ne contenait que des commandes refusées : la suite de la file part au tour suivant.
+    if (batch.length === 0) {
+      return { outcome: 'PUSHED', count: 0, settled: rejected.size, stalled: [] };
+    }
+  }
 
   await db.outbox
     .where('command_id')
@@ -127,6 +166,12 @@ export async function runPushCycle(
     // locale. Une erreur HTTP du contrôleur (ex. 400 sur une enveloppe malformée) prouve que le
     // serveur est joignable : `SERVER_ERROR`, nouvel essai au prochain cycle, sans effet destructeur.
     if (result.reason === 'SESSION_INVALID') return { outcome: 'SESSION_INVALID' };
+    if (result.reason === 'HTTP_ERROR' && result.status === 400) {
+      // Lot refusé en bloc alors que chaque enveloppe est valide ici (version de l'application plus ancienne
+      // que le serveur, identifiant d'appareil ou d'auteur non conforme) : le détail du serveur reste dans la
+      // console de l'appareil, faute de pouvoir désigner une commande.
+      console.error('Sync : lot refusé par le serveur (HTTP 400)', result.body);
+    }
     return result.reason === 'HTTP_ERROR' ? { outcome: 'SERVER_ERROR' } : { outcome: 'OFFLINE' };
   }
 

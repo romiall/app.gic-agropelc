@@ -375,6 +375,9 @@ export function DevicesScreen() {
                   <p className="adm-note">{t('devices.reason', { reason: device.statusReason })}</p>
                 ) : null}
                 {selfPending ? <p className="adm-note">{t('devices.self_pending')}</p> : null}
+                {device.commandable === false ? (
+                  <p className="adm-note is-warn">{t('devices.not_commandable')}</p>
+                ) : null}
                 {open?.deviceId === device.id ? (
                   <DecisionForm
                     device={device}

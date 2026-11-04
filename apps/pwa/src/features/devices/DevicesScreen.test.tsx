@@ -244,6 +244,21 @@ describe('Appareils (ECR-ADM-05)', () => {
     expect(within(card).getByText(/son approbation revient à l’Admin/)).toBeInTheDocument();
   });
 
+  it('appareil dont l’identifiant n’est pas un UUIDv7 : aucune décision proposée, explication', async () => {
+    // Le serveur le déclare (`commandable` faux, toutes les actions fausses) : une décision sur lui ferait refuser
+    // en bloc le lot qui la porte et bloquerait la file de l’Admin.
+    serve([
+      device({
+        commandable: false,
+        actions: { approve: false, block: false, unblock: false, designate: false },
+      }),
+    ]);
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Appareil 7KQ2' });
+    expect(within(card).queryByRole('button')).toBeNull();
+    expect(within(card).getByText(/Identifiant d’appareil non conforme/)).toBeInTheDocument();
+  });
+
   it('hors ligne : écran en ligne seulement ; refus de droit annoncé', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();

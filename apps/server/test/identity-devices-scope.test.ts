@@ -8,6 +8,7 @@
  * de l'équipe, un utilisateur affecté à la zone Z, un vendeur de S3, la Finance (appareil rattaché à S1),
  * le Resp. ferme lui-même.
  */
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -286,6 +287,78 @@ describe(
         devices.vendeurS1,
       ]);
       expect((await get(admin, '/api/v1/devices?status=INCONNU')).statusCode).toBe(400);
+    });
+
+    it('lecture : un appareil dont l’identifiant n’est pas un UUIDv7 ne propose aucune décision (commandable faux)', async () => {
+      // Enrôlé avant que la connexion exige un UUIDv7 : aucune commande ne peut le viser (l’enveloppe ferait
+      // refuser en bloc le lot qui la porte, HTTP 400, et bloquerait la file de l’Admin).
+      const legacyId = randomUUID();
+      expect(legacyId[14]).toBe('4');
+      const shortCode = `${Math.floor(Math.random() * 36 ** 4)
+        .toString(36)
+        .toUpperCase()
+        .padStart(4, '0')}`;
+      await db
+        .insertInto('identity_devices')
+        .values({
+          id: toBin(legacyId),
+          short_code: shortCode,
+          enrolled_by_user_id: toBin(admin.userId),
+          status: 'PENDING',
+          platform: 'TestScript',
+          created_by: toBin(admin.userId),
+        })
+        .execute();
+      try {
+        const listed = await get(admin, `/api/v1/devices?status=PENDING&q=${shortCode}`);
+        expect(listed.statusCode, listed.body).toBe(200);
+        const found = (
+          listed.json() as {
+            devices: { id: string; commandable: boolean; actions: Record<string, boolean> }[];
+          }
+        ).devices.find((device) => device.id === legacyId);
+        expect(found).toBeDefined();
+        expect(found?.commandable).toBe(false);
+        expect(found?.actions).toEqual({
+          approve: false,
+          block: false,
+          unblock: false,
+          designate: false,
+        });
+
+        // Un appareil au format attendu, lui, reste actionnable.
+        const regular = await get(admin, `/api/v1/devices/${devices.vendeurS1}`);
+        const { device } = regular.json() as {
+          device: { commandable: boolean; actions: Record<string, boolean> };
+        };
+        expect(device.commandable).toBe(true);
+        expect(device.actions.approve).toBe(true);
+      } finally {
+        // Hors service : il ne fausse ni les comptes d’appareils actifs ni les alertes des autres essais.
+        await db
+          .updateTable('identity_devices')
+          .set({ status: 'RETIRED', status_reason: 'Essai : identifiant non UUIDv7.' })
+          .where('id', '=', toBin(legacyId))
+          .execute();
+      }
+    });
+
+    it('connexion : un identifiant d’appareil qui n’est pas un UUIDv7 est refusé (400), aucun appareil enrôlé', async () => {
+      const legacyId = randomUUID();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: '10.9.8.7',
+        payload: { phone: '+237600000000', password: 'peu importe', device_id: legacyId },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe('VALIDATION_ERROR');
+      const rows = await db
+        .selectFrom('identity_devices')
+        .select('id')
+        .where('id', '=', toBin(legacyId))
+        .execute();
+      expect(rows).toHaveLength(0);
     });
 
     it('commandes : portée vérifiée, auto-approbation refusée sauf l’Admin, site cible dans la portée (AV-247, AV-258, AV-259)', async () => {

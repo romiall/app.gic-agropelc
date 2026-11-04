@@ -72,6 +72,7 @@ Règles :
 | Élément | Règle |
 |---|---|
 | Lot | ≤ 50 commandes et ≤ 256 Ko compressés (gzip) ; les commandes d'un même auteur sont groupées (session de l'auteur, BR-SYN-014) |
+| Validation du lot | Le serveur valide le lot **entier** (`pushRequestSchema`, UUIDv7 pour `device_id`, `command_id`, `author_user_id`, `aggregate_id`) : une seule enveloppe invalide fait refuser les 50 commandes (HTTP 400 `VALIDATION_ERROR`). L'appareil vérifie donc chaque enveloppe avec le même schéma avant l'envoi : celle qui échouerait passe à `REJECTED` sur l'appareil (motif en français, jamais supprimée) avec les commandes qui en dépendent, et le reste du lot part (AV-499) |
 | Ordre | Croissant de `device_seq` ; le serveur traite **séquentiellement** les commandes d'un lot, trié par `device_seq`. Un lot n'a qu'un auteur, celui de la session qui l'envoie (une commande d'un autre auteur est rejetée `FORBIDDEN`, sans effet sur les autres, INV-SYN-05). Sur une tablette partagée le compteur est commun à l'appareil : les lots de deux auteurs s'entrecroisent, l'ordre garanti est celui de chaque couple (appareil, auteur) (INV-SYN-04 reformulé) et rien ne doit dépendre de l'ordre d'arrivée entre auteurs |
 | Opérations en attente | `pending_by_author` (facultatif) : ce qui reste dans la file de l'appareil **après** le lot, par auteur. Le serveur en tire le total (ligne `_device` de `sync.device_sync_state`) et une ligne par auteur ; absent, rien n'est supposé (BR-DIS-014 n'y lit pas « tout est synchronisé ») |
 | Dépendances | Une commande dont une dépendance est inconnue du serveur, ou reçue mais pas encore réglée (`RECEIVED`, `FAILED_RETRYABLE`), reçoit `RETRY_LATER` (`DEPENDENCY_PENDING`) ; si la dépendance est rejetée, elle reçoit `REJECTED` (`DEPENDENCY_REJECTED`) ; une dépendance réglée sans être appliquée (`CONFLICT`, quarantaine) laisse passer la dépendante (la faire attendre la bloquerait pour toujours) |
@@ -162,6 +163,7 @@ Règles :
 | Situation | Politique |
 |---|---|
 | Pas de réseau | Aucun envoi ; écoute des événements `online` ; un cycle toutes les 30 s quand l'application est au premier plan, aucun cycle périodique d'un onglet masqué ; cycle au retour au premier plan (MP-12, AV-319) |
+| Onglet masqué ou application laissée ouverte | Filet de sécurité : un cycle 5 min après la fin du dernier, appareil en ligne (`navigator.onLine`), même onglet masqué ; chaque cycle le repousse (AV-498). Application fermée : aucun envoi possible (session protégée par le PIN), la synchronisation reprend à l'ouverture |
 | Échec réseau ou HTTP 5xx, 429 | Attente de 30 s doublée à chaque cycle consécutif en échec (60 s, 120 s), plafonnée à 2 min, sans gigue ; remise à 30 s par le retour du réseau, le retour au premier plan ou un cycle réussi (MP-12, AV-319). La cible `min(15 min, 5 s × 2^n) ± 20 %` et l'alerte à 20 échecs ne sont pas codées |
 | HTTP 401 | Rafraîchissement du jeton, puis nouvel envoi ; échec → demande de reconnexion (l'outbox est conservée) |
 | `RETRY_LATER` par commande | La commande reste `PENDING_SYNC` ; elle est renvoyée au lot suivant |
