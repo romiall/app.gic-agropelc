@@ -55,6 +55,11 @@
 | `credit_allowed` | boolean | Non | false | AV-028 |
 | `credit_limit_xaf` | money_xaf | Oui | — | |
 | `payment_terms_days` | smallint | Oui | — | Défaut : paramètre système |
+| `interest_product_id` | uuid → catalog.products | Oui | — | Profil commercial (PP-D ; AV-316) : produit qui intéresse le client |
+| `potential_qty_per_day` | numeric(14,3) | Oui | — | Profil commercial : quantité qu'il peut écouler par jour (≥ 0), avec `potential_unit_code` |
+| `potential_unit_code` | varchar(20) | Oui | — | Unité du potentiel (code du catalogue) ; requise si le potentiel est renseigné |
+| `usual_payment_method_code` | varchar(40) | Oui | — | Moyen de paiement habituel, **à titre indicatif** (pas de FK : `crm` ne lit pas la table de `finance`) |
+| `credit_requested` | boolean | Non | false | Demande de paiement différé du commercial, **distincte** de `credit_allowed` (décision du responsable, AV-028) |
 | `last_sale_at` | ts | Oui | — | Dénormalisé (actif / inactif, KPI) |
 | `field_versions` | json | Non | `{}` | DÉDUIT (P3-02), donnée technique : dernière écriture (`version`, `occurred_at`) de chaque champ modifiable, pour la fusion champ par champ d'un compte modifié sur deux appareils (matrice des conflits ; `mergeFieldPatch`, `packages/domain`) |
 | `kommo_contact_ref` | — | — | — | *(absent : dans `integrations.external_links`)* |

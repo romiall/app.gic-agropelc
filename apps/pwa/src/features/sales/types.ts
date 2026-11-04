@@ -153,6 +153,13 @@ export interface CustomerData {
   readonly credit_limit_xaf: number | null;
   readonly payment_terms_days: number | null;
   readonly outstanding_xaf: number;
+  /** Profil commercial (AV-316), absent d'un compte servi avant PP-D. */
+  readonly interest_product_id?: string | null;
+  readonly potential_qty_per_day?: number | null;
+  readonly potential_unit_code?: string | null;
+  readonly usual_payment_method_code?: string | null;
+  /** Demande de paiement différé du commercial : distincte de `credit_allowed`, décision du responsable. */
+  readonly credit_requested?: boolean;
   /** Acquisition du compte (BR-CRM-003) : qui l'a créé, et quand (instant ISO). */
   readonly acquired_by_user_id?: string | null;
   readonly acquired_at?: string | null;

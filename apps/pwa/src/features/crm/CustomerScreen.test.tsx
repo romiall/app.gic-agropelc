@@ -310,6 +310,57 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     expect(screen.getByRole('button', { name: 'Changer' })).toBeInTheDocument();
   });
 
+  it('profil commercial (AV-316) : lu sur la fiche, modifié hors ligne, aussitôt visible, commande limitée à ce qui change', async () => {
+    await seedActivity();
+    const user = userEvent.setup();
+    renderAt(`/clients/${PROSPECT}`);
+    expect(await screen.findByRole('heading', { name: 'Alimentation Essos' })).toBeInTheDocument();
+    const profile = within(
+      screen.getByRole('heading', { name: 'Profil commercial' }).parentElement!,
+    );
+    // Un compte sans profil : rien d'inventé, et la demande de crédit n'est pas la décision du responsable.
+    expect(profile.getByText('Non demandé.')).toBeInTheDocument();
+
+    await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
+    await user.selectOptions(profile.getByLabelText('Produit d’intérêt (facultatif)'), IDS.eggs);
+    await user.type(profile.getByLabelText('Potentiel par jour (facultatif)'), '12,5');
+    // Quantité sans unité : refusée avant l'envoi.
+    expect(profile.getByText('Choisissez l’unité du potentiel par jour.')).toBeInTheDocument();
+    expect(profile.getByRole('button', { name: 'Enregistrer le profil' })).toBeDisabled();
+    await user.selectOptions(profile.getByLabelText('Unité (facultatif)'), 'PLATEAU');
+    await user.selectOptions(profile.getByLabelText('Paiement habituel (facultatif)'), 'ESPECES');
+    await user.click(
+      profile.getByLabelText('Demander un paiement différé pour ce client', { exact: false }),
+    );
+    await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+
+    // Aussitôt sur la fiche, sans attendre le serveur.
+    expect(await screen.findByText('12,5 PLATEAU par jour')).toBeInTheDocument();
+    expect(
+      screen.getByText('Demandé : en attente de la décision du responsable.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Œufs de table')).toBeInTheDocument();
+    expect(screen.getByText('Espèces')).toBeInTheDocument();
+
+    const [command] = (await getDb().outbox.toArray()).filter(
+      (entry) => entry.command_type === 'crm.customer.update',
+    );
+    expect(command).toMatchObject({
+      aggregate_id: PROSPECT,
+      aggregate_type: 'CUSTOMER',
+      base_version: 1,
+      payload: {
+        patch: {
+          interestProductId: IDS.eggs,
+          potentialQtyPerDay: 12.5,
+          potentialUnitCode: 'PLATEAU',
+          usualPaymentMethodCode: 'ESPECES',
+          creditRequested: true,
+        },
+      },
+    });
+  });
+
   it('compte conservé après fusion : activité et opérations de l’absorbé rattachées ; vente refusée sans « reste »', async () => {
     const ABSORBED = '01900000-0000-7000-8000-0000000000e9';
     const db = getDb();

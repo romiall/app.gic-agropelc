@@ -292,7 +292,16 @@ describe('projections /sync/pull du CRM et du pointage (P3-07)', () => {
       scope_id: cte1.userId,
     });
     const arrival = latest(await pull(cte2, 'customers'), 'CUSTOMER', customerId);
-    expect(arrival?.data).toMatchObject({ owner_user_id: cte2.userId });
+    // Profil commercial (PP-D, AV-316) servi avec le compte, la demande de crédit à part de la décision.
+    expect(arrival?.data).toMatchObject({
+      owner_user_id: cte2.userId,
+      interest_product_id: null,
+      potential_qty_per_day: null,
+      potential_unit_code: null,
+      usual_payment_method_code: null,
+      credit_requested: false,
+      credit_allowed: false,
+    });
     // Même équipe : le responsable garde le compte, sans sortie de périmètre.
     const team = (await pull(rco, 'customers')).filter((c) => c.entity_id === customerId);
     expect(team.some((c) => c.change_type === 'SCOPE_EXIT')).toBe(false);

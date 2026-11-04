@@ -97,6 +97,7 @@ Les noms RP évitent la confusion avec les releases R1 à R5 du plan (`docs/10-d
 - **Taille** : moyenne (≈ 1 semaine).
 
 ### RP-6 — Pièces papier PP-B à PP-E (non prioritaire)
+- **État (04/11/2026, local, pas en ligne)** : PP-B livré ; **PP-C livré** (chargement par lots des pièces papier dans `ECR-IMP-01`, huit types, [AV-508](../docs/A-VALIDER.md)) ; **PP-D livré sauf la fiche VC imprimée** (veille marché dans la visite, [AV-315](../docs/A-VALIDER.md) ; profil commercial du client, [AV-316](../docs/A-VALIDER.md)) ; **PP-E non commencé** (présence du personnel [AV-313](../docs/A-VALIDER.md), bilan hebdomadaire [AV-314](../docs/A-VALIDER.md), fiches PT et BH). Trois migrations attendent la prochaine livraison : `20261104090000`, `20261104100000`, `20261104110000`.
 - Plan : `docs/10-development-plan/19-pieces-papier.md`, ADR-048. Ne pas toucher à l'apparence de `apps/pwa/src/features/pieces/` (`charte.css` et `identite.ts` sont des copies vérifiées par un test) ; à valider avec le comptable.
 
 ### RP-7 — Préparer la mise en service (livrables que l'agent peut écrire)

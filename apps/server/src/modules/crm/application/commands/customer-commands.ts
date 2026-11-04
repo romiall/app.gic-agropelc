@@ -39,7 +39,11 @@ import {
   activeSiteAssignmentsAt,
   checkUserActive,
 } from '../../../identity/application/public/index.js';
-import { findReasonCode } from '../../../catalog/application/public/index.js';
+import {
+  findProduct,
+  findReasonCode,
+  findUnit,
+} from '../../../catalog/application/public/index.js';
 import { emitCustomerChange } from '../sync-changes.js';
 import {
   publishCustomerDuplicateResolved,
@@ -67,6 +71,9 @@ import {
   type Uow,
 } from './shared.js';
 
+/** Potentiel par jour : borne de la colonne `DECIMAL(14,3)`. */
+const MAX_POTENTIAL_QTY = 99_999_999_999;
+
 const positionSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
@@ -87,6 +94,26 @@ const customerFields = {
   zoneId: z.string().uuid(),
   position: positionSchema.nullable(),
   sourceCode: z.string().trim().min(1).max(40),
+  // Profil commercial (PP-D ; AV-316) : ce qui intéresse le client, ce qu'il peut écouler par jour, comment il paie
+  // d'habitude. La demande de paiement différé du commercial n'est pas la décision `credit_allowed` du responsable.
+  interestProductId: z.string().uuid().nullable(),
+  potentialQtyPerDay: z
+    .number()
+    .nonnegative()
+    .max(MAX_POTENTIAL_QTY)
+    .refine((value) => Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-6, {
+      message: 'Trois décimales au plus.',
+    })
+    .nullable(),
+  potentialUnitCode: z.string().trim().min(1).max(20).nullable(),
+  usualPaymentMethodCode: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .regex(/^[A-Z0-9_]+$/)
+    .nullable(),
+  creditRequested: z.boolean(),
 };
 type FieldName = keyof typeof customerFields;
 const FIELD_NAMES = Object.keys(customerFields) as FieldName[];
@@ -105,6 +132,11 @@ const createPayloadSchema = z
     zoneId: customerFields.zoneId,
     position: customerFields.position.optional(),
     sourceCode: customerFields.sourceCode,
+    interestProductId: customerFields.interestProductId.optional(),
+    potentialQtyPerDay: customerFields.potentialQtyPerDay.optional(),
+    potentialUnitCode: customerFields.potentialUnitCode.optional(),
+    usualPaymentMethodCode: customerFields.usualPaymentMethodCode.optional(),
+    creditRequested: customerFields.creditRequested.optional(),
     /** Commercial désigné par un responsable comme acquéreur (BR-CRM-003). */
     acquiredByUserId: z.string().uuid().optional(),
     /** Site de rattachement d'un compte sans titulaire (vendeur de PDV). */
@@ -112,7 +144,13 @@ const createPayloadSchema = z
   })
   .refine((p) => (p.phonePrimary ?? null) !== null || (p.position ?? null) !== null, {
     message: 'Téléphone ou position GPS requis pour retrouver le compte (BR-CRM-002).',
-  });
+  })
+  .refine(
+    (p) => (p.potentialQtyPerDay ?? null) === null || (p.potentialUnitCode ?? null) !== null,
+    {
+      message: 'Un potentiel par jour exige son unité (AV-316).',
+    },
+  );
 type CreatePayload = z.infer<typeof createPayloadSchema>;
 
 const updatePayloadSchema = z.object({
@@ -180,6 +218,12 @@ function currentValuesOf(customer: CustomerRow): Record<FieldName, unknown> {
             accuracyM: customer.geo_accuracy_m === null ? null : Number(customer.geo_accuracy_m),
           }),
     sourceCode: customer.source_code,
+    interestProductId: fromBinOrNull(customer.interest_product_id),
+    potentialQtyPerDay:
+      customer.potential_qty_per_day === null ? null : Number(customer.potential_qty_per_day),
+    potentialUnitCode: customer.potential_unit_code,
+    usualPaymentMethodCode: customer.usual_payment_method_code,
+    creditRequested: Boolean(customer.credit_requested),
   };
 }
 
@@ -217,6 +261,16 @@ function columnsOf(field: FieldName, value: unknown): Updateable<CrmCustomers> {
     }
     case 'sourceCode':
       return { source_code: value as string };
+    case 'interestProductId':
+      return { interest_product_id: toBinOrNull(value as string | null) };
+    case 'potentialQtyPerDay':
+      return { potential_qty_per_day: value === null ? null : String(value) };
+    case 'potentialUnitCode':
+      return { potential_unit_code: value as string | null };
+    case 'usualPaymentMethodCode':
+      return { usual_payment_method_code: value as string | null };
+    case 'creditRequested':
+      return { credit_requested: value === true ? 1 : 0 };
   }
 }
 
@@ -227,6 +281,8 @@ async function checkReferences(
     zoneId?: string | undefined;
     sourceCode?: string | undefined;
     categoryId?: string | null | undefined;
+    interestProductId?: string | null | undefined;
+    potentialUnitCode?: string | null | undefined;
   },
 ) {
   if (fields.zoneId !== undefined && !(await isActiveZone(uow, fields.zoneId))) {
@@ -241,6 +297,20 @@ async function checkReferences(
     !(await isActiveCustomerCategory(uow, fields.categoryId))
   ) {
     return rejected('REFERENCE_INVALID', 'Catégorie de client inconnue ou inactive.');
+  }
+  if (
+    fields.interestProductId !== undefined &&
+    fields.interestProductId !== null &&
+    !(await findProduct(uow, fields.interestProductId))
+  ) {
+    return rejected('REFERENCE_INVALID', 'Produit d’intérêt inconnu du catalogue.');
+  }
+  if (
+    fields.potentialUnitCode !== undefined &&
+    fields.potentialUnitCode !== null &&
+    !(await findUnit(uow, fields.potentialUnitCode))
+  ) {
+    return rejected('REFERENCE_INVALID', 'Unité du potentiel inconnue du catalogue.');
   }
   return undefined;
 }
@@ -384,6 +454,14 @@ function buildHandlers(idGenerator: IdGenerator) {
         geo_accuracy_m:
           position === null || position.accuracyM === null ? null : String(position.accuracyM),
         source_code: p.sourceCode,
+        interest_product_id: toBinOrNull(p.interestProductId ?? null),
+        potential_qty_per_day:
+          p.potentialQtyPerDay === undefined || p.potentialQtyPerDay === null
+            ? null
+            : String(p.potentialQtyPerDay),
+        potential_unit_code: p.potentialUnitCode ?? null,
+        usual_payment_method_code: p.usualPaymentMethodCode ?? null,
+        credit_requested: p.creditRequested === true ? 1 : 0,
         acquired_by_user_id: toBin(acquiredBy),
         acquired_at: at,
         owner_user_id: toBinOrNull(ownerId),
@@ -521,6 +599,10 @@ function buildHandlers(idGenerator: IdGenerator) {
         'CUSTOMER_NOT_FINDABLE',
         'Téléphone ou position GPS requis pour retrouver le compte (BR-CRM-002).',
       );
+    }
+
+    if (resulting.potentialQtyPerDay !== null && resulting.potentialUnitCode === null) {
+      return rejected('POTENTIAL_UNIT_REQUIRED', 'Un potentiel par jour exige son unité (AV-316).');
     }
 
     if (appliedFields.length > 0) {

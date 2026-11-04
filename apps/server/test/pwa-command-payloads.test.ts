@@ -52,7 +52,29 @@ import {
   conflictCommandOf,
 } from '../../pwa/src/features/sync/sync-conflicts.js';
 import { reassignPayload } from '../../pwa/src/features/crm/reassign.js';
+import { profileOf, profilePatch } from '../../pwa/src/features/crm/profile.js';
 import { EMPTY_VISIT, visitPayload } from '../../pwa/src/features/crm/visit.js';
+import type { CustomerData } from '../../pwa/src/features/sales/types.js';
+
+/** Compte sans profil : le point de départ d'une première modification du profil. */
+const EMPTY_CUSTOMER: CustomerData = {
+  id: 'c',
+  stage: 'PROSPECT',
+  display_name: 'Compte',
+  contact_name: null,
+  category_id: null,
+  phone_primary: null,
+  address_text: null,
+  zone_id: 'z',
+  owner_user_id: null,
+  home_site_id: null,
+  merged_into_id: null,
+  credit_allowed: false,
+  credit_limit_xaf: null,
+  payment_terms_days: null,
+  outstanding_xaf: 0,
+  version: 1,
+};
 import {
   buildAlertAckPayload,
   buildAlertDismissPayload,
@@ -333,6 +355,23 @@ function samples(): Sample[] {
       commandType: 'crm.customer.reassign',
       payload: reassignPayload(userId, 'Départ du commercial'),
     },
+    // Profil commercial du client (PP-D, AV-316) : les cinq champs passent le schéma sans qu'aucun soit écarté.
+    {
+      label: 'clients : profil commercial',
+      commandType: 'crm.customer.update',
+      payload: {
+        patch: profilePatch(
+          {
+            interestProductId: id(),
+            potentialQtyText: '12,5',
+            potentialUnitCode: 'KG',
+            usualPaymentMethodCode: 'MOBILE_MONEY_MTN',
+            creditRequested: true,
+          },
+          { ...profileOf(EMPTY_CUSTOMER) },
+        ),
+      },
+    },
     // Visite avec veille marché (PP-D, AV-315) : aucun champ du relevé ne doit être écarté par le schéma.
     {
       label: 'visite : veille marché',
@@ -467,6 +506,7 @@ describe('charges de commande fabriquées par la PWA : le schéma du serveur les
       'sync.conflict.resolve',
       'crm.customer.reassign',
       'crm.visit.record',
+      'crm.customer.update',
       'communication.alert_rule.set',
       'communication.note.publish',
       'analytics.view.share',

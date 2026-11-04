@@ -9,6 +9,7 @@ import type { PriceRule } from '@gic/domain';
 import { getDb, type GicDatabase, type OutboxCommand } from '../../storage/db.js';
 import { listProjected } from '../../storage/projections.js';
 import { deviceWorkSessions } from '../fieldwork/service.js';
+import { withPendingProfile } from '../crm/profile.js';
 import { toPriceRules } from './pricing.js';
 import { stillInFlight } from './pending.js';
 import { pendingConsumption, pendingLotConsumption, stockKey } from './stock.js';
@@ -561,10 +562,15 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
         balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
       ),
     ),
-    customers: [
-      ...customers.filter((customer) => customer.merged_into_id === null),
-      ...pendingCustomers(ownOutbox, customers, customersCursor?.pulled_at),
-    ],
+    // Profil commercial : les modifications de l'appareil pas encore relues sont montrées aussitôt (AV-316).
+    customers: withPendingProfile(
+      [
+        ...customers.filter((customer) => customer.merged_into_id === null),
+        ...pendingCustomers(ownOutbox, customers, customersCursor?.pulled_at),
+      ],
+      ownOutbox,
+      customersCursor?.pulled_at,
+    ),
     paymentMethods: paymentMethods.filter((method) => method.is_active),
     // Motifs semés publiés dans `catalog` (P5-18), réunis à ceux créés par commande (`reason_code`),
     // la version de `catalog` d'abord.

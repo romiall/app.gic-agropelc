@@ -24,6 +24,7 @@ import {
   db,
   freshUuid,
   insertTestDevice,
+  insertTestProduct,
   insertTestSite,
   insertTestTeam,
   insertTestTeamMembership,
@@ -758,5 +759,166 @@ describe('crm.customer.* (P3-04)', () => {
     expect(await convert(absorbed.id, freshUuid(), at('13:00:00'))).toBe('CONVERTED');
     expect((await customer(kept.id)).stage).toBe('CUSTOMER');
     expect((await customer(absorbed.id)).stage).toBe('MERGED');
+  });
+
+  describe('profil commercial du client (PP-D ; AV-316)', () => {
+    let productId: string;
+
+    beforeAll(async () => {
+      productId = await db.transaction().execute((trx) => insertTestProduct(trx, admin));
+    });
+
+    const status = (result: Awaited<ReturnType<typeof run>>) =>
+      result.status === 'REJECTED' ? result.error.code : result.status;
+
+    it('création : produit d’intérêt, potentiel par jour, moyen de paiement habituel et demande de crédit', async () => {
+      const { id, result } = await createCustomer(cte1, {
+        interestProductId: productId,
+        potentialQtyPerDay: 12.5,
+        potentialUnitCode: 'TETE',
+        usualPaymentMethodCode: 'MOBILE_MONEY_MTN',
+        creditRequested: true,
+      });
+      expect(status(result)).toBe('APPLIED');
+      const row = await customer(id);
+      expect(fromBinOrNull(row.interest_product_id)).toBe(productId);
+      expect(Number(row.potential_qty_per_day)).toBe(12.5);
+      expect(row).toMatchObject({
+        potential_unit_code: 'TETE',
+        usual_payment_method_code: 'MOBILE_MONEY_MTN',
+        credit_requested: 1,
+        // La demande n'est pas la décision du responsable (AV-028).
+        credit_allowed: 0,
+      });
+    });
+
+    it('sans profil, un compte garde ses valeurs par défaut : rien, et aucune demande de crédit', async () => {
+      const { id } = await createCustomer(cte1);
+      expect(await customer(id)).toMatchObject({
+        interest_product_id: null,
+        potential_qty_per_day: null,
+        potential_unit_code: null,
+        usual_payment_method_code: null,
+        credit_requested: 0,
+      });
+    });
+
+    it('un potentiel sans unité, un excès de décimales ou un code mal formé sont refusés par le schéma', async () => {
+      for (const extra of [
+        { potentialQtyPerDay: 5 },
+        { potentialQtyPerDay: 1.2345, potentialUnitCode: 'TETE' },
+        { potentialQtyPerDay: -1, potentialUnitCode: 'TETE' },
+        { usualPaymentMethodCode: 'mobile money' },
+      ]) {
+        const { result } = await createCustomer(cte1, extra);
+        expect(status(result), JSON.stringify(extra)).toMatch(/^VALIDATION_ERROR/);
+      }
+    });
+
+    it('un produit ou une unité inconnus du catalogue sont refusés net, à la création comme à la modification', async () => {
+      const unknownProduct = await createCustomer(cte1, { interestProductId: freshUuid() });
+      expect(status(unknownProduct.result)).toBe('REFERENCE_INVALID');
+      const unknownUnit = await createCustomer(cte1, {
+        potentialQtyPerDay: 3,
+        potentialUnitCode: 'INCONNUE',
+      });
+      expect(status(unknownUnit.result)).toBe('REFERENCE_INVALID');
+      const { id } = await createCustomer(cte1);
+      expect(
+        status(
+          await run(cte1, 'crm.customer.update', id, at('10:00:00'), {
+            patch: { interestProductId: freshUuid() },
+          }),
+        ),
+      ).toBe('REFERENCE_INVALID');
+    });
+
+    it('modification : les champs du profil se changent comme les autres, version par champ, sans toucher la décision de crédit', async () => {
+      const { id } = await createCustomer(cte1);
+      const before = await customer(id);
+      const result = await run(cte1, 'crm.customer.update', id, at('10:00:00'), {
+        patch: {
+          interestProductId: productId,
+          potentialQtyPerDay: 40,
+          potentialUnitCode: 'TETE',
+          usualPaymentMethodCode: 'ESPECES',
+          creditRequested: true,
+        },
+      });
+      expect(status(result)).toBe('APPLIED');
+      const row = await customer(id);
+      expect(fromBinOrNull(row.interest_product_id)).toBe(productId);
+      expect(Number(row.potential_qty_per_day)).toBe(40);
+      expect(row).toMatchObject({
+        potential_unit_code: 'TETE',
+        usual_payment_method_code: 'ESPECES',
+        credit_requested: 1,
+        credit_allowed: 0,
+        version: before.version + 1,
+      });
+      // Chaque champ modifié porte sa version, comme les champs d'identité.
+      expect(Object.keys(row.field_versions as Record<string, unknown>)).toEqual(
+        expect.arrayContaining([
+          'interestProductId',
+          'potentialQtyPerDay',
+          'potentialUnitCode',
+          'usualPaymentMethodCode',
+          'creditRequested',
+        ]),
+      );
+    });
+
+    it('une quantité posée sans unité, sur un compte qui n’en a pas, est refusée ; avec son unité, acceptée', async () => {
+      const { id } = await createCustomer(cte1);
+      expect(
+        status(
+          await run(cte1, 'crm.customer.update', id, at('10:00:00'), {
+            patch: { potentialQtyPerDay: 8 },
+          }),
+        ),
+      ).toBe('POTENTIAL_UNIT_REQUIRED');
+      expect(
+        status(
+          await run(cte1, 'crm.customer.update', id, at('10:01:00'), {
+            patch: { potentialQtyPerDay: 8, potentialUnitCode: 'TETE' },
+          }),
+        ),
+      ).toBe('APPLIED');
+      // Vider l'unité alors qu'une quantité reste : refusé aussi.
+      expect(
+        status(
+          await run(cte1, 'crm.customer.update', id, at('10:02:00'), {
+            patch: { potentialUnitCode: null },
+          }),
+        ),
+      ).toBe('POTENTIAL_UNIT_REQUIRED');
+    });
+
+    it('deux appareils qui changent des champs différents depuis la même version : les deux changements sont gardés', async () => {
+      const { id } = await createCustomer(cte1);
+      const base = (await customer(id)).version;
+      const first = await run(
+        cte1,
+        'crm.customer.update',
+        id,
+        at('10:00:00'),
+        { patch: { usualPaymentMethodCode: 'ESPECES' } },
+        { offline: true, baseVersion: base },
+      );
+      const second = await run(
+        cte1,
+        'crm.customer.update',
+        id,
+        at('10:01:00'),
+        { patch: { creditRequested: true } },
+        { offline: true, baseVersion: base },
+      );
+      expect(status(first)).toBe('APPLIED');
+      expect(status(second)).toBe('APPLIED');
+      expect(await customer(id)).toMatchObject({
+        usual_payment_method_code: 'ESPECES',
+        credit_requested: 1,
+      });
+    });
   });
 });

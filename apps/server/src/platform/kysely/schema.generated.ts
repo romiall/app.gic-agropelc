@@ -642,6 +642,7 @@ export interface CrmCustomers {
   created_device_id: Buffer | null;
   credit_allowed: Generated<number>;
   credit_limit_xaf: number | null;
+  credit_requested: Generated<number>;
   customer_type: Generated<string>;
   display_name: string;
   duplicate_of_id: Buffer | null;
@@ -651,6 +652,7 @@ export interface CrmCustomers {
   geo_accuracy_m: Decimal | null;
   home_site_id: Buffer | null;
   id: Buffer;
+  interest_product_id: Buffer | null;
   last_sale_at: Date | null;
   lat: Decimal | null;
   lng: Decimal | null;
@@ -663,11 +665,14 @@ export interface CrmCustomers {
   phone_primary: string | null;
   phone_secondary: string | null;
   pipeline_step_id: Buffer | null;
+  potential_qty_per_day: Decimal | null;
+  potential_unit_code: string | null;
   received_at_server: Date | null;
   source_code: string;
   stage: Generated<string>;
   updated_at: Generated<Date>;
   updated_by: Buffer | null;
+  usual_payment_method_code: string | null;
   version: Generated<number>;
   zone_id: Buffer;
 }

@@ -1201,6 +1201,13 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       credit_allowed: Boolean(row.credit_allowed),
       credit_limit_xaf: row.credit_limit_xaf === null ? null : Number(row.credit_limit_xaf),
       payment_terms_days: row.payment_terms_days,
+      // Profil commercial (AV-316) ; la demande de crédit n'est pas la décision `credit_allowed`.
+      interest_product_id: fromBinOrNull(row.interest_product_id),
+      potential_qty_per_day:
+        row.potential_qty_per_day === null ? null : Number(row.potential_qty_per_day),
+      potential_unit_code: row.potential_unit_code,
+      usual_payment_method_code: row.usual_payment_method_code,
+      credit_requested: Boolean(row.credit_requested),
       last_sale_at: row.last_sale_at,
       outstanding_xaf: Number(outstanding?.xaf ?? 0),
       version: row.version,

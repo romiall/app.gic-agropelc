@@ -33,6 +33,7 @@ import { formatMoney } from '../sales/format.js';
 import { openOrders, orderStatusTone } from '../sales/open-orders.js';
 import { recentSales, saleListBadge } from '../sales/recent-sales.js';
 import { useSalesReferences } from '../sales/references.js';
+import { CommercialProfile } from './CommercialProfile.js';
 import { activityOf } from './portfolio.js';
 import { stageTone } from './stage.js';
 import './crm.css';
@@ -187,6 +188,12 @@ export function CustomerScreen() {
               </dl>
             </Card>
           ) : null}
+          <CommercialProfile
+            customer={customer}
+            refs={refs}
+            userId={userId}
+            canEdit={holdsAnyRole(roles, ROLE_SETS.customerUpdate)}
+          />
         </div>
 
         <div className="crm-main">

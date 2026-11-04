@@ -67,6 +67,13 @@ export interface CustomerSummary {
   readonly creditAllowed: boolean;
   readonly creditLimitXaf: number | null;
   readonly paymentTermsDays: number | null;
+  /** Profil commercial (AV-316) : produit d'intérêt, potentiel par jour, façon habituelle de payer. */
+  readonly interestProductId: string | null;
+  readonly potentialQtyPerDay: number | null;
+  readonly potentialUnitCode: string | null;
+  readonly usualPaymentMethodCode: string | null;
+  /** Demande de paiement différé du commercial : distincte de `creditAllowed`, décision du responsable. */
+  readonly creditRequested: boolean;
   readonly lastSaleAt: Date | null;
   readonly version: number;
 }
@@ -108,6 +115,12 @@ export function toCustomerSummary(row: Selectable<CrmCustomers>): CustomerSummar
     creditAllowed: Boolean(row.credit_allowed),
     creditLimitXaf: row.credit_limit_xaf === null ? null : Number(row.credit_limit_xaf),
     paymentTermsDays: row.payment_terms_days,
+    interestProductId: fromBinOrNull(row.interest_product_id),
+    potentialQtyPerDay:
+      row.potential_qty_per_day === null ? null : Number(row.potential_qty_per_day),
+    potentialUnitCode: row.potential_unit_code,
+    usualPaymentMethodCode: row.usual_payment_method_code,
+    creditRequested: Boolean(row.credit_requested),
     lastSaleAt: row.last_sale_at,
     version: row.version,
   };

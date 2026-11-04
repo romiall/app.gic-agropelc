@@ -420,3 +420,10 @@
 .crm-watch-line > .crm-pair > .field {
   margin-bottom: 0;
 }
+
+/* Profil commercial du client sur la fiche (PP-D ; AV-316) */
+.crm-profile-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  color: var(--ink);
+}

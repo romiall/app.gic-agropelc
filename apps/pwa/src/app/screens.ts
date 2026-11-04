@@ -189,6 +189,8 @@ export const ROLE_SETS = {
     'VENDEUR_PDV',
     'RESP_FERME',
   ],
+  /** `crm.customer.update` (01-rbac.md) : responsable commercial (équipe), commerciaux (leurs comptes), vendeur de PDV (site). */
+  customerUpdate: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE', 'VENDEUR_PDV'],
   /** `crm.customer.read` (01-rbac.md) : tous les rôles qui suivent des clients. */
   customerRead: [
     'DIRECTION',
