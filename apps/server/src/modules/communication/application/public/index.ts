@@ -62,7 +62,10 @@ export type {
 export { DisabledWebPushSender, WEB_PUSH_SENDER } from '../notifications/web-push.js';
 export type {
   PushMessage,
+  PushSendOptions,
   PushSendResult,
   PushTarget,
   WebPushSender,
 } from '../notifications/web-push.js';
+export { countPurgeableAlerts, purgeClosedAlerts } from '../maintenance/purge-alerts.js';
+export type { AlertPurgeOutcome, AlertPurgeWindow } from '../maintenance/purge-alerts.js';

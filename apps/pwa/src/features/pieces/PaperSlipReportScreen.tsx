@@ -70,13 +70,15 @@ function nowIsoLocal(): string {
   return now.toISOString().slice(0, 16);
 }
 
+type TabMode = 'entry' | 'register';
+
 export function PaperSlipReportScreen() {
   const { t } = useTranslation();
   const { state: authState } = useAuth();
   const userId = authState.status === 'unlocked' ? authState.userId : '';
   const refs = useSalesReferences();
 
-  const [activeTab, setActiveTab] = useState<'entry' | 'register'>('entry');
+  const [activeTab, setActiveTab] = useState<TabMode>('entry');
   const [slipTypeFilter, setSlipTypeFilter] = useState<string>('ALL');
 
   // Formulaire de saisie
@@ -96,7 +98,7 @@ export function PaperSlipReportScreen() {
   const [paymentMethod, setPaymentMethod] = useState<
     'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT'
   >('CASH');
-  const [cashAccountId, setCashAccountId] = useState('');
+  const cashAccountId = '';
 
   // Spécifique RE
   const [reAmountXaf, setReAmountXaf] = useState<number>(0);
@@ -109,7 +111,7 @@ export function PaperSlipReportScreen() {
 
   // Spécifique RF
   const [rfSourceAccountId, setRfSourceAccountId] = useState('');
-  const [rfDestinationAccountId, setRfDestinationAccountId] = useState('');
+  const rfDestinationAccountId = '';
   const [rfAmountXaf, setRfAmountXaf] = useState<number>(0);
 
   // État de soumission
@@ -141,7 +143,7 @@ export function PaperSlipReportScreen() {
 
   const continuityReport = analyzeContinuity(filteredSlips.map((s) => s.paperSlipRef));
 
-  const tabOptions: readonly SegmentedOption[] = [
+  const tabOptions: readonly SegmentedOption<TabMode>[] = [
     { value: 'entry', label: t('piece.report_tab_entry', 'Saisie du report') },
     { value: 'register', label: t('piece.report_tab_register', 'Registre des carnets (RC)') },
   ];
@@ -224,26 +226,28 @@ export function PaperSlipReportScreen() {
       return {
         code: 'BV',
         donnees: {
-          numeroVente: record.paperSlipRef,
+          numero: record.paperSlipRef,
+          client: 'Client sur pièce',
+          telephone: null,
+          anonyme: false,
+          pointDeVente: null,
           dateHeure: record.occurredAt,
-          nomClient: 'Client sur pièce',
+          vendeur: 'Opérateur terrain',
           lignes: [
             {
-              nomProduit: record.description,
-              quantite: 1,
-              prixUnitaireXaf: record.amountXaf ?? 0,
-              totalLigneXaf: record.amountXaf ?? 0,
+              designation: record.description,
+              unite: 'U',
+              quantite: '1',
+              prixUnitaire: record.amountXaf ?? 0,
+              remise: 0,
+              montant: record.amountXaf ?? 0,
             },
           ],
-          totalXaf: record.amountXaf ?? 0,
-          reglement: {
-            mode: 'ESPECES',
-            montantVerseXaf: record.amountXaf ?? 0,
-          },
-          commercial: {
-            nom: 'Opérateur terrain',
-            telephone: null,
-          },
+          total: record.amountXaf ?? 0,
+          moyens: ['Espèces'],
+          encaisse: record.amountXaf ?? 0,
+          reference: null,
+          resteDu: 0,
         },
       };
     }
@@ -251,12 +255,17 @@ export function PaperSlipReportScreen() {
       return {
         code: 'RE',
         donnees: {
-          numeroRecu: record.paperSlipRef,
+          numero: record.paperSlipRef,
+          recuDe: 'Client sur pièce',
+          telephone: null,
+          site: null,
           dateHeure: record.occurredAt,
-          nomClient: 'Client sur pièce',
-          montantXaf: record.amountXaf ?? 0,
-          modeReglement: 'ESPECES',
-          motif: record.description,
+          montant: record.amountXaf ?? 0,
+          resteDu: 0,
+          moyen: 'Espèces',
+          reference: null,
+          objet: null,
+          objetNumero: record.description,
           caissier: 'Opérateur terrain',
         },
       };
@@ -265,13 +274,20 @@ export function PaperSlipReportScreen() {
       return {
         code: 'BD',
         donnees: {
-          numeroBon: record.paperSlipRef,
-          dateHeure: record.occurredAt,
+          numero: record.paperSlipRef,
           beneficiaire: record.description,
-          montantXaf: record.amountXaf ?? 0,
-          motif: record.description,
+          pieceIdentite: null,
+          caisse: 'Caisse terrain',
+          dateHeure: record.occurredAt,
+          etabliPar: 'Opérateur terrain',
+          nature: 'dépense',
+          categorie: null,
+          objet: record.description,
+          imputeA: null,
+          factureOuBc: null,
+          montant: record.amountXaf ?? 0,
+          justificatifs: [],
           autorisePar: 'Responsable',
-          payePar: 'Caisse terrain',
         },
       };
     }
@@ -289,17 +305,18 @@ export function PaperSlipReportScreen() {
       />
 
       <div className="report-tabs">
-        <Segmented
+        <Segmented<TabMode>
+          label={t('piece.tabs_label', 'Mode d’affichage')}
           options={tabOptions}
           value={activeTab}
-          onChange={(val) => setActiveTab(val as 'entry' | 'register')}
+          onChange={setActiveTab}
         />
       </div>
 
       {activeTab === 'entry' ? (
         <form onSubmit={handleSubmit} className="report-form">
           {lastSubmittedRef ? (
-            <Banner tone="success">
+            <Banner tone="ok">
               {t('piece.report_success', {
                 ref: lastSubmittedRef,
                 defaultValue: `Pièce ${lastSubmittedRef} enregistrée dans la file d’attente locale (outbox).`,
@@ -307,7 +324,7 @@ export function PaperSlipReportScreen() {
             </Banner>
           ) : null}
 
-          {submitError ? <Banner tone="danger">{submitError}</Banner> : null}
+          {submitError ? <Banner tone="bad">{submitError}</Banner> : null}
 
           <Card title={t('piece.section_general', 'Informations du carnet papier')}>
             <div className="report-grid-2">
@@ -346,7 +363,7 @@ export function PaperSlipReportScreen() {
             {/* Avertissements de continuité en temps réel (AV-312) */}
             {continuityCheck.isDuplicate ? (
               <div className="report-continuity-alert">
-                <Banner tone="warning">
+                <Banner tone="warn">
                   {t(
                     'piece.duplicate_warning',
                     'Numéro déjà saisi : cette référence existe déjà sur cet appareil. Le doublon sera signalé sans être rejeté (BR-SYN-007).',
@@ -380,12 +397,12 @@ export function PaperSlipReportScreen() {
                 )}
               </Field>
 
-              {refs?.sites && refs.sites.length > 0 ? (
+              {refs?.sites && refs.sites.size > 0 ? (
                 <Field label={t('common.site', 'Site')}>
                   {(ctrl) => (
                     <Select {...ctrl} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
                       <option value="">{t('common.choose_site', 'Choisir un site…')}</option>
-                      {refs.sites.map((s) => (
+                      {Array.from(refs.sites.values()).map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
@@ -399,7 +416,7 @@ export function PaperSlipReportScreen() {
             {/* Évaluation de la fenêtre d'antidatage (AV-078) */}
             {backdatingEval.isCriticalDelay ? (
               <div className="report-continuity-alert">
-                <Banner tone="warning">
+                <Banner tone="warn">
                   {t(
                     'piece.critical_delay_warning',
                     'Attention : le délai de report dépasse 72 h (AV-078). Cette pièce fera l’objet d’une vérification comptable a posteriori.',
@@ -448,7 +465,7 @@ export function PaperSlipReportScreen() {
                         </option>
                         {refs.customers.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} {c.phonePrimary ? `(${c.phonePrimary})` : ''}
+                            {c.display_name} {c.phone_primary ? `(${c.phone_primary})` : ''}
                           </option>
                         ))}
                       </Select>
@@ -771,7 +788,7 @@ export function PaperSlipReportScreen() {
           </div>
 
           {continuityReport.duplicates.length > 0 ? (
-            <Banner tone="warning">
+            <Banner tone="warn">
               {t('piece.duplicates_summary', {
                 refs: continuityReport.duplicates.map((d) => `${d.ref} (${d.count}x)`).join(', '),
                 defaultValue: `Doublons détectés : ${continuityReport.duplicates.map((d) => `${d.ref} (${d.count}x)`).join(', ')}.`,
@@ -802,16 +819,16 @@ export function PaperSlipReportScreen() {
                 <Card key={slip.commandId} className="report-slip-card">
                   <div className="report-slip-card-header">
                     <div>
-                      <Badge tone="neutral">{slip.slipType}</Badge>{' '}
+                      <Badge tone="muted">{slip.slipType}</Badge>{' '}
                       <span className="report-slip-ref">{slip.paperSlipRef}</span>
                     </div>
                     <Badge
                       tone={
                         slip.status === 'SYNCED'
-                          ? 'success'
+                          ? 'ok'
                           : slip.status === 'CONFLICT'
-                            ? 'warning'
-                            : 'neutral'
+                            ? 'warn'
+                            : 'muted'
                       }
                     >
                       {slip.status}

@@ -6,6 +6,14 @@ import { randomInt } from 'node:crypto';
 import type mysql from 'mysql2/promise';
 import { poolUtc } from '../seeds/connection.js';
 
+if (!process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile(new URL('../.env', import.meta.url));
+  } catch {
+    // Pas de fichier local .env
+  }
+}
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   throw new Error(

@@ -57,6 +57,13 @@ export function trustProxyOption(
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  if (!source.SERVER_DATABASE_URL && source === process.env) {
+    try {
+      process.loadEnvFile(new URL('../../.env', import.meta.url));
+    } catch {
+      // Pas de fichier .env local
+    }
+  }
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new Error(

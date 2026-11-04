@@ -20,44 +20,44 @@ export interface ReportSlipDraft {
   /** "YYYY-MM-DDTHH:mm" */
   readonly occurredAt: string;
   readonly backdatedReason: string;
-  readonly siteId?: string;
+  readonly siteId?: string | undefined;
 
   // Spécifique Bon de Vente (BV)
-  readonly customerId?: string;
-  readonly customerName?: string;
-  readonly productId?: string;
-  readonly quantity?: number;
-  readonly unitPriceXaf?: number;
-  readonly totalAmountXaf?: number;
-  readonly paymentMethod?: 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT';
-  readonly cashAccountId?: string;
+  readonly customerId?: string | undefined;
+  readonly customerName?: string | undefined;
+  readonly productId?: string | undefined;
+  readonly quantity?: number | undefined;
+  readonly unitPriceXaf?: number | undefined;
+  readonly totalAmountXaf?: number | undefined;
+  readonly paymentMethod?: 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | 'CREDIT' | undefined;
+  readonly cashAccountId?: string | undefined;
 
   // Spécifique Reçu d'encaissement (RE)
-  readonly rePaymentMethod?: 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER';
-  readonly reAmountXaf?: number;
-  readonly reNotes?: string;
+  readonly rePaymentMethod?: 'CASH' | 'MOMO' | 'OM' | 'BANK_TRANSFER' | undefined;
+  readonly reAmountXaf?: number | undefined;
+  readonly reNotes?: string | undefined;
 
   // Spécifique Bon de Décaissement / Dépense (BD)
-  readonly bdPayeeName?: string;
-  readonly bdAmountXaf?: number;
-  readonly bdDescription?: string;
-  readonly bdCategoryId?: string;
+  readonly bdPayeeName?: string | undefined;
+  readonly bdAmountXaf?: number | undefined;
+  readonly bdDescription?: string | undefined;
+  readonly bdCategoryId?: string | undefined;
 
   // Spécifique Remise de Fonds (RF)
-  readonly rfSourceAccountId?: string;
-  readonly rfDestinationAccountId?: string;
-  readonly rfAmountXaf?: number;
+  readonly rfSourceAccountId?: string | undefined;
+  readonly rfDestinationAccountId?: string | undefined;
+  readonly rfAmountXaf?: number | undefined;
 
   // Spécifique Commande Client (CC)
-  readonly ccDeliveryDate?: string;
+  readonly ccDeliveryDate?: string | undefined;
 
   // Spécifique Transfert (BT)
-  readonly btSourceLocationId?: string;
-  readonly btTargetLocationId?: string;
+  readonly btSourceLocationId?: string | undefined;
+  readonly btTargetLocationId?: string | undefined;
 
   // Spécifique Perte (FP)
-  readonly fpReasonCodeId?: string;
-  readonly fpNotes?: string;
+  readonly fpReasonCodeId?: string | undefined;
+  readonly fpNotes?: string | undefined;
 }
 
 export interface ReportedSlipRecord {

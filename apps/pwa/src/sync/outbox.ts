@@ -15,21 +15,22 @@ export interface EnqueueInput {
   readonly commandVersion: number;
   readonly aggregateType: string;
   /** Omis pour une création : un nouvel UUIDv7 est alors généré (l'appareil choisit l'id). */
-  readonly aggregateId?: string;
-  readonly baseVersion?: number | null;
-  readonly dependsOn?: readonly string[];
+  readonly aggregateId?: string | undefined;
+  readonly baseVersion?: number | null | undefined;
+  readonly dependsOn?: readonly string[] | undefined;
   readonly payload: unknown;
   readonly capturedOffline: boolean;
-  readonly backdatedReason?: string | null;
-  readonly attachmentIds?: readonly string[];
+  readonly occurredAt?: string | null | undefined;
+  readonly backdatedReason?: string | null | undefined;
+  readonly attachmentIds?: readonly string[] | undefined;
   /**
    * Photos jointes à l'opération (MP-10, ADR-046) : chacune est enregistrée par sa propre commande
    * `attachments.attachment.register`, placée juste avant l'opération dans la file (sans `depends_on` :
    * un refus de la pièce ne doit pas faire refuser le fait), ses octets partent après l'envoi.
    */
-  readonly attachments?: readonly NewAttachment[];
+  readonly attachments?: readonly NewAttachment[] | undefined;
   /** Indices locaux (hors enveloppe, jamais envoyés), voir `OutboxCommand.local_flags`. */
-  readonly localFlags?: readonly string[];
+  readonly localFlags?: readonly string[] | undefined;
 }
 
 /** Commande qui enregistre une pièce jointe (métadonnées ; les octets partent ensuite, ADR-012). */
@@ -104,7 +105,7 @@ export async function enqueueCommand(
       aggregate_id: aggregateId,
       base_version: input.baseVersion ?? null,
       depends_on: input.dependsOn ?? [],
-      occurred_at: now,
+      occurred_at: input.occurredAt ?? now,
       client_created_at: now,
       captured_offline: input.capturedOffline,
       backdated_reason: input.backdatedReason ?? null,

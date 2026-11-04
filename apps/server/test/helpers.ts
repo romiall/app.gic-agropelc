@@ -19,6 +19,14 @@ import {
   type AccessTokenClaims,
 } from '../src/modules/identity/application/public/jwt.js';
 
+if (!process.env.SERVER_DATABASE_URL) {
+  try {
+    process.loadEnvFile(new URL('../.env', import.meta.url));
+  } catch {
+    // Pas de fichier local .env
+  }
+}
+
 const SERVER_DATABASE_URL = process.env.SERVER_DATABASE_URL;
 if (!SERVER_DATABASE_URL) {
   throw new Error(

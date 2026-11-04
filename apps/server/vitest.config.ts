@@ -1,6 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+try {
+  process.loadEnvFile(new URL('.env', import.meta.url));
+} catch {
+  // Pas de fichier .env local
+}
+
 export default defineConfig({
   resolve: {
     alias: {

@@ -62,7 +62,7 @@ vi.mock('../../storage/db.js', () => ({
 }));
 
 vi.mock('dexie-react-hooks', () => ({
-  useLiveQuery: (fn: () => unknown) => {
+  useLiveQuery: () => {
     // Rend 2 pièces pour les tests
     return [
       {
