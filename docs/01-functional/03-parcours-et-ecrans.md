@@ -217,3 +217,4 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 | ECR-ANA-05 | Tableau Finance | FINANCE | Non | P9, livré en RP-4 (03/11/2026) |
 | ECR-ANA-06 | Explorateur analytique (filtrer, trier, grouper, colonnes, agréger, exporter, vues sauvegardées) | Selon permissions | Non | P9, livré en RP-4 (03/11/2026) |
 | ECR-KOM-01 | Paramétrage et supervision Kommo | ADMIN | Non | P10 |
+| ECR-PIE-01 | Reporter une pièce papier et registre des carnets (AV-308, AV-312) | Tous rôles opérationnels, FINANCE, DIRECTION | Oui | PP-B (04/11/2026) |

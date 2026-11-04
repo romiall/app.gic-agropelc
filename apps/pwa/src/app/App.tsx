@@ -288,6 +288,11 @@ const AnalyticsExplorerScreen = lazy(() =>
     default: m.AnalyticsExplorerScreen,
   })),
 );
+const PaperSlipReportScreen = lazy(() =>
+  import('../features/pieces/PaperSlipReportScreen.js').then((m) => ({
+    default: m.PaperSlipReportScreen,
+  })),
+);
 // Page de référence des composants (ADR-049), réservée au développement : `import.meta.env.DEV` vaut
 // `false` à la construction, la branche et son import sont supprimés (rien de la galerie dans `dist`).
 const ComponentGallery = import.meta.env.DEV
@@ -380,6 +385,7 @@ function AppShell() {
             <Route path={ROUTES.analyticsProduction} element={<ProductionDashboardScreen />} />
             <Route path={ROUTES.analyticsFinance} element={<FinanceDashboardScreen />} />
             <Route path={ROUTES.analyticsExplorer} element={<AnalyticsExplorerScreen />} />
+            <Route path={ROUTES.paperSlipReport} element={<PaperSlipReportScreen />} />
             {ComponentGallery ? (
               <Route path="/dev/composants" element={<ComponentGallery />} />
             ) : null}

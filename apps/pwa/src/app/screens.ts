@@ -131,6 +131,8 @@ export const ROUTES = {
   analyticsFinance: '/pilotage/finance',
   /** ECR-ANA-06 (RP-4) : explorateur analytique, vues sauvegardées & exports (`analytics.explore`). */
   analyticsExplorer: '/pilotage/explorateur',
+  /** ECR-PIE-01 (PP-B) : report de pièces papier & registre des carnets (AV-308, AV-312). */
+  paperSlipReport: '/pieces/report',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -480,6 +482,20 @@ export const ROLE_SETS = {
   analyticsFinance: ['FINANCE', 'DIRECTION'],
   /** ECR-ANA-06 (RP-4) : `analytics.explore` (DIR, RCO, RPR, RAC, FIN). */
   analyticsExplorer: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_PRODUCTION', 'RESP_ACHATS', 'FINANCE'],
+  /** ECR-PIE-01 (PP-B) : report de pièces papier & registre des carnets (AV-308, AV-312). */
+  paperSlipReport: [
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'MAGASINIER',
+    'RESP_FERME',
+    'RESP_PRODUCTION',
+    'RESP_ACHATS',
+    'FINANCE',
+    'ADMIN',
+    'DIRECTION',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -1140,6 +1156,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.analyticsExplorer,
     actionCodes: [],
     offline: false,
+  },
+  {
+    id: 'ECR-PIE-01',
+    path: ROUTES.paperSlipReport,
+    labelKey: 'paper_slip_report',
+    group: 'general',
+    roles: ROLE_SETS.paperSlipReport,
+    actionCodes: ['REPORT_PAPER_SLIP', 'RECORD_PAPER_SLIP'],
+    offline: true,
   },
 ];
 
