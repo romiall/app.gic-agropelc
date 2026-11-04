@@ -29,6 +29,17 @@ export interface PlannedCommand {
   readonly aggregateType: string;
   readonly aggregateId: string;
   readonly payload: Record<string, unknown>;
+  /**
+   * Fait accompli saisi hors du système (pièce papier reportée, PP-C) : l'heure et le motif d'antidatage sont ceux de
+   * la pièce, la commande part « saisie hors ligne » même appareil connecté (BR-SYN-007). Absent : l'heure de la saisie.
+   */
+  readonly occurredAt?: string;
+  readonly backdatedReason?: string | null;
+  readonly capturedOffline?: boolean;
+  /** Commandes de l'outbox dont l'envoi doit précéder celle-ci (compte ou commande encore en attente). */
+  readonly dependsOn?: readonly string[];
+  /** Indices locaux, jamais envoyés (registre des carnets). */
+  readonly localFlags?: readonly string[];
 }
 
 export interface RowOutcome {
@@ -68,6 +79,12 @@ export interface ImportPlan {
   readonly counts: Readonly<Record<RowStatus, number>>;
 }
 
+/** Une ligne du fichier telle que lue : son numéro et ses cellules rattachées aux colonnes du modèle. */
+export interface FileRecord {
+  readonly line: number;
+  readonly record: Readonly<Record<string, string>>;
+}
+
 export interface ImportEntity {
   readonly id: string;
   readonly label: string;
@@ -82,6 +99,17 @@ export interface ImportEntity {
   readonly roles: readonly string[];
   planRow(
     record: Readonly<Record<string, string>>,
+    refs: ImportRefs,
+    planned: PlannedKeys,
+  ): Promise<RowOutcome> | RowOutcome;
+  /**
+   * Types dont un élément tient en plusieurs lignes du fichier (une pièce papier à plusieurs lignes de produit) :
+   * clé de regroupement d'une ligne, ou `undefined` pour une ligne isolée. Avec elle, `planGroup` remplace `planRow` :
+   * il reçoit toutes les lignes du même élément, dans l'ordre du fichier.
+   */
+  groupKey?(record: Readonly<Record<string, string>>): string | undefined;
+  planGroup?(
+    group: readonly FileRecord[],
     refs: ImportRefs,
     planned: PlannedKeys,
   ): Promise<RowOutcome> | RowOutcome;
@@ -115,6 +143,28 @@ export function mapHeader(
   return { keys, unknown };
 }
 
+/**
+ * Éléments à contrôler : une ligne chacun, ou, pour un type groupé, toutes les lignes d'un même élément (réunies à la
+ * place de sa première ligne, dans l'ordre du fichier). Une ligne sans clé de regroupement reste seule.
+ */
+function groupRecords(entity: ImportEntity, records: readonly FileRecord[]): FileRecord[][] {
+  if (!entity.groupKey) return records.map((record) => [record]);
+  const groups: FileRecord[][] = [];
+  const byKey = new Map<string, FileRecord[]>();
+  for (const record of records) {
+    const key = entity.groupKey(record.record);
+    const known = key === undefined ? undefined : byKey.get(key);
+    if (known) {
+      known.push(record);
+    } else {
+      const group = [record];
+      groups.push(group);
+      if (key !== undefined) byKey.set(key, group);
+    }
+  }
+  return groups;
+}
+
 /** Contrôle un fichier lu pour un type de données : aucune écriture. */
 export async function planImport(
   entity: ImportEntity,
@@ -131,12 +181,18 @@ export async function planImport(
   if (missingColumns.length === 0) {
     const firstLineOf = new Map<string, number>();
     const planned = new Map<string, Set<string>>();
-    for (const row of csv.rows) {
+    const records: FileRecord[] = csv.rows.map((row) => {
       const record: Record<string, string> = {};
       keys.forEach((key, index) => {
         if (key !== null) record[key] = row.cells[index] ?? '';
       });
-      const outcome = await entity.planRow(record, refs, planned);
+      return { line: row.line, record };
+    });
+    for (const group of groupRecords(entity, records)) {
+      const row = group[0]!;
+      const outcome = entity.planGroup
+        ? await entity.planGroup(group, refs, planned)
+        : await entity.planRow(row.record, refs, planned);
       let status: RowStatus;
       let issues = outcome.issues;
       if (outcome.issues.length > 0) {

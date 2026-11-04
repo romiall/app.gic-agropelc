@@ -37,6 +37,7 @@ import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
 import {
   LOSS_CATEGORIES,
   declareLoss,
+  findLossDeclaration,
   registerLossDecisionHandlers,
 } from '../public/loss-declaration.js';
 import { virtualLocationId, tryRecordMove, documentLocation, withStockScope } from './shared.js';
@@ -103,6 +104,10 @@ function buildLossCommands(
 
   const declare: CommandHandler<DeclarePayload> = async (uow, envelope) => {
     const p = envelope.payload;
+    // Rejeu sous un autre `command_id` (fichier de pièces papier rechargé, PP-C) : la déclaration existe déjà, rien
+    // n'est refait. Sans cette garde, l'écriture échouerait sur la clé primaire et l'appareil la renverrait sans fin.
+    const replay = await findLossDeclaration(uow, envelope.aggregate_id);
+    if (replay) return { status: 'APPLIED', serverRefs: { docNumber: replay.docNumber } };
     const result = await declareLoss(
       uow,
       { idGenerator, documentSequences },

@@ -90,14 +90,18 @@ describe('ImportScreen (RP-2, PP-C)', () => {
     const options = within(kinds)
       .getAllByRole('option')
       .map((option) => option.textContent);
-    expect(options).toEqual(['Catégories de produit', 'Produits']);
+    expect(options).toEqual([
+      'Catégories de produit',
+      'Produits',
+      'Pièces papier (historique des carnets)',
+    ]);
     expect(
       screen.getByText(/Réservé à d’autres rôles : Fournisseurs, Clients\./),
     ).toBeInTheDocument();
   });
 
   it('un rôle sans aucun chargement ne voit que l’explication', async () => {
-    await asRoles(['MAGASINIER']);
+    await asRoles(['VISITEUR']);
     renderScreen();
     expect(
       await screen.findByText('Aucun chargement de données n’est ouvert à votre rôle.'),

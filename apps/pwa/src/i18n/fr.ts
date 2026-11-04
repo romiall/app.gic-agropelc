@@ -5801,6 +5801,9 @@ export const fr = {
     columns_title: 'Colonnes du fichier',
     column_required: 'obligatoire',
     column_optional: 'facultative',
+    reason_label: 'Motif d’antidatage commun',
+    reason_hint:
+      'Pour les pièces de plus de 24 h dont le fichier ne donne pas de motif (colonne « Motif d’antidatage »).',
     file_label: 'Fichier CSV',
     file_hint:
       'Le fichier est lu sur cet appareil. Rien n’est envoyé tant que vous ne touchez pas « Charger ».',

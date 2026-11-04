@@ -3,6 +3,7 @@
  * dépendance à la base locale ni au réseau, pour que le contrôle soit pur et testable. L'écran les remplit avec les
  * référentiels de l'appareil et les créations encore dans l'outbox (une création en attente occupe déjà son code).
  */
+import type { SlipContext } from '../pieces/report-form.js';
 import type { CustomerData } from '../sales/types.js';
 
 export interface ImportCategory {
@@ -60,6 +61,15 @@ export interface ImportRefs {
   readonly pendingCustomerPhones: ReadonlySet<string>;
   /** Indicatif national des numéros saisis sans indicatif (`crm.phone_default_country_code`, 237 par défaut). */
   readonly phoneCountryCode: string;
+  /**
+   * Pièces papier (PP-C) : les référentiels de l'appareil tels que les lit l'écran de report, avec l'utilisateur, ses
+   * rôles et l'instant du contrôle. Absent : les pièces ne sont pas chargeables (essais sans appareil).
+   */
+  readonly slipContext?: SlipContext;
+  /** Pièces déjà reportées depuis cet appareil et non refusées : `TYPE|numéro` (jamais reportées deux fois). */
+  readonly reportedSlips: ReadonlySet<string>;
+  /** Motif d'antidatage commun, saisi à l'écran, pour les pièces de plus de 24 h dont le fichier n'en donne pas. */
+  readonly defaultBackdatedReason?: string;
 }
 
 export const EMPTY_IMPORT_REFS: ImportRefs = {
@@ -75,4 +85,5 @@ export const EMPTY_IMPORT_REFS: ImportRefs = {
   customers: [],
   pendingCustomerPhones: new Set(),
   phoneCountryCode: '237',
+  reportedSlips: new Set(),
 };

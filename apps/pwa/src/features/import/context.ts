@@ -7,6 +7,7 @@
 import { DomainError, normalizePhone } from '@gic/domain';
 import { pendingCatalogCodes } from '../catalog/catalog.js';
 import { DEFAULT_COUNTRY_CODE, prospectZoneOptions } from '../crm/prospect.js';
+import { FLAG_PAPER_REF, FLAG_PAPER_SLIP, FLAG_SLIP_TYPE } from '../pieces/report-commands.js';
 import { pendingSupplierCodes } from '../procurement/suppliers.js';
 import type { SalesReferences } from '../sales/references.js';
 import { sellingLocations } from '../sales/sale-form.js';
@@ -80,6 +81,18 @@ export function buildImportRefs({
   const commercial = roles.some((role) => COMMERCIAL_ROLES.includes(role));
   const homeSiteRequired = !commercial;
 
+  // Pièces papier déjà reportées depuis l'appareil (type et numéro portés par les indices locaux de la commande).
+  const reportedSlips = new Set<string>();
+  for (const command of live) {
+    const flags = command.local_flags ?? [];
+    if (!flags.includes(FLAG_PAPER_SLIP)) continue;
+    const type = flags
+      .find((flag) => flag.startsWith(FLAG_SLIP_TYPE))
+      ?.slice(FLAG_SLIP_TYPE.length);
+    const ref = flags.find((flag) => flag.startsWith(FLAG_PAPER_REF))?.slice(FLAG_PAPER_REF.length);
+    if (type && ref) reportedSlips.add(`${type}|${ref}`);
+  }
+
   return {
     unitCodes: new Set(
       [...references.units.values()].filter((unit) => unit.is_active).map((unit) => unit.code),
@@ -110,5 +123,7 @@ export function buildImportRefs({
     customers: references.customers,
     pendingCustomerPhones,
     phoneCountryCode,
+    slipContext: { refs: references, userId, roles: roles.length > 0 ? roles : null, now },
+    reportedSlips,
   };
 }

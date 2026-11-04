@@ -284,6 +284,32 @@ async function transferExists(uow: UnitOfWork, transferId: string): Promise<bool
   return row !== undefined;
 }
 
+/**
+ * Rejeu d'une expédition directe déjà appliquée : même identifiant, même paire d'emplacements, même expéditeur. Le
+ * chargement par lots des pièces papier (PP-C) dérive l'identifiant du type et du numéro de la pièce : recharger le
+ * fichier renvoie la même expédition sous un autre `command_id`, qui doit être reconnue (rien n'est refait) et non
+ * refusée comme un identifiant « pris » par un autre transfert.
+ */
+async function isDispatchReplay(
+  uow: UnitOfWork,
+  transferId: string,
+  pair: TransferPair,
+  author: string,
+): Promise<boolean> {
+  const row = await uow
+    .selectFrom('inventory_stock_transfers')
+    .select(['from_location_id', 'to_location_id', 'dispatched_by'])
+    .where('id', '=', toBin(transferId))
+    .executeTakeFirst();
+  return (
+    row !== undefined &&
+    row.dispatched_by !== null &&
+    fromBin(row.from_location_id).toLowerCase() === pair.fromLocationId.toLowerCase() &&
+    fromBin(row.to_location_id).toLowerCase() === pair.toLocationId.toLowerCase() &&
+    fromBin(row.dispatched_by).toLowerCase() === author.toLowerCase()
+  );
+}
+
 /** Réceptions sans document `UNMATCHED` de la paire, avec leurs lignes (verrouillées). */
 async function pendingBlindReceipts(
   uow: UnitOfWork,
@@ -562,7 +588,9 @@ ${refusal}`
         .execute();
     } else {
       if (closedRequest === undefined && (await transferExists(uow, envelope.aggregate_id))) {
-        return TRANSFER_ID_TAKEN;
+        return (await isDispatchReplay(uow, envelope.aggregate_id, pair, envelope.author_user_id))
+          ? { status: 'APPLIED' }
+          : TRANSFER_ID_TAKEN;
       }
       receipts = await pendingBlindReceipts(uow, pair);
       // L'agrégat d'une expédition de demande est la demande : l'expédition directe qui la remplace a son

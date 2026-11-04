@@ -5,9 +5,7 @@
  * chargement l'envoie. Les identifiants sont stables (`importEntityId`) : charger deux fois le même fichier ne crée
  * rien de plus.
  */
-import { DomainError, normalizePhone } from '@gic/domain';
 import { ROLE_SETS } from '../../app/screens.js';
-import type { CustomerData } from '../sales/types.js';
 import {
   categoryPayload,
   checkCategory,
@@ -46,6 +44,8 @@ import {
   type ImportEntity,
   type RowOutcome,
 } from './model.js';
+import { customersByPhone } from './phones.js';
+import { SLIPS_ENTITY } from './slips.js';
 
 const CATALOG_ISSUES: Readonly<Record<CatalogIssue, string>> = {
   CODE_INVALID: 'Code invalide : lettres majuscules, chiffres, tiret et tiret bas seulement.',
@@ -593,32 +593,6 @@ const CUSTOMER_COLUMNS: readonly ColumnDef[] = [
   },
 ];
 
-const phoneIndexes = new WeakMap<
-  readonly CustomerData[],
-  { readonly countryCode: string; readonly byPhone: ReadonlyMap<string, CustomerData> }
->();
-
-/** Comptes de l'appareil par téléphone normalisé (hors comptes fusionnés), comme le repère `checkProspect`. */
-function customersByPhone(
-  customers: readonly CustomerData[],
-  countryCode: string,
-): ReadonlyMap<string, CustomerData> {
-  const cached = phoneIndexes.get(customers);
-  if (cached !== undefined && cached.countryCode === countryCode) return cached.byPhone;
-  const byPhone = new Map<string, CustomerData>();
-  for (const customer of customers) {
-    if (customer.merged_into_id !== null || customer.phone_primary === null) continue;
-    try {
-      const phone = normalizePhone(customer.phone_primary, countryCode);
-      if (!byPhone.has(phone)) byPhone.set(phone, customer);
-    } catch (error) {
-      if (!(error instanceof DomainError)) throw error;
-    }
-  }
-  phoneIndexes.set(customers, { countryCode, byPhone });
-  return byPhone;
-}
-
 const decimal = (value: string | undefined): number | null | undefined => {
   if (value === undefined) return undefined;
   const parsed = Number(value.replace(',', '.'));
@@ -762,4 +736,5 @@ export const IMPORT_ENTITIES: readonly ImportEntity[] = [
   PRODUCTS_ENTITY,
   SUPPLIERS_ENTITY,
   CUSTOMERS_ENTITY,
+  SLIPS_ENTITY,
 ].sort((a, b) => a.order - b.order);

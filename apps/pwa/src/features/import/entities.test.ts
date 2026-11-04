@@ -477,6 +477,9 @@ describe('contrôle d’un fichier', () => {
 
   it('chaque fichier modèle se charge sans erreur (garde contre un exemple que le contrôle refuserait)', async () => {
     for (const entity of IMPORT_ENTITIES) {
+      // Les pièces papier se contrôlent avec les référentiels d'un appareil (emplacements, produits, comptes) :
+      // leur fichier modèle est gardé dans `slips.test.ts`, colonne par colonne.
+      if (entity.id === 'slips') continue;
       // L'exemple de produit cite la catégorie VOLAILLE (qui doit exister) ; celui des catégories la crée.
       const context =
         entity.id === 'categories'
@@ -496,12 +499,13 @@ describe('contrôle d’un fichier', () => {
     }
   });
 
-  it('les types sont proposés dans l’ordre de chargement : catégories, produits, fournisseurs, clients', () => {
+  it('les types sont proposés dans l’ordre de chargement : catégories, produits, fournisseurs, clients, pièces', () => {
     expect(IMPORT_ENTITIES.map((entity) => entity.id)).toEqual([
       'categories',
       'products',
       'suppliers',
       'customers',
+      'slips',
     ]);
   });
 

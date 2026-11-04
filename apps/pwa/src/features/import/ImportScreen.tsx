@@ -31,6 +31,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
+import { MAX_BACKDATED_REASON } from '../pieces/report-commands.js';
 import { useSalesReferences } from '../sales/references.js';
 import { phaseOf, rejectionMessage, saveErrorKey, submitCommand } from '../sales/submit.js';
 import { buildImportRefs } from './context.js';
@@ -305,6 +306,8 @@ export function ImportScreen() {
   const [progress, setProgress] = useState(0);
   const [sent, setSent] = useState<readonly SentRow[]>([]);
   const [stopped, setStopped] = useState<string>();
+  /** Motif d'antidatage commun aux pièces papier de plus de 24 h dont le fichier ne donne pas de motif. */
+  const [commonReason, setCommonReason] = useState('');
   /** Numéro du dernier contrôle lancé : le résultat d'un contrôle dépassé est ignoré. */
   const checkTicket = useRef(0);
 
@@ -342,7 +345,12 @@ export function ImportScreen() {
     const ticket = checkTicket.current;
     setPhase('checking');
     setPlan(undefined);
-    const result = await planImport(target, csv, importRefs);
+    const reason = commonReason.trim();
+    const result = await planImport(
+      target,
+      csv,
+      reason === '' ? importRefs : { ...importRefs, defaultBackdatedReason: reason },
+    );
     if (ticket !== checkTicket.current) return;
     setPlan(result);
     setPhase('ready');
@@ -408,6 +416,16 @@ export function ImportScreen() {
             aggregateType: command.aggregateType,
             aggregateId: command.aggregateId,
             payload: command.payload,
+            // Pièce papier : heure et motif de la pièce, fait accompli saisi hors du système (BR-SYN-007).
+            ...(command.occurredAt !== undefined ? { occurredAt: command.occurredAt } : {}),
+            ...(command.backdatedReason !== undefined
+              ? { backdatedReason: command.backdatedReason }
+              : {}),
+            ...(command.capturedOffline !== undefined
+              ? { capturedOffline: command.capturedOffline }
+              : {}),
+            ...(command.dependsOn !== undefined ? { dependsOn: command.dependsOn } : {}),
+            ...(command.localFlags !== undefined ? { localFlags: command.localFlags } : {}),
           });
           queued.push({ commandId: entry.command_id, line: row.line, key: row.key });
           if (queued.length % PROGRESS_STEP === 0) setProgress(queued.length);
@@ -469,6 +487,27 @@ export function ImportScreen() {
               </Button>
             </div>
             <ColumnsHelp entity={entity} />
+            {entity.id === 'slips' ? (
+              <Field
+                label={t('data_import.reason_label')}
+                hint={t('data_import.reason_hint')}
+                optional
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={commonReason}
+                    maxLength={MAX_BACKDATED_REASON}
+                    disabled={busy}
+                    onChange={(event) => setCommonReason(event.target.value)}
+                    // Le contrôle déjà fait est refait avec le nouveau motif.
+                    onBlur={() => {
+                      if (file && phase === 'ready') void check(entity, file.csv);
+                    }}
+                  />
+                )}
+              </Field>
+            ) : null}
             <Field
               label={t('data_import.file_label')}
               hint={t('data_import.file_hint')}

@@ -500,8 +500,9 @@ export const ROLE_SETS = {
   ],
   /**
    * ECR-IMP-01 (RP-2, PP-C) : les rôles de l'un des types chargeables — catalogue (`catalog.*.manage` : administrateur),
-   * fournisseurs (`procurement.supplier.manage` : responsable des achats), clients (`crm.customer.create`). Chaque type
-   * garde ses propres rôles (`ImportEntity.roles`) ; un essai garde cette liste égale à leur réunion.
+   * fournisseurs (`procurement.supplier.manage` : responsable des achats), clients (`crm.customer.create`), pièces
+   * papier (ceux de l'écran de report). Chaque type garde ses propres rôles (`ImportEntity.roles`) ; un essai garde
+   * cette liste égale à leur réunion.
    */
   dataImport: [
     'ADMIN',
@@ -511,6 +512,10 @@ export const ROLE_SETS = {
     'COMMERCIAL_SEDENTAIRE',
     'VENDEUR_PDV',
     'RESP_FERME',
+    'RESP_PRODUCTION',
+    'MAGASINIER',
+    'FINANCE',
+    'DIRECTION',
   ],
 } as const satisfies Record<string, readonly string[]>;
 

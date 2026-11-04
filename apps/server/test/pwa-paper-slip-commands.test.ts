@@ -131,13 +131,13 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     slip: ResolvedSlip,
     paperRef: string,
     occurredAt: string,
-    options: { readonly capturedOffline?: boolean } = {},
+    options: { readonly capturedOffline?: boolean; readonly aggregateId?: string } = {},
   ): Promise<{ command: ReportCommand; result: CommandResult }> {
     const command = buildReportCommand(slip, {
       paperRef,
       occurredAt,
       backdatedReason: 'Report de la pièce papier (essai)',
-      aggregateId: freshUuid(),
+      aggregateId: options.aggregateId ?? freshUuid(),
     });
     const envelope = device.enqueue(reporter.userId, {
       type: command.commandType,
@@ -512,6 +512,138 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
       const target = slipPhotoTarget(type)!;
       expect(ATTACHMENT_OWNER_TYPES).toContain(target.ownerType);
       expect(ATTACHMENT_KINDS).toContain(target.kind);
+    }
+  });
+
+  it('rechargement (PP-C) : la même pièce, sous le même identifiant et un autre command_id, n’est reportée qu’une fois', async () => {
+    // Le chargement par fichier dérive l'identifiant d'une pièce de son type et de son numéro (`importEntityId`) :
+    // recharger le fichier renvoie la même commande sous un autre `command_id`. Le serveur doit la reconnaître,
+    // sans doublon ni exception (une écriture qui échouerait serait rejouée sans fin par l'appareil).
+    const cases: readonly {
+      readonly type: string;
+      readonly table: string;
+      readonly hhmm: string;
+      readonly slip: ResolvedSlip;
+    }[] = [
+      {
+        type: 'BV',
+        table: 'sales_sales',
+        hhmm: '14:00',
+        slip: { type: 'BV', fromLocationId: world.counter, customerId, lines: [line(1)] },
+      },
+      {
+        type: 'CC',
+        table: 'sales_sales_orders',
+        hhmm: '14:05',
+        slip: {
+          type: 'CC',
+          customerId,
+          fulfilmentLocationId: world.store,
+          lines: [line(1)],
+          totalXaf: product.price,
+        },
+      },
+      {
+        type: 'RE',
+        table: 'sales_customer_payments',
+        hhmm: '14:10',
+        slip: {
+          type: 'RE',
+          customerId,
+          siteId: world.siteP,
+          payment: {
+            methodCode: 'MOBILE_MONEY_ORANGE',
+            amountXaf: 1_000,
+            reference: 'OM-IDEM-1',
+            cashAccountId: world.mobileAcc,
+          },
+        },
+      },
+      {
+        type: 'BD',
+        table: 'finance_expenses',
+        hhmm: '14:15',
+        slip: {
+          type: 'BD',
+          categoryId: expenseCategoryId,
+          siteId: world.siteP,
+          amountXaf: 1_500,
+          description: 'Sacs de rechange',
+          paidFromAccountId: world.posAcc,
+        },
+      },
+      {
+        type: 'RF',
+        table: 'finance_cash_transfers',
+        hhmm: '14:20',
+        slip: {
+          type: 'RF',
+          fromAccountId: world.posAcc,
+          toAccountId: world.central,
+          amountXaf: 2_000,
+        },
+      },
+      {
+        type: 'BR',
+        table: 'procurement_goods_receipts',
+        hhmm: '14:25',
+        slip: {
+          type: 'BR',
+          supplierId,
+          locationId: world.store,
+          lines: [
+            { productId: product.id, unitCode: 'PIECE', qtyDeliveredBase: 2, unitCostXaf: 300 },
+          ],
+        },
+      },
+      {
+        type: 'BT',
+        table: 'inventory_stock_transfers',
+        hhmm: '14:30',
+        slip: {
+          type: 'BT',
+          fromLocationId: world.store,
+          toLocationId: world.counter,
+          lines: [{ productId: product.id, unitCode: 'PIECE', quantityBase: 1 }],
+        },
+      },
+      {
+        type: 'FP',
+        table: 'inventory_loss_declarations',
+        hhmm: '14:35',
+        slip: {
+          type: 'FP',
+          locationId: world.store,
+          productId: product.id,
+          unitCode: 'PIECE',
+          quantity: 1,
+          quantityBase: 1,
+          category: 'CASSE',
+        },
+      },
+    ];
+    for (const entry of cases) {
+      const id = freshUuid();
+      const ref = `IDEM-${entry.type}`;
+      const first = await report(entry.slip, ref, at(entry.hhmm), { aggregateId: id });
+      applied(first.result);
+      // Une file qui ne se règle pas (renvoi sans fin d'une écriture qui échoue) est nommée par son type de pièce.
+      const again = await report(entry.slip, ref, at(entry.hhmm), { aggregateId: id }).catch(
+        (error: unknown) => {
+          throw new Error(
+            `${entry.type} : ${error instanceof Error ? error.message : String(error)}`,
+          );
+        },
+      );
+      expect(codeOf(again.result), `${entry.type} : ${JSON.stringify(again.result)}`).toMatch(
+        /^APPLIED/,
+      );
+      const rows = await db
+        .selectFrom(entry.table as 'sales_sales')
+        .select('id')
+        .where('id', '=', toBin(id))
+        .execute();
+      expect(rows, entry.type).toHaveLength(1);
     }
   });
 });
