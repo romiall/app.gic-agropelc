@@ -549,21 +549,21 @@ export const fr = {
       submit: 'Enregistrer la livraison',
       offline_banner:
         'Hors ligne : la livraison sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
-      result: {
-        WAITING_offline:
       unpaid_online:
         'Cette commande n’est pas entièrement payée (reste dû : {{amount}}) : le serveur refusera la livraison tant que le reste n’est pas encaissé.',
       unpaid_offline:
         'Cette commande n’est pas entièrement payée (reste dû : {{amount}}) : la livraison sera enregistrée, mais signalée à la Finance.',
       collect: 'Encaisser le reste dû',
+      result: {
+        WAITING_offline:
           'Livraison enregistrée sur ce téléphone, elle sera envoyée dès le retour du réseau.',
         WAITING_online: 'Livraison en cours d’envoi…',
         DONE: 'Livraison {{doc}} enregistrée.',
         WARNING: 'Livraison {{doc}} enregistrée, avec un avertissement à examiner.',
-        CONFLICT: 'Livraison mise en attente d’examen (conflit).',
-        REJECTED: 'Livraison refusée : {{reason}}',
         WARNING_DELIVERY_UNPAID:
           'Livraison {{doc}} enregistrée avant le paiement complet : le reste dû est signalé à la Finance.',
+        CONFLICT: 'Livraison mise en attente d’examen (conflit).',
+        REJECTED: 'Livraison refusée : {{reason}}',
       },
       back_to_order: 'Retour à la commande',
     },
@@ -5142,11 +5142,11 @@ export const fr = {
       crm_commercial_role_codes: 'Rôles considérés comme commerciaux',
       sales_direct_cancel_minutes: 'Délai d’annulation directe d’une vente',
       sales_default_payment_terms_days: 'Délai de paiement par défaut (vente à crédit)',
+      sales_delivery_requires_full_payment:
+        'Exiger la vente payée en entier avant de livrer une commande',
       sales_duplicate_payment_window_minutes: 'Fenêtre de détection d’un encaissement en double',
       sales_offline_over_allocation_allowed: 'Vente hors ligne au-delà du quota autorisée',
       sales_offline_unallocated_sale_signal: 'Signalement d’une vente hors ligne sans quota',
-      sales_delivery_requires_full_payment:
-        'Exiger la vente payée en entier avant de livrer une commande',
       sales_undelivered_alert_days: 'Jours avant l’alerte d’une vente non livrée',
       sales_high_loss_alert_sales_pct: 'Seuil d’alerte de perte, en part des ventes',
       sales_commercial_working_days: 'Jours travaillés des commerciaux',
@@ -5582,10 +5582,10 @@ export const fr = {
       ANONYMOUS_UNPAID: 'Vente anonyme non payée',
       ORDER_REFUSED_PAYMENT_KEPT: 'Commande refusée, acompte conservé',
       ORDER_OVER_FULFILMENT: 'Livraison au-delà de la commande',
+      DELIVERY_UNPAID: 'Livraison faite avant le paiement complet',
       VERSION_CONFLICT: 'Modification concurrente',
       LOT_CLOSED: 'Lot clôturé',
       LOT_NOT_SLAUGHTERABLE: 'Lot non abattable',
-      DELIVERY_UNPAID: 'Livraison faite avant le paiement complet',
       LOT_NOT_SELLABLE: 'Lot non vendable',
       INCUBATION_BALANCE: 'Écart d’incubation',
       TRANSFER_UNMATCHED: 'Transfert non rapproché',

@@ -266,24 +266,24 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: true,
       isClientVisible: true,
     });
-    expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({
-      value: 60,
-      isClientVisible: false,
     // Et `sales.delivery_requires_full_payment` à `false` laisserait livrer une commande non payée sans que
     // rien ne le signale : une commande se reçoit sans argent, elle se livre payée (AV-511).
     expect(seeded.get('sales.delivery_requires_full_payment')).toMatchObject({
       value: true,
       isClientVisible: true,
     });
+    expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({
+      value: 60,
+      isClientVisible: false,
     });
     for (const key of [
       'finance.cash_sessions_per_day_max',
       'finance.cash_session_required',
       'finance.cash_session_required_for_payouts',
+      'sales.delivery_requires_full_payment',
       'sync.pull_record_grain_seconds',
     ]) {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-      'sales.delivery_requires_full_payment',
         "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
         [key],
       );
