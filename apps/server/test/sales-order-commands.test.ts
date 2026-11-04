@@ -779,18 +779,55 @@ describe('sales.order.* — confirmation (P4-06)', () => {
 
   // --- Refus et rejeu ----------------------------------------------------------------------------------------
 
-  it('crédit : client non autorisé ou plafond dépassé — la commande n’est pas créée', async () => {
+  it('AV-511 : aucun contrôle d’argent à la commande — sans droit au crédit, au-delà du plafond, non payée ou payée en partie, elle est confirmée', async () => {
     const product = await sellable(1000);
-    await stock(product.id, 10, 300);
+    await stock(product.id, 20, 300);
+
+    // Client sans droit au crédit, rien payé : la commande est confirmée, la vente née de la confirmation
+    // porte le solde dû (BR-VEN-033). Seule la livraison exige le paiement (BR-VEN-034).
     const noCredit = await newCustomer({ credit: false });
-    const refused = await place(
-      { customerId: noCredit, lines: [line(product, 2)] },
-      at('10:20:00'),
+    const unpaid = await place({ customerId: noCredit, lines: [line(product, 2)] }, at('10:20:00'));
+    expect(unpaid.result.status, JSON.stringify(unpaid.result)).toBe('APPLIED');
+    expect(await orderRow(unpaid.id)).toMatchObject({ status: 'CONFIRMED' });
+    expect((await ordersSales(unpaid.id))[0]).toMatchObject({
+      total_xaf: 2000,
+      amount_paid_xaf: 0,
+      balance_due_xaf: 2000,
+      payment_status: 'UNPAID',
+    });
+    expect(await onHandAt(product.id, storeId)).toBe(18);
+
+    // Client autorisé au crédit, plafond très inférieur à la commande : pas de refus non plus.
+    const limited = await newCustomer({ credit: true });
+    await db
+      .updateTable('crm_customers')
+      .set({ credit_limit_xaf: 500 })
+      .where('id', '=', toBin(limited))
+      .execute();
+    const overLimit = await place(
+      { customerId: limited, lines: [line(product, 3)] },
+      at('10:22:00'),
     );
-    expect(code(refused.result)).toBe('CREDIT_NOT_ALLOWED');
-    await expect(orderRow(refused.id)).rejects.toThrow();
-    expect(await onHandAt(product.id, storeId)).toBe(10);
-    // Payée par un acompte intégral : aucun crédit à contrôler.
+    expect(overLimit.result.status, JSON.stringify(overLimit.result)).toBe('APPLIED');
+    expect((await ordersSales(overLimit.id))[0]).toMatchObject({ balance_due_xaf: 3000 });
+
+    // Payée en partie : le reste dû de la vente est ce qui manque, sans refus.
+    const partial = await place(
+      {
+        customerId: noCredit,
+        lines: [line(product, 2)],
+        advancePayments: [{ methodCode: 'ESPECES', amountXaf: 700, cashAccountId }],
+      },
+      at('10:24:00'),
+    );
+    expect(partial.result.status, JSON.stringify(partial.result)).toBe('APPLIED');
+    expect((await ordersSales(partial.id))[0]).toMatchObject({
+      amount_paid_xaf: 700,
+      balance_due_xaf: 1300,
+      payment_status: 'PARTIALLY_PAID',
+    });
+
+    // Payée par un acompte intégral : soldée.
     const paid = await place(
       {
         customerId: noCredit,

@@ -107,6 +107,9 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'crm.commercial_role_codes': list('sales'),
   'sales.direct_cancel_minutes': minutes('sales'),
   'sales.default_payment_terms_days': days('sales', 0),
+  // AV-511 : exiger la vente payée en entier avant de livrer une commande (vrai par défaut). Une commande
+  // elle-même n'est jamais conditionnée par l'argent.
+  'sales.delivery_requires_full_payment': flag('sales', { site: true }),
   'sales.duplicate_payment_window_minutes': minutes('sales'),
   'sales.offline_over_allocation_allowed': flag('sales', { site: true }),
   'sales.offline_unallocated_sale_signal': choice('sales', ['WHEN_ALLOCATED', 'ALWAYS', 'NEVER'], {

@@ -136,6 +136,17 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'sales.direct_cancel_minutes', value: 15, isClientVisible: true, ref: 'AV-030' },
   { key: 'sales.default_payment_terms_days', value: 30, isClientVisible: false, ref: 'AV-028' },
+  // AV-511 (décision du porteur, 04/11/2026) : une commande n'est jamais conditionnée par l'argent, mais
+  // elle se livre payée. `true` : une livraison exige que chaque vente livrée soit payée en entier (refus
+  // `ORDER_NOT_PAID` en ligne, conflit `DELIVERY_UNPAID` hors ligne) ; `false` lève l'exigence pour un site
+  // ou pour tous. Lu par l'appareil (avertissement sur l'écran de livraison) et par le serveur ; absent, il
+  // vaut `true` des deux côtés.
+  {
+    key: 'sales.delivery_requires_full_payment',
+    value: true,
+    isClientVisible: true,
+    ref: 'AV-511',
+  },
   // AV-056 (P4-02) : fenêtre de détection d'un doublon d'encaissement sans référence (même
   // client, même montant) — visible de l'appareil, qui contrôle aussi localement.
   {

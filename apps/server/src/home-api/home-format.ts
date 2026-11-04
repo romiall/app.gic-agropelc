@@ -149,6 +149,7 @@ export const CONFLICT_TYPE_LABELS: Readonly<Record<string, string>> = {
   ANONYMOUS_UNPAID: 'vente anonyme non payée',
   ORDER_REFUSED_PAYMENT_KEPT: 'commande refusée, acompte conservé',
   ORDER_OVER_FULFILMENT: 'livraison au-delà de la commande',
+  DELIVERY_UNPAID: 'livraison faite avant le paiement complet',
   VERSION_CONFLICT: 'modification concurrente',
   LOT_CLOSED: 'lot clôturé',
   LOT_NOT_SLAUGHTERABLE: 'lot non abattable',

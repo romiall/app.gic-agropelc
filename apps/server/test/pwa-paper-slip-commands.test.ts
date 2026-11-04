@@ -45,6 +45,7 @@ import {
   recentBusinessDay,
 } from './helpers.js';
 import { PosWorld, codeOf, warningsOf, type Sellable } from './pos-world.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const DAY = recentBusinessDay(3);
 const at = (hhmm: string) => `${DAY}T${hhmm}:00.000Z`;
@@ -77,6 +78,12 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
 
   beforeAll(async () => {
     world = await PosWorld.create({ now: NOW, sellers: 1 });
+    // AV-511 : le paiement avant livraison est levé sur les sites d'essai (les pièces reportées livrent des
+    // commandes sans les payer, pour éprouver autre chose), puis rétabli à 17 h pour l'essai qui l'éprouve.
+    for (const site of [world.siteS, world.siteP]) {
+      await allowDeliveryWithoutPayment(site, world.root);
+      await allowDeliveryWithoutPayment(site, world.root, true, at('17:00'));
+    }
     // Le déclarant : un utilisateur et un appareil actifs, tous les droits des neuf commandes.
     reporter = await tx(async (trx) => {
       const userId = await insertTestUser(trx);
@@ -701,5 +708,52 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(declarations.map((row) => [Number(row.quantity_base), row.category])).toEqual([
       [1, 'CASSE'],
     ]);
+  });
+
+  it('AV-511 : le bon de livraison d’une commande non payée est reporté hors ligne — appliqué et signalé à la Finance, jamais refusé ; saisi « en ligne », il le serait', async () => {
+    // Le paiement avant livraison est rétabli à 17 h sur les sites d'essai (levé avant, pour les autres essais).
+    const order = await report(
+      {
+        type: 'CC',
+        customerId,
+        fulfilmentLocationId: world.store,
+        lines: [line(2)],
+        totalXaf: 2 * product.price,
+      },
+      'CC-000090',
+      at('17:00'),
+    );
+    applied(order.result);
+    const unpaidOrderId = order.command.aggregateId;
+    const unpaidLine = await db
+      .selectFrom('sales_sales_order_lines')
+      .select('id')
+      .where('order_id', '=', toBin(unpaidOrderId))
+      .executeTakeFirstOrThrow();
+    const slip: ResolvedSlip = {
+      type: 'BL',
+      orderId: unpaidOrderId,
+      lines: [{ orderLineId: fromBin(unpaidLine.id), quantityBase: 2 }],
+    };
+
+    // En ligne : refusé, aucun bon (la règle du serveur).
+    const online = await report(slip, 'BL-000090', at('17:05'), { capturedOffline: false });
+    expect(codeOf(online.result)).toBe('ORDER_NOT_PAID');
+    expect(await localRefOf('sales_delivery_notes', online.command.aggregateId)).toBeUndefined();
+
+    // Reporté comme il l'est par l'écran (hors ligne) : la remise a eu lieu, le bon est enregistré et signalé.
+    const reported = await report(slip, 'BL-000090', at('17:10'));
+    applied(reported.result);
+    expect(warningsOf(reported.result)).toContain('DELIVERY_UNPAID');
+    expect(await localRefOf('sales_delivery_notes', reported.command.aggregateId)).toBe(
+      'BL-000090',
+    );
+    const conflict = await db
+      .selectFrom('sync_sync_conflicts')
+      .select(['owner_role', 'applied'])
+      .where('entity_id', '=', toBin(unpaidOrderId))
+      .where('conflict_type', '=', 'DELIVERY_UNPAID')
+      .executeTakeFirst();
+    expect(conflict).toMatchObject({ owner_role: 'FINANCE', applied: 1 });
   });
 });

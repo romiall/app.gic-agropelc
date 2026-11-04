@@ -18,10 +18,11 @@
  *   L'annulation et la clôture se font par l'auteur ou le Resp. commercial, sans validation (AV-128) ;
  *   l'argent payé libéré devient du crédit client ou un remboursement (AV-146, BR-VEN-009).
  *
- * Une commande n'est jamais refusée pour manque de stock (BR-VEN-004) ; elle exige un client
- * identifié (BR-VEN-001). Le crédit se contrôle sur la vente (BR-VEN-025, jamais par une validation
- * a posteriori : la confirmation est une intention du serveur) ; les remises passent par le prix
- * convenu (une ligne de commande n'a pas de remise, AV-147) ; un produit vendu au poids ne se
+ * Une commande n'est jamais refusée pour manque de stock (BR-VEN-004) ni pour de l'argent
+ * (BR-VEN-033, AV-511 : ni droit au crédit, ni plafond, ni paiement ne la conditionnent ; le crédit
+ * ne se contrôle que sur une vente directe, BR-VEN-025, et le paiement complet s'exige à la
+ * livraison, BR-VEN-034) ; elle exige un client identifié (BR-VEN-001). Les remises passent par le
+ * prix convenu (une ligne de commande n'a pas de remise, AV-147) ; un produit vendu au poids ne se
  * commande pas en P4 (AV-136).
  *
  * `version` (concurrence optimiste, BR-VEN-005) n'est incrémentée que par une modification de la

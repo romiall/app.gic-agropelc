@@ -11,6 +11,8 @@ import {
   ORDER_LINE_ID,
   orderRow,
   posCashAccountRow,
+  SALE_ID,
+  saleRow,
   seedSalesFixtures,
 } from './fixtures.js';
 import { NewOrderScreen } from './NewOrderScreen.js';
@@ -305,5 +307,116 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
     renderAt(`/commandes/${ORDER_ID}`);
     expect(await screen.findByText('Livraison en attente d’envoi : 3')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('link', { name: 'Livrer' })).toBeInTheDocument());
+  });
+
+  it('AV-511 : une commande se passe sans payer — aucun avertissement de crédit, même sans droit au crédit, et elle part sans acompte', async () => {
+    // Un client sans droit au crédit : avant la décision du porteur, l'écran avertissait que le serveur refuserait.
+    const key = `customers:CUSTOMER:${IDS.customer}`;
+    const customer = await getDb().projections.get(key);
+    await getDb().projections.put({
+      ...customer!,
+      data: {
+        ...(customer!.data as Record<string, unknown>),
+        credit_allowed: false,
+        credit_limit_xaf: null,
+      },
+    });
+    const user = userEvent.setup();
+    renderAt('/commandes/nouvelle');
+    await user.type(await screen.findByPlaceholderText(/Rechercher un client/), 'Mvog');
+    await user.click(screen.getByRole('button', { name: /Boutique Mvog-Mbi/ }));
+    await user.click(screen.getByRole('button', { name: '+ Ajouter un article' }));
+    await user.click(screen.getByRole('button', { name: /Poulet de chair/ }));
+    expect(screen.getByTestId('order-total')).toHaveTextContent('3 500 F CFA');
+    // Rien n'est payé et le client n'a pas droit au crédit : ni avertissement ni refus, une mention seulement.
+    expect(screen.queryByText(/droit au crédit/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Plafond de crédit/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/le serveur refusera/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Une commande peut se passer sans payer/)).toHaveTextContent(
+      'entièrement payée avant d’être livrée',
+    );
+    const submit = screen.getByRole('button', { name: 'Passer la commande' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    expect(await screen.findByText(/Commande en cours d’envoi/)).toBeInTheDocument();
+    const [command] = await outboxOf('sales.order.place');
+    expect(command!.payload).toMatchObject({ customerId: IDS.customer });
+    expect(command!.payload).not.toHaveProperty('advancePayments');
+  }, 20_000);
+
+  describe('livraison : paiement avant livraison (AV-511)', () => {
+    const orderSale = (overrides: Record<string, unknown> = {}) =>
+      saleRow({ sale_type: 'ORDER', order_id: ORDER_ID, ...overrides });
+
+    it('vente à solde dû : avertit du reste dû et mène à l’encaissement ciblé, sans empêcher la saisie (le serveur refuse en ligne)', async () => {
+      await getDb().projections.put(orderSale());
+      renderAt(`/commandes/${ORDER_ID}/livrer`);
+      const banner = await screen.findByText(/n’est pas entièrement payée/);
+      expect(banner).toHaveTextContent('reste dû : 2 000 F CFA');
+      expect(banner).toHaveTextContent('le serveur refusera la livraison');
+      expect(screen.getByRole('link', { name: 'Encaisser le reste dû' })).toHaveAttribute(
+        'href',
+        `/encaisser?client=${IDS.customer}&vente=${SALE_ID}`,
+      );
+      expect(screen.getByRole('button', { name: 'Enregistrer la livraison' })).toBeEnabled();
+    });
+
+    it('hors ligne : la livraison sera enregistrée, mais signalée à la Finance', async () => {
+      const offline = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      try {
+        await getDb().projections.put(orderSale());
+        renderAt(`/commandes/${ORDER_ID}/livrer`);
+        const banner = await screen.findByText(/n’est pas entièrement payée/);
+        expect(banner).toHaveTextContent('reste dû : 2 000 F CFA');
+        expect(banner).toHaveTextContent('signalée à la Finance');
+        expect(banner).not.toHaveTextContent('le serveur refusera');
+      } finally {
+        offline.mockRestore();
+      }
+    });
+
+    it('rien d’impayé de connu, ou paramètre `sales.delivery_requires_full_payment` faux : aucun avertissement', async () => {
+      // Vente soldée.
+      await getDb().projections.put(orderSale({ balance_due_xaf: 0, payment_status: 'PAID' }));
+      const first = renderAt(`/commandes/${ORDER_ID}/livrer`);
+      await screen.findByLabelText('Quantité remise (U)');
+      expect(screen.queryByText(/entièrement payée/)).not.toBeInTheDocument();
+      first.unmount();
+
+      // Vente à solde dû, mais l'exigence est levée pour tous.
+      await getDb().projections.put(orderSale());
+      await getDb().projections.put(meSettingRow('sales.delivery_requires_full_payment', false));
+      renderAt(`/commandes/${ORDER_ID}/livrer`);
+      await screen.findByLabelText('Quantité remise (U)');
+      expect(screen.queryByText(/entièrement payée/)).not.toBeInTheDocument();
+    });
+
+    it('l’encaissement ciblé saisi sur l’appareil retire l’avertissement', async () => {
+      await getDb().projections.put(orderSale());
+      await getDb().outbox.put({
+        command_id: '01900000-0000-7000-8000-0000000009c1',
+        device_seq: 1,
+        author_user_id: IDS.user,
+        command_type: 'sales.payment.record',
+        command_version: 1,
+        aggregate_type: 'CUSTOMER_PAYMENT',
+        aggregate_id: '01900000-0000-7000-8000-0000000009c2',
+        payload: {
+          customerId: IDS.customer,
+          methodCode: 'ESPECES',
+          amountXaf: 2000,
+          allocations: [{ saleId: SALE_ID, amountXaf: 2000 }],
+        },
+        occurred_at: '2026-10-14T08:00:00.000Z',
+        client_created_at: '2026-10-14T08:00:00.000Z',
+        captured_offline: false,
+        depends_on: [],
+        status: 'PENDING_SYNC',
+        attempts: 0,
+      } as never);
+      renderAt(`/commandes/${ORDER_ID}/livrer`);
+      await screen.findByLabelText('Quantité remise (U)');
+      expect(screen.queryByText(/entièrement payée/)).not.toBeInTheDocument();
+    });
   });
 });

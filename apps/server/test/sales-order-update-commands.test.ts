@@ -42,6 +42,7 @@ import {
   shiftBusinessDay,
   freshPhone,
 } from './helpers.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const DAY = '2026-10-10';
 const NOW = `${DAY}T18:00:00.000Z`;
@@ -657,6 +658,9 @@ describe('sales.order.update (P4-06)', () => {
         })
         .execute();
     });
+    // AV-511 : ces essais livrent des commandes sans les payer ; le paiement avant livraison est levé sur
+    // leur site d'essai (la garde elle-même est éprouvée par sales-order-fulfil-commands).
+    await allowDeliveryWithoutPayment(siteId, admin.userId);
     for (const [operationType, approverPermission] of [
       ['PRICE_OVERRIDE', 'sales.price_override.approve'],
       ['PAYMENT_DUPLICATE', 'sales.payment.cancel'],
@@ -2056,7 +2060,7 @@ describe('sales.order.update (P4-06)', () => {
     expect(num((await orderLines(id))[0]!.quantity_base)).toBe(4);
   });
 
-  it('14b. hausse d’un client sans crédit, déjà payé : la vente complémentaire est refusée (CREDIT_NOT_ALLOWED), commande inchangée', async () => {
+  it('14b. AV-511 : hausse d’un client sans crédit, déjà payé — la vente complémentaire est confirmée sans contrôle d’argent, son solde dû reste à payer avant livraison', async () => {
     const product = await sellable(1000);
     await stock(product.id, 10, 300);
     const customer = await newCustomer({ credit: false });
@@ -2069,12 +2073,18 @@ describe('sales.order.update (P4-06)', () => {
       at('09:00:00'),
     );
     const [ol] = await orderLines(id);
-    const before = await snapshotOf(id, [product.id]);
 
-    expect(code(await update(id, at('10:00:00'), { lines: [adjust(ol!, 6)] }))).toBe(
-      'CREDIT_NOT_ALLOWED',
-    );
-    expect(await snapshotOf(id, [product.id])).toEqual(before);
-    expect(await ordersSales(id)).toHaveLength(1);
+    const raised = await update(id, at('10:00:00'), { lines: [adjust(ol!, 6)] });
+    expect(raised.status, JSON.stringify(raised)).toBe('APPLIED');
+    const sales = await ordersSales(id);
+    expect(sales).toHaveLength(2);
+    expect(sales[0]).toMatchObject({ total_xaf: 4000, balance_due_xaf: 0, payment_status: 'PAID' });
+    expect(sales[1]).toMatchObject({
+      total_xaf: 2000,
+      amount_paid_xaf: 0,
+      balance_due_xaf: 2000,
+      payment_status: 'UNPAID',
+    });
+    expect(await orderRow(id)).toMatchObject({ version: 2 });
   });
 });

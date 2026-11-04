@@ -16,6 +16,13 @@
  * surplus devient une **vente directe de régularisation** au prix convenu, depuis l'emplacement de
  * préparation (stock négatif admis), avec un conflit `ORDER_OVER_FULFILMENT` pour le Resp. commercial.
  *
+ * **Paiement avant livraison** (AV-511, ADR-055, BR-VEN-034 ; décision du porteur du 04/11/2026) : une
+ * commande se reçoit sans argent, elle se livre payée. Chaque vente qui fournit la marchandise livrée doit
+ * être payée en entier (solde dû nul, net des annulations). En ligne : refus `ORDER_NOT_PAID`, sans écriture.
+ * Hors ligne, la remise a eu lieu (BR-SYN-007) : la livraison est appliquée, avec l'avertissement et le conflit
+ * `DELIVERY_UNPAID` pour la Finance. Paramètre `sales.delivery_requires_full_payment` (par site, **vrai par
+ * défaut** : seule une valeur explicitement fausse lève l'exigence).
+ *
  * Un bon de livraison est en ajout seul : ni modification ni suppression (AV-134 : non en V1).
  * `version` de la commande ne bouge pas (progression, comme une vente du reste : D04 §15).
  */
@@ -52,6 +59,7 @@ import {
   findStockLocation,
   virtualLocationId,
 } from '../../../inventory/application/public/index.js';
+import { siteThenGlobalSetting } from '../../../organization/application/public/index.js';
 import { lockOrder, refreshOrderStatus, type OrderLineRow, type OrderRow } from './order-sale.js';
 import { lockSale, type LockedSale } from './sale-cancellation.js';
 import { moveSoldStock } from './sale-stock.js';
@@ -96,9 +104,61 @@ type Envelope = Parameters<CommandHandler<FulfilPayload>>[1];
  * Avertissements possibles d'une livraison (`WARNING_CODES`, packages/contracts). La vente de
  * régularisation ne consomme aucun quota (opération du serveur, ADR-033 §7) ; si elle entame le stock
  * promis aux appareils d'un emplacement partagé, `inventory` ouvre `ALLOCATION_OVERCOMMITTED` (P5-11).
+ * `DELIVERY_UNPAID` : livraison faite hors ligne avant le paiement complet de la vente (AV-511).
  */
 type Warning =
-  'ORDER_OVER_FULFILMENT' | 'STOCK_NEGATIVE' | 'ALLOCATION_OVERCOMMITTED' | 'LOCAL_REF_DUPLICATE';
+  | 'ORDER_OVER_FULFILMENT'
+  | 'STOCK_NEGATIVE'
+  | 'ALLOCATION_OVERCOMMITTED'
+  | 'LOCAL_REF_DUPLICATE'
+  | 'DELIVERY_UNPAID';
+
+/**
+ * Paramètre qui exige, pour livrer, la vente payée en entier (AV-511). Réglable par site, **vrai par
+ * défaut**.
+ */
+export const DELIVERY_REQUIRES_FULL_PAYMENT_SETTING = 'sales.delivery_requires_full_payment';
+
+/**
+ * Le paiement complet des ventes livrées est-il exigé pour livrer depuis le site `siteId` à l'instant
+ * `at` ? Valeur du site, à défaut globale, **à défaut vrai** : seule une valeur explicitement fausse lève
+ * l'exigence, une valeur absente ou mal formée la maintient (même règle que
+ * `isCashSessionRequiredForPayouts`). Lue à l'heure du fait (`occurred_at`).
+ */
+async function isFullPaymentRequired(uow: Uow, siteId: string, at: Date): Promise<boolean> {
+  const value = await siteThenGlobalSetting(
+    uow,
+    DELIVERY_REQUIRES_FULL_PAYMENT_SETTING,
+    siteId,
+    at,
+    (candidate) => typeof candidate === 'boolean',
+  );
+  return value !== false;
+}
+
+interface UnpaidSale {
+  readonly saleId: string;
+  readonly docNumber: string;
+  readonly balanceDueXaf: number;
+}
+
+/**
+ * Ventes qui fournissent la marchandise livrée et dont le solde dû est positif (`balance_due_xaf` : total −
+ * annulé − payé, BR-VEN-026), une seule fois chacune, dans l'ordre de leur numéro.
+ */
+function unpaidSalesOf(delivered: readonly { readonly locked: LockedSale }[]): UnpaidSale[] {
+  const bySale = new Map<string, UnpaidSale>();
+  for (const entry of delivered) {
+    const balanceDueXaf = Number(entry.locked.sale.balance_due_xaf);
+    if (balanceDueXaf <= 0) continue;
+    const saleId = fromBin(entry.locked.sale.id);
+    bySale.set(saleId, { saleId, docNumber: entry.locked.sale.doc_number, balanceDueXaf });
+  }
+  return [...bySale.values()].sort((a, b) => a.docNumber.localeCompare(b.docNumber));
+}
+
+/** Montant en francs entiers, milliers séparés par une espace ordinaire (message d'un refus). */
+const spaced = (amount: number): string => String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 const milliOf = (value: string | number): number =>
   quantityMilliUnits(quantityFromDecimal(Number(value)));
@@ -284,6 +344,26 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       }
     }
 
+    // --- Paiement avant livraison (AV-511, BR-VEN-034) : lecture seule jusqu'ici, un refus ne laisse rien -----
+    // Une commande se reçoit sans argent, elle se livre payée : chaque vente qui fournit la marchandise doit
+    // être payée en entier. Hors ligne la remise a eu lieu (fait accompli, BR-SYN-007) : appliquée, signalée.
+    let unpaidDelivered: readonly UnpaidSale[] = [];
+    if (delivered.length > 0) {
+      const unpaid = unpaidSalesOf(delivered);
+      if (unpaid.length > 0 && (await isFullPaymentRequired(uow, site.id, at))) {
+        if (!offline) {
+          const owed = unpaid
+            .map((sale) => `${spaced(sale.balanceDueXaf)} F CFA sur ${sale.docNumber}`)
+            .join(', ');
+          return rejected(
+            'ORDER_NOT_PAID',
+            `La commande doit être entièrement payée avant d’être livrée : reste dû ${owed}.`,
+          );
+        }
+        unpaidDelivered = unpaid;
+      }
+    }
+
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     const serverRefs: Record<string, string> = {};
     const warnings = new Set<Warning>();
@@ -443,6 +523,30 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           lines: excess.map((entry) => ({
             orderLineId: fromBin(entry.orderLine.id),
             quantityBase: entry.quantityMilli / 1000,
+          })),
+        },
+      });
+    }
+
+    // --- Livré avant le paiement complet, hors ligne (AV-511) : fait appliqué, signalé à la Finance --------------
+    if (unpaidDelivered.length > 0) {
+      warnings.add('DELIVERY_UNPAID');
+      await recordConflict(uow, {
+        id: idGenerator.newId(),
+        commandId: envelope.command_id,
+        conflictType: 'DELIVERY_UNPAID',
+        entityType: 'SALES_ORDER',
+        entityId: fromBin(order.id),
+        siteId: site.id,
+        ownerRole: 'FINANCE',
+        applied: true,
+        details: {
+          orderDocNumber: order.doc_number,
+          deliveryNoteId: noteId,
+          sales: unpaidDelivered.map((sale) => ({
+            saleId: sale.saleId,
+            docNumber: sale.docNumber,
+            balanceDueXaf: sale.balanceDueXaf,
           })),
         },
       });

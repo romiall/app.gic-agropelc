@@ -151,6 +151,11 @@ export const WARNING_CODES = [
   // livraison, sans photo (l'application ne sait pas encore en joindre) : appliquée et signalée au
   // Resp. achats (conflit informatif `RECEIPT_PHOTO_MISSING`), jamais refusée.
   'RECEIPT_PHOTO_MISSING',
+  // AV-511 (décision du porteur du 04/11/2026 : une commande se reçoit sans argent, elle se livre payée) :
+  // livraison saisie hors ligne avant le paiement complet de la vente (fait accompli, BR-SYN-007) ;
+  // appliquée et signalée à la Finance (conflit informatif `DELIVERY_UNPAID`). En ligne, refus
+  // `ORDER_NOT_PAID`, sans écriture.
+  'DELIVERY_UNPAID',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

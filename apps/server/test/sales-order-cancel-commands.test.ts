@@ -48,6 +48,7 @@ import {
   insertTestZone,
   freshPhone,
 } from './helpers.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const NOW = '2026-10-09T18:00:00.000Z';
 const at = (hhmmss: string) => `2026-10-09T${hhmmss}.000Z`;
@@ -714,6 +715,9 @@ describe('sales.order.cancel / close_remaining (P4-06)', () => {
         })
         .execute();
     });
+    // AV-511 : ces essais livrent des commandes sans les payer ; le paiement avant livraison est levé sur
+    // leur site d'essai (la garde elle-même est éprouvée par sales-order-fulfil-commands).
+    await allowDeliveryWithoutPayment(siteId, admin.userId);
     const policyId = freshUuid();
     const policy = await run(
       admin,

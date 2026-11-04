@@ -510,7 +510,7 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     await closeTestDb();
   });
 
-  it('AT-008 (WF-02) : commande, acompte, vente du disponible, livraison partielle, reste, solde', async () => {
+  it('AT-008 (WF-02) : commande, acompte, vente du disponible, solde avant livraison, livraison partielle, reste, solde', async () => {
     const product = await sellable(1000);
     await stock(product.id, 6);
     const customer = await newCustomer(sed, { credit: true });
@@ -528,6 +528,32 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     expect(await onHand(product.id, storeId)).toBe(0);
     const orderLineId = await orderLineOf(orderId);
 
+    // Une commande se livre payée (AV-511, BR-VEN-034) : la vente de 6 000 n'est payée qu'à moitié, le
+    // magasinier ne peut pas livrer ; le client règle le reste dû de cette vente, puis la livraison passe.
+    const early = await run(
+      keeper,
+      'sales.order.fulfil',
+      'DELIVERY_NOTE',
+      freshUuid(),
+      at('09:00:00'),
+      {
+        orderId,
+        lines: [{ orderLineId, quantityBase: 4 }],
+      },
+    );
+    expect(code(early)).toBe('ORDER_NOT_PAID');
+    expect(await orderRow(orderId)).toMatchObject({ status: 'CONFIRMED' });
+    await ok(sed, 'sales.payment.record', 'CUSTOMER_PAYMENT', freshUuid(), at('09:30:00'), {
+      customerId: customer,
+      methodCode: 'ESPECES',
+      amountXaf: 3000,
+      cashAccountId: sedCash,
+    });
+    expect((await salesOf(orderId))[0]).toMatchObject({
+      payment_status: 'PAID',
+      balance_due_xaf: 0,
+    });
+
     // Livraison partielle de 4 par le magasinier.
     await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('10:00:00'), {
       orderId,
@@ -535,15 +561,29 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     });
     expect(await orderRow(orderId)).toMatchObject({ status: 'PARTIALLY_FULFILLED' });
 
-    // Réapprovisionnement, vente du reste, livraison du reste.
+    // Réapprovisionnement, vente du reste (4 000, non payée : sa part ne se livre pas encore).
     await stock(product.id, 4, at('11:00:00'));
     await ok(sed, 'sales.order.confirm_remaining', 'SALES_ORDER', orderId, at('11:30:00'), {});
     const sales = await salesOf(orderId);
     expect(sales.map((s) => Number(s.total_xaf))).toEqual([6000, 4000]);
-    await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('14:00:00'), {
-      orderId,
-      lines: [{ orderLineId, quantityBase: 6 }],
+    const rest = { orderId, lines: [{ orderLineId, quantityBase: 6 }] };
+    expect(
+      code(
+        await run(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('13:00:00'), rest),
+      ),
+    ).toBe('ORDER_NOT_PAID');
+
+    // Solde de la seconde vente, puis livraison du reste.
+    await ok(sed, 'sales.payment.record', 'CUSTOMER_PAYMENT', freshUuid(), at('13:30:00'), {
+      customerId: customer,
+      methodCode: 'ESPECES',
+      amountXaf: 4000,
+      cashAccountId: sedCash,
     });
+    for (const sale of await salesOf(orderId)) {
+      expect(sale).toMatchObject({ payment_status: 'PAID', balance_due_xaf: 0 });
+    }
+    await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('14:00:00'), rest);
     expect(await orderRow(orderId)).toMatchObject({ status: 'FULFILLED' });
     const orderLine = await db
       .selectFrom('sales_sales_order_lines')
@@ -553,17 +593,6 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     expect([orderLine.sold_quantity_base, orderLine.delivered_quantity_base].map(Number)).toEqual([
       10, 10,
     ]);
-
-    // Solde : 7 000 affectés de la vente la plus ancienne à la plus récente.
-    await ok(sed, 'sales.payment.record', 'CUSTOMER_PAYMENT', freshUuid(), at('16:00:00'), {
-      customerId: customer,
-      methodCode: 'ESPECES',
-      amountXaf: 7000,
-      cashAccountId: sedCash,
-    });
-    for (const sale of await salesOf(orderId)) {
-      expect(sale).toMatchObject({ payment_status: 'PAID', balance_due_xaf: 0 });
-    }
   });
 
   it('AT-009 : annulation directe dans les 15 minutes — stock rendu, remboursement, CA négatif daté de l’annulation', async () => {
@@ -995,7 +1024,14 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
       seller_user_id: sed.userId,
     });
 
-    // Livraison complète : la vente n'est plus revue, la passe suivante la résout par le marqueur.
+    // Livraison complète : la vente n'est plus revue, la passe suivante la résout par le marqueur. Une commande
+    // se livre payée (AV-511, BR-VEN-034) : le client règle d'abord la vente.
+    await ok(sed, 'sales.payment.record', 'CUSTOMER_PAYMENT', freshUuid(), at('14:30:00'), {
+      customerId: customer,
+      methodCode: 'ESPECES',
+      amountXaf: 3000,
+      cashAccountId: sedCash,
+    });
     const orderLineId = await orderLineOf(orderId);
     await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('15:00:00'), {
       orderId,

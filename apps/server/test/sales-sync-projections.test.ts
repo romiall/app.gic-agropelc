@@ -46,6 +46,7 @@ import {
   openTestCashSession,
   freshPhone,
 } from './helpers.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const NOW = new Date(Math.floor(Date.now() / 1000) * 1000);
 /** Heure métier `minutes` avant maintenant (ISO). */
@@ -435,6 +436,9 @@ describe('projections /sync/pull des jeux orders, sales_recent, cash (P4-11)', (
         openedAt: new Date(NOW.getTime() - 40 * DAY_MINUTES * 60_000),
       });
     });
+    // AV-511 : ces essais livrent une commande sans la payer ; le paiement avant livraison est levé sur le
+    // site d'essai (la garde elle-même est éprouvée par sales-order-fulfil-commands).
+    await allowDeliveryWithoutPayment(siteA);
 
     // Vente directe du PDV il y a 10 jours, payée comptant : hors de la fenêtre de 7 jours.
     oldSale = freshUuid();

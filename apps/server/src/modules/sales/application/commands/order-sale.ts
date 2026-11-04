@@ -18,10 +18,15 @@
  * validation), l'échéance part de l'heure de la vente (AV-129), l'acompte de la commande passe à la
  * vente (affectation renversée `ORDER_CONFIRMED`, puis réaffectée à la vente), et le prospect est
  * converti à la première vente confirmée (BR-CRM-010).
+ *
+ * **Aucun contrôle d'argent à la confirmation** (AV-511, ADR-055, décision du porteur du 04/11/2026) :
+ * une commande n'est pas un engagement financier, elle se reçoit sans qu'il y ait de l'argent. Ni le
+ * droit au crédit du client, ni son plafond, ni un paiement ne la refusent (`CREDIT_NOT_ALLOWED` et
+ * `CREDIT_LIMIT_EXCEEDED` ne valent que pour une **vente directe**, BR-VEN-025). L'argent se contrôle à
+ * la **livraison** : la marchandise ne sort pas tant que la vente n'est pas payée (`delivery-commands.ts`).
  */
 import {
   confirmableQuantity,
-  creditCheck,
   dueDateOf,
   lineAmountXaf,
   quantityFromDecimal,
@@ -58,7 +63,6 @@ import {
   type StockLocationRef,
 } from '../../../inventory/application/public/index.js';
 import { ensureToDeliverLocation } from '../../../organization/application/public/index.js';
-import { customerOutstandingXaf } from '../public/receivables.js';
 import { moveSoldStock, REARING_LOCATION_TYPES } from './sale-stock.js';
 import { documentYear, numberSetting, rejected, type SiteRef, type Uow } from './shared.js';
 
@@ -270,7 +274,9 @@ export async function confirmOrderPending(
   );
   const totalXaf = amounts.reduce((sum, amount) => sum + amount, 0);
 
-  // --- Acompte de la commande affecté à cette vente, puis crédit sur le reste (BR-VEN-025) ---------------------
+  // --- Acompte de la commande affecté à cette vente ------------------------------------------------------------
+  // Le reste n'est pas jugé ici : pas de contrôle du crédit à la confirmation (AV-511), le paiement complet
+  // est exigé à la livraison.
   const advances = await uow
     .selectFrom('sales_payment_allocations')
     .selectAll()
@@ -282,27 +288,6 @@ export async function confirmOrderPending(
     .execute();
   const advanceAvailable = advances.reduce((sum, row) => sum + Number(row.amount_xaf), 0);
   const fromAdvance = Math.min(advanceAvailable, totalXaf);
-  const newCredit = totalXaf - fromAdvance;
-  if (newCredit > 0) {
-    const check = creditCheck({
-      creditAllowed: customer.creditAllowed,
-      creditLimitXaf: customer.creditLimitXaf === null ? null : xaf(customer.creditLimitXaf),
-      outstandingXaf: xaf(await customerOutstandingXaf(uow, customer.id)),
-      newCreditXaf: xaf(newCredit),
-    });
-    if (check.outcome === 'NOT_ALLOWED') {
-      return {
-        ok: false,
-        outcome: rejected('CREDIT_NOT_ALLOWED', 'Ce client n’est pas autorisé à acheter à crédit.'),
-      };
-    }
-    if (check.outcome === 'EXCEEDS_LIMIT') {
-      return {
-        ok: false,
-        outcome: rejected('CREDIT_LIMIT_EXCEEDED', 'Plafond de crédit du client dépassé.'),
-      };
-    }
-  }
 
   // --- Stock : un mouvement `SALE` vers « à livrer » par ligne et par lot (jamais de solde négatif) ----------------
   const saleId = deps.idGenerator.newId();

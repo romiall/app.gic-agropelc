@@ -76,9 +76,9 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 | ECR-ADM-03 | `/` et `/menu` | Enrichi (F-02) | Menu : oui ; accueil : non | Actions routées par le registre de l'appareil (ADR-036) |
 | ECR-VEN-01 | `/ventes/nouvelle` | Livré (F-03) | Oui, dans la limite du stock exclusif ; emplacement partagé bloqué hors ligne tant que les quotas ne sont pas servis (S-05) | Action `NEW_SALE` |
 | ECR-VEN-05 | `/ventes` et `/ventes/:saleId` | Livré (F-04) | Oui (7 derniers jours connus de l'appareil) | Reçu imprimable ; annulation directe ou demande |
-| ECR-VEN-02 | `/commandes/nouvelle` | Livré (F-05) | Oui | Action `NEW_ORDER` ; pas de brouillon (`save_draft` est en ligne seulement) |
+| ECR-VEN-02 | `/commandes/nouvelle` | Livré (F-05) | Oui | Action `NEW_ORDER` ; pas de brouillon (`save_draft` est en ligne seulement) ; **depuis le 04/11/2026 (AV-511, BR-VEN-033) aucun avertissement de crédit** : une commande se passe sans payer, une mention rappelle qu'elle se livre payée |
 | ECR-VEN-03 | `/commandes` et `/commandes/:orderId` | Livré (F-05) | Partiel : ouvertes hors ligne, livrées ou closes en ligne | Action `FOLLOW_DELIVERIES` |
-| ECR-VEN-04 | `/commandes/:orderId/livrer` | Livré (F-05) | Oui | Depuis le détail d'une commande |
+| ECR-VEN-04 | `/commandes/:orderId/livrer` | Livré (F-05) | Oui | Depuis le détail d'une commande ; **depuis le 04/11/2026 (AV-511, BR-VEN-034)** avertit du reste dû connu de l'appareil et mène à l'encaissement ciblé, sans bloquer (le serveur refuse en ligne, signale hors ligne) |
 | ECR-CRM-01 | `/clients` | Livré (F-12) | Oui (périmètre téléchargé) | Menu des commerciaux et du responsable commercial ; aucune action de l'accueil n'y mène |
 | ECR-CRM-02 | `/clients/nouveau` | Livré (F-09) | Oui | Action `NEW_PROSPECT` ; client proposé aussitôt à la vente |
 | ECR-TER-01 | `/service` | Livré (F-15) | Oui | Action `START_SERVICE` ; prise, fin de service et dérogation |

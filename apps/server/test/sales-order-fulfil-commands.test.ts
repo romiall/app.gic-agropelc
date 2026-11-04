@@ -4,7 +4,9 @@
  * partiel), un mouvement `DELIVERY` (« à livrer » → client) par mouvement `SALE` servi, monte les
  * compteurs « livré » et recalcule le statut de la commande, sans nouvelle vente ni chiffre
  * d'affaires. Au-delà du vendu non livré : refus en ligne ; hors ligne, vente directe de
- * régularisation et conflit `ORDER_OVER_FULFILMENT`.
+ * régularisation et conflit `ORDER_OVER_FULFILMENT`. Paiement avant livraison (AV-511, BR-VEN-034) : une
+ * commande se reçoit sans argent, elle se livre payée — refus `ORDER_NOT_PAID` en ligne, avertissement et
+ * conflit `DELIVERY_UNPAID` hors ligne, paramètre `sales.delivery_requires_full_payment`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
@@ -18,6 +20,7 @@ import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/applic
 import { registerOrderCommands } from '../src/modules/sales/application/commands/order-commands.js';
 import { registerCancelCommands } from '../src/modules/sales/application/commands/cancel-commands.js';
 import { registerDeliveryCommands } from '../src/modules/sales/application/commands/delivery-commands.js';
+import { registerPaymentCommands } from '../src/modules/sales/application/commands/payment-commands.js';
 import {
   recordStockMove,
   verifyStockLedger,
@@ -38,9 +41,16 @@ import {
   insertTestZone,
   freshPhone,
 } from './helpers.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const NOW = '2026-10-10T18:00:00.000Z';
 const at = (hhmmss: string) => `2026-10-10T${hhmmss}.000Z`;
+/**
+ * AV-511 : le paiement avant livraison est levé sur le site d'essai (les essais livrent des commandes sans
+ * les payer, pour éprouver autre chose) jusqu'à cette heure, puis rétabli : les essais de la garde
+ * n'emploient que des heures postérieures.
+ */
+const PAYMENT_GUARD_FROM = at('16:00:00');
 let deviceSeq = 0;
 
 interface Actor {
@@ -484,6 +494,7 @@ describe('sales.order.fulfil (P4-07)', () => {
     registerOrderCommands(registry, idGenerator, sequences);
     registerCancelCommands(registry, decisions, idGenerator, sequences);
     registerDeliveryCommands(registry, idGenerator, sequences);
+    registerPaymentCommands(registry, decisions, idGenerator, sequences);
     registerPolicyCommands(registry);
     registerApprovalRequestCommands(registry, decisions);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
@@ -594,6 +605,9 @@ describe('sales.order.fulfil (P4-07)', () => {
         })
         .execute();
     });
+    // Paiement avant livraison (AV-511) : levé sur le site d'essai, rétabli à partir de 16 h.
+    await allowDeliveryWithoutPayment(siteId, admin.userId);
+    await allowDeliveryWithoutPayment(siteId, admin.userId, true, PAYMENT_GUARD_FROM);
     const policyId = freshUuid();
     const policy = await run(
       admin,
@@ -1039,5 +1053,192 @@ describe('sales.order.fulfil (P4-07)', () => {
     expect(await noteLines(delivered.id)).toHaveLength(2);
     expect(await deliveryMovesOf(delivered.id)).toHaveLength(1);
     expect((await orderRow(id)).status).toBe('FULFILLED');
+  });
+
+  // --- 9. Paiement avant livraison (AV-511, BR-VEN-034) -----------------------------------------------
+  // Le paiement avant livraison est levé sur le site d'essai jusqu'à 16 h puis rétabli : ces essais
+  // n'emploient que des heures de l'après-midi.
+
+  const reason = (r: Result) => (r.status === 'REJECTED' ? (r.error?.message_fr ?? '') : '');
+  const conflictsOfType = (orderId: string, type: string) =>
+    db
+      .selectFrom('sync_sync_conflicts')
+      .selectAll()
+      .where('entity_id', '=', toBin(orderId))
+      .where('conflict_type', '=', type)
+      .execute();
+
+  it('AV-511 : en ligne, une vente non payée ou payée en partie n’est pas livrée (ORDER_NOT_PAID), sans aucune écriture, même pour un client autorisé au crédit', async () => {
+    const unpaid = await soldOrder({ quantity: 4, credit: true, at: at('16:10:00') });
+    const unpaidLine = await lineOf(unpaid.id);
+    const before = await stateOf(unpaid.id);
+    const refused = await fulfil(unpaid.id, at('16:20:00'), [
+      { orderLineId: unpaidLine, quantityBase: 4 },
+    ]);
+    expect(code(refused.result)).toBe('ORDER_NOT_PAID');
+    expect(reason(refused.result)).toContain('4 000 F CFA');
+    expect(reason(refused.result)).toContain(unpaid.sale.doc_number);
+    expect(await stateOf(unpaid.id)).toEqual(before);
+    expect(await notesOf(unpaid.id)).toHaveLength(0);
+    expect(await deliveredOf(unpaid.id)).toEqual([[4, 4, 0]]);
+
+    // Payée en partie : le reste dû est ce qui manque.
+    const partial = await soldOrder({
+      quantity: 4,
+      credit: false,
+      advanceXaf: 1500,
+      at: at('16:30:00'),
+    });
+    const refusedPartial = await fulfil(partial.id, at('16:35:00'), [
+      { orderLineId: await lineOf(partial.id), quantityBase: 4 },
+    ]);
+    expect(code(refusedPartial.result)).toBe('ORDER_NOT_PAID');
+    expect(reason(refusedPartial.result)).toContain('2 500 F CFA');
+    expect(await notesOf(partial.id)).toHaveLength(0);
+  });
+
+  it('AV-511 : payée en entier — par l’acompte ou par un encaissement ultérieur — la vente se livre, sans signalement', async () => {
+    const advanced = await soldOrder({
+      quantity: 4,
+      credit: false,
+      advanceXaf: 4000,
+      at: at('16:40:00'),
+    });
+    const byAdvance = await fulfil(advanced.id, at('16:42:00'), [
+      { orderLineId: await lineOf(advanced.id), quantityBase: 4 },
+    ]);
+    expect(byAdvance.result.status, JSON.stringify(byAdvance.result)).toBe('APPLIED');
+    expect((await orderRow(advanced.id)).status).toBe('FULFILLED');
+    expect(await conflictsOfType(advanced.id, 'DELIVERY_UNPAID')).toHaveLength(0);
+
+    // Il paye, on reçoit sa transaction, et on le livre : refus, encaissement ciblé, puis livraison.
+    const later = await soldOrder({ quantity: 4, credit: false, at: at('16:44:00') });
+    const laterLine = await lineOf(later.id);
+    expect(
+      code(
+        (await fulfil(later.id, at('16:45:00'), [{ orderLineId: laterLine, quantityBase: 4 }]))
+          .result,
+      ),
+    ).toBe('ORDER_NOT_PAID');
+    const payment = await run(
+      commercial,
+      'sales.payment.record',
+      'CUSTOMER_PAYMENT',
+      freshUuid(),
+      at('16:46:00'),
+      {
+        customerId: later.customer,
+        methodCode: 'ESPECES',
+        amountXaf: 4000,
+        cashAccountId,
+        allocations: [{ saleId: later.saleId, amountXaf: 4000 }],
+      },
+    );
+    expect(payment.status, JSON.stringify(payment)).toMatch(/^APPLIED/);
+    expect((await ordersSales(later.id))[0]).toMatchObject({
+      balance_due_xaf: 0,
+      payment_status: 'PAID',
+    });
+    const delivered = await fulfil(later.id, at('16:47:00'), [
+      { orderLineId: laterLine, quantityBase: 4 },
+    ]);
+    expect(delivered.result.status, JSON.stringify(delivered.result)).toBe('APPLIED');
+    expect((await orderRow(later.id)).status).toBe('FULFILLED');
+  });
+
+  it('AV-511 : chaque vente qui fournit la marchandise doit être payée — la part de la vente payée se livre, pas celle d’une vente non payée', async () => {
+    const { product, id } = await soldOrder({
+      quantity: 10,
+      stockQuantity: 6,
+      advanceXaf: 6000,
+      credit: false,
+      at: at('16:50:00'),
+    });
+    const orderLineId = await lineOf(id);
+    // La vente du disponible (6 pièces) est payée par l'acompte ; le reste attend du stock.
+    expect((await ordersSales(id))[0]).toMatchObject({ payment_status: 'PAID' });
+    await stock(product.id, 4, 600);
+    const restConfirmed = await confirmRemaining(id, at('16:52:00'));
+    expect(restConfirmed.status, JSON.stringify(restConfirmed)).toBe('APPLIED');
+    const sales = await ordersSales(id);
+    expect(sales).toHaveLength(2);
+    expect(sales[1]).toMatchObject({ total_xaf: 4000, balance_due_xaf: 4000 });
+
+    // 7 pièces : 6 de la première vente (payée) et 1 de la seconde (non payée) — l'ensemble est refusé.
+    const refused = await fulfil(id, at('16:54:00'), [{ orderLineId, quantityBase: 7 }]);
+    expect(code(refused.result)).toBe('ORDER_NOT_PAID');
+    expect(reason(refused.result)).toContain(sales[1]!.doc_number);
+    expect(reason(refused.result)).not.toContain(sales[0]!.doc_number);
+    expect(await notesOf(id)).toHaveLength(0);
+
+    // 6 pièces : toute la première vente, payée.
+    const first = await fulfil(id, at('16:56:00'), [{ orderLineId, quantityBase: 6 }]);
+    expect(first.result.status, JSON.stringify(first.result)).toBe('APPLIED');
+    // Les 4 dernières viennent de la seconde vente, non payée : refusées.
+    expect(
+      code((await fulfil(id, at('16:58:00'), [{ orderLineId, quantityBase: 4 }])).result),
+    ).toBe('ORDER_NOT_PAID');
+    expect(await deliveredOf(id)).toEqual([[10, 10, 6]]);
+  });
+
+  it('AV-511 : hors ligne, la remise a eu lieu — appliquée, avertissement DELIVERY_UNPAID et conflit informatif pour la Finance', async () => {
+    const { id, sale } = await soldOrder({
+      quantity: 4,
+      credit: false,
+      advanceXaf: 1000,
+      at: at('17:05:00'),
+    });
+    const orderLineId = await lineOf(id);
+    const delivered = await fulfil(
+      id,
+      at('17:10:00'),
+      [{ orderLineId, quantityBase: 4 }],
+      {},
+      { offline: true },
+    );
+    expect(delivered.result.status, JSON.stringify(delivered.result)).toBe('APPLIED_WITH_WARNINGS');
+    expect(warningsOf(delivered.result)).toEqual(['DELIVERY_UNPAID']);
+    expect(await notesOf(id)).toHaveLength(1);
+    expect(await deliveredOf(id)).toEqual([[4, 4, 4]]);
+    expect((await orderRow(id)).status).toBe('FULFILLED');
+
+    const conflicts = await conflictsOfType(id, 'DELIVERY_UNPAID');
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({
+      owner_role: 'FINANCE',
+      applied: 1,
+      entity_type: 'SALES_ORDER',
+      status: 'OPEN',
+    });
+    expect(conflicts[0]!.details).toMatchObject({
+      orderDocNumber: (await orderRow(id)).doc_number,
+      deliveryNoteId: delivered.id,
+      sales: [{ saleId: fromBin(sale.id), docNumber: sale.doc_number, balanceDueXaf: 3000 }],
+    });
+    // La vente reste due : elle figure aux créances, la Finance relance.
+    expect((await ordersSales(id))[0]).toMatchObject({ balance_due_xaf: 3000 });
+  });
+
+  it('AV-511 : paramètre du site levé — une commande non payée se livre sans refus ni signalement ; une valeur mal formée maintient l’exigence', async () => {
+    // Avant 16 h, le site d'essai a le paramètre à faux : aucune exigence.
+    const lifted = await soldOrder({ quantity: 4, credit: false, at: at('12:00:00') });
+    const liftedDelivery = await fulfil(lifted.id, at('12:10:00'), [
+      { orderLineId: await lineOf(lifted.id), quantityBase: 4 },
+    ]);
+    expect(liftedDelivery.result.status, JSON.stringify(liftedDelivery.result)).toBe('APPLIED');
+    expect(await conflictsOfType(lifted.id, 'DELIVERY_UNPAID')).toHaveLength(0);
+
+    // À partir de 17 h 30, la valeur du site est une chaîne : elle est ignorée, l'exigence demeure.
+    await allowDeliveryWithoutPayment(siteId, admin.userId, 'non', at('17:30:00'));
+    const malformed = await soldOrder({ quantity: 4, credit: false, at: at('17:35:00') });
+    expect(
+      code(
+        (
+          await fulfil(malformed.id, at('17:40:00'), [
+            { orderLineId: await lineOf(malformed.id), quantityBase: 4 },
+          ])
+        ).result,
+      ),
+    ).toBe('ORDER_NOT_PAID');
   });
 });

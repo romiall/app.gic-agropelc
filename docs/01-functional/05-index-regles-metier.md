@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **319**.
+Nombre total de règles : **321**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -95,7 +95,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | ID | Règle (résumé) | Statut |
 |---|---|---|
 | BR-VEN-001 | Une commande client exige un client identifié (pas de commande anonyme). | D (CM §7 « commandes » liées au prospect ou client) |
-| BR-VEN-002 | Une commande est confirmée par `sales.order.place` (engagement du client, avec d'éventuels acomptes joints) : elle naît `CONFIRMED`, ou `DR… | D ; AV-126 (tranché 30/09/2026) |
+| BR-VEN-002 | Une commande est confirmée par `sales.order.place` (demande du client, qui n'est pas un engagement financier — BR-VEN-033 —, avec d'éventue… | D ; AV-126 (tranché 30/09/2026) |
 | BR-VEN-003 | Chaque ligne de commande fige un prix convenu (`quoted_unit_price_xaf`) résolu par le moteur de tarification à l'heure de la saisie (`occur… | C (CM §30) / D ; AV-147, AV-148 (ouverts, défauts implémentés) |
 | BR-VEN-004 | La confirmation est une vente du disponible : le serveur vend, ligne par ligne, la quantité que couvre le stock de l'emplacement de prépara… | C (PM §6 : jamais refusée pour manque de stock) ; AV-126, AV-127 (tranchés 30/09/2026) ; ADR-028 §4 ; D (ADR-033 §4 et §7 ; BR-STK-011) pour le stock libre |
 | BR-VEN-005 | Une commande est modifiable (quantités, produits ajoutés ou retirés, lieu de préparation du même site, date et adresse de livraison) tant q… | AV-130 (tranché 30/09/2026) ; D (PM §30 « commande modifiée ») |
@@ -104,6 +104,8 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-008 | Une livraison ne dépasse pas le vendu non livré (INV-VEN-04) : la quantité livrée d'une ligne de commande se répartit sur les lignes de ven… | D (INV-VEN-04) ; AV-133 (ouvert, défaut (a) implémenté) |
 | BR-VEN-009 | L'annulation d'une commande (`DRAFT` ou `CONFIRMED`, avant toute livraison) et la clôture de son reliquat (`PARTIALLY_FULFILLED`) retirent… | AV-128, AV-130 (tranchés 30/09/2026) ; AV-033, AV-146 (ouverts, défauts implémentés) |
 | BR-VEN-010 | Jusqu'à sa livraison, la marchandise vendue reste dans l'emplacement virtuel « à livrer » du site : aucune réservation ni aucun transfert n… | D (ADR-028 §1 et §4, qui remplace la réservation d'ADR-004 pour les commandes) |
+| BR-VEN-033 | Une commande n'est jamais conditionnée par l'argent : ni le droit au crédit du client, ni son plafond, ni un paiement ne la refusent ni ne… | C (porteur, 04/11/2026 : « la commande n'est pas une vente », elle se reçoit sans argent) ; AV-511 ; ADR-055 |
+| BR-VEN-034 | Une commande se livre payée : `sales.order.fulfil` exige que chaque vente qui fournit la marchandise livrée soit payée en entier (solde dû… | C (porteur, 04/11/2026 : « avant la livraison, le client a entièrement payé sa commande ») pour la règle ; D pour les modalités (par vente, hors ligne appliquée) ; AV-511, AV-512, AV-513 ; ADR-055 |
 | BR-VEN-011 | Une vente naît à l'état `CONFIRMED` : elle représente un fait accompli (produits remis). Aucune vente « brouillon » n'est synchronisée ; un… | D (C-05) |
 | BR-VEN-012 | Une vente confirmée est immuable. Toute correction passe par une annulation (contre-écriture), suivie si besoin d'une nouvelle vente. | C (CM §41 ; PM §8) |
 | BR-VEN-013 | Chaque ligne de vente fige : produit (et son libellé), lot, quantité en unité de saisie et en unité de base, quantité de tarification (poid… | C (CM §30 ; PM §9) |
@@ -118,7 +120,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-022 | La zone de la vente (`zone_id`) est figée : zone du site pour une vente en PDV, zone du client sinon, à défaut zone de la session de travai… | C (PM §7) / D |
 | BR-VEN-023 | Les paiements saisis avec la vente créent des encaissements affectés à la vente, dans la même transaction. Le reste dû constitue une créanc… | C (CM §13) / AV-028 |
 | BR-VEN-024 | Une vente anonyme (sans client) doit être intégralement payée à l'enregistrement. | AV-027 |
-| BR-VEN-025 | Une vente à crédit exige un client autorisé au crédit, avec un encours après vente ≤ plafond. Hors ligne, le contrôle porte sur l'encours c… | AV-028 |
+| BR-VEN-025 | Une vente directe à crédit exige un client autorisé au crédit, avec un encours après vente ≤ plafond. Hors ligne, le contrôle porte sur l'e… | AV-028 ; AV-511 (porteur, 04/11/2026) |
 | BR-VEN-026 | Le statut de paiement (`UNPAID`, `PARTIALLY_PAID`, `PAID`) est dérivé des affectations actives de paiement et n'est jamais saisi. | D (C-05) |
 | BR-VEN-027 | Annuler une vente, en tout ou en partie, est un document d'annulation (`ANV`) ; la vente reste immuable. Ses effets, à l'heure de l'annulat… | C (CM §41) / D (ADR-028 §5, ADR-029, ADR-033 §8) / AV-146, AV-149 |
 | BR-VEN-028 | L'annulation directe (sans validation) n'est permise qu'au vendeur de la vente, moins de 15 minutes après `occurred_at` (`sales.direct_canc… | AV-030, AV-185 |

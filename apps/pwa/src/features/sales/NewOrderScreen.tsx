@@ -3,14 +3,15 @@
  * préparation, articles au prix catalogue (le prix convenu est figé dans la commande, AV-087), date
  * et adresse de livraison facultatives, acompte facultatif (AV-033). La commande est passée
  * directement (`sales.order.place`) : à son application, le serveur vend le disponible et laisse le
- * reste en attente (ADR-028 §4) ; elle n'est jamais refusée faute de stock. Utilisable hors ligne.
+ * reste en attente (ADR-028 §4) ; elle n'est jamais refusée faute de stock, ni pour de l'argent : ni
+ * droit au crédit, ni plafond, ni paiement ne la conditionnent (AV-511, BR-VEN-033), le crédit ne
+ * contrôlant qu'une vente directe. Elle se livre payée (BR-VEN-034). Utilisable hors ligne.
  * Pas de remise sur une ligne de commande (`DISCOUNT_NOT_SUPPORTED_ON_ORDER`) ; un produit vendu au
  * poids ne se commande pas (`PRODUCT_NOT_ORDERABLE`).
  */
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { creditCheck, xaf } from '@gic/domain';
 import { ActionBar, Button } from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -18,7 +19,6 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from './CommandResult.js';
-import { localOutstanding } from './credit.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
 import {
@@ -199,23 +199,6 @@ export function NewOrderScreen() {
       errors.push(t('cash.prompt.blocked'));
     }
   }
-  const warnings: string[] = [];
-  if (customer && total !== null && advance !== null && total > advance) {
-    const credit = creditCheck({
-      creditAllowed: customer.credit_allowed,
-      creditLimitXaf: customer.credit_limit_xaf === null ? null : xaf(customer.credit_limit_xaf),
-      // Encours téléchargé corrigé des opérations de l'appareil pas encore retéléchargées.
-      outstandingXaf: xaf(
-        localOutstanding(customer, refs.outbox, refs.customersPulledAt, refs.customerAlias),
-      ),
-      newCreditXaf: xaf(total - advance),
-    });
-    if (credit.outcome === 'NOT_ALLOWED') warnings.push(t('orders.warning_credit_not_allowed'));
-    if (credit.outcome === 'EXCEEDS_LIMIT') {
-      warnings.push(t('orders.warning_credit_limit', { amount: formatMoney(credit.exceedsByXaf) }));
-    }
-  }
-
   const ready =
     customer !== undefined &&
     location !== undefined &&
@@ -427,15 +410,11 @@ export function NewOrderScreen() {
             onChange={setAdvancePayment}
           />
         ) : null}
+        <p className="home-muted">{t('orders.payment_note')}</p>
       </section>
 
       {errors.map((message) => (
         <p key={message} className="error-message" role="alert">
-          {message}
-        </p>
-      ))}
-      {warnings.map((message) => (
-        <p key={message} className="text-warn">
           {message}
         </p>
       ))}

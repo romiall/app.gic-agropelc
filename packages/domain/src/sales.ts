@@ -200,6 +200,10 @@ export type CreditOutcome = 'NO_CREDIT' | 'WITHIN_LIMIT' | 'NOT_ALLOWED' | 'EXCE
  * BR-VEN-025, AV-028 : une vente dont une part reste due exige un client autorisé au crédit et
  * un encours après vente ≤ plafond. Sans plafond défini, tout crédit dépasse (DÉDUIT, prudent).
  * L'appelant refuse en ligne et ouvre une validation hors ligne (`CREDIT_LIMIT_EXCEEDED`).
+ *
+ * Ne vaut que pour une **vente directe** : une commande n'est jamais conditionnée par l'argent
+ * (BR-VEN-033, AV-511, décision du porteur du 04/11/2026) ; son paiement complet s'exige à la livraison
+ * (BR-VEN-034). Ne pas l'appeler à la confirmation d'une commande.
  */
 export function creditCheck(input: {
   readonly creditAllowed: boolean;

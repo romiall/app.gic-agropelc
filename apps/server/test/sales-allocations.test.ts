@@ -57,6 +57,7 @@ import {
   insertTestZone,
   freshPhone,
 } from './helpers.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const DAY = '2026-10-09';
 const NOW = `${DAY}T18:00:00.000Z`;
@@ -673,6 +674,9 @@ describe('vente et quotas d’appareil (P5-11)', () => {
         ])
         .execute();
     });
+    // AV-511 : ces essais livrent des commandes sans les payer ; le paiement avant livraison est levé sur le
+    // site d'essai (la garde elle-même est éprouvée par sales-order-fulfil-commands).
+    await allowDeliveryWithoutPayment(pdvSiteId, admin.userId);
   });
 
   afterAll(async () => {

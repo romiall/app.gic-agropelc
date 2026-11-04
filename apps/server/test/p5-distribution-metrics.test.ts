@@ -81,6 +81,7 @@ import {
   signTestAccessToken,
 } from './helpers.js';
 import { fund, newActor, roleIdOf, tx, type Actor } from './cash-transfer-fixtures.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 import {
   distributionDashboardResponseSchema,
   homeResponseSchema,
@@ -350,6 +351,10 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
         })
         .execute();
     });
+    // AV-511 : ces essais livrent une commande sans la payer ; le paiement avant livraison est levé sur les
+    // sites d'essai (la garde elle-même est éprouvée par sales-order-fulfil-commands).
+    await allowDeliveryWithoutPayment(siteS, root);
+    await allowDeliveryWithoutPayment(siteP, root);
     admin = await newActor('ADMIN', root);
     dir = await newActor('DIRECTION', root);
     fin = await newActor('FINANCE', root);

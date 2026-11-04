@@ -38,6 +38,7 @@ import {
   freshPhone,
   signTestAccessToken,
 } from './helpers.js';
+import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
 
 const DAY = '2026-10-05';
 const at = (hhmmss: string) => `${DAY}T${hhmmss}.000Z`;
@@ -371,6 +372,10 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
       cashB = await cashAccount({ name: 'Caisse B', type: 'CAISSE_UTILISATEUR', holder: comB });
       posA = await cashAccount({ name: 'Caisse PDV A', type: 'CAISSE_PDV', siteId: siteA });
     });
+    // AV-511 : ces essais livrent une commande sans la payer ; le paiement avant livraison est levé sur les
+    // sites d'essai (la garde elle-même est éprouvée par sales-order-fulfil-commands).
+    await allowDeliveryWithoutPayment(siteA);
+    await allowDeliveryWithoutPayment(siteB);
     for (const actor of [comA, comB, venA, fin, rpr]) {
       actor.token = await signTestAccessToken(
         jwtKeys.privateKey,

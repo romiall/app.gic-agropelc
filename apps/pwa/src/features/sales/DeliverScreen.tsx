@@ -3,7 +3,12 @@
  * base, plafonnées à ce qui est vendu et pas encore livré (déduction faite des livraisons de
  * l'appareil en attente) ; nom de la personne qui reçoit et observations facultatifs. Commande
  * `sales.order.fulfil` (agrégat `DELIVERY_NOTE`), utilisable hors ligne. Une livraison ne consomme pas
- * le stock de l'emplacement : la marchandise vendue l'a quitté à la confirmation (ADR-028 §1).
+ * le stock de l'emplacement : la marchandise vendue l'a quittée à la confirmation (ADR-028 §1).
+ *
+ * Une commande se reçoit sans argent, elle se livre payée (AV-511, BR-VEN-034) : tant que le reste dû
+ * connu de l'appareil n'est pas encaissé, l'écran avertit — le serveur refuse la livraison en ligne,
+ * l'applique et la signale à la Finance hors ligne — et mène à l'encaissement ciblé. Il ne bloque pas :
+ * le serveur juge seul (`delivery-payment.ts`).
  */
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -20,12 +25,14 @@ import {
   Textarea,
 } from '../../components/ui/index.js';
 import { ROUTES } from '../../app/screens.js';
+import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from './CommandResult.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeBonLivraison, type LivraisonSaisie } from '../pieces/adaptateurs-ventes.js';
-import { formatQuantity, unitLabel } from './format.js';
+import { deliveryPaymentRequired, unpaidOfOrder } from './delivery-payment.js';
+import { formatMoney, formatQuantity, unitLabel } from './format.js';
 import { openOrders, type OrderView } from './open-orders.js';
 import { useSalesReferences } from './references.js';
 import { MAX_COMMENT_LENGTH, MAX_RECIPIENT_LENGTH } from './sale-form.js';
@@ -136,6 +143,17 @@ export function DeliverScreen() {
     errors.push(t('orders.deliver.error_empty'));
   }
   const ready = deliverable.length > 0 && errors.length === 0 && !busy;
+  // Paiement avant livraison (AV-511) : reste dû des ventes de la commande, connu de l'appareil.
+  const unpaid = deliveryPaymentRequired(refs.settings, order.siteId, clock.now())
+    ? unpaidOfOrder({
+        sales: refs.sales,
+        outbox: refs.outbox,
+        orderId: order.id,
+        customerId: order.customerId,
+        alias: refs.customerAlias,
+      })
+    : [];
+  const unpaidXaf = unpaid.reduce((sum, due) => sum + due.balanceXaf, 0);
 
   const submit = async () => {
     if (!ready) return;
@@ -190,6 +208,24 @@ export function DeliverScreen() {
       {!online ? (
         <Banner tone="warn" role="status">
           {t('orders.deliver.offline_banner')}
+        </Banner>
+      ) : null}
+      {deliverable.length > 0 && unpaidXaf > 0 ? (
+        <Banner
+          tone="warn"
+          role="status"
+          action={
+            <LinkButton
+              to={ROUTES.collectFor(order.customerId, unpaid[0]?.saleId)}
+              variant="outline"
+            >
+              {t('orders.deliver.collect')}
+            </LinkButton>
+          }
+        >
+          {t(online ? 'orders.deliver.unpaid_online' : 'orders.deliver.unpaid_offline', {
+            amount: formatMoney(unpaidXaf),
+          })}
         </Banner>
       ) : null}
       {deliverable.length === 0 ? (
