@@ -163,7 +163,8 @@ type Warning =
   | 'PRICE_MISMATCH'
   | 'PRICE_OVERRIDE_EXCEEDS_LIMIT'
   | 'PAYMENT_SUSPECT_DUPLICATE'
-  | 'CASH_SESSION_MISSING';
+  | 'CASH_SESSION_MISSING'
+  | 'LOCAL_REF_DUPLICATE';
 type Envelope<P> = Parameters<CommandHandler<P>>[1];
 
 const milliOf = (value: string | number): number =>
@@ -500,6 +501,33 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     });
     if (!ctx.ok) return ctx;
     const { customer, location, site, channelCode, resource } = ctx;
+    // La référence locale est unique par **appareil** (clé `created_device_id`, `local_ref`) : déjà prise,
+    // la commande est refusée en ligne ; hors ligne elle est appliquée sans la référence, avec
+    // l'avertissement `LOCAL_REF_DUPLICATE` (BR-SYN-007), comme une vente (`sale-commands.ts`). Sans ce
+    // contrôle, la clé unique ferait échouer l'écriture et la commande serait rejouée sans fin.
+    let localRef = body.localRef ?? null;
+    let localRefReused = false;
+    if (localRef !== null && origin.deviceId !== null) {
+      const sameRef = await uow
+        .selectFrom('sales_sales_orders')
+        .select('id')
+        .where('created_device_id', '=', toBin(origin.deviceId))
+        .where('local_ref', '=', localRef)
+        .executeTakeFirst();
+      if (sameRef) {
+        if (!offline) {
+          return {
+            ok: false as const,
+            outcome: rejected(
+              'LOCAL_REF_DUPLICATE',
+              'Référence locale déjà utilisée par cet appareil.',
+            ),
+          };
+        }
+        localRef = null;
+        localRefReused = true;
+      }
+    }
     for (const id of [...new Set([body.customerId, customer.id])].sort()) {
       await lockCustomerAccount(uow, id);
     }
@@ -546,7 +574,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .values({
         id: toBin(orderId),
         doc_number: docNumber,
-        local_ref: body.localRef ?? null,
+        local_ref: localRef,
         site_id: toBin(site.id),
         customer_id: toBin(body.customerId),
         commercial_user_id: toBin(commercialUserId),
@@ -570,7 +598,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         created_by: toBin(author),
       })
       .execute();
-    const warnings = await insertOrderLines(uow, {
+    const lineWarnings = await insertOrderLines(uow, {
       orderId,
       docNumber,
       lines: prepared.lines,
@@ -583,6 +611,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       occurredAt: at,
       capturedOffline: offline,
     });
+    const warnings = new Set<Warning>(lineWarnings);
+    if (localRefReused) warnings.add('LOCAL_REF_DUPLICATE');
     return { ok: true as const, docNumber, customer, location, site, origin, warnings };
   }
 

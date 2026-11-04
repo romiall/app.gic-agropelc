@@ -146,6 +146,7 @@ export type SlipIssue =
   | 'LOCATION_REQUIRED'
   | 'DESTINATION_REQUIRED'
   | 'SITE_REQUIRED'
+  | 'OBSERVATIONS_REQUIRED'
   | 'CUSTOMER_REQUIRED'
   | 'CUSTOMER_UNKNOWN'
   | 'LINES_REQUIRED'
@@ -175,6 +176,8 @@ export const SLIP_ISSUE_MESSAGES: Readonly<Record<SlipIssue, string>> = {
   LOCATION_REQUIRED: 'Choisissez l’emplacement.',
   DESTINATION_REQUIRED: 'Choisissez la destination (différente de la source).',
   SITE_REQUIRED: 'Choisissez le site.',
+  OBSERVATIONS_REQUIRED:
+    'Emplacement hors du site du bon de commande : précisez le motif dans les observations (AV-096).',
   CUSTOMER_REQUIRED: 'Choisissez un client.',
   CUSTOMER_UNKNOWN: 'Ce client n’est plus connu de l’appareil.',
   LINES_REQUIRED: 'Ajoutez au moins une ligne.',
@@ -595,6 +598,9 @@ function resolvePaymentSlip(form: SlipForm, context: SlipContext): Body {
     return fail('PAYMENT_INVALID');
   }
   const site = form.siteId ? refs.sites.get(form.siteId) : undefined;
+  // Sans site d'attache du client, le serveur ne sait pas où l'argent est entré quand aucune vente n'est
+  // à solder : il refuse l'encaissement (`SITE_REQUIRED`) même hors ligne.
+  if (!site && !customer.home_site_id) return fail('SITE_REQUIRED');
   return done(
     {
       type: 'RE',
@@ -633,8 +639,7 @@ function resolveDelivery(form: SlipForm, context: SlipContext): Body {
       type: 'BL',
       orderId: order.id,
       recipientName: optional(form.recipient)?.slice(0, MAX_RECIPIENT_LENGTH),
-      // Le texte reçoit la mention de la pièce (`withPaperRef`) : de la place pour elle sous 2 000.
-      notes: optional(form.notes)?.slice(0, MAX_COMMENT_LENGTH - 100),
+      notes: optional(form.notes)?.slice(0, MAX_COMMENT_LENGTH),
       lines,
     },
     // Commande encore dans l'outbox : la livraison attend son application.
@@ -724,6 +729,10 @@ function resolveReceipt(form: SlipForm, context: SlipContext): Body {
       }
     }
     if (issues.length === 0 && lines.length === 0) issues.push('QUANTITY_REQUIRED');
+    // AV-096 : réception hors du site du bon de commande, soumise à validation, avec un motif.
+    if (location.site_id !== order.site_id && !optional(form.notes)) {
+      issues.push('OBSERVATIONS_REQUIRED');
+    }
   } else {
     // Réception sans bon de commande (mise en revue par le serveur) : fournisseur et prix déclarés.
     if (!refs.suppliers.has(form.supplierId)) issues.push('SUPPLIER_REQUIRED');
@@ -754,7 +763,7 @@ function resolveReceipt(form: SlipForm, context: SlipContext): Body {
     supplierId,
     locationId: location.id,
     supplierDeliveryNoteRef: optional(form.deliveryNoteRef)?.slice(0, 60),
-    observations: optional(form.notes)?.slice(0, 3900),
+    observations: optional(form.notes)?.slice(0, 4000),
     lines,
   });
 }

@@ -146,7 +146,11 @@ const requestCancellationSchema = z.object({
 type RequestCancellationPayload = z.infer<typeof requestCancellationSchema>;
 
 type Envelope<P> = Parameters<CommandHandler<P>>[1];
-type Warning = 'PAYMENT_SUSPECT_DUPLICATE' | 'PAYMENT_UNALLOCATED' | 'CASH_SESSION_MISSING';
+type Warning =
+  | 'PAYMENT_SUSPECT_DUPLICATE'
+  | 'PAYMENT_UNALLOCATED'
+  | 'CASH_SESSION_MISSING'
+  | 'LOCAL_REF_DUPLICATE';
 type PaymentRow = Awaited<ReturnType<typeof lockPayment>>;
 
 const NOT_FOUND = rejected('PAYMENT_NOT_FOUND', 'Encaissement inconnu.');
@@ -404,6 +408,30 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (!plannedPayments.ok) return plannedPayments.outcome;
     const payment = plannedPayments.planned[0]!;
     const origin = await loadCommandOrigin(uow, envelope.command_id);
+    // La référence locale est unique par **appareil** : déjà prise, l'encaissement est refusé en ligne ;
+    // hors ligne (l'argent est reçu : BR-SYN-007) il est appliqué sans la référence, avec l'avertissement
+    // `LOCAL_REF_DUPLICATE`, comme une vente. Sans ce contrôle, la clé unique ferait échouer l'écriture et
+    // la commande serait rejouée sans fin.
+    let localRef = p.localRef ?? null;
+    let localRefReused = false;
+    if (localRef !== null && origin.deviceId !== null) {
+      const sameRef = await uow
+        .selectFrom('sales_customer_payments')
+        .select('id')
+        .where('created_device_id', '=', toBin(origin.deviceId))
+        .where('local_ref', '=', localRef)
+        .executeTakeFirst();
+      if (sameRef) {
+        if (!offline) {
+          return rejected(
+            'LOCAL_REF_DUPLICATE',
+            'Référence locale déjà utilisée par cet appareil.',
+          );
+        }
+        localRef = null;
+        localRefReused = true;
+      }
+    }
     // Numéro pris après le verrou du compte de trésorerie, comme pour une vente avec encaissement
     // (`sale-payments.ts`) : même ordre de verrous, pas d'interblocage entre les deux.
     const nextNumber = (): Promise<string> =>
@@ -415,7 +443,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
     const base = {
       id: toBin(paymentId),
-      local_ref: p.localRef ?? null,
+      local_ref: localRef,
       site_id: toBin(site.id),
       customer_id: toBinOrNull(customerId),
       payment_method_code: p.methodCode,
@@ -509,7 +537,10 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
       return {
         status: 'APPLIED_WITH_WARNINGS',
-        warnings: ['PAYMENT_SUSPECT_DUPLICATE'],
+        warnings: [
+          'PAYMENT_SUSPECT_DUPLICATE',
+          ...(localRefReused ? (['LOCAL_REF_DUPLICATE'] as const) : []),
+        ],
         serverRefs: { docNumber },
       };
     }
@@ -563,6 +594,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     );
     await applyCounterDeltas(uow, deltas);
     const warnings = new Set<Warning>();
+    if (localRefReused) warnings.add('LOCAL_REF_DUPLICATE');
     if (payment.probableDuplicateOfPaymentId !== null) {
       await recordConflict(uow, {
         id: idGenerator.newId(),

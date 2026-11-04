@@ -9,12 +9,11 @@
  * Attendu :
  * - le lot est valide (`pushRequestSchema`, enveloppes UUIDv7) et chaque commande est appliquée, jamais
  *   rejetée ni mise en quarantaine : une pièce reportée est un fait accompli (BR-SYN-007, AV-502) ;
- * - le numéro de la pièce papier est enregistré en `local_ref` là où le serveur contrôle le doublon (vente,
- *   dépense, remise de fonds), dans le texte libre pour la livraison, la réception, le transfert et la perte ;
- *   commande client et reçu n'en ont aucun et ne l'envoient pas : leur clé unique ferait échouer à chaque
- *   essai la commande d'un numéro répété (AV-501) ;
- * - un numéro déjà reporté est signalé (`LOCAL_REF_DUPLICATE`), jamais rejeté (AV-312, AV-501) — alors
- *   qu'une commande « en ligne » serait rejetée (raison d'être de `captured_offline`, AV-502) ;
+ * - le numéro de la pièce papier est enregistré en `local_ref` pour les sept commandes qui l'acceptent, dans
+ *   le texte libre pour l'expédition d'un transfert et la déclaration d'une perte ;
+ * - un numéro déjà reporté est signalé (`LOCAL_REF_DUPLICATE`), jamais rejeté ni rejoué sans fin, pour la
+ *   vente, la commande, la livraison, l'encaissement et la réception — alors qu'une commande « en ligne »
+ *   serait refusée (raison d'être de `captured_offline`, AV-312, AV-501, AV-502) ;
  * - la photo de la souche vise un propriétaire de pièce jointe que le serveur lit (ADR-046, AV-504).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -74,6 +73,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
   let supplierId: string;
   let expenseCategoryId: string;
   let orderId = '';
+  let orderLineId = '';
 
   beforeAll(async () => {
     world = await PosWorld.create({ now: NOW, sellers: 1 });
@@ -221,7 +221,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(codeOf(online.result)).toBe('LOCAL_REF_DUPLICATE');
   });
 
-  it('CC puis BL : commande client, puis livraison de ses lignes (numéro de la livraison dans les notes)', async () => {
+  it('CC puis BL : commande client, puis livraison de ses lignes, numéros en local_ref', async () => {
     const order = await report(
       {
         type: 'CC',
@@ -229,8 +229,8 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
         fulfilmentLocationId: world.store,
         requestedDeliveryDate: DAY,
         deliveryAddress: 'Marché Mokolo, Yaoundé',
-        lines: [line(6)],
-        totalXaf: 6 * product.price,
+        lines: [line(10)],
+        totalXaf: 10 * product.price,
       },
       'CC-000031',
       at('09:30'),
@@ -238,7 +238,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(order.command.commandType).toBe('sales.order.place');
     applied(order.result);
     orderId = order.command.aggregateId;
-    expect(await localRefOf('sales_sales_orders', orderId)).toBeNull();
+    expect(await localRefOf('sales_sales_orders', orderId)).toBe('CC-000031');
 
     const lines = await db
       .selectFrom('sales_sales_order_lines')
@@ -246,13 +246,14 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
       .where('order_id', '=', toBin(orderId))
       .execute();
     expect(lines).toHaveLength(1);
+    orderLineId = fromBin(lines[0]!.id);
     const delivery = await report(
       {
         type: 'BL',
         orderId,
         recipientName: 'M. Mballa',
         notes: 'Livré au restaurant',
-        lines: [{ orderLineId: fromBin(lines[0]!.id), quantityBase: 6 }],
+        lines: [{ orderLineId, quantityBase: 4 }],
       },
       'BL-000018',
       at('11:00'),
@@ -264,15 +265,16 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
       .select(['notes', 'local_ref'])
       .where('id', '=', toBin(delivery.command.aggregateId))
       .executeTakeFirstOrThrow();
-    expect(note.local_ref).toBeNull();
-    expect(note.notes).toBe('Pièce papier BL-000018 — Livré au restaurant');
+    expect(note.local_ref).toBe('BL-000018');
+    expect(note.notes).toBe('Livré au restaurant');
   });
 
-  it('RE : sales.payment.record — encaissement du client ; un numéro répété n’est jamais rejoué sans fin', async () => {
+  it('RE : sales.payment.record — encaissement du client, numéro en local_ref', async () => {
     const { command, result } = await report(
       {
         type: 'RE',
         customerId,
+        siteId: world.siteP,
         payment: {
           methodCode: 'MOBILE_MONEY_ORANGE',
           amountXaf: 25_000,
@@ -285,24 +287,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     );
     expect(command.commandType).toBe('sales.payment.record');
     applied(result);
-    expect(await localRefOf('sales_customer_payments', command.aggregateId)).toBeNull();
-    // Même numéro de reçu saisi deux fois : sans localRef, la clé unique du serveur n'est pas en jeu et
-    // le second est appliqué (le registre des carnets le signale sur l'appareil, AV-312).
-    const again = await report(
-      {
-        type: 'RE',
-        customerId,
-        payment: {
-          methodCode: 'MOBILE_MONEY_ORANGE',
-          amountXaf: 5_000,
-          reference: 'OM-PP-0100',
-          cashAccountId: world.mobileAcc,
-        },
-      },
-      'RE-000099',
-      at('10:05'),
-    );
-    applied(again.result);
+    expect(await localRefOf('sales_customer_payments', command.aggregateId)).toBe('RE-000099');
   });
 
   it('BD : finance.expense.record — dépense payée sur la caisse du PDV, numéro en local_ref', async () => {
@@ -342,7 +327,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(await localRefOf('finance_cash_transfers', command.aggregateId)).toBe('RF-000007');
   });
 
-  it('BR : procurement.receipt.record — réception sans bon de commande, numéro dans les observations', async () => {
+  it('BR : procurement.receipt.record — réception sans bon de commande, numéro en local_ref', async () => {
     const { command, result } = await report(
       {
         type: 'BR',
@@ -364,13 +349,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     );
     expect(command.commandType).toBe('procurement.receipt.record');
     applied(result);
-    const receipt = await db
-      .selectFrom('procurement_goods_receipts')
-      .select(['observations', 'local_ref'])
-      .where('id', '=', toBin(command.aggregateId))
-      .executeTakeFirstOrThrow();
-    expect(receipt.local_ref).toBeNull();
-    expect(receipt.observations).toBe('Pièce papier BR-000012 — Sacs reçus en bon état');
+    expect(await localRefOf('procurement_goods_receipts', command.aggregateId)).toBe('BR-000012');
   });
 
   it('BT : inventory.transfer.dispatch — expédition du magasin au comptoir, numéro dans les notes', async () => {
@@ -423,6 +402,80 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(row.comment).toContain('FP-000004');
   });
 
+  it('un numéro de pièce déjà reporté est signalé sur la commande, la livraison, l’encaissement et la réception', async () => {
+    const signalled = async (
+      slip: ResolvedSlip,
+      paperRef: string,
+      table: string,
+      occurredAt: string,
+      onlineSlip?: ResolvedSlip,
+    ) => {
+      // Hors ligne, comme un report de pièce : appliqué sans le numéro, avec l'avertissement.
+      const offline = await report(slip, paperRef, occurredAt);
+      applied(offline.result);
+      expect(warningsOf(offline.result), table).toContain('LOCAL_REF_DUPLICATE');
+      expect(await localRefOf(table, offline.command.aggregateId), table).toBeNull();
+      // « En ligne » : refusé. Sans le contrôle, la clé unique ferait échouer l'écriture à chaque essai.
+      const online = await report(onlineSlip ?? slip, paperRef, occurredAt, {
+        capturedOffline: false,
+      });
+      expect(codeOf(online.result), table).toBe('LOCAL_REF_DUPLICATE');
+    };
+
+    await signalled(
+      { type: 'CC', customerId, fulfilmentLocationId: world.store, lines: [line(1)] },
+      'CC-000031',
+      'sales_sales_orders',
+      at('13:00'),
+    );
+    await signalled(
+      { type: 'BL', orderId, lines: [{ orderLineId, quantityBase: 1 }] },
+      'BL-000018',
+      'sales_delivery_notes',
+      at('13:10'),
+    );
+    await signalled(
+      {
+        type: 'RE',
+        customerId,
+        siteId: world.siteP,
+        payment: {
+          methodCode: 'MOBILE_MONEY_ORANGE',
+          amountXaf: 5_000,
+          reference: 'OM-PP-0100',
+          cashAccountId: world.mobileAcc,
+        },
+      },
+      'RE-000099',
+      'sales_customer_payments',
+      at('13:20'),
+      {
+        type: 'RE',
+        customerId,
+        siteId: world.siteP,
+        payment: {
+          methodCode: 'MOBILE_MONEY_ORANGE',
+          amountXaf: 6_000,
+          reference: 'OM-PP-0101',
+          cashAccountId: world.mobileAcc,
+        },
+      },
+    );
+    await signalled(
+      {
+        type: 'BR',
+        supplierId,
+        locationId: world.store,
+        lines: [
+          { productId: product.id, unitCode: 'PIECE', qtyDeliveredBase: 5, unitCostXaf: 300 },
+        ],
+      },
+      'BR-000012',
+      'procurement_goods_receipts',
+      at('13:30'),
+    );
+  });
+
   it('chaque type reportable a été rejoué, et aucune commande n’a été mise en quarantaine', () => {
     const seen = new Set(
       device
@@ -446,7 +499,7 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(REPORTABLE_SLIP_TYPES).toHaveLength(9);
     for (const entry of device.outbox()) {
       const code = codeOf(entry.result);
-      // Seul le doublon volontaire « en ligne » du deuxième essai est refusé.
+      // Seuls les doublons volontaires « en ligne » des essais de numéro répété sont refusés.
       if (code === 'LOCAL_REF_DUPLICATE') continue;
       expect(code, entry.envelope.command_type).toMatch(/^APPLIED/);
     }

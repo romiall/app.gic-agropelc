@@ -44,7 +44,6 @@ import { PieceAction } from './PieceAction.js';
 import { analyzeContinuity, checkInputContinuity, evaluateBackdating } from './registre-carnets.js';
 import {
   REPORTABLE_SLIP_TYPES,
-  paperRefPlace,
   slipPhotoTarget,
   type ReportableSlipType,
 } from './report-commands.js';
@@ -352,17 +351,6 @@ export function PaperSlipReportScreen() {
                     {t(
                       'piece.duplicate_warning',
                       'Numéro déjà saisi : cette référence existe déjà sur cet appareil. Le doublon sera signalé sans être rejeté (BR-SYN-007).',
-                    )}
-                  </Banner>
-                </div>
-              ) : null}
-
-              {paperRefPlace(form.slipType) === 'DEVICE_ONLY' ? (
-                <div className="report-continuity-alert">
-                  <Banner tone="info">
-                    {t(
-                      'piece.ref_device_only',
-                      'Le serveur n’a pas encore de champ pour garder le numéro de ce type de pièce (AV-501) : il reste sur cet appareil. Conservez la souche dans le carnet.',
                     )}
                   </Banner>
                 </div>

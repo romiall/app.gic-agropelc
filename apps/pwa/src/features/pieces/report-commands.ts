@@ -10,22 +10,20 @@
  * | Pièce | Commande du serveur           | Agrégat            | Numéro de la pièce papier |
  * |-------|-------------------------------|--------------------|---------------------------|
  * | BV    | `sales.sale.record`           | `SALE`             | `localRef`                |
+ * | CC    | `sales.order.place`           | `SALES_ORDER`      | `localRef`                |
+ * | BL    | `sales.order.fulfil`          | `DELIVERY_NOTE`    | `localRef`                |
+ * | RE    | `sales.payment.record`        | `CUSTOMER_PAYMENT` | `localRef`                |
  * | BD    | `finance.expense.record`      | `EXPENSE`          | `localRef`                |
  * | RF    | `finance.cash_transfer.send`  | `CASH_TRANSFER`    | `localRef`                |
- * | BL    | `sales.order.fulfil`          | `DELIVERY_NOTE`    | mention dans `notes`      |
- * | BR    | `procurement.receipt.record`  | `GOODS_RECEIPT`    | mention dans `observations` |
+ * | BR    | `procurement.receipt.record`  | `GOODS_RECEIPT`    | `localRef`                |
  * | BT    | `inventory.transfer.dispatch` | `STOCK_TRANSFER`   | mention dans `notes`      |
  * | FP    | `inventory.loss.declare`      | `STOCK_LOSS`       | mention dans `comment`    |
- * | CC    | `sales.order.place`           | `SALES_ORDER`      | aucun champ : reste sur l'appareil |
- * | RE    | `sales.payment.record`        | `CUSTOMER_PAYMENT` | aucun champ : reste sur l'appareil |
  *
  * Le numéro de la pièce papier n'a pas de champ dédié sur le serveur (AV-308 (b) n'est pas construit) : en
- * attendant, `localRef` (20 caractères au plus, unique par appareil) pour les trois commandes qui contrôlent
- * le doublon (vente, dépense, remise de fonds : en « saisie hors ligne », un numéro déjà pris est appliqué
- * sans lui, avec l'avertissement `LOCAL_REF_DUPLICATE`), une mention dans le texte libre quand la commande
- * en a un. Les commandes de commande client, de livraison, d'encaissement et de réception acceptent aussi
- * `localRef` mais l'insèrent sans contrôle sur une clé unique : un numéro répété ferait échouer la commande à
- * chaque essai, sans fin. `localRef` n'y est donc pas envoyé (AV-501). Une pièce reportée est un fait
+ * attendant, `localRef` (20 caractères au plus, unique par appareil) pour les sept commandes qui
+ * l'acceptent — en « saisie hors ligne », un numéro déjà pris est appliqué sans lui, avec l'avertissement
+ * `LOCAL_REF_DUPLICATE`, jamais refusé —, une mention dans le texte libre pour l'expédition d'un transfert
+ * et la déclaration d'une perte, qui n'ont pas de `localRef` (AV-501). Une pièce reportée est un fait
  * accompli saisi hors du système (BR-SYN-007) : la commande part « saisie hors ligne » même appareil
  * connecté (AV-502).
  */
@@ -52,24 +50,11 @@ export const MAX_SLIP_FREE_TEXT = 2000;
 export const MAX_BACKDATED_REASON = 500;
 
 /** Où le serveur garde le numéro d'une pièce papier reportée (AV-501). */
-export type PaperRefPlace = 'LOCAL_REF' | 'FREE_TEXT' | 'DEVICE_ONLY';
+export type PaperRefPlace = 'LOCAL_REF' | 'FREE_TEXT';
 
 export function paperRefPlace(type: ReportableSlipType): PaperRefPlace {
-  switch (type) {
-    // Gestionnaires qui contrôlent le doublon de `localRef` (vente, dépense, remise de fonds).
-    case 'BV':
-    case 'BD':
-    case 'RF':
-      return 'LOCAL_REF';
-    case 'BL':
-    case 'BR':
-    case 'BT':
-    case 'FP':
-      return 'FREE_TEXT';
-    case 'CC':
-    case 'RE':
-      return 'DEVICE_ONLY';
-  }
+  // L'expédition d'un transfert et la déclaration d'une perte n'acceptent pas `localRef`.
+  return type === 'BT' || type === 'FP' ? 'FREE_TEXT' : 'LOCAL_REF';
 }
 
 /** La commande de ce type de pièce reçoit-elle le numéro en `localRef` ? */
@@ -278,7 +263,7 @@ const nonEmpty = (text: string | undefined): string | undefined => {
   return trimmed ? trimmed : undefined;
 };
 
-/** Texte libre d'une commande qui ne reçoit pas `localRef` : la mention de la pièce, puis la note. */
+/** Texte libre d'une commande sans `localRef` (transfert, perte) : la mention de la pièce, puis la note. */
 export function withPaperRef(paperRef: string, text: string | undefined): string {
   const mention = `Pièce papier ${paperRef}`;
   const body = nonEmpty(text);
@@ -341,6 +326,7 @@ function commandOf(
           customerId: slip.customerId,
           fulfilmentLocationId: slip.fulfilmentLocationId,
           channelCode: slip.channelCode,
+          localRef,
           requestedDeliveryDate: slip.requestedDeliveryDate,
           deliveryAddress: nonEmpty(slip.deliveryAddress),
           lines: slip.lines.map(saleLine),
@@ -354,6 +340,7 @@ function commandOf(
           customerId: slip.customerId,
           siteId: slip.siteId,
           ...payment(slip.payment),
+          localRef,
         }),
       };
     case 'BL':
@@ -362,8 +349,9 @@ function commandOf(
         aggregateType: 'DELIVERY_NOTE',
         payload: compact({
           orderId: slip.orderId,
+          localRef,
           recipientName: nonEmpty(slip.recipientName),
-          notes: withPaperRef(paperRef, slip.notes),
+          notes: nonEmpty(slip.notes),
           lines: slip.lines.map((line) => ({
             orderLineId: line.orderLineId,
             quantityBase: line.quantityBase,
@@ -407,7 +395,7 @@ function commandOf(
           supplierId: slip.supplierId,
           locationId: slip.locationId,
           supplierDeliveryNoteRef: nonEmpty(slip.supplierDeliveryNoteRef),
-          observations: withPaperRef(paperRef, slip.observations),
+          observations: nonEmpty(slip.observations),
           lines: slip.lines.map((line) =>
             compact({
               poLineId: line.poLineId,
@@ -420,6 +408,7 @@ function commandOf(
               supplierLotRef: nonEmpty(line.supplierLotRef),
             }),
           ),
+          localRef,
         }),
       };
     case 'BT':

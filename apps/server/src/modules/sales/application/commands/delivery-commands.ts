@@ -97,7 +97,8 @@ type Envelope = Parameters<CommandHandler<FulfilPayload>>[1];
  * régularisation ne consomme aucun quota (opération du serveur, ADR-033 §7) ; si elle entame le stock
  * promis aux appareils d'un emplacement partagé, `inventory` ouvre `ALLOCATION_OVERCOMMITTED` (P5-11).
  */
-type Warning = 'ORDER_OVER_FULFILMENT' | 'STOCK_NEGATIVE' | 'ALLOCATION_OVERCOMMITTED';
+type Warning =
+  'ORDER_OVER_FULFILMENT' | 'STOCK_NEGATIVE' | 'ALLOCATION_OVERCOMMITTED' | 'LOCAL_REF_DUPLICATE';
 
 const milliOf = (value: string | number): number =>
   quantityMilliUnits(quantityFromDecimal(Number(value)));
@@ -289,6 +290,29 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
 
     // --- Bon de livraison, mouvements DELIVERY, compteurs ----------------------------------------------
     if (delivered.length > 0) {
+      // La référence locale est unique par **appareil** : déjà prise, la livraison est refusée en ligne ;
+      // hors ligne elle est appliquée sans la référence, avec l'avertissement `LOCAL_REF_DUPLICATE`
+      // (BR-SYN-007), comme une vente. Sans ce contrôle, la clé unique ferait échouer l'écriture et la
+      // commande serait rejouée sans fin.
+      let localRef = p.localRef ?? null;
+      if (localRef !== null && origin.deviceId !== null) {
+        const sameRef = await uow
+          .selectFrom('sales_delivery_notes')
+          .select('id')
+          .where('created_device_id', '=', toBin(origin.deviceId))
+          .where('local_ref', '=', localRef)
+          .executeTakeFirst();
+        if (sameRef) {
+          if (!offline) {
+            return rejected(
+              'LOCAL_REF_DUPLICATE',
+              'Référence locale déjà utilisée par cet appareil.',
+            );
+          }
+          localRef = null;
+          warnings.add('LOCAL_REF_DUPLICATE');
+        }
+      }
       const docNumber = await documentSequences.next(uow, {
         docType: 'LIV',
         siteId: site.id,
@@ -301,7 +325,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         .values({
           id: toBin(noteId),
           doc_number: docNumber,
-          local_ref: p.localRef ?? null,
+          local_ref: localRef,
           site_id: toBin(site.id),
           order_id: order.id,
           delivered_by_user_id: toBin(deliveredBy),

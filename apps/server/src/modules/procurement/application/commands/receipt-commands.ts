@@ -555,6 +555,30 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (operationType && !policy) return CONTROL_POLICY_MISSING(operationType);
 
     const origin = await loadCommandOrigin(uow, envelope.command_id);
+    // La référence locale est unique par **appareil** : déjà prise, la réception est refusée en ligne ;
+    // hors ligne (la marchandise est là : BR-SYN-007) elle est appliquée sans la référence, avec
+    // l'avertissement `LOCAL_REF_DUPLICATE`, comme une vente. Sans ce contrôle, la clé unique ferait
+    // échouer l'écriture et la commande serait rejouée sans fin.
+    let localRef = p.localRef ?? null;
+    let localRefReused = false;
+    if (localRef !== null && origin.deviceId !== null) {
+      const sameRef = await uow
+        .selectFrom('procurement_goods_receipts')
+        .select('id')
+        .where('created_device_id', '=', toBin(origin.deviceId))
+        .where('local_ref', '=', localRef)
+        .executeTakeFirst();
+      if (sameRef) {
+        if (!offline) {
+          return rejected(
+            'LOCAL_REF_DUPLICATE',
+            'Référence locale déjà utilisée par cet appareil.',
+          );
+        }
+        localRef = null;
+        localRefReused = true;
+      }
+    }
     const docNumber = await documentSequences.next(uow, {
       docType: 'REC',
       siteId: location.site.id,
@@ -594,7 +618,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .values({
         id: toBin(receiptId),
         doc_number: docNumber,
-        local_ref: p.localRef ?? null,
+        local_ref: localRef,
         site_id: toBin(location.site.id),
         purchase_order_id: toBinOrNull(p.purchaseOrderId ?? null),
         supplier_id: toBin(p.supplierId),
@@ -657,7 +681,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     }
     await emitGoodsReceiptChange(uow, receiptId);
 
-    const photoWarnings: WarningCode[] = [];
+    const recordWarnings: WarningCode[] = localRefReused ? ['LOCAL_REF_DUPLICATE'] : [];
     if (photoMissing) {
       await recordConflict(uow, {
         id: idGenerator.newId(),
@@ -676,7 +700,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           withoutOrder: !order,
         },
       });
-      photoWarnings.push('RECEIPT_PHOTO_MISSING');
+      recordWarnings.push('RECEIPT_PHOTO_MISSING');
     }
 
     if (status === 'QUARANTINED') {
@@ -697,7 +721,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
       return {
         status: 'APPLIED_WITH_WARNINGS',
-        warnings: ['RECEIPT_QUARANTINED', ...photoWarnings],
+        warnings: ['RECEIPT_QUARANTINED', ...recordWarnings],
         serverRefs: { docNumber },
       };
     }
@@ -720,12 +744,12 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
       return {
         status: 'APPLIED_WITH_WARNINGS',
-        warnings: ['OVER_RECEIPT', ...photoWarnings],
+        warnings: ['OVER_RECEIPT', ...recordWarnings],
         serverRefs: { docNumber },
       };
     }
-    return photoWarnings.length > 0
-      ? { status: 'APPLIED_WITH_WARNINGS', warnings: photoWarnings, serverRefs: { docNumber } }
+    return recordWarnings.length > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: recordWarnings, serverRefs: { docNumber } }
       : { status: 'APPLIED', serverRefs: { docNumber } };
   };
 

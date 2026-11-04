@@ -18,6 +18,7 @@ import {
   orderRow,
   posCashAccountRow,
   seedSalesFixtures,
+  siteRow,
 } from '../sales/fixtures.js';
 import { loadSalesReferences, type SalesReferences } from '../sales/references.js';
 import type { DraftLine } from '../sales/sale-form.js';
@@ -551,6 +552,78 @@ describe('FP : fiche de perte (inventory.loss.declare)', () => {
     );
     const { slip } = slipOf({ ...base, lossCategory: 'VOL_SUSPECTE', lossReasonId: LOSS_REASON });
     expect(slip.type === 'FP' && slip.reasonCodeId).toBeUndefined();
+  });
+});
+
+describe('gardes du serveur reprises par le formulaire', () => {
+  it('RE : sans site d’attache du client, le site de l’encaissement est obligatoire (SITE_REQUIRED)', async () => {
+    await getDb().projections.put(
+      put('customers', 'CUSTOMER', IDS.customer, {
+        id: IDS.customer,
+        stage: 'CUSTOMER',
+        display_name: 'Boutique Mvog-Mbi',
+        contact_name: null,
+        category_id: null,
+        phone_primary: '+237 699 11 22 33',
+        zone_id: IDS.zone,
+        owner_user_id: IDS.user,
+        home_site_id: null,
+        merged_into_id: null,
+        credit_allowed: true,
+        credit_limit_xaf: 50_000,
+        payment_terms_days: 30,
+        outstanding_xaf: 0,
+        version: 1,
+      }),
+    );
+    refs = await loadSalesReferences(getDb());
+    const base = {
+      slipType: 'RE' as const,
+      paperRef: 'RE-000099',
+      customerId: IDS.customer,
+      payment: { ...emptySlipForm(NOW).payment, amountText: '25000' },
+    };
+    expect(issuesOf(base)).toContain('SITE_REQUIRED');
+    expect(slipOf({ ...base, siteId: IDS.site }).slip).toMatchObject({
+      type: 'RE',
+      siteId: IDS.site,
+    });
+  });
+
+  it('BR : une réception hors du site du bon de commande exige son motif dans les observations (AV-096)', async () => {
+    const FARM_STORE = '01900000-0000-7000-8000-000000000033';
+    await getDb().projections.bulkPut([
+      siteRow(),
+      put('location', 'LOCATION', FARM_STORE, {
+        id: FARM_STORE,
+        site_id: EXPENSE_IDS.farm,
+        code: 'FERME-MAG',
+        name: 'Magasin de la ferme',
+        location_type: 'STORE',
+        is_virtual: false,
+        custody_mode: null,
+        custodian_user_id: null,
+        designated_device_id: null,
+        status: 'ACTIVE',
+      }),
+    ]);
+    refs = await loadSalesReferences(getDb());
+    const base = {
+      slipType: 'BR' as const,
+      paperRef: 'BR-000012',
+      orderId: PURCHASE_ORDER,
+      locationId: FARM_STORE,
+      quantities: { [PO_LINE]: '10' },
+    };
+    expect(issuesOf(base)).toContain('OBSERVATIONS_REQUIRED');
+    const { slip } = slipOf({ ...base, notes: 'Livré à la ferme sur instruction du responsable' });
+    expect(slip.type === 'BR' && slip.observations).toBe(
+      'Livré à la ferme sur instruction du responsable',
+    );
+    // Sur le site du bon de commande, aucun motif n'est exigé.
+    expect(issuesOf({ ...base, locationId: IDS.pos, quantities: {} })).not.toContain(
+      'OBSERVATIONS_REQUIRED',
+    );
   });
 });
 

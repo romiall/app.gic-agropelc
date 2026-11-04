@@ -403,6 +403,9 @@ function OrderFields(props: SectionProps) {
 function PaymentSlipFields({ form, patch, context }: SectionProps) {
   const { t } = useTranslation();
   const { refs } = context;
+  const customer = form.customerId
+    ? refs.customers.find((entry) => entry.id === form.customerId)
+    : undefined;
   return (
     <Section title={t('piece.section_re', 'Détails du reçu d’encaissement (RE)')}>
       <div className="report-fields">
@@ -425,7 +428,7 @@ function PaymentSlipFields({ form, patch, context }: SectionProps) {
           label={t('piece.collect_site', 'Site de l’encaissement')}
           refs={refs}
           value={form.siteId}
-          optional
+          optional={Boolean(customer?.home_site_id)}
           onChange={(siteId) => patch({ siteId })}
         />
       </div>
@@ -510,7 +513,7 @@ function DeliveryFields({ form, patch, context }: SectionProps) {
             {(ctrl) => (
               <Input
                 {...ctrl}
-                maxLength={1900}
+                maxLength={2000}
                 value={form.notes}
                 onChange={(e) => patch({ notes: e.target.value })}
               />
@@ -702,6 +705,8 @@ function ReceiptFields({ form, patch, context }: SectionProps) {
   const locations = order
     ? receiptLocations(refs.locations, order)
     : slipLocations(refs, userId).filter((location) => location.site_id !== null);
+  const chosen = locations.find((location) => location.id === form.locationId);
+  const override = order !== undefined && chosen !== undefined && chosen.site_id !== order.site_id;
   return (
     <Section title={t('piece.section_br', 'Détails du bon de réception (BR)')}>
       <div className="report-fields">
@@ -755,6 +760,14 @@ function ReceiptFields({ form, patch, context }: SectionProps) {
           options={locations}
           onChange={(locationId) => patch({ locationId })}
         />
+        {override ? (
+          <Banner tone="warn">
+            {t(
+              'piece.receipt_override',
+              'Emplacement hors du site du bon de commande : le responsable des achats devra valider la réception. Précisez le motif dans les observations (AV-096).',
+            )}
+          </Banner>
+        ) : null}
         {order ? (
           <ul className="report-lines">
             {order.lines.map((line) => (
@@ -802,7 +815,7 @@ function ReceiptFields({ form, patch, context }: SectionProps) {
             {(ctrl) => (
               <Input
                 {...ctrl}
-                maxLength={3900}
+                maxLength={4000}
                 value={form.notes}
                 onChange={(e) => patch({ notes: e.target.value })}
               />

@@ -203,7 +203,7 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
     }
   });
 
-  it('le numéro de la pièce : localRef si le serveur contrôle le doublon, sinon texte libre, sinon l’appareil', () => {
+  it('le numéro de la pièce est localRef, sauf transfert et perte (texte libre)', () => {
     const place = Object.fromEntries(
       REPORTABLE_SLIP_TYPES.map((type) => [type, paperRefPlace(type)]),
     );
@@ -211,17 +211,16 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       BV: 'LOCAL_REF',
       BD: 'LOCAL_REF',
       RF: 'LOCAL_REF',
-      BL: 'FREE_TEXT',
-      BR: 'FREE_TEXT',
+      BL: 'LOCAL_REF',
+      BR: 'LOCAL_REF',
+      CC: 'LOCAL_REF',
+      RE: 'LOCAL_REF',
       BT: 'FREE_TEXT',
       FP: 'FREE_TEXT',
-      CC: 'DEVICE_ONLY',
-      RE: 'DEVICE_ONLY',
     });
     for (const type of REPORTABLE_SLIP_TYPES) {
       const { payload } = buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` }));
-      // Seuls la vente, la dépense et la remise de fonds contrôlent un `localRef` déjà pris : ailleurs,
-      // la clé unique du serveur ferait échouer à chaque essai la commande d'un numéro répété.
+      // L'expédition d'un transfert et la déclaration d'une perte n'acceptent pas `localRef`.
       if (carriesLocalRef(type)) expect(payload['localRef'], type).toBe(`${type}-000042`);
       else expect(payload, type).not.toHaveProperty('localRef');
     }
@@ -229,8 +228,9 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` })).payload[key];
     expect(mention('BT', 'notes')).toBe('Pièce papier BT-000042 — Réapprovisionnement');
     expect(mention('FP', 'comment')).toBe('Pièce papier FP-000042 — Cageots tombés');
-    expect(mention('BL', 'notes')).toBe('Pièce papier BL-000042');
-    expect(mention('BR', 'observations')).toBe('Pièce papier BR-000042');
+    // Le texte libre des autres commandes reste celui de l'utilisateur, sans mention.
+    expect(mention('BL', 'notes')).toBeUndefined();
+    expect(mention('BR', 'observations')).toBeUndefined();
     expect(withPaperRef('FP-4', undefined)).toBe('Pièce papier FP-4');
     expect(withPaperRef('FP-4', 'x'.repeat(3000))).toHaveLength(2000);
   });
@@ -238,9 +238,9 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
   it('un numéro de plus de 20 caractères est refusé là où il devient localRef (schémas du serveur)', () => {
     const tooLong = 'B'.repeat(MAX_SLIP_REF_LENGTH + 1);
     expect(() => buildReportCommand(SLIPS.BV, meta({ paperRef: tooLong }))).toThrow(RangeError);
-    // Ailleurs, le numéro n'est pas un localRef : la mention reste dans le texte.
+    expect(() => buildReportCommand(SLIPS.RE, meta({ paperRef: tooLong }))).toThrow(RangeError);
+    // Pour un transfert ou une perte, le numéro n'est pas un localRef : la mention reste dans le texte.
     expect(() => buildReportCommand(SLIPS.BT, meta({ paperRef: tooLong }))).not.toThrow();
-    expect(() => buildReportCommand(SLIPS.RE, meta({ paperRef: tooLong }))).not.toThrow();
   });
 
   it('la pièce est un fait accompli : commande saisie hors ligne, heure et motif de la pièce', () => {
@@ -273,10 +273,6 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
     ]);
     const reception = buildReportCommand(SLIPS.BR, meta({ paperRef: 'BR-000012' }));
     expect(reception.localFlags).toEqual(['PAPER_SLIP', 'SLIP_TYPE:BR', 'PAPER_REF:BR-000012']);
-    // Le numéro d'une commande client ou d'un reçu ne vit que dans cet indice local (AV-501).
-    const receipt = buildReportCommand(SLIPS.RE, meta({ paperRef: 'RE-000099' }));
-    expect(receipt.localFlags).toContain('PAPER_REF:RE-000099');
-    expect(JSON.stringify(receipt.payload)).not.toContain('RE-000099');
   });
 
   it('photo de la souche : seulement là où le serveur lit un propriétaire de pièce jointe (ADR-046)', () => {
