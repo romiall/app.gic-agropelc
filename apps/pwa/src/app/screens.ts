@@ -501,24 +501,14 @@ export const ROLE_SETS = {
     'DIRECTION',
   ],
   /**
-   * ECR-IMP-01 (RP-2, PP-C) : les rôles de l'un des types chargeables — catalogue (`catalog.*.manage` : administrateur),
-   * fournisseurs (`procurement.supplier.manage` : responsable des achats), clients (`crm.customer.create`), pièces
-   * papier (ceux de l'écran de report). Chaque type garde ses propres rôles (`ImportEntity.roles`) ; un essai garde
-   * cette liste égale à leur réunion.
+   * ECR-IMP-01 (RP-2, PP-C) : à qui le menu propose le chargement de données — ceux qui gèrent les données de référence
+   * et l'historique : administrateur (catalogue), responsable commercial (clients, pièces), finance et direction
+   * (pièces). Ce n'est pas l'autorisation : la route reste ouverte à tout rôle qui peut charger un type (fournisseurs :
+   * responsable des achats ; clients : commerciaux, vendeur de PDV, responsable de ferme), l'écran ne propose à chacun que
+   * les types de ses droits (`ImportEntity.roles`) et le serveur revérifie chaque commande. Le menu ne s'allonge pas pour
+   * les autres : au-delà de 16 entrées il ne déplie plus tous les domaines (UX-01, `EXPAND_ALL_UNTIL`).
    */
-  dataImport: [
-    'ADMIN',
-    'RESP_ACHATS',
-    'RESP_COMMERCIAL',
-    'COMMERCIAL_TERRAIN',
-    'COMMERCIAL_SEDENTAIRE',
-    'VENDEUR_PDV',
-    'RESP_FERME',
-    'RESP_PRODUCTION',
-    'MAGASINIER',
-    'FINANCE',
-    'DIRECTION',
-  ],
+  dataImport: ['ADMIN', 'RESP_COMMERCIAL', 'FINANCE', 'DIRECTION'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */

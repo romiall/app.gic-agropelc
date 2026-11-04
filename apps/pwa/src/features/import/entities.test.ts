@@ -509,8 +509,10 @@ describe('contrôle d’un fichier', () => {
     ]);
   });
 
-  it('l’écran est ouvert aux rôles de l’un des types, ni plus ni moins (garde contre une dérive)', () => {
+  it('le menu ne propose le chargement qu’à des rôles qui peuvent charger au moins un type (garde contre une dérive)', () => {
     const union = new Set(IMPORT_ENTITIES.flatMap((entity) => entity.roles));
-    expect(new Set<string>(ROLE_SETS.dataImport)).toEqual(union);
+    for (const role of ROLE_SETS.dataImport) {
+      expect(union.has(role), role).toBe(true);
+    }
   });
 });
