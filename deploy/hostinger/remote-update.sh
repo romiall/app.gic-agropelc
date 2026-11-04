@@ -116,8 +116,9 @@ done
 index="$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$URL/" || true)"
 [ "$index" = "200" ] || fail "la page d'accueil repond HTTP $index"
 # La route de connexion avec un identifiant fictif : 401 attendu (429 si trop d'essais fictifs recents) ; une erreur 5xx
-# trahit un defaut de l'API ou de la base que /health/ready ne voit pas.
-login="$(curl -s -m 20 -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"phone":"controle@example.invalid","password":"controle-fictif","device_id":"00000000-0000-4000-8000-000000000001","platform":"PWA"}' "$URL/api/v1/auth/login" || true)"
+# trahit un defaut de l'API ou de la base que /health/ready ne voit pas. L'identifiant d'appareil doit etre un UUIDv7
+# (ADR-052) : avec tout autre UUID la route repond 400 avant de verifier le compte, et la mise en ligne serait annulee.
+login="$(curl -s -m 20 -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"phone":"controle@example.invalid","password":"controle-fictif","device_id":"01900000-0000-7000-8000-000000000001","platform":"PWA"}' "$URL/api/v1/auth/login" || true)"
 case "$login" in
   401|429) ;;
   *) fail "la route de connexion repond HTTP $login (401 attendu pour un identifiant fictif)" ;;
