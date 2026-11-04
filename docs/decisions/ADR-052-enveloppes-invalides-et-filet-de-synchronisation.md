@@ -40,6 +40,15 @@ parce que personne n'a rouvert l'écran.
    masqué, donc sans cycle périodique (NFR-09) —, un cycle part, pourvu que `navigator.onLine` soit vrai. Chaque cycle,
    d'où qu'il vienne, repousse le filet ; il ne double donc jamais la cadence de 30 s du premier plan. Le cycle juge
    lui-même de la joignabilité réelle du serveur.
+5. **Identifiants des écrans de RP-4** : la revue contradictoire du 04/11 a trouvé une seconde source d'enveloppes
+   invalides, en ligne depuis le 03/11 : cinq envois (note de direction, règle d'alerte, accusé de notification, vue
+   sauvegardée, export) fabriquaient leur `aggregate_id` avec `crypto.randomUUID()` (UUIDv4). Ils utilisent maintenant
+   `idGenerator` (UUIDv7) et une règle ESLint interdit `crypto.randomUUID()` dans `apps/pwa/src`. On ne sait pas
+   laquelle des deux sources a empoisonné la file de l'Admin ; la vérification locale guérit les deux.
+6. **Livraison** : `build-bundle.ps1` refuse de construire le paquet sans `sw.js` (la livraison du 03/11 est partie
+   sans) ou depuis un arbre de travail aux fichiers suivis modifiés (`-AllowDirty` pour passer outre) : une autre session
+   peut avoir des changements non commités dans le même dossier. Livrer depuis une copie propre (`git worktree add
+   --detach`).
 
 ## Alternatives étudiées
 
@@ -55,9 +64,19 @@ parce que personne n'a rouvert l'écran.
 
 ## Conséquences
 
-- Un appareil dont la file est **déjà** bloquée ne reçoit la correction qu'après fermeture complète de l'application : le
-  nouveau service worker attend (`registerType: 'prompt'`) et ne s'active pas tant que la file n'est pas vidée
-  (`tryApplyPendingUpdate`). À la réouverture, le premier cycle refuse la commande empoisonnée et la file repart.
+- Un appareil dont la file est **déjà** bloquée reçoit la correction en trois temps : le nouveau service worker attend
+  (`registerType: 'prompt'`) et ne s'active pas tant que la file n'est pas vidée (`tryApplyPendingUpdate`), et la nouvelle
+  version n'est cherchée qu'à une navigation. Ouvrir l'application, saisir le code PIN, ne rien saisir d'autre et attendre
+  environ 2 minutes (le nouveau service worker se télécharge) ; la fermer complètement (toutes les fenêtres et tous les
+  onglets ; sur téléphone, la retirer des applications récentes) ; la rouvrir. Le premier cycle refuse alors la commande
+  empoisonnée et la file repart.
+- Une commande refusée sur l'appareil n'est jamais envoyée : son `device_seq` manque au serveur, qui lève une alerte
+  critique `DEVICE_SEQ_GAP` environ 24 h après le premier envoi réussi de l'appareil (BR-SYN-003). C'est attendu pour
+  l'appareil de l'Admin : vérifier que le nombre de numéros manquants (`missing_from` à `missing_to`) correspond aux
+  commandes refusées, puis clore l'alerte (`communication.alert.resolve`). Durable, à décider : un champ facultatif du lot
+  par lequel l'appareil déclare les numéros refusés, pour que le serveur ne les tienne pas pour perdus.
+- Un lot refusé en bloc par le serveur alors que chaque enveloppe est valide (cas qu'aucune donnée plausible ne
+  déclenche) n'est signalé que dans la console de l'appareil ; il repart toutes les ~130 s.
 - Les douze appareils de test déjà en base restent `PENDING` tant qu'ils ne sont pas refusés (aucune commande ne peut
   les viser). Une commande d'installation les refuse, comme `db:approve-device` approuve le premier appareil
   (`bootstrap-legacy-device-cleanup.ts`, `deploy/hostinger/block-legacy-devices.mjs` : liste par défaut, `--apply`

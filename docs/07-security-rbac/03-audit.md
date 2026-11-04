@@ -41,6 +41,7 @@ Toutes les commandes des modules métier (BR-AUD-003), avec le code d'action = t
 | `auth.login.succeeded`, `auth.login.failed`, `auth.pin.locked`, `auth.token.reuse_detected`, `auth.session.revoked` | Authentification |
 | `identity.user.change_password` (succès, ou échec `INVALID_CREDENTIALS`), `identity.user.reset_password` (succès, ou refus `DENIED`), `identity.user.create` par `POST /users` (succès : statut et première affectation ; refus `DENIED` : `FORBIDDEN`, `DEVICE_PENDING`, `DEVICE_REVOKED` ; route hors commandes, MP-13) | Mots de passe (MP-08, ADR-045) : jamais le mot de passe, seulement ses effets (`must_change_password`, sessions révoquées) |
 | Approbation d'installation d'un appareil (AV-254) | `identity.device.approve`, acteur système, motif « db:approve-device (AV-254) » |
+| Refus d'installation d'appareils en attente d'identifiant non conforme (AV-499) | `identity.device.block`, acteur système, motif « Identifiant d’appareil non conforme (UUIDv7 exigé) : appareil de test refusé à l’installation (AV-499). » (`block-legacy-devices.mjs`) |
 | `audit.log.read` | Consultation du journal (avec filtres) |
 | `analytics.export.requested`, `analytics.export.downloaded` | Exports |
 | `access.denied` | Tout refus d'autorisation (IDOR, permission absente) |
