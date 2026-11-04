@@ -155,8 +155,24 @@ describe('submitPaperSlipReport : la commande du serveur dans l’outbox', () =>
   it('libellé d’une pièce reportée, tiré de sa charge utile', () => {
     expect(describeReportedPayload('BV', { lines: [{}, {}] })).toBe('Vente : 2 lignes');
     expect(describeReportedPayload('CC', { lines: [{}] })).toBe('Commande client : 1 ligne');
+    expect(describeReportedPayload('RF', null)).toBe('Remise de fonds');
+  });
+
+  it('les codes du moyen de paiement et de la nature de perte sont traduits, jamais montrés bruts', () => {
+    const labels = {
+      paymentMethod: (code: string) => (code === 'ESPECES' ? 'Espèces' : code),
+      lossCategory: (code: string) => (code === 'CASSE' ? 'Casse' : code),
+    };
+    expect(describeReportedPayload('RE', { methodCode: 'ESPECES' }, labels)).toBe(
+      'Encaissement (Espèces)',
+    );
+    expect(describeReportedPayload('FP', { category: 'CASSE' }, labels)).toBe('Perte (Casse)');
+    // Un code que le référentiel ne connaît pas reste lisible tel quel plutôt que de disparaître.
+    expect(describeReportedPayload('RE', { methodCode: 'INCONNU' }, labels)).toBe(
+      'Encaissement (INCONNU)',
+    );
+    // Sans traduction fournie, le code est rendu tel quel.
     expect(describeReportedPayload('RE', { methodCode: 'ESPECES' })).toBe('Encaissement (ESPECES)');
     expect(describeReportedPayload('FP', { category: 'CASSE' })).toBe('Perte (CASSE)');
-    expect(describeReportedPayload('RF', null)).toBe('Remise de fonds');
   });
 });

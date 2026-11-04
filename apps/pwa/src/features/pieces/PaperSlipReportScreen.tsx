@@ -14,7 +14,7 @@
  * - Registre des carnets (RC) : historique, détection des sauts et des doublons (AV-312).
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -63,6 +63,7 @@ import {
 import {
   loadReportedSlipsFromDb,
   submitPaperSlipReport,
+  type PayloadLabels,
   type ReportedSlipRecord,
 } from './report-submit.js';
 import { blankLine } from './report-lines.js';
@@ -119,8 +120,21 @@ export function PaperSlipReportScreen() {
 
   const patch = (change: Partial<SlipForm>) => setForm((current) => ({ ...current, ...change }));
 
+  // Libellés lisibles des codes que portent les commandes (moyen de paiement du référentiel de l'appareil, nature de
+  // perte en français) : le registre ne montre jamais un code brut.
+  const payloadLabels = useMemo<PayloadLabels>(
+    () => ({
+      paymentMethod: (code) =>
+        refs?.paymentMethods.find((method) => method.code === code)?.label ?? code,
+      lossCategory: (code) => t(`loss.categories.${code}`, { defaultValue: code }),
+    }),
+    [refs, t],
+  );
+
   // Pièces déjà enregistrées sur cet appareil (Dexie LiveQuery)
-  const reportedSlips = useLiveQuery(async () => loadReportedSlipsFromDb(getDb()), []) ?? [];
+  const reportedSlips =
+    useLiveQuery(async () => loadReportedSlipsFromDb(getDb(), payloadLabels), [payloadLabels]) ??
+    [];
 
   // Références existantes pour le type sélectionné
   const existingRefsForType = reportedSlips
@@ -279,10 +293,7 @@ export function PaperSlipReportScreen() {
     <div className="report-screen">
       <PageHeader
         title={t('piece.report_title', 'Reporter une pièce papier')}
-        subtitle={t(
-          'piece.report_subtitle',
-          'Saisie des pièces de carnets à souche et registre (AV-308, AV-312)',
-        )}
+        subtitle={t('piece.report_subtitle', 'Saisie des pièces de carnets à souche et registre')}
       />
 
       <div className="report-tabs">
@@ -403,7 +414,7 @@ export function PaperSlipReportScreen() {
                   <Banner tone="warn">
                     {t(
                       'piece.critical_delay_warning',
-                      'Attention : le délai de report dépasse 72 h (AV-078). Cette pièce fera l’objet d’une vérification comptable a posteriori.',
+                      'Attention : le délai de report dépasse 72 h. Cette pièce fera l’objet d’une vérification comptable a posteriori.',
                     )}
                   </Banner>
                 </div>
@@ -414,7 +425,7 @@ export function PaperSlipReportScreen() {
                   label={t('piece.backdated_reason', 'Motif de report / antidatage')}
                   hint={t(
                     'piece.backdated_reason_hint',
-                    'Requis car la pièce a été signée il y a plus de 24 h (AV-078).',
+                    'Requis car la pièce a été signée il y a plus de 24 h.',
                   )}
                 >
                   {(ctrl) => (
@@ -456,7 +467,7 @@ export function PaperSlipReportScreen() {
               <Banner tone="info">
                 {t(
                   'piece.photo_unavailable',
-                  'La photo de la souche ne peut pas encore être rattachée à ce type de pièce sur le serveur (AV-504) : conservez la souche papier dans le carnet.',
+                  'La photo de la souche ne peut pas encore être rattachée à ce type de pièce sur le serveur : conservez la souche papier dans le carnet.',
                 )}
               </Banner>
             )}

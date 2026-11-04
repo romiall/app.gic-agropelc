@@ -4702,7 +4702,7 @@ export const fr = {
     receipts_journal: 'Journal des encaissements (7 jours)',
     lot_week: 'Fiche de suivi de la semaine',
     report_title: 'Reporter une pièce papier',
-    report_subtitle: 'Saisie des pièces de carnets à souche et registre (AV-308, AV-312)',
+    report_subtitle: 'Saisie des pièces de carnets à souche et registre',
     report_tab_entry: 'Saisie du report',
     report_tab_register: 'Registre des carnets (RC)',
     section_general: 'Informations du carnet papier',
@@ -4716,7 +4716,7 @@ export const fr = {
     slip_ref_hint: 'Ex. BV-000142, RE-0045, BD-012…',
     occurred_at: 'Date et heure manuscrite de la pièce',
     backdated_reason: 'Motif de report / antidatage',
-    backdated_reason_hint: 'Requis car la pièce a été signée il y a plus de 24 h (AV-078).',
+    backdated_reason_hint: 'Requis car la pièce a été signée il y a plus de 24 h.',
     photo_label: 'Preuve photo de la souche',
     photo_hint:
       'Recommandé : prenez en photo la souche ou le feuillet du carnet comme justificatif.',
@@ -4725,7 +4725,7 @@ export const fr = {
     gap_warning:
       'Saut détecté : la dernière pièce enregistrée était le n° {{last}}. Pièces manquantes : {{missing}}.',
     critical_delay_warning:
-      'Attention : le délai de report dépasse 72 h (AV-078). Cette pièce fera l’objet d’une vérification comptable a posteriori.',
+      'Attention : le délai de report dépasse 72 h. Cette pièce fera l’objet d’une vérification comptable a posteriori.',
     future_date_error: 'La date de la pièce ne peut pas être dans le futur.',
     submit_report: 'Enregistrer le report',
     report_success: 'Pièce {{ref}} enregistrée dans la file d’attente locale (outbox).',

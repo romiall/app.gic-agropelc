@@ -96,12 +96,28 @@ const countOf = (value: unknown): number => (Array.isArray(value) ? value.length
 const plural = (n: number, singular: string, many: string): string =>
   `${n} ${n > 1 ? many : singular}`;
 
+/**
+ * Traduction des codes que porte la charge utile d'une commande (moyen de paiement, nature de perte) en libellés
+ * lisibles : sans elle, le registre afficherait les codes bruts (« Encaissement (ESPECES) »). Chaque fonction rend le
+ * code lui-même quand elle ne le connaît pas.
+ */
+export interface PayloadLabels {
+  readonly paymentMethod?: (code: string) => string;
+  readonly lossCategory?: (code: string) => string;
+}
+
 /** Libellé d'une pièce reportée, tiré de la charge utile de sa commande. */
-export function describeReportedPayload(type: ReportableSlipType, payload: unknown): string {
+export function describeReportedPayload(
+  type: ReportableSlipType,
+  payload: unknown,
+  labels: PayloadLabels = {},
+): string {
   const p = (typeof payload === 'object' && payload !== null ? payload : {}) as Record<
     string,
     unknown
   >;
+  const methodLabel = (code: string): string => labels.paymentMethod?.(code) ?? code;
+  const lossLabel = (code: string): string => labels.lossCategory?.(code) ?? code;
   switch (type) {
     case 'BV':
       return `Vente : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
@@ -110,7 +126,7 @@ export function describeReportedPayload(type: ReportableSlipType, payload: unkno
     case 'BL':
       return `Livraison : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
     case 'RE':
-      return `Encaissement (${String(p['methodCode'] ?? '')})`;
+      return `Encaissement (${methodLabel(String(p['methodCode'] ?? ''))})`;
     case 'BD': {
       const payee = typeof p['payeeName'] === 'string' ? `À : ${p['payeeName']} — ` : '';
       return `${payee}${typeof p['description'] === 'string' ? p['description'] : 'Dépense'}`;
@@ -122,7 +138,7 @@ export function describeReportedPayload(type: ReportableSlipType, payload: unkno
     case 'BT':
       return `Transfert : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
     case 'FP':
-      return `Perte (${String(p['category'] ?? '')})`;
+      return `Perte (${lossLabel(String(p['category'] ?? ''))})`;
   }
 }
 
@@ -130,7 +146,10 @@ export function describeReportedPayload(type: ReportableSlipType, payload: unkno
  * Charge les pièces papier reportées sur cet appareil à partir de l'outbox Dexie (indices locaux écrits
  * par `buildReportCommand`).
  */
-export async function loadReportedSlipsFromDb(db: GicDatabase): Promise<ReportedSlipRecord[]> {
+export async function loadReportedSlipsFromDb(
+  db: GicDatabase,
+  labels: PayloadLabels = {},
+): Promise<ReportedSlipRecord[]> {
   const commands = await db.outbox.toArray();
   const reported: ReportedSlipRecord[] = [];
 
@@ -161,7 +180,7 @@ export async function loadReportedSlipsFromDb(db: GicDatabase): Promise<Reported
       occurredAt: cmd.occurred_at,
       submittedAt: cmd.client_created_at,
       authorUserId: cmd.author_user_id,
-      description: describeReportedPayload(slipType, cmd.payload),
+      description: describeReportedPayload(slipType, cmd.payload, labels),
       amountXaf,
       status: cmd.status,
       hasAttachment: (cmd.attachment_ids ?? []).length > 0,

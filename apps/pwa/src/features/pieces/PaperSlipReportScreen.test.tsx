@@ -157,6 +157,49 @@ describe('PaperSlipReportScreen (PP-B)', () => {
     expect(await screen.findByText('N° 140 → 141')).toBeInTheDocument();
   });
 
+  it('registre : moyen de paiement et nature de perte en français, jamais en code brut', async () => {
+    const at = new Date(Date.now() - 3_600_000).toISOString();
+    await submitPaperSlipReport(
+      {
+        type: 'RE',
+        customerId: IDS.customer,
+        siteId: IDS.site,
+        payment: { methodCode: 'ESPECES', amountXaf: 25_000 },
+      },
+      meta('RE-000099', at),
+      IDS.user,
+    );
+    await submitPaperSlipReport(
+      {
+        type: 'FP',
+        locationId: IDS.pos,
+        productId: IDS.chicken,
+        unitCode: 'U',
+        quantity: 1,
+        quantityBase: 1,
+        category: 'CASSE',
+      },
+      meta('FP-000007', at),
+      IDS.user,
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(screen.getByRole('radio', { name: /Registre des carnets/i }));
+
+    // Le libellé du moyen de paiement vient du référentiel de l'appareil, celui de la perte du français.
+    expect(await screen.findByText('Encaissement (Espèces)')).toBeInTheDocument();
+    expect(await screen.findByText('Perte (Casse)')).toBeInTheDocument();
+    expect(screen.queryByText(/ESPECES|CASSE/)).toBeNull();
+  });
+
+  it('l’écran ne montre aucun numéro de décision (AV-…) dans son sous-titre ni dans ses consignes', async () => {
+    renderScreen();
+    expect(
+      await screen.findByText('Saisie des pièces de carnets à souche et registre'),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bAV-\d{3}\b/);
+  });
+
   it('une pièce incomplète n’est pas enregistrée : l’écran dit ce qui manque', async () => {
     const user = userEvent.setup();
     renderScreen();
