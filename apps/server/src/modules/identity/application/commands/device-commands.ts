@@ -107,8 +107,22 @@ const approve: CommandHandler<EmptyPayload> = (uow, envelope) =>
     occurredAt: new Date(envelope.occurred_at),
   });
 
-const block: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => {
-  const deviceId = toBin(envelope.aggregate_id);
+/**
+ * Blocage (ou refus d'un appareil en attente) `ACTIVE`/`PENDING` → `BLOCKED` (SM-DEVICE), partagé par la commande
+ * et par la commande d'installation qui refuse les appareils d'identifiant non conforme
+ * (`bootstrap-legacy-device-cleanup.ts`, AV-499) : verrou de la ligne, écriture, publication à l'appareil et
+ * révocation de ses sessions.
+ */
+export async function blockDevice(
+  uow: UnitOfWork,
+  input: {
+    readonly deviceId: string;
+    readonly authorUserId: string;
+    readonly reason: string;
+    readonly occurredAt: Date;
+  },
+): Promise<CommandHandlerOutcome> {
+  const deviceId = toBin(input.deviceId);
   const device = await uow
     .selectFrom('identity_devices')
     .select('status')
@@ -121,22 +135,29 @@ const block: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => {
     return invalidTransition(device.status);
   }
 
-  const occurredAt = new Date(envelope.occurred_at);
   await uow
     .updateTable('identity_devices')
     .set({
       status: 'BLOCKED',
-      status_changed_at: occurredAt,
-      status_reason: envelope.payload.reason,
-      updated_by: toBin(envelope.author_user_id),
+      status_changed_at: input.occurredAt,
+      status_reason: input.reason,
+      updated_by: toBin(input.authorUserId),
       version: sql`version + 1`,
     })
     .where('id', '=', deviceId)
     .execute();
-  await emitDeviceChange(uow, envelope.aggregate_id);
-  await revokeDeviceSessions(uow, envelope.aggregate_id, 'DEVICE_BLOCKED', occurredAt);
+  await emitDeviceChange(uow, input.deviceId);
+  await revokeDeviceSessions(uow, input.deviceId, 'DEVICE_BLOCKED', input.occurredAt);
   return { status: 'APPLIED' };
-};
+}
+
+const block: CommandHandler<ReasonRequiredPayload> = (uow, envelope) =>
+  blockDevice(uow, {
+    deviceId: envelope.aggregate_id,
+    authorUserId: envelope.author_user_id,
+    reason: envelope.payload.reason,
+    occurredAt: new Date(envelope.occurred_at),
+  });
 
 const unblock: CommandHandler<EmptyPayload> = async (uow, envelope) => {
   const deviceId = toBin(envelope.aggregate_id);
