@@ -51,11 +51,14 @@ export {
 export type { CashMovementLine } from './cash-account-query.js';
 
 // P5-12 : sessions de caisse — session couvrant un instant (index `cash_session_id`, ADR-032 §2).
-// AV-509 : exigence d'une session ouverte pour les espèces d'une caisse de PDV, faux par défaut.
+// AV-509 : exigence d'une session ouverte pour les entrées d'espèces d'une caisse de PDV, faux par défaut ;
+// AV-510 : pour les sorties (dépense, paiement fournisseur), vrai par défaut.
 export {
+  CASH_SESSION_REQUIRED_FOR_PAYOUTS_SETTING,
   CASH_SESSION_REQUIRED_SETTING,
   findCashSessionCovering,
   isCashSessionRequired,
+  isCashSessionRequiredForPayouts,
 } from './cash-sessions.js';
 // P5-14 : lectures d'une session pour la couche de transport (sous-totaux par vendeur).
 export { cashSessionWindowFlows, findCashSessionSummary } from './cash-session-query.js';

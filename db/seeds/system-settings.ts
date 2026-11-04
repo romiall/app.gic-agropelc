@@ -172,10 +172,20 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   { key: 'finance.cash_sessions_per_day_max', value: 0, isClientVisible: true, ref: 'AV-154' },
   // AV-509 (décision du porteur, 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
   // caisse. `true` rétablit, pour un site (réglage de site) ou pour tous, l'exigence de BR-DIS-005 :
-  // refus en ligne et conflit `CASH_SESSION_MISSING` hors ligne pour des espèces sur la caisse d'un PDV
-  // sans session ouverte. Lu par l'appareil (bandeau « Ouvrir la caisse », blocage en ligne) et par le
-  // serveur ; absent, il vaut `false` des deux côtés.
+  // refus en ligne et conflit `CASH_SESSION_MISSING` hors ligne pour des espèces encaissées sur la caisse
+  // d'un PDV sans session ouverte. Lu par l'appareil (bandeau « Ouvrir la caisse », blocage en ligne) et
+  // par le serveur ; absent, il vaut `false` des deux côtés.
   { key: 'finance.cash_session_required', value: false, isClientVisible: true, ref: 'AV-509' },
+  // AV-510 (réponse du porteur, 04/11/2026 : les sorties gardent la caisse) : une dépense payée ou un
+  // paiement fournisseur en espèces depuis la caisse d'un PDV exige une session ouverte. `false` lève
+  // l'exigence pour un site ou pour tous. Lu par l'appareil (écran de dépense) et par le serveur ; absent,
+  // il vaut `true` des deux côtés.
+  {
+    key: 'finance.cash_session_required_for_payouts',
+    value: true,
+    isClientVisible: true,
+    ref: 'AV-510',
+  },
   // Au-delà de ces heures, une session ouverte est signalée et la Finance peut la clôturer d'office.
   {
     key: 'finance.cash_session_force_close_hours',

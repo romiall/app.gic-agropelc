@@ -304,8 +304,14 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     );
   });
 
-  it('AV-509 : caisse du PDV fermée, exigence par défaut absente : la dépense payée part en ligne, sans invite ni blocage', async () => {
+  it('AV-510 : paramètre `finance.cash_session_required_for_payouts` à faux, caisse du PDV fermée : la dépense payée part en ligne, sans invite ni blocage', async () => {
     await getDb().projections.delete(cashSessionRow().key);
+    await getDb().projections.put(
+      meSettingRow('finance.cash_session_required_for_payouts', false, {
+        type: 'SITE',
+        id: IDS.site,
+      }),
+    );
     const user = userEvent.setup();
     renderAt();
     await fillExpense(user, '3000');
@@ -320,10 +326,11 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     expect(expense).toMatchObject({ payload: { paidNow: true } });
   });
 
-  it('paramètre `finance.cash_session_required`, caisse du PDV fermée : dépense payée bloquée en ligne ; à payer par la Finance, elle part sans caisse', async () => {
+  it('AV-510 : par défaut les sorties gardent la caisse, même quand une vente n’en a plus besoin (AV-509) : dépense payée bloquée en ligne ; à payer par la Finance, elle part sans caisse', async () => {
     await getDb().projections.delete(cashSessionRow().key);
+    // Le réglage d'AV-509 (ventes) à faux ne lève rien pour une sortie.
     await getDb().projections.put(
-      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
+      meSettingRow('finance.cash_session_required', false, { type: 'SITE', id: IDS.site }),
     );
     const user = userEvent.setup();
     renderAt();
@@ -347,11 +354,8 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     expect(expense!.payload).not.toHaveProperty('paidFromAccountId');
   });
 
-  it('paramètre `finance.cash_session_required`, hors ligne sans caisse ouverte : la dépense payée part, signalée à la Finance', async () => {
+  it('AV-510 : hors ligne sans caisse ouverte (exigée par défaut) : la dépense payée part, signalée à la Finance', async () => {
     await getDb().projections.delete(cashSessionRow().key);
-    await getDb().projections.put(
-      meSettingRow('finance.cash_session_required', true, { type: 'SITE', id: IDS.site }),
-    );
     offline();
     const user = userEvent.setup();
     renderAt();

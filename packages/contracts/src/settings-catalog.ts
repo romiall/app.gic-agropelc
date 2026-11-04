@@ -120,8 +120,11 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   // Caisse et finance
   'finance.cash_holding_max_xaf': xaf('finance'),
   'finance.cash_sessions_per_day_max': int('finance', 0, { site: true }),
-  // AV-509 : exiger une caisse ouverte pour encaisser ou payer en espèces au PDV (faux par défaut).
+  // AV-509 : exiger une caisse ouverte pour encaisser des espèces au PDV (faux par défaut).
   'finance.cash_session_required': flag('finance', { site: true }),
+  // AV-510 : exiger une caisse ouverte pour payer une dépense ou un fournisseur en espèces depuis la caisse
+  // d'un PDV (vrai par défaut : la décision d'AV-509 ne vaut que pour les ventes).
+  'finance.cash_session_required_for_payouts': flag('finance', { site: true }),
   'finance.cash_session_force_close_hours': hours('finance', 1, { site: true }),
   'finance.cash_variance_critical_xaf': xaf('finance', { site: true }),
   'finance.cash_variance_tolerance_xaf': xaf('finance', { site: true }),

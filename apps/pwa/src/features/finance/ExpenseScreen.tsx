@@ -40,7 +40,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import {
   cashPaymentBlocked,
   cashSessionCoverage,
-  cashSessionRequired,
+  cashSessionRequiredForPayouts,
 } from '../cash/cash-session.js';
 import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { overIndicativeBalance, transferSourceBalance } from '../cash/transfers.js';
@@ -236,7 +236,7 @@ function ExpenseEntry({ userId }: { readonly userId: string }) {
   const coverage =
     paidFromPos && account
       ? cashSessionCoverage({
-          required: cashSessionRequired(refs.settings, account.site_id, now),
+          required: cashSessionRequiredForPayouts(refs.settings, account.site_id, now),
           atPointOfSale: true,
           accounts: refs.cashAccounts,
           sessions: refs.cashSessions,

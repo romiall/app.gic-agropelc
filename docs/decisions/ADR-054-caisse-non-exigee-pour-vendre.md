@@ -1,9 +1,9 @@
-# ADR-054 — Une vente n'est jamais conditionnée par l'ouverture d'une caisse : la session de caisse devient un paramètre, non exigée par défaut
+# ADR-054 — Une vente n'est jamais conditionnée par l'ouverture d'une caisse : la session de caisse devient un paramètre, non exigée par défaut pour les entrées, toujours exigée par défaut pour les sorties
 
-- **Statut** : ACCEPTÉ (CONFIRMÉ : décision du porteur du 04/11/2026, AV-509 tranché ; AV-510 DÉDUIT, ouvert avec son défaut)
+- **Statut** : ACCEPTÉ (CONFIRMÉ : décision du porteur du 04/11/2026, AV-509 tranché pour les entrées ; AV-510 tranché le même jour : les sorties gardent la caisse)
 - **Date** : 04/11/2026
-- **Précise** : ADR-032 §8 (session exigée à l'encaissement en espèces, P5-14), ADR-042 (dépense payée par la caisse d'un PDV), ADR-043 (paiement fournisseur) ; **remplace** la règle BR-DIS-005 de D05 §7 par le paramètre décrit ici
-- **Questions liées** : AV-509, AV-510 ; AV-057, AV-184, AV-233, AV-267 (les défauts qu'ils décrivaient ne valent plus que si le paramètre est vrai) ; [`D05`](../01-functional/domaines/D05-DIS-distribution-points-de-vente.md) §7 (BR-DIS-005) et §8
+- **Précise** : ADR-032 §8 (session exigée à l'encaissement en espèces, P5-14) ; confirme pour les sorties ADR-042 (dépense payée par la caisse d'un PDV) et ADR-043 (paiement fournisseur) ; **remplace** la règle BR-DIS-005 de D05 §7 par les deux paramètres décrits ici
+- **Questions liées** : AV-509, AV-510 ; AV-057, AV-184, AV-233, AV-267 (les défauts d'AV-184 et d'AV-233 ne valent plus pour une vente que si le paramètre des entrées est vrai ; AV-267 reste en vigueur) ; [`D05`](../01-functional/domaines/D05-DIS-distribution-points-de-vente.md) §7 (BR-DIS-005) et §8
 
 ## Contexte
 
@@ -24,12 +24,12 @@ y passer, il paie, la transaction est reçue, on le livre.
 
 ## Décision
 
-1. **Un paramètre, non exigé par défaut.** `finance.cash_session_required` (booléen, réglable par site, catalogue
-   `@gic/contracts`, semé `false`, visible de l'appareil). Faux, et c'est le défaut : aucune vente, aucun encaissement
-   hors vente, aucun acompte, ni aucune sortie d'espèces de la caisse d'un PDV n'est refusé ni signalé faute de session.
-   Vrai pour un site (un PDV à caissière) ou pour tous : le comportement de P5-14 est celui d'avant, sans autre changement
-   (refus en ligne `CASH_SESSION_REQUIRED`, conflit hors ligne `CASH_SESSION_MISSING`, invite « Ouvrir la caisse »,
-   blocage de l'encaissement en espèces en ligne).
+1. **Un paramètre pour les entrées, non exigé par défaut.** `finance.cash_session_required` (booléen, réglable par
+   site, catalogue `@gic/contracts`, semé `false`, visible de l'appareil). Faux, et c'est le défaut : aucune vente,
+   aucun encaissement hors vente ni aucun acompte n'est refusé ni signalé faute de session. Vrai pour un site (un PDV à
+   caissière) ou pour tous : le comportement de P5-14 est celui d'avant, sans autre changement (refus en ligne
+   `CASH_SESSION_REQUIRED`, conflit hors ligne `CASH_SESSION_MISSING`, invite « Ouvrir la caisse », blocage de
+   l'encaissement en espèces en ligne).
 2. **Lecture à l'heure du fait.** Le serveur lit la valeur du site, à défaut globale, **à défaut `false`**, en vigueur à
    `occurred_at` (`isCashSessionRequired`, `finance`) ; une valeur absente ou mal formée ne rétablit jamais l'exigence.
    L'appareil lit la même valeur dans ses paramètres (`cashSessionRequired`) et ne montre ni bandeau ni blocage quand
@@ -41,10 +41,15 @@ y passer, il paie, la transaction est reçue, on le livre.
 4. **La session reste l'outil de la caissière.** Elle s'ouvre et se ferme comme avant (ECR-DIS-02, SM-CASH-SESSION). Quand
    une session couvre l'heure d'un mouvement, l'index `cash_session_id` est posé ; sinon il reste nul. L'attendu d'une
    session se lit toujours par fenêtre de temps, jamais par cet index (ADR-032 §2).
-5. **Les sorties d'espèces suivent (AV-510, DÉDUIT).** La dépense payée par la caisse d'un PDV (à l'enregistrement ou
-   payée ensuite) et le paiement fournisseur en espèces lisent le même paramètre : garder l'exigence sur les sorties alors
-   qu'elle disparaît sur les entrées aurait donné une caisse où l'on encaisse sans session mais où l'on ne dépense pas, sans
-   raison métier dite. Les plafonds et les catégories permises au PDV (BR-DIS-013, AV-266) restent exigés.
+5. **Les sorties gardent la caisse (AV-510, réponse du porteur du 04/11/2026).** La première mise en œuvre avait étendu la
+   dispense aux sorties par déduction, avec le même paramètre ; le porteur a répondu non. La dépense payée par la caisse
+   d'un PDV (à l'enregistrement ou payée ensuite) et le paiement fournisseur en espèces exigent donc une session
+   ouverte, comme avant (AV-267). Cette exigence est elle aussi un paramètre, `finance.cash_session_required_for_payouts`
+   (booléen, réglable par site, semé `true`, visible de l'appareil, `isCashSessionRequiredForPayouts` côté serveur et
+   `cashSessionRequiredForPayouts` côté appareil) : **vrai par défaut, seule une valeur explicitement fausse la lève**, une
+   valeur absente ou mal formée la maintient (le sens inverse de celui des entrées : chaque défaut est le comportement que
+   le porteur a choisi). Les deux paramètres sont indépendants. Les plafonds et les catégories permises au PDV
+   (BR-DIS-013, AV-266) restent exigés dans tous les cas.
 
 ## Conséquences
 
@@ -56,11 +61,14 @@ y passer, il paie, la transaction est reçue, on le livre.
 - **Ce qui n'existe plus par défaut** : l'attribution d'un encaissement à une session (les sous-totaux par vendeur d'une
   session, AV-187, ne comptent que les encaissements de sa fenêtre) et le signal `CASH_SESSION_MISSING` à la Finance. Les
   conflits déjà ouverts restent à clore (résolus par la prochaine ouverture qui les couvre, ou par la Finance).
-- **Aucune migration.** `db:seed` pose la valeur ; absente, elle vaut faux des deux côtés. **Appareils déjà installés** :
-  une PWA d'avant cette décision ne lit pas le paramètre et affiche encore le bandeau et le blocage en ligne tant qu'elle
-  n'est pas mise à jour (bandeau « nouvelle version », AV-505) ; le serveur, lui, n'exige plus rien.
-- **Essais** : l'exigence est éprouvée sur des sites d'essai dont le réglage est posé à vrai (`requireCashSession`), le
-  défaut par des sites sans réglage ; le réglage global, partagé entre suites, n'est jamais touché.
+- **Aucune migration.** `db:seed` pose les deux valeurs ; absentes, elles valent faux (entrées) et vrai (sorties) des deux
+  côtés. **Appareils déjà installés** : une PWA d'avant cette décision ne lit pas le paramètre des entrées et affiche encore
+  le bandeau et le blocage en ligne des ventes tant qu'elle n'est pas mise à jour (bandeau « nouvelle version », AV-505) ;
+  le serveur, lui, n'exige plus rien pour une vente. Les sorties ne changent pour personne.
+- **Essais** : l'exigence des entrées est éprouvée sur des sites d'essai dont le réglage est posé à vrai
+  (`requireCashSession`), la dispense des sorties sur des sites dont le réglage est posé à faux
+  (`allowPayoutsWithoutSession`), les défauts par des sites sans réglage ; le réglage global, partagé entre suites, n'est
+  jamais touché.
 
 ## Alternatives écartées
 

@@ -6,6 +6,7 @@ import {
   cashPaymentBlocked,
   cashSessionCoverage,
   cashSessionRequired,
+  cashSessionRequiredForPayouts,
   deviceCash,
   foreignClose,
   indicativeBalanceXaf,
@@ -607,6 +608,62 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     expect(cashPaymentBlocked(cashSessionCoverage(base), true)).toBe(false);
     // Exigée : le même contexte est bloqué en ligne.
     expect(cashPaymentBlocked(cashSessionCoverage({ ...base, required: true }), true)).toBe(true);
+  });
+
+  it('AV-510 : les sorties d’espèces gardent la caisse par défaut ; seul un faux explicite du paramètre la lève', () => {
+    const NOW = new Date('2026-11-04T10:00:00.000Z');
+    const setting = (
+      value: unknown,
+      scope: { type: 'SITE' | 'GLOBAL'; id: string | null },
+      validFrom = '2026-11-01T00:00:00.000Z',
+    ): SettingData => ({
+      id: `p-${seq++}`,
+      key: 'finance.cash_session_required_for_payouts',
+      value,
+      scope_type: scope.type,
+      scope_id: scope.id,
+      valid_from: validFrom,
+    });
+    const GLOBAL = { type: 'GLOBAL', id: null } as const;
+    const site = (id: string) => ({ type: 'SITE', id }) as const;
+    // Absent, vrai ou mal formé : exigée (la décision d'AV-509 ne vaut pas pour les sorties).
+    expect(cashSessionRequiredForPayouts([], SITE, NOW)).toBe(true);
+    expect(cashSessionRequiredForPayouts([setting(true, GLOBAL)], SITE, NOW)).toBe(true);
+    expect(cashSessionRequiredForPayouts([setting('false', GLOBAL)], SITE, NOW)).toBe(true);
+    expect(cashSessionRequiredForPayouts([setting(0, GLOBAL)], SITE, NOW)).toBe(true);
+    // Un faux explicite la lève, pour tous ou pour un seul site ; le réglage du site l'emporte.
+    expect(cashSessionRequiredForPayouts([setting(false, GLOBAL)], SITE, NOW)).toBe(false);
+    expect(cashSessionRequiredForPayouts([setting(false, site(SITE))], SITE, NOW)).toBe(false);
+    expect(cashSessionRequiredForPayouts([setting(false, site(SITE))], 'site-dla', NOW)).toBe(true);
+    expect(
+      cashSessionRequiredForPayouts([setting(false, GLOBAL), setting(true, site(SITE))], SITE, NOW),
+    ).toBe(true);
+    // Une version pas encore en vigueur ne compte pas.
+    expect(
+      cashSessionRequiredForPayouts(
+        [setting(false, GLOBAL, '2026-11-05T00:00:00.000Z')],
+        SITE,
+        NOW,
+      ),
+    ).toBe(true);
+    // Indépendant du paramètre des entrées.
+    expect(
+      cashSessionRequired(
+        [
+          setting(false, GLOBAL),
+          { ...setting(true, GLOBAL), key: 'finance.cash_session_required' },
+        ],
+        SITE,
+        NOW,
+      ),
+    ).toBe(true);
+    expect(
+      cashSessionRequiredForPayouts(
+        [{ ...setting(true, GLOBAL), key: 'finance.cash_session_required' }],
+        SITE,
+        NOW,
+      ),
+    ).toBe(true);
   });
 
   it('encaissement en espèces au PDV, caisse ouverte exigée (paramètre) : bloqué en ligne seulement (BR-DIS-005, AV-233)', () => {

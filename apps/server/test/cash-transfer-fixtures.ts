@@ -58,24 +58,19 @@ export async function newPosSite(createdBy: string, zoneId: string): Promise<str
   return tx((trx) => insertTestSite(trx, createdBy, zoneId, { siteType: 'POINT_DE_VENTE' }));
 }
 
-/**
- * AV-509 (décision du porteur du 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
- * caisse, le paramètre `finance.cash_session_required` vaut `false` par défaut. Ceci le rétablit à `true`
- * **pour ce site d'essai seulement** (réglage de site : base partagée, les autres suites gardent le
- * défaut) afin d'éprouver le refus en ligne `CASH_SESSION_REQUIRED` et le conflit hors ligne
- * `CASH_SESSION_MISSING` de BR-DIS-005.
- */
-export async function requireCashSession(
+/** Réglage de site d'essai d'un paramètre de caisse (base partagée : jamais le réglage global). */
+async function cashSessionSiteSetting(
+  key: string,
   siteId: string,
   createdBy: string,
-  value: unknown = true,
-  validFrom: string = '2026-01-01T00:00:00.000Z',
+  value: unknown,
+  validFrom: string,
 ): Promise<void> {
   await db
     .insertInto('organization_system_settings')
     .values({
       id: toBin(freshUuid()),
-      key: 'finance.cash_session_required',
+      key,
       value: jsonValue(value),
       scope_type: 'SITE',
       scope_id: toBin(siteId),
@@ -83,10 +78,53 @@ export async function requireCashSession(
       // Non visible de l'appareil : le seed publie dans le jeu `me` toute version visible, et ces réglages
       // de site d'essai n'ont rien à y faire (les suites du seed comptent les lignes publiées).
       is_client_visible: 0,
-      reason: 'Essai AV-509',
+      reason: 'Essai AV-509, AV-510',
       created_by: toBin(createdBy),
     })
     .execute();
+}
+
+/**
+ * AV-509 (décision du porteur du 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
+ * caisse, le paramètre `finance.cash_session_required` vaut `false` par défaut. Ceci le rétablit à `true`
+ * **pour ce site d'essai seulement** (réglage de site : base partagée, les autres suites gardent le
+ * défaut) afin d'éprouver le refus en ligne `CASH_SESSION_REQUIRED` et le conflit hors ligne
+ * `CASH_SESSION_MISSING` de BR-DIS-005 sur les **entrées** d'espèces (vente, acompte, encaissement).
+ */
+export function requireCashSession(
+  siteId: string,
+  createdBy: string,
+  value: unknown = true,
+  validFrom: string = '2026-01-01T00:00:00.000Z',
+): Promise<void> {
+  return cashSessionSiteSetting(
+    'finance.cash_session_required',
+    siteId,
+    createdBy,
+    value,
+    validFrom,
+  );
+}
+
+/**
+ * AV-510 (réponse du porteur : les sorties gardent la caisse) : une dépense ou un paiement fournisseur en
+ * espèces depuis la caisse d'un PDV exige une session ouverte, le paramètre
+ * `finance.cash_session_required_for_payouts` vaut `true` par défaut. Ceci le lève (`false`) **pour ce site
+ * d'essai seulement**.
+ */
+export function allowPayoutsWithoutSession(
+  siteId: string,
+  createdBy: string,
+  value: unknown = false,
+  validFrom: string = '2026-01-01T00:00:00.000Z',
+): Promise<void> {
+  return cashSessionSiteSetting(
+    'finance.cash_session_required_for_payouts',
+    siteId,
+    createdBy,
+    value,
+    validFrom,
+  );
 }
 
 export async function siteCode(siteId: string): Promise<string> {

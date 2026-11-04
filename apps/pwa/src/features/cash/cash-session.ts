@@ -45,22 +45,27 @@ import type {
 export const CASH_COUNT_BLIND: boolean = true;
 
 /**
- * AV-233 (défaut), **quand la caisse ouverte est exigée** (AV-509, `cashSessionRequired`) : encaissement
- * en espèces au PDV sans caisse ouverte vue par l'appareil. L'écran propose d'abord « Ouvrir la caisse »
+ * AV-233 (défaut), **quand la caisse ouverte est exigée** (`cashSessionRequired` pour un encaissement,
+ * AV-509 ; `cashSessionRequiredForPayouts` pour un paiement, AV-510) : espèces au PDV sans caisse ouverte
+ * vue par l'appareil. L'écran propose d'abord « Ouvrir la caisse »
  * (BR-DIS-005) ; en ligne, l'encaissement est bloqué (le serveur le refuserait,
  * `CASH_SESSION_REQUIRED`) ; hors ligne, `WARN` : enregistré, le serveur l'applique et le signale à la
  * Finance (`CASH_SESSION_MISSING`, AV-184, BR-SYN-007). `BLOCK` : bloqué hors ligne aussi.
  */
 export const OFFLINE_CASH_WITHOUT_SESSION: 'WARN' | 'BLOCK' = 'WARN';
 
-/** Paramètre qui rétablit l'exigence d'une caisse ouverte pour les espèces au PDV (AV-509, faux par défaut). */
+/** Paramètre qui rétablit l'exigence d'une caisse ouverte pour encaisser des espèces au PDV (AV-509, faux par défaut). */
 export const CASH_SESSION_REQUIRED_SETTING = 'finance.cash_session_required';
+
+/** Paramètre qui lève, si faux, l'exigence d'une caisse ouverte pour payer en espèces depuis un PDV (AV-510, vrai par défaut). */
+export const CASH_SESSION_REQUIRED_FOR_PAYOUTS_SETTING =
+  'finance.cash_session_required_for_payouts';
 
 /**
  * AV-509 (décision du porteur, 04/11/2026) : une vente n'est jamais conditionnée par l'ouverture d'une
- * caisse. L'exigence de BR-DIS-005 (session ouverte pour encaisser ou payer en espèces au PDV) n'existe
- * que si le paramètre `finance.cash_session_required` du site, ou global, vaut `true` ; absent ou mal
- * formé, il vaut `false`, comme au serveur (`isCashSessionRequired`).
+ * caisse. L'exigence de BR-DIS-005 (session ouverte pour **encaisser** des espèces au PDV : vente, acompte,
+ * encaissement hors vente) n'existe que si le paramètre `finance.cash_session_required` du site, ou
+ * global, vaut `true` ; absent ou mal formé, il vaut `false`, comme au serveur (`isCashSessionRequired`).
  */
 export function cashSessionRequired(
   settings: readonly SettingData[],
@@ -68,6 +73,21 @@ export function cashSessionRequired(
   now: Date,
 ): boolean {
   return settingValue(settings, CASH_SESSION_REQUIRED_SETTING, siteId, now) === true;
+}
+
+/**
+ * AV-510 (réponse du porteur, 04/11/2026 : les sorties gardent la caisse) : payer une dépense ou un
+ * fournisseur en espèces depuis la caisse d'un PDV exige une session ouverte, sauf si le paramètre
+ * `finance.cash_session_required_for_payouts` du site, ou global, vaut `false`. Absent ou mal formé, il
+ * vaut `true` : seule une valeur explicitement fausse lève l'exigence, comme au serveur
+ * (`isCashSessionRequiredForPayouts`).
+ */
+export function cashSessionRequiredForPayouts(
+  settings: readonly SettingData[],
+  siteId: string | null | undefined,
+  now: Date,
+): boolean {
+  return settingValue(settings, CASH_SESSION_REQUIRED_FOR_PAYOUTS_SETTING, siteId, now) !== false;
 }
 
 /** Longueur maximale du commentaire d'une ouverture ou d'une clôture (`cashSessionOpenPayloadSchema`). */
@@ -613,7 +633,10 @@ export function cashOpenPlan(input: {
  * ouverte au serveur ; l'ouverture de l'utilisateur part avant l'encaissement, dans l'ordre de la file.
  */
 export function cashSessionCoverage(input: {
-  /** AV-509 : `cashSessionRequired(settings, siteId, now)`, jamais une valeur par défaut. */
+  /**
+   * AV-509, AV-510 : `cashSessionRequired(settings, siteId, now)` pour un encaissement,
+   * `cashSessionRequiredForPayouts(settings, siteId, now)` pour un paiement ; jamais une valeur par défaut.
+   */
   readonly required: boolean;
   readonly atPointOfSale: boolean;
   readonly accounts: readonly CashAccountData[];

@@ -5149,7 +5149,9 @@ export const fr = {
       finance_cash_sessions_per_day_max:
         'Sessions de caisse par jour et par point de vente (0 : sans limite)',
       finance_cash_session_required:
-        'Exiger une caisse ouverte pour encaisser ou payer en espèces au point de vente',
+        'Exiger une caisse ouverte pour encaisser des espèces au point de vente',
+      finance_cash_session_required_for_payouts:
+        'Exiger une caisse ouverte pour payer une dépense ou un fournisseur en espèces au point de vente',
       finance_cash_session_force_close_hours:
         'Durée avant la clôture d’office d’une session de caisse',
       finance_cash_variance_critical_xaf: 'Écart de caisse critique',

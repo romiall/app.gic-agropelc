@@ -38,6 +38,7 @@ import {
   withoutActivePolicies,
 } from './helpers.js';
 import {
+  allowPayoutsWithoutSession,
   balanceOf,
   codeOf,
   conflictsOf,
@@ -46,7 +47,6 @@ import {
   newAccount,
   newActor,
   newPosSite,
-  requireCashSession,
   siteCode,
   tx,
   type Actor,
@@ -189,14 +189,16 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
 
   /**
    * Point de vente : site, vendeur du site, caisse de PDV alimentée, session ouverte à 06:00 si demandé.
-   * `sessionRequired` : rétablit pour ce site l'exigence d'une caisse ouverte (BR-DIS-005, AV-509 et
-   * AV-510 : faux par défaut, ni une vente ni une dépense n'attendent la caisse).
+   * `payoutsWithoutSession` : lève pour ce site l'exigence d'une caisse ouverte pour une sortie d'espèces
+   * (AV-510 : exigée par défaut, la décision d'AV-509 ne vaut que pour les ventes).
    */
   async function newPdv(
-    options: { readonly session?: boolean; readonly sessionRequired?: boolean } = {},
+    options: { readonly session?: boolean; readonly payoutsWithoutSession?: boolean } = {},
   ) {
     const siteId = await newPosSite(root.userId, zoneId);
-    if (options.sessionRequired === true) await requireCashSession(siteId, root.userId);
+    if (options.payoutsWithoutSession === true) {
+      await allowPayoutsWithoutSession(siteId, root.userId);
+    }
     const seller = await newActor('VENDEUR_PDV', root.userId, {
       scopeType: 'SITE',
       scopeSiteId: siteId,
@@ -370,7 +372,7 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
     expect(await refused({ categoryId: category.NON_JUSTIFIEE, amountXaf: 1_000 })).toBe(
       'EXPENSE_CATEGORY_INACTIVE',
     );
-    const closed = await newPdv({ session: false, sessionRequired: true });
+    const closed = await newPdv({ session: false });
     const { result } = await record(closed.seller, {
       ...base,
       siteId: closed.siteId,
@@ -387,7 +389,7 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
   });
 
   it('PDV hors ligne non conforme : appliquée, validation a posteriori, CASH_SESSION_MISSING résolu par l’ouverture après coup', async () => {
-    const pdv = await newPdv({ session: false, sessionRequired: true });
+    const pdv = await newPdv({ session: false });
     const { id, result } = await record(
       pdv.seller,
       {
@@ -433,8 +435,22 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
     expect((await conflictsOf(id, 'CASH_SESSION_MISSING'))[0]?.status).toBe('RESOLVED');
   });
 
-  it('AV-509, AV-510 : par défaut une dépense n’attend pas la caisse — payée par la caisse du PDV sans session, en ligne, hors ligne et payée ensuite par la Finance, sans refus ni conflit ; une session ouverte reçoit l’index', async () => {
-    const pdv = await newPdv({ session: false });
+  it('AV-510 : les sorties gardent la caisse par défaut, même quand une vente n’en a plus besoin (AV-509) ; le paramètre finance.cash_session_required_for_payouts à faux la lève pour son site — en ligne, hors ligne et payée ensuite par la Finance, sans refus ni conflit ; une session ouverte reçoit l’index', async () => {
+    // Un site sans réglage : la dépense payée par sa caisse sans session reste refusée (défaut vrai), alors
+    // même que le réglage d'AV-509 sur ce site serait faux.
+    const strict = await newPdv({ session: false });
+    const refused = await record(strict.seller, {
+      categoryId: category.TRANSPORT,
+      description: 'Transport',
+      siteId: strict.siteId,
+      paidNow: true,
+      paidFromAccountId: strict.pos,
+      amountXaf: 1_000,
+    });
+    expect(codeOf(refused.result)).toBe('CASH_SESSION_REQUIRED');
+    expect(await balanceOf(strict.pos)).toBe(100_000);
+
+    const pdv = await newPdv({ session: false, payoutsWithoutSession: true });
     const base = {
       categoryId: category.TRANSPORT,
       description: 'Transport',

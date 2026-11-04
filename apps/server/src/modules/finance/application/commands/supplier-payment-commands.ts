@@ -58,7 +58,10 @@ import { findSupplier } from '../../../procurement/application/public/index.js';
 import { CashMovementError, recordCashMovement } from '../public/cash-movements.js';
 import { findCashAccount, type CashAccountSummary } from '../public/cash-accounts.js';
 import { findPaymentMethod } from '../public/cash-account-resolution.js';
-import { findCashSessionCovering, isCashSessionRequired } from '../public/cash-sessions.js';
+import {
+  findCashSessionCovering,
+  isCashSessionRequiredForPayouts,
+} from '../public/cash-sessions.js';
 import {
   CASH_ACCOUNT_FORBIDDEN,
   canActOnCashAccount,
@@ -179,9 +182,10 @@ export function registerSupplierPaymentCommands(
   const deps = { idGenerator };
 
   /**
-   * Décaissement : sortie `SUPPLIER_PAYMENT` ; au PDV, session de caisse ouverte **si le paramètre
-   * `finance.cash_session_required` du site l'exige** (faux par défaut, AV-509, AV-510) : refus sans
-   * écrire sinon.
+   * Décaissement : sortie `SUPPLIER_PAYMENT` ; au PDV, session de caisse ouverte (refus sans écrire
+   * sinon), sauf si le paramètre `finance.cash_session_required_for_payouts` du site la lève (vrai par
+   * défaut, AV-510 : la décision du porteur qui dispense une vente de la caisse, AV-509, ne vaut pas pour
+   * une sortie).
    */
   async function payOut(
     uow: Uow,
@@ -204,7 +208,7 @@ export function registerSupplierPaymentCommands(
     };
     const sessionIsRequired =
       input.account.accountType === 'CAISSE_PDV' &&
-      (await isCashSessionRequired(uow, { siteId: input.account.siteId, at: input.at }));
+      (await isCashSessionRequiredForPayouts(uow, { siteId: input.account.siteId, at: input.at }));
     if (sessionIsRequired) {
       const covering = await findCashSessionCovering(uow, input.account.id, input.at);
       if (covering?.status !== 'OPEN') return { refusal: sessionRefusal };

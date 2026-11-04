@@ -32,6 +32,7 @@ import {
   withoutActivePolicies,
 } from './helpers.js';
 import {
+  allowPayoutsWithoutSession,
   balanceOf,
   codeOf,
   eventsOf,
@@ -39,7 +40,6 @@ import {
   newAccount,
   newActor,
   newPosSite,
-  requireCashSession,
   tx,
   type Actor,
 } from './cash-transfer-fixtures.js';
@@ -547,11 +547,11 @@ describe('P8-08 : paiements fournisseurs', { timeout: 60_000 }, () => {
     expect((await paymentRow(pending.id)).status).toBe('PENDING_APPROVAL');
   });
 
-  it('AV-509, AV-510 : un paiement en espèces par la caisse d’un PDV n’attend la session que si le paramètre du site l’exige', async () => {
+  it('AV-510 : un paiement en espèces par la caisse d’un PDV exige une session ouverte par défaut (les sorties gardent la caisse) ; le paramètre finance.cash_session_required_for_payouts à faux la lève pour son site', async () => {
     const supplierId = await newSupplier(root.userId);
-    const pdvCash = async (sessionRequired: boolean) => {
+    const pdvCash = async (payoutsWithoutSession: boolean) => {
       const siteId = await newPosSite(root.userId, zoneId);
-      if (sessionRequired) await requireCashSession(siteId, root.userId);
+      if (payoutsWithoutSession) await allowPayoutsWithoutSession(siteId, root.userId);
       const account = await newAccount({ type: 'CAISSE_PDV', responsible: fin1.userId, siteId });
       await fund(idGenerator, account, 100_000, FUNDED_AT, root.userId);
       return account;
@@ -573,20 +573,20 @@ describe('P8-08 : paiements fournisseurs', { timeout: 60_000 }, () => {
           .executeTakeFirstOrThrow()
       ).cash_session_id;
 
-    // Par défaut (faux) : décaissé tout de suite, sans session de caisse ouverte, sans index de session.
-    const free = await pdvCash(false);
-    const freeInvoice = await approvedInvoice(supplierId, 1, 15_000);
-    const paid = await pay(fin1, cashPayment(free, freeInvoice));
-    expect(paid.result.status === 'APPLIED' && paid.result.server_refs?.status).toBe('RECORDED');
-    expect(await balanceOf(free)).toBe(85_000);
-    expect(await sessionOf(paid.id)).toBeNull();
-
-    // Paramètre rétabli sur le site : refus sans effet tant qu'aucune session n'est ouverte (BR-DIS-005).
-    const strict = await pdvCash(true);
+    // Par défaut (aucun réglage) : refus sans effet tant qu'aucune session n'est ouverte (BR-DIS-005).
+    const strict = await pdvCash(false);
     const strictInvoice = await approvedInvoice(supplierId, 1, 15_000);
     const refused = await pay(fin1, cashPayment(strict, strictInvoice));
     expect(codeOf(refused.result)).toBe('CASH_SESSION_REQUIRED');
     expect(await balanceOf(strict)).toBe(100_000);
     expect(await invoiceRow(strictInvoice)).toMatchObject({ status: 'APPROVED', paid_xaf: 0 });
+
+    // Paramètre à faux sur le site : décaissé tout de suite, sans session de caisse ouverte, sans index.
+    const free = await pdvCash(true);
+    const freeInvoice = await approvedInvoice(supplierId, 1, 15_000);
+    const paid = await pay(fin1, cashPayment(free, freeInvoice));
+    expect(paid.result.status === 'APPLIED' && paid.result.server_refs?.status).toBe('RECORDED');
+    expect(await balanceOf(free)).toBe(85_000);
+    expect(await sessionOf(paid.id)).toBeNull();
   });
 });
