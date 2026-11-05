@@ -832,6 +832,24 @@ describe('P5-17 : lectures HTTP de P5 et file des conflits', { timeout: 180_000 
     expect(row).toMatchObject({ status: 'RESOLVED', resolution: 'COMPENSATE' });
     expect(row.resolution_refs).toEqual([releasedId]);
     expect(fromBin(row.resolved_by!)).toBe(magA.userId);
+    // AV-520 (SM-SYNC-COMMAND) : la commande mise en quarantaine sort de `CONFLICT` ; son renvoi reçoit le refus
+    // définitif, non plus la quarantaine d'origine.
+    const { command_id: quarantinedCommandId } = await db
+      .selectFrom('sync_sync_conflicts')
+      .select('command_id')
+      .where('id', '=', toBin(quarantineConflict))
+      .executeTakeFirstOrThrow();
+    expect(quarantinedCommandId).not.toBeNull();
+    const quarantined = await db
+      .selectFrom('sync_command_inbox')
+      .select(['status', 'error_code', 'result'])
+      .where('command_id', '=', quarantinedCommandId!)
+      .executeTakeFirstOrThrow();
+    expect(quarantined).toMatchObject({ status: 'REJECTED', error_code: 'COMMAND_DISCARDED' });
+    expect(quarantined.result).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'COMMAND_DISCARDED' },
+    });
     const [event] = await db
       .selectFrom('platform_domain_events')
       .select(['event_type', 'producer_module', 'payload'])

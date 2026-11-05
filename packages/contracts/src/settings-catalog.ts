@@ -207,6 +207,7 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'platform.failed_jobs_window_hours': hours('technical'),
   'platform.job_retention_days': days('technical'),
   'platform.consumer_failure_retention_days': days('technical'),
+  'sync.change_feed_retention_days': days('technical'),
   'communication.push_group_minutes': minutes('technical'),
   'communication.consumer_lag_alert_seconds': seconds('technical', 1),
   'communication.consumer_failure_window_hours': hours('technical'),

@@ -45,10 +45,15 @@ export function zonePathLabel(zones: ReadonlyMap<string, ZoneData>, zone: ZoneDa
   return names.join(' › ');
 }
 
-export function prospectZoneOptions(zones: ReadonlyMap<string, ZoneData>): ZoneOption[] {
+export function prospectZoneOptions(
+  zones: ReadonlyMap<string, ZoneData>,
+  /** Zones du périmètre de l'utilisateur (`allowedZoneIds`, S-19) ; `null` ou absent : aucun filtrage. */
+  allowed: ReadonlySet<string> | null = null,
+): ZoneOption[] {
   const active = (zone: ZoneData) => zone.is_active !== false && zone.is_active !== 0;
   return [...zones.values()]
     .filter(active)
+    .filter((zone) => allowed === null || allowed.has(zone.id))
     .map((zone) => ({ id: zone.id, label: zonePathLabel(zones, zone) }))
     .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
 }

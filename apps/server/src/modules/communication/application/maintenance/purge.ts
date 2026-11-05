@@ -25,6 +25,7 @@
 import { Logger } from '@nestjs/common';
 import { sql } from 'kysely';
 import {
+  DEFAULT_CHANGE_FEED_RETENTION_DAYS,
   DEFAULT_CONSUMER_FAILURE_RETENTION_DAYS,
   DEFAULT_NOTIFICATION_RETENTION_DAYS,
   DEFAULT_PLATFORM_JOB_RETENTION_DAYS,
@@ -36,6 +37,7 @@ import {
 } from '@gic/domain';
 import { purgeConsumerFailures } from '../../../../platform/events/consumer-failure-purge.js';
 import { purgeTerminatedJobs } from '../../../../platform/jobs/job-purge.js';
+import { purgeSupersededChangeFeed } from '../../../../platform/sync/change-feed-purge.js';
 import {
   deleteBatchByKeys,
   deleteByBatches,
@@ -49,6 +51,7 @@ import { countPurgeableAlerts } from './purge-alerts.js';
 export const NOTIFICATION_RETENTION_KEY = 'communication.notification_retention_days';
 export const JOB_RETENTION_KEY = 'platform.job_retention_days';
 export const CONSUMER_FAILURE_RETENTION_KEY = 'platform.consumer_failure_retention_days';
+export const CHANGE_FEED_RETENTION_KEY = 'sync.change_feed_retention_days';
 
 const logger = new Logger('communication.purge');
 
@@ -63,6 +66,8 @@ export interface CommunicationPurgeOutcome {
   readonly pushSubscriptionsDeleted: number;
   readonly jobsDeleted: number;
   readonly consumerFailuresDeleted: number;
+  /** Lignes remplacées du flux de changements de synchronisation (BR-SYN-015, AV-520). */
+  readonly changeFeedDeleted: number;
   /** Alertes closes au-delà de leur conservation, en attente du script d'exploitation `db:purge-alerts`. */
   readonly alertsAwaitingPurge: number;
   /** Étapes dont le plafond de lots est atteint : le reste est repris à l'exécution suivante. */
@@ -242,6 +247,10 @@ export async function runCommunicationPurge(
   const windowHours = consumerFailureWindowHoursOrDefault(
     await setting(uow, CONSUMER_WINDOW_SETTING_KEY, now),
   );
+  const feedDays = retentionDaysOrDefault(
+    await setting(uow, CHANGE_FEED_RETENTION_KEY, now),
+    DEFAULT_CHANGE_FEED_RETENTION_DAYS,
+  );
 
   const failed: string[] = [];
   const notifications = await guardedStep(
@@ -275,6 +284,15 @@ export async function runCommunicationPurge(
       }),
     EMPTY,
   );
+  // AV-520 : compaction du flux de changements (la dernière ligne de chaque entité reste, jamais d'historique perdu
+  // pour un chargement initial) ; étape de la plateforme, orchestrée ici comme les tâches et les sauts.
+  const changeFeed = await guardedStep(
+    uow,
+    'change_feed',
+    failed,
+    () => purgeSupersededChangeFeed(uow, { before: retentionCutoff(now, feedDays) }),
+    EMPTY,
+  );
   const alertsAwaitingPurge = await guardedStep(
     uow,
     'alerts_due',
@@ -288,12 +306,14 @@ export async function runCommunicationPurge(
   if (subscriptions.truncated) truncated.push('push_subscriptions');
   if (jobs.truncated) truncated.push('jobs');
   if (consumerFailures.truncated) truncated.push('consumer_failures');
+  if (changeFeed.truncated) truncated.push('change_feed');
 
   return {
     notificationsDeleted: notifications.deleted,
     pushSubscriptionsDeleted: subscriptions.deleted,
     jobsDeleted: jobs.deleted,
     consumerFailuresDeleted: consumerFailures.deleted,
+    changeFeedDeleted: changeFeed.deleted,
     alertsAwaitingPurge,
     truncated,
     failedSteps: failed,

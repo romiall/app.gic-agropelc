@@ -893,7 +893,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     raisedBy: [{ eventType: 'StockTransferUnmatched' }],
     // P9-08 : le rapprochement tardif publie `BlindReceiptMatched` sous l'identifiant de la réception ; le
     // retour à la source porte celui de l'expédition (autre sujet) et ne pouvait jamais correspondre.
-    resolvedBy: [{ eventType: 'BlindReceiptMatched' }],
+    // AV-520 : l'annulation de la réception publie `BlindReceiptCancelled` sous le même identifiant.
+    resolvedBy: [{ eventType: 'BlindReceiptMatched' }, { eventType: 'BlindReceiptCancelled' }],
     settings: ['inventory.transfer_unmatched_hours'],
     messageTitle: 'Réception sans document non rapprochée',
     messageFields: [

@@ -615,6 +615,10 @@ describe('alertFromEvent — alertes de stock (P9-08)', () => {
     expect(resolved('BlindReceiptMatched', SALE).map((a) => a.alertType)).toEqual([
       'TRANSFER_UNMATCHED',
     ]);
+    // AV-520 : l'annulation de la réception sans document résout aussi l'alerte, sous le même sujet.
+    expect(resolved('BlindReceiptCancelled', SALE).map((a) => a.alertType)).toEqual([
+      'TRANSFER_UNMATCHED',
+    ]);
     // `inventory.transfer.return_to_source` ne porte que l'expédition : il résout seulement le
     // transfert non reçu, jamais la réception sans document.
     expect(resolved('inventory.transfer.return_to_source', SALE).map((a) => a.alertType)).toEqual([

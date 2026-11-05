@@ -56,7 +56,9 @@ import {
 import { findProductLotTracking, findUnit } from '../../../catalog/application/public/index.js';
 import { custodyAt } from '../../../organization/application/public/index.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
-import { recordConflict } from '../../../../platform/sync/conflicts.js';
+import { recordConflict, resolveOpenConflicts } from '../../../../platform/sync/conflicts.js';
+import { publishDetectionEvent } from '../../../../platform/events/detection-events.js';
+import { quantityToMilli } from '../allocation-ledger.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import {
   lockPhysicalStockCouples,
@@ -185,6 +187,12 @@ const receivePayloadSchema = z.union([
   transferBlindReceivePayloadSchema,
 ]);
 type ReceivePayload = DocumentedReceivePayload | TransferBlindReceivePayload;
+
+// AV-520 : rapprochement manuel (l'agrégat est la réception sans document) et annulation motivée.
+const matchBlindPayloadSchema = z.object({ transferId: z.string().uuid() });
+type MatchBlindPayload = z.infer<typeof matchBlindPayloadSchema>;
+const cancelBlindPayloadSchema = z.object({ reason: z.string().trim().min(1).max(500) });
+type CancelBlindPayload = z.infer<typeof cancelBlindPayloadSchema>;
 
 const moveInternalPayloadSchema = z.object({
   fromLocationId: z.string().uuid(),
@@ -380,6 +388,8 @@ function buildTransferCommands(
   receive: CommandHandler<ReceivePayload>;
   returnToSource: CommandHandler<TransferReturnToSourcePayload>;
   moveInternal: CommandHandler<MoveInternalPayload>;
+  matchBlind: CommandHandler<MatchBlindPayload>;
+  cancelBlind: CommandHandler<CancelBlindPayload>;
 } {
   const deps: RecordMoveDeps = { idGenerator };
 
@@ -1414,7 +1424,211 @@ ${refusal}`
       : { status: 'APPLIED' };
   };
 
-  return { request, decline, cancel, dispatch, receive, returnToSource, moveInternal };
+  /**
+   * Rapprochement **manuel** d'une réception sans document (AV-520 ; BR-STK-024, AV-177) : la personne choisit le
+   * transfert expédié de la même paire que les règles automatiques n'ont pas rapproché (mode `EXACT`, plusieurs
+   * expéditions, écart refusé faute de politique). Mêmes écritures que le rapprochement différé (`applyDeferredMatch`) :
+   * le transfert est reçu au lot et à la valeur de l'expédition, la réception sans document est contre-passée du transit
+   * de la paire, le conflit de délai est clos, l'alerte se ferme. Garde-fous : en ligne seulement ; la réception doit
+   * être `UNMATCHED`, le transfert `DISPATCHED` et de la même paire ; les produits reçus doivent figurer dans
+   * l'expédition (un produit hors expédition ne se rapproche jamais, AV-177 : enregistrer l'expédition manquante) ; un
+   * écart exige la politique de validation, comme à l'automatique.
+   */
+  const matchBlind: CommandHandler<MatchBlindPayload> = async (uow, envelope) => {
+    if (envelope.captured_offline) {
+      return rejected('ONLINE_REQUIRED', 'Le rapprochement manuel se fait en ligne.');
+    }
+    const peek = await peekTransfer(uow, envelope.aggregate_id);
+    if (!peek || peek.kind !== 'BLIND_RECEIPT') {
+      return rejected('NOT_FOUND', 'Réception sans document introuvable.');
+    }
+    const pair: TransferPair = peek;
+    await lockTransferPair(uow, pair);
+    const receiptHeader = await lockTransferById(uow, envelope.aggregate_id);
+    if (!receiptHeader || receiptHeader.status !== 'UNMATCHED') {
+      return rejected(
+        'RECEIPT_STATUS_INVALID',
+        'Cette réception sans document est déjà rapprochée.',
+      );
+    }
+    const dispatchHeader = await lockTransferById(uow, envelope.payload.transferId);
+    if (!dispatchHeader || dispatchHeader.kind !== 'STANDARD') return notFound();
+    if (
+      dispatchHeader.fromLocationId !== pair.fromLocationId ||
+      dispatchHeader.toLocationId !== pair.toLocationId
+    ) {
+      return rejected(
+        'TRANSFER_PAIR_MISMATCH',
+        'Le transfert choisi n’a pas la même source et la même destination que la réception.',
+      );
+    }
+    if (dispatchHeader.status !== 'DISPATCHED') return badStatus('DISPATCHED');
+    const lines = await lockTransferLines(uow, [receiptHeader.id, dispatchHeader.id]);
+    const receipt: PendingBlindReceipt = {
+      header: receiptHeader,
+      lines: lines.get(receiptHeader.id) ?? [],
+    };
+    const dispatchedTransfer: DispatchedTransfer = {
+      header: dispatchHeader,
+      lines: lines.get(dispatchHeader.id) ?? [],
+    };
+    if (
+      blindReceiptMatch(
+        receivedQuantities(receipt.lines),
+        dispatchedQuantities(dispatchedTransfer.lines),
+        'SUBSET',
+      ) === null
+    ) {
+      return rejected(
+        'RECEIPT_NOT_MATCHABLE',
+        'Les produits reçus ne figurent pas tous dans ce transfert : enregistrer l’expédition manquante, qui se rapprochera seule (AV-177).',
+      );
+    }
+    const origin = await loadCommandOrigin(uow, envelope.command_id);
+    const allowed = await matchPolicy(uow, receipt, dispatchedTransfer, origin.receivedAt);
+    if (!allowed.allowed) {
+      return rejected(
+        'CONTROL_POLICY_MISSING',
+        'Un écart de transfert doit être validé et aucune politique de validation n’est active : la créer d’abord.',
+      );
+    }
+    const outcome = await applyDeferredMatch(uow, deps, {
+      receipt,
+      dispatch: dispatchedTransfer,
+      policy: allowed.policy,
+      triggerCommandId: envelope.command_id,
+      resolvedBy: envelope.author_user_id,
+      matchedAt: origin.receivedAt,
+    });
+    const serverRefs = {
+      transferId: dispatchHeader.id,
+      receiptId: receiptHeader.id,
+      status: outcome.status,
+    };
+    const audit = {
+      after: { receiptId: receiptHeader.id, transferId: dispatchHeader.id, status: outcome.status },
+    };
+    return outcome.overReceived
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: ['TRANSFER_OVER_RECEIVED'], serverRefs, audit }
+      : { status: 'APPLIED', serverRefs, audit };
+  };
+
+  /**
+   * Annulation d'une réception sans document non rapprochée (AV-520 ; SM-TRANSFER `UNMATCHED → CANCELLED`) : la
+   * réception saisie par erreur est contre-passée du transit de la paire, exactement (même produit, lot, quantité et
+   * valeur, INV-STK-04). Refusée si la marchandise n'est plus au complet à la destination (déjà vendue ou déplacée :
+   * le stock se régularise alors par un inventaire ou une perte, jamais en silence). Le conflit de délai est clos,
+   * l'alerte se ferme (`BlindReceiptCancelled`). Le motif est exigé et tracé par l'audit. En ligne seulement.
+   */
+  const cancelBlind: CommandHandler<CancelBlindPayload> = async (uow, envelope) => {
+    if (envelope.captured_offline) {
+      return rejected('ONLINE_REQUIRED', 'L’annulation d’une réception se fait en ligne.');
+    }
+    const peek = await peekTransfer(uow, envelope.aggregate_id);
+    if (!peek || peek.kind !== 'BLIND_RECEIPT') {
+      return rejected('NOT_FOUND', 'Réception sans document introuvable.');
+    }
+    const pair: TransferPair = peek;
+    await lockTransferPair(uow, pair);
+    const receipt = await lockTransferById(uow, envelope.aggregate_id);
+    if (!receipt || receipt.status !== 'UNMATCHED') {
+      return rejected(
+        'RECEIPT_STATUS_INVALID',
+        'Seule une réception sans document non rapprochée peut être annulée.',
+      );
+    }
+    const moves = await activeDocumentMoves(uow, receipt.id, 'TRANSFER_RECEIPT');
+    await lockPhysicalStockCouples(
+      uow,
+      moves.map((move) => ({ locationId: move.toLocationId, productId: move.productId })),
+    );
+    // La marchandise doit être toujours là : par produit et par lot, le solde de la destination couvre la réception.
+    const needed = new Map<string, { productId: string; lotId: string | null; milli: number }>();
+    for (const move of moves) {
+      const key = `${move.productId}|${move.lotId ?? ''}`;
+      const entry = needed.get(key) ?? { productId: move.productId, lotId: move.lotId, milli: 0 };
+      entry.milli += move.quantityMilli;
+      needed.set(key, entry);
+    }
+    for (const entry of needed.values()) {
+      const balance = await uow
+        .selectFrom('inventory_stock_balances')
+        .select('qty_on_hand')
+        .where('location_id', '=', toBin(receipt.toLocationId))
+        .where('product_id', '=', toBin(entry.productId))
+        .where('lot_key', '=', entry.lotId === null ? Buffer.alloc(16) : toBin(entry.lotId))
+        .executeTakeFirst();
+      if (quantityToMilli(balance?.qty_on_hand ?? 0) < entry.milli) {
+        return rejected(
+          'RECEIPT_GOODS_USED',
+          'La marchandise reçue n’est plus au complet à la destination (vendue ou déplacée) : régulariser le stock par un inventaire ou une perte.',
+        );
+      }
+    }
+    const occurredAt = new Date(envelope.occurred_at);
+    await reverseTransferMoves(uow, deps, moves, {
+      reverseType: 'TRANSFER_DISPATCH',
+      documentId: receipt.id,
+      occurredAt,
+      createdBy: envelope.author_user_id,
+      commandId: envelope.command_id,
+      capturedOffline: false,
+    });
+    await uow
+      .updateTable('inventory_stock_transfers')
+      .set({
+        status: 'CANCELLED',
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
+      .where('id', '=', toBin(receipt.id))
+      .execute();
+    await recordChanges(
+      uow,
+      transferChanges(receipt.id, receipt.fromLocationId, receipt.toLocationId),
+    );
+    await resolveOpenConflicts(uow, {
+      conflictType: 'TRANSFER_UNMATCHED',
+      entityType: 'STOCK_TRANSFER',
+      entityIds: [receipt.id],
+      resolution: 'KEEP_SERVER',
+      resolvedBy: envelope.author_user_id,
+      resolvedAt: occurredAt,
+      comment: `Réception sans document annulée : ${envelope.payload.reason}`,
+      refs: [],
+    });
+    await publishDetectionEvent(uow, idGenerator, {
+      eventType: 'BlindReceiptCancelled',
+      producerModule: 'inventory',
+      aggregateType: 'STOCK_TRANSFER',
+      aggregateId: receipt.id,
+      occurredAt,
+      payload: {
+        receipt_id: receipt.id,
+        cancelled_by: envelope.author_user_id,
+        site_id: receipt.siteId,
+        business_day: businessDayOf(occurredAt),
+      },
+      commandId: envelope.command_id,
+    });
+    return {
+      status: 'APPLIED',
+      serverRefs: { receiptId: receipt.id },
+      audit: { after: { receiptId: receipt.id, reason: envelope.payload.reason } },
+    };
+  };
+
+  return {
+    request,
+    decline,
+    cancel,
+    dispatch,
+    receive,
+    returnToSource,
+    moveInternal,
+    matchBlind,
+    cancelBlind,
+  };
 }
 
 /** Décision `TRANSFER_DISCREPANCY` (SM-TRANSFER `DISCREPANCY_PENDING -> CLOSED`) : approuvée =
@@ -1568,6 +1782,29 @@ export function registerTransferCommands(
       'inventory.transfer.dispatch',
       async (_uow, envelope) => [envelope.payload.fromLocationId, envelope.payload.toLocationId],
       handlers.moveInternal,
+    ),
+  });
+  // AV-520 : rapprochement manuel et annulation d'une réception sans document (l'agrégat est la réception).
+  registry.register({
+    commandType: 'inventory.transfer.match_blind',
+    version: 1,
+    payloadSchema: matchBlindPayloadSchema,
+    permissionCode: 'inventory.transfer.receive',
+    handler: withStockScope(
+      'inventory.transfer.receive',
+      (uow, envelope) => transferLocations(uow, envelope.aggregate_id),
+      handlers.matchBlind,
+    ),
+  });
+  registry.register({
+    commandType: 'inventory.transfer.cancel_blind',
+    version: 1,
+    payloadSchema: cancelBlindPayloadSchema,
+    permissionCode: 'inventory.transfer.receive',
+    handler: withStockScope(
+      'inventory.transfer.receive',
+      (uow, envelope) => transferLocations(uow, envelope.aggregate_id),
+      handlers.cancelBlind,
     ),
   });
   registerTransferDiscrepancyDecisionHandler(decisionRegistry, idGenerator);

@@ -42,6 +42,7 @@ import {
   type Position,
   type ProspectDraft,
 } from './prospect.js';
+import { allowedZoneIds } from './zone-scope.js';
 import './crm.css';
 
 const GPS_TIMEOUT_MS = 15_000;
@@ -120,7 +121,11 @@ export function NewProspectScreen() {
   const now = clock.now();
   const update = (patch: Partial<ProspectDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
-  const zones = prospectZoneOptions(refs.zones);
+  // Zones du périmètre de l'utilisateur d'après ses affectations de rôle (S-19, AV-520) ; le serveur reste juge.
+  const zones = prospectZoneOptions(
+    refs.zones,
+    allowedZoneIds({ assignments: refs.roleAssignments, userId, zones: refs.zones, now }),
+  );
   // Zone préremplie : celle du point de vente de l'utilisateur, sinon celle de sa session de travail.
   const ownLocation = sellingLocations(refs, userId)[0];
   const ownSite = ownLocation?.site_id ? refs.sites.get(ownLocation.site_id) : undefined;

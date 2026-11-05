@@ -18,6 +18,7 @@ import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import { LinesEditor } from './LinesEditor.js';
+import { PendingBlindReceipts } from './PendingBlindReceipts.js';
 import {
   BLIND_RECEIPT_MAX_LINES,
   blindReceiptPayload,
@@ -252,6 +253,12 @@ export function BlindReceiptScreen() {
           {busy ? t('sales.submitting') : t('blind.submit')}
         </Button>
       </ActionBar>
+      <PendingBlindReceipts
+        refs={refs}
+        userId={userId}
+        destinationId={destination.id}
+        online={online}
+      />
     </section>
   );
 }

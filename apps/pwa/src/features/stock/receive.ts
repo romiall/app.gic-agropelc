@@ -89,3 +89,52 @@ export function blindReceiptPayload(input: {
     ...(notes ? { notes } : {}),
   };
 }
+
+// --- Réceptions sans document en attente (AV-520) ---------------------------------------------------
+
+/** Longueur maximale du motif d'annulation d'une réception sans document (comme le serveur). */
+export const MAX_CANCEL_BLIND_REASON = 500;
+
+/**
+ * Réceptions sans document non rapprochées d'un emplacement de l'appareil, la plus récente d'abord : à rapprocher
+ * d'un transfert expédié de la même paire, ou à annuler si elles ont été saisies par erreur.
+ */
+export function pendingBlindReceipts(
+  transfers: ReadonlyMap<string, StockTransferData>,
+  destinationId: string,
+): StockTransferData[] {
+  return [...transfers.values()]
+    .filter(
+      (transfer) =>
+        transfer.transfer_kind === 'BLIND_RECEIPT' &&
+        transfer.status === 'UNMATCHED' &&
+        transfer.to_location_id === destinationId,
+    )
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+}
+
+/**
+ * Transferts expédiés de la même paire (source, destination) qu'une réception sans document : ceux qu'on peut lui
+ * rapprocher à la main, les plus anciens d'abord. Le serveur contrôle encore que les produits reçus figurent dans le
+ * transfert choisi (AV-177).
+ */
+export function matchCandidates(
+  transfers: ReadonlyMap<string, StockTransferData>,
+  receipt: Pick<StockTransferData, 'from_location_id' | 'to_location_id'>,
+): StockTransferData[] {
+  return [...transfers.values()]
+    .filter(
+      (transfer) =>
+        transfer.transfer_kind === 'STANDARD' &&
+        transfer.status === 'DISPATCHED' &&
+        transfer.from_location_id === receipt.from_location_id &&
+        transfer.to_location_id === receipt.to_location_id,
+    )
+    .sort((a, b) => (a.dispatched_at ?? '').localeCompare(b.dispatched_at ?? ''));
+}
+
+/** Charge utile de `inventory.transfer.match_blind` (l'agrégat est la réception sans document). */
+export const matchBlindPayload = (transferId: string) => ({ transferId });
+
+/** Charge utile de `inventory.transfer.cancel_blind` : le motif est exigé, nettoyé des blancs en tête et en queue. */
+export const cancelBlindPayload = (reason: string) => ({ reason: reason.trim() });

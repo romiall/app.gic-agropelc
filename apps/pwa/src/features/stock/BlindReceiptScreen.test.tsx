@@ -159,4 +159,119 @@ describe('Réception sans document (ECR-STK-03, BR-STK-024)', () => {
     expect(screen.getAllByText(/Ce produit figure déjà/)).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Enregistrer la réception' })).toBeDisabled();
   });
+
+  /** Réception sans document non rapprochée de l'emplacement (jeu `transfers`, statut `UNMATCHED`). */
+  async function seedPendingReceipt(): Promise<void> {
+    await getDb().projections.put({
+      key: 'transfers:STOCK_TRANSFER:r-attente',
+      dataset: 'transfers',
+      entity_type: 'STOCK_TRANSFER',
+      entity_id: 'r-attente',
+      scope_type: 'LOCATION',
+      scope_id: IDS.pos,
+      row_version: 1,
+      seq: 1,
+      data: {
+        id: 'r-attente',
+        doc_number: 'TRF-2026-000031',
+        transfer_kind: 'BLIND_RECEIPT',
+        from_location_id: STORE,
+        to_location_id: IDS.pos,
+        status: 'UNMATCHED',
+        dispatched_at: null,
+        carrier_name: null,
+        notes: null,
+        occurred_at: '2026-10-10T08:00:00.000Z',
+        version: 1,
+        lines: [
+          {
+            id: 'rl-1',
+            product_id: IDS.eggs,
+            lot_id: null,
+            unit_code: 'U',
+            requested_qty_base: null,
+            dispatched_qty_base: null,
+            received_qty_base: '57.000',
+          },
+        ],
+      },
+    });
+  }
+
+  it('AV-520 : réception en attente — rapprochement manuel d’un transfert expédié de la même paire (en ligne)', async () => {
+    await seed('EXCLUSIVE_USER', true);
+    await seedPendingReceipt();
+    const user = userEvent.setup();
+    renderScreen();
+    const section = within(
+      await screen.findByRole('region', { name: 'Réceptions sans document en attente' }),
+    );
+    const item = within(section.getByRole('listitem', { name: 'TRF-2026-000031' }));
+    expect(item.getByText(/57 .*Œufs de table/)).toBeInTheDocument();
+    await user.click(item.getByRole('button', { name: 'Rapprocher d’un transfert' }));
+    // Le bouton de confirmation reste inactif tant qu'aucun transfert n'est choisi.
+    expect(item.getByRole('button', { name: 'Rapprocher' })).toBeDisabled();
+    await user.selectOptions(item.getByLabelText('Transfert expédié'), 't-connu');
+    await user.click(item.getByRole('button', { name: 'Rapprocher' }));
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'inventory.transfer.match_blind',
+      aggregate_type: 'STOCK_TRANSFER',
+      aggregate_id: 'r-attente',
+      captured_offline: false,
+    });
+    expect(command?.payload).toEqual({ transferId: 't-connu' });
+  });
+
+  it('AV-520 : annulation d’une réception en attente — motif exigé', async () => {
+    await seed('EXCLUSIVE_USER');
+    await seedPendingReceipt();
+    const user = userEvent.setup();
+    renderScreen();
+    const item = within(await screen.findByRole('listitem', { name: 'TRF-2026-000031' }));
+    await user.click(item.getByRole('button', { name: 'Annuler la réception' }));
+    const confirm = item.getByRole('button', { name: 'Annuler cette réception' });
+    expect(confirm).toBeDisabled();
+    await user.type(
+      item.getByLabelText('Motif de l’annulation'),
+      '  Saisie sur le mauvais emplacement ',
+    );
+    await user.click(confirm);
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'inventory.transfer.cancel_blind',
+      aggregate_id: 'r-attente',
+    });
+    expect(command?.payload).toEqual({ reason: 'Saisie sur le mauvais emplacement' });
+  });
+
+  it('AV-520 : sans transfert expédié connu, le rapprochement l’explique ; hors ligne, les deux actions sont inactives', async () => {
+    await seed('EXCLUSIVE_USER');
+    await seedPendingReceipt();
+    const user = userEvent.setup();
+    renderScreen();
+    const item = within(await screen.findByRole('listitem', { name: 'TRF-2026-000031' }));
+    await user.click(item.getByRole('button', { name: 'Rapprocher d’un transfert' }));
+    expect(item.getByText(/Aucun transfert expédié de cette source/)).toBeInTheDocument();
+    cleanup();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderScreen();
+    const offline = within(await screen.findByRole('listitem', { name: 'TRF-2026-000031' }));
+    expect(offline.getByRole('button', { name: 'Rapprocher d’un transfert' })).toBeDisabled();
+    expect(offline.getByRole('button', { name: 'Annuler la réception' })).toBeDisabled();
+    expect(
+      screen.getByText('Rapprochement et annulation : en ligne seulement.'),
+    ).toBeInTheDocument();
+  });
+
+  it('AV-520 : sans réception en attente, la section n’apparaît pas', async () => {
+    await seed('EXCLUSIVE_USER');
+    renderScreen();
+    await screen.findByLabelText('En provenance de');
+    expect(
+      screen.queryByRole('region', { name: 'Réceptions sans document en attente' }),
+    ).toBeNull();
+  });
 });

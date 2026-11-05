@@ -152,7 +152,7 @@
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `doc_number`, `command_id`.
-- **CK** `from_location_id <> to_location_id` ; `INTERNAL` ⇒ même site ; horodatages cohérents avec le statut. P5-16 : nature et statut cohérents (`BLIND_RECEIPT` ∈ {`UNMATCHED`, `MATCHED`}, `STANDARD` ∈ {`REQUESTED`…`RETURNED`}, `INTERNAL` = `COMPLETED`) ; `MATCHED` ⇔ `matched_transfer_id` et `matched_at` renseignés ; `RETURNED` ⇔ `returned_by`, `returned_at`, `return_reason` renseignés ; `unmatched_signalled_at` réservé à `BLIND_RECEIPT`.
+- **CK** `from_location_id <> to_location_id` ; `INTERNAL` ⇒ même site ; horodatages cohérents avec le statut. P5-16 : nature et statut cohérents (`BLIND_RECEIPT` ∈ {`UNMATCHED`, `MATCHED`, `CANCELLED` (AV-520, migration `20261203100000`)}, `STANDARD` ∈ {`REQUESTED`…`RETURNED`}, `INTERNAL` = `COMPLETED`) ; `MATCHED` ⇔ `matched_transfer_id` et `matched_at` renseignés ; `RETURNED` ⇔ `returned_by`, `returned_at`, `return_reason` renseignés ; `unmatched_signalled_at` réservé à `BLIND_RECEIPT`.
 - **UQ** (P5-16) `matched_transfer_id` (filet de concurrence d'INV-STK-08).
 - **IX** `(to_location_id, status)` partiel ouverts, `(from_location_id, status)`, `(dispatched_at)` ; P5-16 : `(to_location_id, from_location_id, transfer_kind, status)` (paire — lectures verrouillantes des candidats au rapprochement, désigné explicitement), `(transfer_kind, status, occurred_at)` (énumération non verrouillante du balayage).
 - **Suppr.** `ANNULATION` (avant expédition) / transfert retour. **Audit** Chaque transition. **Offline** DL (ouverts du périmètre), CR.

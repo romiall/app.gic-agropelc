@@ -27,6 +27,12 @@ export const ALERT_RETENTION_FLOOR_DAYS = 730;
 export const DEFAULT_PLATFORM_JOB_RETENTION_DAYS = 30;
 /** `platform.consumer_failure_retention_days` : événements sautés par un consommateur, 90 jours (PF-7, AV-472). */
 export const DEFAULT_CONSUMER_FAILURE_RETENTION_DAYS = 90;
+/**
+ * `sync.change_feed_retention_days` : lignes **remplacées** du flux de changements (une ligne plus récente existe pour
+ * la même entité et la même portée), 60 jours (BR-SYN-015, AV-520). La dernière ligne de chaque entité n'est jamais
+ * purgée : un chargement initial lit le flux depuis le curseur 0 et n'a pas d'autre source.
+ */
+export const DEFAULT_CHANGE_FEED_RETENTION_DAYS = 60;
 
 /** Durée en jours : un entier strictement positif (plafonné à `MAX_RETENTION_DAYS`), sinon `fallback`. */
 export function retentionDaysOrDefault(value: unknown, fallback: number): number {

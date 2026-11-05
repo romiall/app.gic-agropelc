@@ -493,6 +493,8 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-472, AV-425',
   },
+  // AV-520 (BR-SYN-015) : lignes remplacées du flux de changements, 60 jours ; la dernière ligne d'une entité reste.
+  { key: 'sync.change_feed_retention_days', value: 60, isClientVisible: false, ref: 'AV-520' },
   {
     key: 'approvals.pending_long_hours',
     value: 24,

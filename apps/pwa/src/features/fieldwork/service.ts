@@ -9,8 +9,8 @@
  *   jamais bloquant, BR-TER-007). Sans fin de service, la session se clôt à 23:59 (BR-TER-008).
  * - Après des refus répétés (3 sur au moins 2 minutes par défaut), une dérogation motivée ouvre une
  *   session « en attente de validation » (BR-TER-005).
- * - Zones proposées : actives et dotées d'un géorepère ; les affectations de zone de l'utilisateur ne
- *   sont pas servies à l'appareil (S-19) : le serveur tranche (`ZONE_NOT_ALLOWED`).
+ * - Zones proposées : actives et dotées d'un géorepère, dans le périmètre que ses affectations de rôle servies à
+ *   l'appareil dessinent (`allowedZoneIds`, S-19, AV-520) ; le serveur reste juge (`ZONE_NOT_ALLOWED`).
  */
 import {
   buildGeofence,
@@ -68,14 +68,19 @@ export interface ServiceZone {
   readonly maxAccuracyM: number;
 }
 
-/** Zones où l'on peut prendre service : actives, avec un géorepère, par nom. */
+/**
+ * Zones où l'on peut prendre service : actives, avec un géorepère, par nom. `allowed` : zones du périmètre de
+ * l'utilisateur (`allowedZoneIds`, S-19) ; `null` ou absent, toutes (le serveur tranche, `ZONE_NOT_ALLOWED`).
+ */
 export function serviceZones(
   zones: ReadonlyMap<string, ZoneData>,
   fallbackMaxAccuracyM: number,
+  allowed: ReadonlySet<string> | null = null,
 ): ServiceZone[] {
   const result: ServiceZone[] = [];
   for (const zone of zones.values()) {
     if (zone.is_active === false || zone.is_active === 0) continue;
+    if (allowed !== null && !allowed.has(zone.id)) continue;
     const geofence = zoneGeofence(zone);
     if (!geofence) continue;
     result.push({

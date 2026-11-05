@@ -35,7 +35,8 @@ export class CommunicationPurgeJob implements OnModuleInit {
       this.logger.log(
         `Purge de la communication : ${outcome.notificationsDeleted} notification(s), ` +
           `${outcome.pushSubscriptionsDeleted} abonnement(s) push, ${outcome.jobsDeleted} tâche(s) terminée(s), ` +
-          `${outcome.consumerFailuresDeleted} saut(s) de consommateur supprimé(s)` +
+          `${outcome.consumerFailuresDeleted} saut(s) de consommateur, ` +
+          `${outcome.changeFeedDeleted} ligne(s) remplacée(s) du flux de synchronisation supprimé(s)` +
           (outcome.truncated.length > 0
             ? ` (plafond de lots atteint : ${outcome.truncated.join(', ')}, reprise demain)`
             : '') +

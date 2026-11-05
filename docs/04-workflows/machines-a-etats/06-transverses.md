@@ -49,7 +49,7 @@ Mise en œuvre de la PWA (MP-09, AV-283) : la prise de connaissance est le bouto
 | `RECEIVED` | Quarantaine | Version obsolète non fusionnable ; utilisateur ou appareil révoqué à `occurred_at` | `CONFLICT` | `sync_conflicts` ouvert |
 | `RECEIVED` | Erreur transitoire | Verrou, indisponibilité | `FAILED_RETRYABLE` | Réponse `RETRY_LATER` |
 | `CONFLICT` | `sync.conflict.resolve` (accepter) | Décision tracée | `APPLIED` | Application avec l'état courant. **Non implémentée** (P5-17, AV-190 (b)) : la commande en quarantaine reste `CONFLICT` dans l'inbox ; `sync.conflict.resolve` refuse `ACCEPT_CLIENT` et `MERGE` sur une quarantaine (`CONFLICT_REPLAY_NOT_SUPPORTED`) |
-| `CONFLICT` | `sync.conflict.resolve` (écarter) | Décision tracée | `REJECTED` | **Non implémentée** (P5-17, AV-190) : `KEEP_SERVER` clôt le conflit (`RESOLVED`), la commande reste `CONFLICT` dans l'inbox |
+| `CONFLICT` | `sync.conflict.resolve` (écarter) | Décision tracée ; commande en **quarantaine** (conflit non appliqué) | `REJECTED` | **Implémentée** (AV-520) : `KEEP_SERVER` ou `COMPENSATE` clôt le conflit (`RESOLVED`) et la ligne d'inbox passe `REJECTED` (`COMMAND_DISCARDED`, résultat mémorisé remplacé : le renvoi reçoit ce refus définitif). `CONFLICT → SYNCED` (rejeu, `ACCEPT_CLIENT` ou `MERGE`) reste non pris en charge (AV-190, `CONFLICT_REPLAY_NOT_SUPPORTED`) |
 
 ---
 

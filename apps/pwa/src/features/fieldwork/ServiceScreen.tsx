@@ -30,6 +30,7 @@ import { useGeolocation } from '../../platform/useGeolocation.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { zonePathLabel } from '../crm/prospect.js';
+import { allowedZoneIds } from '../crm/zone-scope.js';
 import { formatClockTime } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -92,6 +93,8 @@ export function ServiceScreen() {
       settingValue(refs.settings, 'fieldwork.max_gps_accuracy_m', undefined, now),
       DEFAULT_MAX_GPS_ACCURACY_M,
     ),
+    // Zones du périmètre de l'utilisateur d'après ses affectations de rôle (S-19, AV-520).
+    allowedZoneIds({ assignments: refs.roleAssignments, userId, zones: refs.zones, now }),
   );
   const session = openWorkSession(refs.workSessions, userId, now);
   const attempts = todayAttempts(refs.outbox, userId, today);

@@ -131,8 +131,8 @@
 | `row_version` | bigint | Non | — | Version de l'entité à ce changement |
 | `recorded_at` | ts | Non | `now()` | |
 
-- **PK** `seq`. **IX** `(scope_type, scope_id, seq)`, `(dataset, seq)`.
-- **Suppr.** `PURGE_TECHNIQUE` au-delà de 60 jours (BR-SYN-015).
+- **PK** `seq`. **IX** `(scope_type, scope_id, seq)`, `(dataset, seq)`, `(entity_id, seq)` (AV-520, migration `20261203090000` : recherche d'une ligne plus récente de la même entité).
+- **Suppr.** `PURGE_TECHNIQUE` au-delà de 60 jours (BR-SYN-015, `sync.change_feed_retention_days`) **des seules lignes remplacées** (AV-520) : une ligne de plus de 60 jours n'est supprimée que si une ligne plus récente existe pour la même clé (jeu, type d'entité, entité, portée) ; la dernière ligne de chaque clé, `UPSERT`, `DELETE` ou `SCOPE_EXIT`, reste — un chargement initial lit le flux depuis le curseur 0 et n'a pas d'autre source (pas d'instantané séparé). Tâche quotidienne `communication.maintenance.purge_daily` (`platform/sync/change-feed-purge.ts`).
 - Le contenu n'est **pas** copié dans le flux : le serveur lit l'état courant de l'entité au moment du téléchargement. Il n'y a donc aucune seconde vérité.
 
 ## sync.device_sync_state

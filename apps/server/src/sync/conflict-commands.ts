@@ -11,6 +11,9 @@
  * - `resolve` d'une **quarantaine** (commande non appliquée) : `KEEP_SERVER` (le fait reste écarté) ou
  *   `COMPENSATE` (régularisé par d'autres documents) ; `ACCEPT_CLIENT` et `MERGE` supposeraient le rejeu
  *   de la commande (`CONFLICT_REPLAY_NOT_SUPPORTED`) ;
+ * - AV-520 (SM-SYNC-COMMAND `CONFLICT → REJECTED`) : résoudre une quarantaine écarte la commande — son inbox
+ *   passe `REJECTED` (`COMMAND_DISCARDED`, résultat mémorisé remplacé) et le renvoi reçoit ce refus définitif ;
+ *   la transition `CONFLICT → APPLIED` supposerait le rejeu (non pris en charge) ;
  * - `COMPENSATE` exige au moins une référence (`CONFLICT_REFS_REQUIRED`) ;
  * - un conflit dont la clôture appartient à une décision propre n'est jamais clos ici
  *   (`CONFLICT_MANAGED_ELSEWHERE` : `PAYMENT_REFERENCE_DUPLICATE`, décision `PAYMENT_DUPLICATE`) ;
@@ -236,15 +239,21 @@ export function registerSyncConflictCommands(
 ): void {
   const resolve: CommandHandler<ResolvePayload> = async (uow, envelope) => {
     const at = new Date(envelope.occurred_at);
-    // Signal d'une commande bloquée : l'inbox de la commande d'abord, puis le conflit (AV-225).
+    // Signal d'une commande bloquée (AV-225) ou commande mise en quarantaine (conflit non appliqué, AV-520) :
+    // l'inbox de la commande d'abord, puis le conflit (ordre du pipeline, ADR-038).
     const peek = await findConflict(uow, envelope.aggregate_id);
     const stalledCommand =
       peek?.conflictType === STALLED_CONFLICT_TYPE ? toBin(peek.entityId) : null;
-    if (stalledCommand !== null) {
+    const quarantinedCommand =
+      stalledCommand === null && peek && !peek.applied && peek.commandId !== null
+        ? toBin(peek.commandId)
+        : null;
+    const lockedInbox = stalledCommand ?? quarantinedCommand;
+    if (lockedInbox !== null) {
       await uow
         .selectFrom('sync_command_inbox')
         .select('status')
-        .where('command_id', '=', stalledCommand)
+        .where('command_id', '=', lockedInbox)
         .forUpdate()
         .executeTakeFirst();
     }
@@ -275,6 +284,31 @@ export function registerSyncConflictCommands(
         })
         .where('command_id', '=', stalledCommand)
         .where('status', 'in', ['RECEIVED', 'FAILED_RETRYABLE'])
+        .execute();
+    }
+    if (
+      quarantinedCommand !== null &&
+      !check.conflict.applied &&
+      check.conflict.commandId === peek?.commandId
+    ) {
+      // AV-520 (SM-SYNC-COMMAND, `CONFLICT → REJECTED`) : la commande en quarantaine ne s'appliquera jamais
+      // (rejouer ne se fait pas, AV-190) ; son inbox sort de `CONFLICT` et le renvoi reçoit ce refus définitif
+      // au lieu de la quarantaine d'origine (le résultat mémorisé est remplacé, sinon il serait rejoué tel quel).
+      const messageFr = `Commande en quarantaine écartée à la résolution de son conflit (${p.resolution}) : ${p.comment}`;
+      await uow
+        .updateTable('sync_command_inbox')
+        .set({
+          status: 'REJECTED',
+          error_code: 'COMMAND_DISCARDED',
+          error_message: messageFr,
+          result: jsonValue({
+            command_id: check.conflict.commandId,
+            status: 'REJECTED',
+            error: { code: 'COMMAND_DISCARDED', message_fr: messageFr },
+          }),
+        })
+        .where('command_id', '=', quarantinedCommand)
+        .where('status', '=', 'CONFLICT')
         .execute();
     }
     return finish(uow, deps, {
