@@ -1,8 +1,9 @@
 /**
  * Verrouillage progressif de connexion (07-security-rbac/02-securite.md §2 : « 5 échecs →
  * blocage progressif (1, 5, 15 min) par identifiant et par IP »). Deux compteurs indépendants
- * (`identity.login_attempts`, P0-09) : un échec incrémente **les deux** (identifiant et IP),
- * un blocage sur l'un OU l'autre suffit à refuser la connexion.
+ * (`identity.login_attempts`, P0-09) : un essai est compté sur **les deux** (identifiant et IP), un blocage sur l'un OU
+ * l'autre suffit à refuser la connexion. AV-297 (a) : l'essai est réservé d'avance et atomiquement
+ * (`reserveLoginAttempts`), remis à zéro par une connexion réussie (`resetLoginAttempts`).
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -24,51 +25,71 @@ export interface LoginLockStatus {
   readonly retryAfter: Date | null;
 }
 
-export async function checkLoginLock(
-  db: Kysely<DB> | Transaction<DB>,
-  scopeType: LoginAttemptScope,
-  scopeValue: string,
-  now: Date,
-): Promise<LoginLockStatus> {
-  const row = await db
-    .selectFrom('identity_login_attempts')
-    .select('blocked_until')
-    .where('scope_type', '=', scopeType)
-    .where('scope_value', '=', scopeValue)
-    .executeTakeFirst();
-  if (row?.blocked_until && row.blocked_until > now) {
-    return { blocked: true, retryAfter: row.blocked_until };
-  }
-  return { blocked: false, retryAfter: null };
+export interface LoginAttemptScopeRef {
+  readonly scopeType: LoginAttemptScope;
+  readonly scopeValue: string;
 }
 
-/** Incrémente le compteur d'échecs et (re)calcule `blocked_until` selon le barème progressif. */
-export async function recordLoginFailure(
-  db: Kysely<DB> | Transaction<DB>,
-  scopeType: LoginAttemptScope,
-  scopeValue: string,
+/**
+ * Réservation atomique d'un essai de connexion (AV-297 (a)) : l'essai est **compté d'avance**, avant la vérification
+ * du mot de passe, et remis à zéro par une connexion réussie (`resetLoginAttempts`). Lire le blocage avant la
+ * vérification puis compter l'échec après laissait N essais simultanés passer tous le contrôle ; ici les lignes de
+ * compteur sont verrouillées (`FOR UPDATE`, ordre fixe : pas d'interblocage) le temps de la réservation — courte, sans
+ * hachage dans la transaction — donc les réservations se suivent : au plus `FAILURE_THRESHOLD` essais sont admis avant
+ * que le blocage ne tombe, les suivants sont refusés sans être comptés ni vérifiés.
+ *
+ * Un essai refusé (déjà bloqué sur l'une des portées) ne compte sur aucune. Le blocage se pose dès la réservation du
+ * cinquième essai (palier de `blockDurationMinutes`) ; ce cinquième essai est admis, et s'il réussit il remet tout à zéro.
+ */
+export async function reserveLoginAttempts(
+  db: Kysely<DB>,
+  scopes: readonly LoginAttemptScopeRef[],
   now: Date,
-): Promise<void> {
-  await db
-    .insertInto('identity_login_attempts')
-    .values({ scope_type: scopeType, scope_value: scopeValue, failed_count: 1 })
-    .onDuplicateKeyUpdate({ failed_count: sql`failed_count + 1` })
-    .execute();
-
-  const row = await db
-    .selectFrom('identity_login_attempts')
-    .select('failed_count')
-    .where('scope_type', '=', scopeType)
-    .where('scope_value', '=', scopeValue)
-    .executeTakeFirstOrThrow();
-
-  const blockMinutes = blockDurationMinutes(row.failed_count);
-  await db
-    .updateTable('identity_login_attempts')
-    .set({ blocked_until: blockMinutes ? new Date(now.getTime() + blockMinutes * 60_000) : null })
-    .where('scope_type', '=', scopeType)
-    .where('scope_value', '=', scopeValue)
-    .execute();
+): Promise<LoginLockStatus> {
+  const ordered = [...scopes].sort(
+    (a, b) => a.scopeType.localeCompare(b.scopeType) || a.scopeValue.localeCompare(b.scopeValue),
+  );
+  return db.transaction().execute(async (trx) => {
+    for (const scope of ordered) {
+      await trx
+        .insertInto('identity_login_attempts')
+        .values({ scope_type: scope.scopeType, scope_value: scope.scopeValue, failed_count: 0 })
+        .onDuplicateKeyUpdate({ failed_count: sql`failed_count` })
+        .execute();
+    }
+    const rows: { scope: LoginAttemptScopeRef; failed: number; blockedUntil: Date | null }[] = [];
+    for (const scope of ordered) {
+      const row = await trx
+        .selectFrom('identity_login_attempts')
+        .select(['failed_count', 'blocked_until'])
+        .where('scope_type', '=', scope.scopeType)
+        .where('scope_value', '=', scope.scopeValue)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      rows.push({ scope, failed: row.failed_count, blockedUntil: row.blocked_until });
+    }
+    const blocked = rows.filter((row) => row.blockedUntil !== null && row.blockedUntil > now);
+    if (blocked.length > 0) {
+      return {
+        blocked: true,
+        retryAfter: new Date(Math.max(...blocked.map((row) => row.blockedUntil!.getTime()))),
+      };
+    }
+    for (const row of rows) {
+      const failed = row.failed + 1;
+      const minutes = blockDurationMinutes(failed);
+      await trx
+        .updateTable('identity_login_attempts')
+        .set({
+          failed_count: failed,
+          blocked_until: minutes ? new Date(now.getTime() + minutes * 60_000) : null,
+        })
+        .where('scope_type', '=', row.scope.scopeType)
+        .where('scope_value', '=', row.scope.scopeValue)
+        .execute();
+    }
+    return { blocked: false, retryAfter: null };
+  });
 }
 
 export async function resetLoginAttempts(

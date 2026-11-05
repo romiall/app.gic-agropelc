@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GicDatabase } from '../../storage/db.js';
+import { wipeDownloadedData } from '../../storage/session.js';
 import {
   clearSessionRuntime,
   ensureAccessToken,
@@ -7,6 +8,9 @@ import {
   setSessionRuntime,
   type SessionRuntime,
 } from './session-runtime.js';
+
+// AV-213 (c) : l'effacement des données téléchargées est éprouvé dans storage/session.test.ts.
+vi.mock('../../storage/session.js', () => ({ wipeDownloadedData: vi.fn(async () => undefined) }));
 
 const update = vi.fn(async () => 1);
 const db = { session: { update } } as unknown as GicDatabase;
@@ -99,6 +103,37 @@ describe('ensureAccessToken', () => {
     ]);
     expect(getSessionRuntime()).toBeUndefined();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('AV-213 (c) : appareil hors service (403 DEVICE_OUT_OF_SERVICE) — données téléchargées effacées ; tout autre refus les garde', async () => {
+    vi.mocked(wipeDownloadedData).mockClear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: 'DEVICE_OUT_OF_SERVICE' } }), {
+            status: 403,
+          }),
+      ),
+    );
+    expect(await ensureAccessToken(db)).toEqual({ ok: false, reason: 'SESSION_INVALID' });
+    expect(wipeDownloadedData).toHaveBeenCalledTimes(1);
+    expect(getSessionRuntime()).toBeUndefined();
+
+    // Un 403 d'un autre motif, un 401 ou un corps illisible : session vidée, données gardées.
+    for (const response of [
+      () => new Response(JSON.stringify({ error: { code: 'FORBIDDEN' } }), { status: 403 }),
+      () => new Response('pas du json', { status: 403 }),
+      () => new Response('{}', { status: 401 }),
+    ]) {
+      setSessionRuntime(await expiredSession());
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => response()),
+      );
+      expect(await ensureAccessToken(db)).toEqual({ ok: false, reason: 'SESSION_INVALID' });
+    }
+    expect(wipeDownloadedData).toHaveBeenCalledTimes(1);
   });
 
   it('erreur passagère du serveur (503, 429) : OFFLINE, la session est conservée', async () => {

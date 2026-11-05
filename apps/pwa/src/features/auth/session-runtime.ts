@@ -7,6 +7,7 @@
  */
 import type { GicDatabase } from '../../storage/db.js';
 import { encryptText } from '../../storage/crypto.js';
+import { wipeDownloadedData } from '../../storage/session.js';
 import { apiUrl } from '../../platform/env.js';
 
 export interface SessionRuntime {
@@ -108,6 +109,15 @@ async function refreshAccessToken(
     // obligatoire). Toute autre réponse (429, 5xx, passerelle) est passagère : la session est
     // gardée et le renouvellement sera retenté au prochain cycle.
     if (SESSION_REFUSED_STATUSES.has(response.status)) {
+      // AV-213 (c) : le serveur dit l'appareil hors service (bloqué, perdu, retiré) — les données téléchargées sont
+      // effacées, la file d'envoi reste.
+      if (response.status === 403) {
+        const code = await response
+          .json()
+          .then((body: { error?: { code?: string } }) => body.error?.code)
+          .catch(() => undefined);
+        if (code === 'DEVICE_OUT_OF_SERVICE') await wipeDownloadedData(db);
+      }
       clearSessionRuntime();
       return { ok: false, reason: 'SESSION_INVALID' };
     }

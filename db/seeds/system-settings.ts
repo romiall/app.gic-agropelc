@@ -485,6 +485,9 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-387',
   },
+  // AV-296 (b) : appareil non partagé réservé au compte qui l'a connecté ; faux (comportement d'avant) tant que le
+  // porteur n'a pas tranché.
+  { key: 'identity.device_bound_to_enroller', value: false, isClientVisible: false, ref: 'AV-296' },
   // P9-25 (PF-7, AV-472) : rétention des tables techniques de la plateforme (tâches terminées, sauts de consommateurs).
   { key: 'platform.job_retention_days', value: 30, isClientVisible: false, ref: 'AV-472' },
   {

@@ -23,14 +23,24 @@ function randomShortCode(): string {
 export interface DeviceLoginInput {
   readonly deviceId: string;
   readonly enrolledByUserId: string;
+  /**
+   * AV-296 (b) : un appareil non partagé (`is_shared` faux) ne sert qu'au compte qui l'a connecté en premier ; un
+   * autre compte reçoit `DEVICE_BOUND_TO_OTHER_USER` (l'Admin le désigne « partagé » s'il change de main). Réglage
+   * `identity.device_bound_to_enroller` (faux par défaut : comportement d'avant).
+   */
+  readonly boundToEnroller?: boolean;
   readonly label?: string;
   readonly platform?: string;
   readonly appVersion?: string;
   readonly now: Date;
 }
 
-/** Appareil hors service : le motif est rendu à qui a prouvé son mot de passe (AV-253). */
-export type DeviceLoginRefusal = 'DEVICE_BLOCKED' | 'DEVICE_LOST' | 'DEVICE_RETIRED';
+/**
+ * Appareil refusé : le motif est rendu à qui a prouvé son mot de passe (AV-253). `DEVICE_BOUND_TO_OTHER_USER` : appareil
+ * en service mais réservé au compte qui l'a connecté (AV-296).
+ */
+export type DeviceLoginRefusal =
+  'DEVICE_BLOCKED' | 'DEVICE_LOST' | 'DEVICE_RETIRED' | 'DEVICE_BOUND_TO_OTHER_USER';
 
 export type DeviceLoginCheck =
   | {
@@ -49,7 +59,7 @@ export async function findOrEnrollDevice(
   const deviceIdBin = toBin(input.deviceId);
   const existing = await uow
     .selectFrom('identity_devices')
-    .select(['status', 'short_code'])
+    .select(['status', 'short_code', 'is_shared', 'enrolled_by_user_id'])
     .where('id', '=', deviceIdBin)
     .executeTakeFirst();
 
@@ -57,6 +67,14 @@ export async function findOrEnrollDevice(
     if (existing.status === 'BLOCKED') return { ok: false, reason: 'DEVICE_BLOCKED' };
     if (existing.status === 'LOST') return { ok: false, reason: 'DEVICE_LOST' };
     if (existing.status === 'RETIRED') return { ok: false, reason: 'DEVICE_RETIRED' };
+    if (
+      input.boundToEnroller === true &&
+      Number(existing.is_shared) === 0 &&
+      existing.enrolled_by_user_id !== null &&
+      !existing.enrolled_by_user_id.equals(toBin(input.enrolledByUserId))
+    ) {
+      return { ok: false, reason: 'DEVICE_BOUND_TO_OTHER_USER' };
+    }
     await uow
       .updateTable('identity_devices')
       .set({ last_seen_at: input.now })

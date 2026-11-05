@@ -57,7 +57,10 @@ export type RefreshOutcome =
       readonly deviceId: string;
       readonly refreshToken: string;
     }
-  | { readonly ok: false; readonly reason: 'NOT_FOUND' | 'SESSION_EXPIRED' }
+  | {
+      readonly ok: false;
+      readonly reason: 'NOT_FOUND' | 'SESSION_EXPIRED' | 'DEVICE_OUT_OF_SERVICE';
+    }
   | {
       readonly ok: false;
       readonly reason: 'TOKEN_REUSE';
@@ -74,11 +77,25 @@ export async function rotateSession(
 ): Promise<RefreshOutcome> {
   const row = await uow
     .selectFrom('identity_auth_sessions')
-    .select(['id', 'user_id', 'device_id', 'token_family_id', 'revoked_at', 'expires_at'])
+    .select([
+      'id',
+      'user_id',
+      'device_id',
+      'token_family_id',
+      'revoked_at',
+      'revoked_reason',
+      'expires_at',
+    ])
     .where('refresh_token_hash', '=', hashRefreshToken(presentedToken))
     .executeTakeFirst();
   if (!row) return { ok: false, reason: 'NOT_FOUND' };
 
+  // AV-213 (c) : session close par le blocage de l'appareil (bloqué, perdu, retiré) — ce n'est pas une réutilisation de
+  // jeton (aucune famille à re-révoquer, aucune alerte de sécurité) : l'appareil reçoit un refus qui lui dit d'effacer
+  // ses données téléchargées.
+  if (row.revoked_at !== null && row.revoked_reason === 'DEVICE_BLOCKED') {
+    return { ok: false, reason: 'DEVICE_OUT_OF_SERVICE' };
+  }
   if (row.revoked_at !== null) {
     await revokeSessionFamily(uow, row.token_family_id, 'TOKEN_REUSE', now);
     return {

@@ -26,6 +26,16 @@ describe('login (ECR-ADM-01)', () => {
     },
   );
 
+  it('403 DEVICE_BOUND_TO_OTHER_USER : appareil réservé au compte qui l’a connecté, motif rendu tel quel (AV-296)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        reply(403, { error: { code: 'DEVICE_BOUND_TO_OTHER_USER', message: 'Réservé' } }),
+      ),
+    );
+    expect(await login(input)).toEqual({ ok: false, reason: 'DEVICE_BOUND_TO_OTHER_USER' });
+  });
+
   it('403 sans motif connu : réponse inattendue, jamais un motif inventé', async () => {
     vi.stubGlobal(
       'fetch',

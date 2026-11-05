@@ -105,6 +105,30 @@ export async function wipeLocalSession(db: GicDatabase): Promise<void> {
   });
 }
 
+/**
+ * AV-213 (c) : appareil mis hors service (bloqué, perdu, retiré). Les données téléchargées (clients, stock, prix, parcours
+ * mémorisé) sont effacées de l'appareil ; la file d'envoi (outbox) et les pièces jointes en attente restent, pour être
+ * déposées si l'appareil est remis en service (le serveur les met sinon en quarantaine, `DEVICE_REVOKED`). L'identité de
+ * l'appareil (`syncMeta`) est gardée, ses curseurs et son propriétaire de données repartent de zéro.
+ */
+export async function wipeDownloadedData(db: GicDatabase): Promise<void> {
+  await db.transaction(
+    'rw',
+    db.projections,
+    db.syncCursors,
+    db.navigation,
+    db.syncMeta,
+    async () => {
+      await db.projections.clear();
+      await db.syncCursors.clear();
+      await db.navigation.clear();
+      if (await db.syncMeta.get('device')) {
+        await db.syncMeta.update('device', { data_user_id: null, last_sync_at: null });
+      }
+    },
+  );
+}
+
 export async function hasLocalSession(db: GicDatabase): Promise<boolean> {
   return (await db.session.get('current')) !== undefined;
 }

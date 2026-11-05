@@ -38,6 +38,8 @@ export const fr = {
     error_device_blocked: 'Cet appareil est bloqué : contactez votre responsable.',
     error_device_lost: 'Cet appareil a été déclaré perdu : contactez votre responsable.',
     error_device_retired: 'Cet appareil est retiré du service : contactez votre responsable.',
+    error_device_bound_to_other_user:
+      'Cet appareil est réservé au compte qui l’a connecté : demandez à votre responsable de le désigner « partagé », ou connectez votre propre appareil.',
     error_offline: 'Pas de réseau : la première connexion doit se faire en ligne.',
     error_locked: 'Trop de tentatives : réessayez plus tard.',
     error_server_error: 'Le service est momentanément indisponible. Réessayez dans un instant.',

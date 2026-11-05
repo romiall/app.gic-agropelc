@@ -5,6 +5,7 @@ import {
   MAX_PIN_ATTEMPTS,
   setupPin,
   unlockWithPin,
+  wipeDownloadedData,
   wipeLocalSession,
 } from './session.js';
 
@@ -125,6 +126,64 @@ describe('storage/session (PIN local, BR-ADM-024)', () => {
     await wipeLocalSession(db);
     expect(await hasLocalSession(db)).toBe(false);
     expect(await db.outbox.count()).toBe(1);
+  });
+
+  it('AV-213 (c) : wipeDownloadedData efface projections, curseurs et parcours mémorisé, garde la file, les pièces et l’identité de l’appareil', async () => {
+    await db.syncMeta.put({
+      key: 'device',
+      device_id: 'appareil-1',
+      clock_skew_ms: null,
+      last_sync_at: '2026-11-05T08:00:00.000Z',
+      data_user_id: 'user-1',
+    });
+    await db.projections.put({
+      key: 'customers:CUSTOMER:c1',
+      dataset: 'customers',
+      entity_type: 'CUSTOMER',
+      entity_id: 'c1',
+      scope_type: 'USER',
+      scope_id: 'user-1',
+      row_version: 1,
+      seq: 1,
+      data: { id: 'c1' },
+    });
+    await db.syncCursors.put({ dataset: 'customers', cursor: 12 });
+    await db.outbox.put({
+      command_id: 'cmd-9',
+      device_seq: 9,
+      command_type: 'test.demo.record',
+      command_version: 1,
+      author_user_id: 'user-1',
+      aggregate_type: 'DEMO',
+      aggregate_id: 'agg-1',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-11-05T08:00:00.000Z',
+      client_created_at: '2026-11-05T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {},
+      status: 'PENDING_SYNC',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+
+    await wipeDownloadedData(db);
+    expect(await db.projections.count()).toBe(0);
+    expect(await db.syncCursors.count()).toBe(0);
+    // La file d'envoi reste, comme l'identité de l'appareil ; son propriétaire de données et son dernier contact repartent de zéro.
+    expect(await db.outbox.count()).toBe(1);
+    expect(await db.syncMeta.get('device')).toMatchObject({
+      device_id: 'appareil-1',
+      data_user_id: null,
+      last_sync_at: null,
+    });
+    // Sans appareil connu (jamais synchronisé), l'effacement ne lève pas.
+    await db.syncMeta.clear();
+    await expect(wipeDownloadedData(db)).resolves.toBeUndefined();
   });
 
   it('rejette un PIN de format invalide dès l’établissement', async () => {

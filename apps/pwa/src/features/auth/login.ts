@@ -6,9 +6,10 @@
  */
 import { apiUrl } from '../../platform/env.js';
 
-/** Appareil hors service, rendu après un mot de passe correct (AV-253). */
-export const DEVICE_REFUSALS = ['DEVICE_BLOCKED', 'DEVICE_LOST', 'DEVICE_RETIRED'] as const;
-export type DeviceRefusal = (typeof DEVICE_REFUSALS)[number];
+import { DEVICE_REFUSALS, type DeviceRefusal } from './device-refusals.js';
+
+/** Appareil refusé, rendu après un mot de passe correct (AV-253, AV-296). */
+export { DEVICE_REFUSALS, type DeviceRefusal };
 
 export interface LoginInput {
   readonly phone: string;

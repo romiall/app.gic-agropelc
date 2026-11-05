@@ -261,6 +261,53 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
     expect(response.json().error.code).toBe('LOGIN_LOCKED');
   });
 
+  it('AV-297 (a) : des essais simultanés se suivent — au plus cinq vérifications avant le blocage, les autres refusées sans vérification', async () => {
+    const phone = await freshPhone();
+    const ip = freshIp();
+    await createLoginableUser(phone);
+    const attempt = (password: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: ip,
+        payload: { phone, password, device_id: freshUuid() },
+      });
+    // Douze mauvais mots de passe d'un coup : sans réservation atomique, tous passaient le contrôle de blocage.
+    const wrong = await Promise.all(Array.from({ length: 12 }, () => attempt('faux')));
+    const codes = wrong.map((response) => response.statusCode);
+    expect(codes.filter((code) => code === 401)).toHaveLength(5);
+    expect(codes.filter((code) => code === 429)).toHaveLength(7);
+    // Le blocage tient : même le bon mot de passe est refusé.
+    expect((await attempt(KNOWN_PASSWORD)).statusCode).toBe(429);
+  });
+
+  it('AV-297 : une connexion réussie remet les compteurs à zéro ; un mot de passe juste devant un appareil hors service ne laisse aucun essai compté', async () => {
+    const phone = await freshPhone();
+    const ip = freshIp();
+    await createLoginableUser(phone);
+    const deviceId = freshUuid();
+    const attempt = (password: string, device = deviceId) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: ip,
+        payload: { phone, password, device_id: device },
+      });
+    // Quatre échecs, puis une réussite : la série repart de zéro (quatre échecs de plus ne bloquent pas).
+    for (let i = 0; i < 4; i++) expect((await attempt('faux')).statusCode).toBe(401);
+    expect((await attempt(KNOWN_PASSWORD)).statusCode).toBe(200);
+    await db
+      .updateTable('identity_devices')
+      .set({ status: 'BLOCKED', status_reason: 'Test AV-297', status_changed_at: new Date() })
+      .where('id', '=', toBin(deviceId))
+      .execute();
+    for (let i = 0; i < 4; i++) expect((await attempt('faux')).statusCode).toBe(401);
+    // Cinquième essai : mot de passe juste mais appareil bloqué (403) — ni compté ni bloquant.
+    expect((await attempt(KNOWN_PASSWORD)).statusCode).toBe(403);
+    for (let i = 0; i < 4; i++) expect((await attempt('faux')).statusCode).toBe(401);
+    expect((await attempt(KNOWN_PASSWORD, freshUuid())).statusCode).toBe(200);
+  });
+
   it('rafraîchissement : rotation, l’ancien jeton devient invalide', async () => {
     const phone = await freshPhone();
     await createLoginableUser(phone);
@@ -298,6 +345,64 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
       payload: { refresh_token: secondRefreshToken },
     });
     expect(secondNowRevoked.statusCode).toBe(401);
+  });
+
+  it('AV-213 (c) : le rafraîchissement d’un appareil bloqué reçoit 403 DEVICE_OUT_OF_SERVICE (effacement local), sans fausse alerte de réutilisation de jeton', async () => {
+    const phone = await freshPhone();
+    const userId = await createLoginableUser(phone);
+    const deviceId = freshUuid();
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      remoteAddress: freshIp(),
+      payload: { phone, password: KNOWN_PASSWORD, device_id: deviceId },
+    });
+    expect(login.statusCode).toBe(200);
+    const { refresh_token: refreshToken } = login.json();
+
+    // Blocage de l'appareil : ses sessions sont révoquées avec le motif DEVICE_BLOCKED (commande identity.device.block).
+    await db
+      .updateTable('identity_auth_sessions')
+      .set({ revoked_at: new Date(), revoked_reason: 'DEVICE_BLOCKED' })
+      .where('device_id', '=', toBin(deviceId))
+      .where('revoked_at', 'is', null)
+      .execute();
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      payload: { refresh_token: refreshToken },
+    });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error.code).toBe('DEVICE_OUT_OF_SERVICE');
+    // Ce n'est pas une réutilisation de jeton : aucune alerte de sécurité n'est écrite.
+    const reuseAudit = await db
+      .selectFrom('audit_audit_log')
+      .select('id')
+      .where('actor_user_id', '=', toBin(userId))
+      .where('action', '=', 'auth.token.reuse_detected')
+      .execute();
+    expect(reuseAudit).toEqual([]);
+    // Autre session révoquée (déconnexion) : le comportement d'avant reste (401 générique ou réutilisation).
+    const phone2 = await freshPhone();
+    await createLoginableUser(phone2);
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      remoteAddress: freshIp(),
+      payload: { phone: phone2, password: KNOWN_PASSWORD, device_id: freshUuid() },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      headers: { authorization: `Bearer ${second.json().access_token}` },
+    });
+    const afterLogout = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      payload: { refresh_token: second.json().refresh_token },
+    });
+    expect(afterLogout.statusCode).toBe(401);
   });
 
   it('déconnexion : révoque la session, jeton d’accès sans effet sur /audit après (session-based logout)', async () => {

@@ -25,8 +25,10 @@ import {
   hasLocalSession,
   setupPin as persistPin,
   unlockWithPin as tryUnlockWithPin,
+  wipeDownloadedData,
 } from '../../storage/session.js';
 import { login as loginRequest, type DeviceRefusal } from './login.js';
+import { OUT_OF_SERVICE_REFUSALS } from './device-refusals.js';
 import { decodeAccessTokenClaims } from '../../platform/jwt-decode.js';
 import { clearSessionRuntime, setSessionRuntime } from './session-runtime.js';
 import { changePassword as changePasswordRequest } from './change-password.js';
@@ -115,6 +117,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       if (!deviceId) return;
       const result = await loginRequest({ phone, password, deviceId });
       if (!result.ok) {
+        // AV-213 (c) : mot de passe juste mais appareil hors service (bloqué, perdu, retiré) — les données
+        // téléchargées sont effacées, la file d'envoi reste.
+        if ((OUT_OF_SERVICE_REFUSALS as readonly string[]).includes(result.reason)) {
+          await wipeDownloadedData(db);
+        }
         // Une réponse HTTP inattendue (500, 503…) n'est pas une absence de réseau : message distinct.
         const error = result.reason === 'UNKNOWN' ? 'SERVER_ERROR' : result.reason;
         setState({ status: 'login_required', error });
@@ -138,7 +145,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           : { status: 'pin_setup_required' },
       );
     },
-    [deviceId, setStaged],
+    [db, deviceId, setStaged],
   );
 
   const changeProvisionalPassword = useCallback(

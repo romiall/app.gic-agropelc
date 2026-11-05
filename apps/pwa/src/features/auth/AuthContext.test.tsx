@@ -260,3 +260,80 @@ describe('AuthContext (machine à états ECR-ADM-01/02)', () => {
     expect(getSessionRuntime()?.userId).toBe(FAKE_USER_ID);
   });
 });
+
+describe('AuthContext : refus d’appareil après un mot de passe juste (AV-213 (c), AV-296)', () => {
+  beforeEach(async () => {
+    await getDb().delete();
+    await getDb().open();
+    clearSessionRuntime();
+  });
+
+  afterEach(async () => {
+    clearSessionRuntime();
+    await getDb().delete();
+    await getDb().open();
+  });
+
+  async function seedDeviceData(): Promise<void> {
+    const db = getDb();
+    await db.projections.put({
+      key: 'customers:CUSTOMER:c1',
+      dataset: 'customers',
+      entity_type: 'CUSTOMER',
+      entity_id: 'c1',
+      scope_type: 'USER',
+      scope_id: FAKE_USER_ID,
+      row_version: 1,
+      seq: 1,
+      data: { id: 'c1' },
+    });
+    await db.outbox.put({
+      command_id: 'cmd-1',
+      device_seq: 1,
+      command_type: 'test.demo.record',
+      command_version: 1,
+      author_user_id: FAKE_USER_ID,
+      aggregate_type: 'DEMO',
+      aggregate_id: 'agg-1',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-11-05T08:00:00.000Z',
+      client_created_at: '2026-11-05T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {},
+      status: 'PENDING_SYNC',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+  }
+
+  it('appareil réservé à un autre compte : rien n’est effacé ; appareil bloqué : données téléchargées effacées, file gardée', async () => {
+    await seedDeviceData();
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <TestHarness />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('login_required'));
+
+    vi.mocked(login).mockResolvedValueOnce({ ok: false, reason: 'DEVICE_BOUND_TO_OTHER_USER' });
+    await user.click(screen.getByText('login'));
+    await waitFor(() =>
+      expect(screen.getByTestId('login-error')).toHaveTextContent('DEVICE_BOUND_TO_OTHER_USER'),
+    );
+    expect(await getDb().projections.count()).toBe(1);
+
+    vi.mocked(login).mockResolvedValueOnce({ ok: false, reason: 'DEVICE_BLOCKED' });
+    await user.click(screen.getByText('login'));
+    await waitFor(() =>
+      expect(screen.getByTestId('login-error')).toHaveTextContent('DEVICE_BLOCKED'),
+    );
+    expect(await getDb().projections.count()).toBe(0);
+    expect(await getDb().outbox.count()).toBe(1);
+  });
+});

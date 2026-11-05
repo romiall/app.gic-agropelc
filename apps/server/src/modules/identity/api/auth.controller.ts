@@ -42,17 +42,14 @@ import {
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
 import { Public, SelfScoped } from '../../../platform/http/authorization.decorators.js';
 import { hashPassword, verifyDecoyPassword, verifyPassword } from '../application/auth/password.js';
-import {
-  checkLoginLock,
-  recordLoginFailure,
-  resetLoginAttempts,
-} from '../application/auth/login-lockout.js';
+import { reserveLoginAttempts, resetLoginAttempts } from '../application/auth/login-lockout.js';
 import {
   findOrEnrollDevice,
   type DeviceLoginRefusal,
 } from '../application/auth/device-enrollment.js';
 import { createSession, rotateSession, revokeSessionById } from '../application/auth/session.js';
 import { revokeOtherUserSessions } from '../application/commands/revoke-sessions.js';
+import { currentSettingValue } from '../../organization/application/public/index.js';
 
 const loginSchema = z.object({
   // Téléphone (E.164) ou adresse e-mail du compte (RP-3, 200 caractères au plus).
@@ -95,6 +92,8 @@ const DEVICE_REFUSAL_MESSAGES: Record<DeviceLoginRefusal, string> = {
   DEVICE_BLOCKED: 'Cet appareil est bloqué : contactez votre responsable.',
   DEVICE_LOST: 'Cet appareil a été déclaré perdu : contactez votre responsable.',
   DEVICE_RETIRED: 'Cet appareil est retiré du service : contactez votre responsable.',
+  DEVICE_BOUND_TO_OTHER_USER:
+    'Cet appareil est réservé au compte qui l’a connecté : demandez à votre responsable de le désigner « partagé », ou connectez votre propre appareil.',
 };
 
 @Controller('api/v1/auth')
@@ -123,11 +122,18 @@ export class AuthController {
     const now = this.clock.now();
     const ip = request.ip;
 
-    const [identifierLock, ipLock] = await Promise.all([
-      checkLoginLock(this.db, 'IDENTIFIER', phone, now),
-      checkLoginLock(this.db, 'IP', ip, now),
-    ]);
-    if (identifierLock.blocked || ipLock.blocked) {
+    // AV-297 (a) : l'essai est réservé (compté) d'avance, atomiquement, avant la vérification du mot de passe ;
+    // une connexion réussie remet les compteurs à zéro. Des essais simultanés se suivent donc : au plus cinq
+    // vérifications passent avant le blocage, les autres sont refusées sans être vérifiées.
+    const lock = await reserveLoginAttempts(
+      this.db,
+      [
+        { scopeType: 'IDENTIFIER', scopeValue: phone },
+        { scopeType: 'IP', scopeValue: ip },
+      ],
+      now,
+    );
+    if (lock.blocked) {
       throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
     }
 
@@ -167,8 +173,7 @@ export class AuthController {
     // message générique, son motif n'est lisible qu'au journal).
     const fail = async (actorUserId: string | null, errorCode?: string): Promise<never> => {
       await this.db.transaction().execute(async (trx) => {
-        await recordLoginFailure(trx, 'IDENTIFIER', phone, now);
-        await recordLoginFailure(trx, 'IP', ip, now);
+        // L'échec est déjà compté (réservation, AV-297) : seul l'audit reste à écrire.
         if (actorUserId) {
           // `audit_audit_log.actor_user_id` est NOT NULL (FK identity_users) : un
           // identifiant inconnu n'a pas d'acteur réel à référencer, seul le verrouillage
@@ -205,10 +210,19 @@ export class AuthController {
     if (user.status !== 'ACTIVE') return fail(fromBin(user.id), `ACCOUNT_${user.status}`);
 
     const userId = fromBin(user.id);
+    // AV-296 (b) : réglage global `identity.device_bound_to_enroller` (faux par défaut).
+    const boundToEnroller =
+      (await currentSettingValue(this.db, {
+        key: 'identity.device_bound_to_enroller',
+        scopeType: 'GLOBAL',
+        scopeId: null,
+        at: now,
+      })) === true;
     const deviceResult = await this.db.transaction().execute((trx) =>
       findOrEnrollDevice(trx, {
         deviceId,
         enrolledByUserId: userId,
+        boundToEnroller,
         now,
         ...(deviceLabel !== undefined ? { label: deviceLabel } : {}),
         ...(platform !== undefined ? { platform } : {}),
@@ -218,9 +232,11 @@ export class AuthController {
     if (!deviceResult.ok) {
       // AV-253 (13/10/2026) : le mot de passe est juste, l'appareil est hors service — motif rendu
       // (403, code distinct) pour renvoyer l'utilisateur vers son responsable ; ni compteur
-      // d'échecs (les identifiants sont valides) ni session.
-      await this.db.transaction().execute((trx) =>
-        recordAudit(
+      // d'échecs (les identifiants sont valides : l'essai réservé d'avance est remis à zéro) ni session.
+      await this.db.transaction().execute(async (trx) => {
+        await resetLoginAttempts(trx, 'IDENTIFIER', phone);
+        await resetLoginAttempts(trx, 'IP', ip);
+        await recordAudit(
           trx,
           { idGenerator: this.idGenerator, clock: this.clock },
           {
@@ -236,8 +252,8 @@ export class AuthController {
             errorCode: deviceResult.reason,
             correlationId: request.correlationId,
           },
-        ),
-      );
+        );
+      });
       throw new ApiError(403, deviceResult.reason, DEVICE_REFUSAL_MESSAGES[deviceResult.reason]);
     }
 
@@ -328,6 +344,15 @@ export class AuthController {
           'Jeton de rafraîchissement déjà utilisé : session révoquée.',
         );
       }
+      if (outcome.reason === 'DEVICE_OUT_OF_SERVICE') {
+        // AV-213 (c) : appareil bloqué, perdu ou retiré — code propre pour que la PWA efface ses données
+        // téléchargées (elle garde sa file d'envoi).
+        throw new ApiError(
+          403,
+          'DEVICE_OUT_OF_SERVICE',
+          'Appareil hors service : contactez votre responsable.',
+        );
+      }
       throw new ApiError(
         401,
         'INVALID_REFRESH_TOKEN',
@@ -396,13 +421,18 @@ export class AuthController {
     }
     // MP-08 : le mot de passe actuel se teste comme une connexion de cet utilisateur (verrouillage
     // progressif par identifiant, 02-securite §2) : un jeton d'accès volé ne permet pas de le deviner.
-    if ((await checkLoginLock(this.db, 'IDENTIFIER', user.phone, now)).blocked) {
+    // AV-297 (a) : essai réservé d'avance, comme à la connexion ; remis à zéro quand le mot de passe est changé.
+    const lock = await reserveLoginAttempts(
+      this.db,
+      [{ scopeType: 'IDENTIFIER', scopeValue: user.phone }],
+      now,
+    );
+    if (lock.blocked) {
       throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
     }
     const currentOk = await verifyPassword(user.password_hash, parsed.data.current_password);
     if (!currentOk) {
       await this.db.transaction().execute(async (trx) => {
-        await recordLoginFailure(trx, 'IDENTIFIER', user.phone, now);
         await recordAudit(
           trx,
           { idGenerator: this.idGenerator, clock: this.clock },
@@ -422,6 +452,9 @@ export class AuthController {
       });
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Mot de passe actuel incorrect.');
     }
+    // Mot de passe actuel juste : l'essai réservé d'avance ne compte pas (un nouveau mot de passe refusé pour sa
+    // faiblesse ne mène pas au blocage).
+    await resetLoginAttempts(this.db, 'IDENTIFIER', user.phone);
     const problem = newPasswordProblem({
       password: parsed.data.new_password,
       current: parsed.data.current_password,
