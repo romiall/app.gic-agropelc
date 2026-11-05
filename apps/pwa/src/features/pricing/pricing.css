@@ -77,6 +77,26 @@
   margin-bottom: 0;
 }
 
+/* --- Campagnes commerciales (AV-516) ------------------------------------------------------------------ */
+
+.pr-campaigns {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.pr-campaigns li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+
 /* --- Simulateur de prix ------------------------------------------------------------------------------- */
 
 .pr-sim {

@@ -504,6 +504,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-513 | Solde d'une commande non livrée : créance et encours du client | SECONDAIRE | P4 | La vente née à la confirmation porte son solde dû, qui reste dans le reste à encaisser du client, dans les créances par ancienneté (échéance à 30 jours depuis la confirmation) et dans l'encours du contrôle du crédit d'une vente directe ; **seul le contrôle du crédit à la livraison** compte le remis non payé (AV-512) ; **implémenté** ainsi, le reste est à revoir | OUVERT |
 | AV-514 | Présence du personnel et bilan hebdomadaire : choix de conception à confirmer et restes (PP-E) | SECONDAIRE | PP | Défauts mis en œuvre le 05/11/2026 : feuille corrigée par annulation puis nouveau report, droits à portée de site, bilan corrigible jusqu'au « vu » du responsable ; restes : jeu hors ligne, vue d'analyse, feuille en double, rattachement à un compte | OUVERT |
 | AV-515 | Administration : modifier un compte, déplacer une zone, fermer une équipe, contrôler les paramètres | IMPORTANTE | RP-1 | Défauts mis en œuvre le 05/11/2026 : `identity.user.update` (nom, numéro, e-mail uniques parmi les comptes actifs), `organization.zone.move` (sous-arborescence recalculée, cycle refusé), `organization.team.close` (membres retirés, plus d'ajout), valeur de paramètre contrôlée par le serveur d'après le catalogue (AV-496 (b)) | OUVERT |
+| AV-516 | Catalogue et prix : modifier un produit, coût standard daté, campagnes commerciales, abandon d'un brouillon | SECONDAIRE | RP-1 | Défauts mis en œuvre le 05/11/2026 : écran de modification d'un produit (nom, catégorie, usages), coût standard en versions datées (saisie Admin, historique au droit de valorisation), création de campagnes et choix d'une campagne dans une règle, abandon d'un brouillon | OUVERT |
 
 ---
 
@@ -3854,6 +3855,17 @@ Politique par défaut, paramétrable :
   4. *Contrôle des paramètres par le serveur* (AV-496 (b)) : `organization.setting.set` rejette (`SETTING_VALUE_INVALID`) une valeur dont la forme, l'unité ou les bornes ne sont pas celles du catalogue partagé (`settings-catalog.ts`, celui de l'écran) ; une clé hors catalogue reste libre ; une valeur absente est refusée. (c) Rendre aussi le catalogue obligatoire (refuser une clé hors catalogue).
 - **Recommandation** : garder les défauts 1 à 4.
 - **Impact** : `identity/application/commands/user-commands.ts`, `organization/application/commands/{zone,team,setting}-commands.ts`, `users-read.controller.ts` (action `update`), écrans `features/users/` et `features/organization/` ; aucune migration ; aucun nouveau droit. Défauts mis en œuvre : 1 à 4. Non paramétrable (commandes).
+
+### AV-516 — Catalogue et prix : modifier un produit, coût standard daté, campagnes commerciales, abandon d'un brouillon — SECONDAIRE
+- **Question** : les compléments d'écran du catalogue et des prix livrés le 05/11/2026 conviennent-ils ?
+- **Pourquoi** : demande du porteur du 05/11/2026 (tout le reste à coder) ; le serveur offrait ces commandes, aucun écran n'y menait (S-26, D15 §ECR-PRX-01). **DÉDUIT**
+- **Choix** :
+  1. *Modifier un produit* (`catalog.product.update`, droit `catalog.product.manage`) : le nom, la catégorie et les drapeaux d'usage (vendable, achetable, produit, consommable) ; le code, la famille, l'unité de base, le suivi par lot, l'espèce et le mode de prix restent ceux de la création (D16-CAT §14, BR-CAT-005). (b) Permettre aussi de changer le mode de prix.
+  2. *Coût standard* (`catalog.product_standard_cost.set`) : chaque saisie ajoute une version datée de l'instant (jamais une modification, BR-CAT-011) ; la saisie relève de `catalog.product.manage` (Admin), l'historique se lit sur `GET /products/{id}/standard-costs` avec `inventory.valuation.read` (Direction, Finance, Responsable achats, Responsable production) : un Admin saisit donc un coût sans le relire. Aucun coût n'est servi aux appareils (S-02, RC-05). (b) Donner la lecture à l'Admin, ou la saisie à la Finance.
+  3. *Campagnes commerciales* : l'écran des règles liste les campagnes que l'appareil connaît et en crée (`pricing.campaign.create`, droit `pricing.campaign.manage`) ; une campagne se crée active et ne se modifie ni ne se clôt par l'écran (le serveur n'offre pas la commande) ; une règle se rattache à une campagne active et non terminée, et ne vaut que pendant elle. (b) Une commande de prolongation ou de clôture d'une campagne.
+  4. *Abandonner un brouillon de règle* (`pricing.rule.cancel`, droit de rédaction) : un brouillon passe à « annulé » ; une règle active se termine, elle ne s'abandonne pas.
+- **Recommandation** : garder les défauts 1 à 4.
+- **Impact** : `catalog-api/catalog-read.controller.ts`, `catalog/application/public/catalog-query.ts` (`listStandardCosts`), écrans `features/catalog/` (`ProductEditor`) et `features/pricing/` ; aucune migration ; aucun nouveau droit. Défauts mis en œuvre : 1 à 4. Non paramétrable.
 
 ## 3. Journal des décisions
 

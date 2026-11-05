@@ -41,8 +41,9 @@ import {
   waitingCommands,
   waitingIds,
 } from '../sales/submit.js';
-import type { ProductData } from '../sales/types.js';
+import type { CampaignData, ProductData } from '../sales/types.js';
 import { SIM_CHANNELS } from './price-sim.js';
+import { campaignPayload, campaignProblem, type CampaignForm } from './campaign.js';
 import {
   checkRule,
   conflictsOf,
@@ -121,6 +122,21 @@ function withCurrent(
 ): { readonly value: string; readonly label: string }[] {
   if (!current || options.some((option) => option.value === current)) return [...options];
   return [{ value: current, label }, ...options];
+}
+
+/** Campagnes proposées à une règle : actives et pas encore terminées (une règle de campagne ne vaut que pendant elle). */
+function campaignOptions(
+  campaigns: readonly CampaignData[],
+  now: Date,
+): { readonly value: string; readonly label: string }[] {
+  return campaigns
+    .filter((campaign) => campaign.status === 'ACTIVE' && new Date(campaign.valid_to) > now)
+    .map((campaign) => ({ value: campaign.id, label: campaignLabel(campaign) }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+}
+
+function campaignLabel(campaign: CampaignData): string {
+  return campaign.name ?? campaign.code ?? campaign.id;
 }
 
 interface EditorProps {
@@ -330,9 +346,26 @@ function RuleEditor({
             ) : null}
           </>
         ) : null}
-        {form.commercialCampaignId ? (
-          <p className="muted">{t('price_rules.campaign_kept')}</p>
-        ) : null}
+        <Field label={t('price_rules.campaign_label')} hint={t('price_rules.campaign_hint')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={form.commercialCampaignId}
+              onChange={(event) => update({ commercialCampaignId: event.target.value })}
+            >
+              <option value="">{t('price_rules.campaign_none')}</option>
+              {withCurrent(
+                campaignOptions(refs.campaigns, clock.now()),
+                form.commercialCampaignId,
+                t('price_rules.campaign_unknown'),
+              ).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
         {supersededStale ? (
           <p className="field-error" role="alert">
             {t('price_rules.superseded_changed')}
@@ -516,6 +549,160 @@ function RuleEditor({
   );
 }
 
+interface CampaignsSectionProps {
+  readonly refs: SalesReferences;
+  readonly userId: string;
+  readonly online: boolean;
+}
+
+/**
+ * Campagnes commerciales (UC-PRX-05, AV-516) : celles que l'appareil connaît (code, nom, période, état) et la
+ * création d'une campagne (`pricing.campaign.create`, droit `pricing.campaign.manage`). Une règle de prix y est
+ * rattachée dans son formulaire ; elle ne vaut que pendant la campagne. Une campagne se crée active et ne se
+ * modifie pas ici (le serveur n'offre pas de commande pour cela).
+ */
+function CampaignsSection({ refs, userId, online }: CampaignsSectionProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [from, setFrom] = useState(() => doualaLocal(clock.now()));
+  const [to, setTo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [last, setLast] = useState<string>();
+  const lastCommand = last ? refs.outbox.find((command) => command.command_id === last) : undefined;
+  const waiting =
+    last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand, refs.outbox));
+  const form: CampaignForm = { code, name, from, to };
+  const problem = campaignProblem(
+    form,
+    refs.campaigns.map((campaign) => campaign.code),
+  );
+  const campaigns = [...refs.campaigns].sort((a, b) => b.valid_from.localeCompare(a.valid_from));
+
+  const create = async () => {
+    if (problem !== null || busy || waiting || !online) return;
+    setBusy(true);
+    setSaveError(false);
+    try {
+      const command = await submitCommand({
+        authorUserId: userId,
+        commandType: 'pricing.campaign.create',
+        // Le type d'agrégat est celui de la projection servie aux appareils (jeu `commercial_campaign`).
+        aggregateType: 'COMMERCIAL_CAMPAIGN',
+        payload: campaignPayload(form),
+      });
+      setLast(command.command_id);
+      setOpen(false);
+      setCode('');
+      setName('');
+      setTo('');
+    } catch {
+      setSaveError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section title={t('price_rules.campaigns_title')}>
+      {last ? <CommandResult commandId={last} messages="price_rules.result" /> : null}
+      {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+      {campaigns.length === 0 ? (
+        <p className="muted">{t('price_rules.campaigns_none')}</p>
+      ) : (
+        <ul className="pr-campaigns" aria-label={t('price_rules.campaigns_title')}>
+          {campaigns.map((campaign) => (
+            <li key={campaign.id} aria-label={campaignLabel(campaign)}>
+              <strong>{campaignLabel(campaign)}</strong>
+              {campaign.name && campaign.code ? (
+                <span className="muted"> · {campaign.code}</span>
+              ) : null}
+              <span className="muted">
+                {' · '}
+                {t('price_rules.period_bounded', {
+                  from: formatRuleInstant(campaign.valid_from),
+                  to: formatRuleInstant(campaign.valid_to),
+                })}
+              </span>
+              {campaign.status !== 'ACTIVE' ? (
+                <Badge tone="muted" plain>
+                  {t('price_rules.campaign_inactive')}
+                </Badge>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!open ? (
+        <Button variant="outline" disabled={!online || waiting} onClick={() => setOpen(true)}>
+          {t('price_rules.campaign_new')}
+        </Button>
+      ) : (
+        <Card padded className="pr-form" role="group" aria-label={t('price_rules.campaign_new')}>
+          <Field label={t('price_rules.campaign_code')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={40}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={t('price_rules.campaign_name')}>
+            {(control) => (
+              <Input
+                {...control}
+                maxLength={200}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            )}
+          </Field>
+          <div className="pr-pair">
+            <Field label={t('price_rules.campaign_from')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="datetime-local"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('price_rules.campaign_to')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="datetime-local"
+                  value={to}
+                  min={from}
+                  onChange={(event) => setTo(event.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+          {problem === 'CODE_TAKEN' ||
+          problem === 'PERIOD' ||
+          (problem === 'NAME' && code !== '') ? (
+            <p className="field-error">{t(`price_rules.campaign_problem.${problem}`)}</p>
+          ) : null}
+          <div className="adm-actions">
+            <Button disabled={problem !== null || busy || !online} onClick={() => void create()}>
+              {t('price_rules.campaign_create')}
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              {t('price_rules.cancel')}
+            </Button>
+          </div>
+        </Card>
+      )}
+    </Section>
+  );
+}
+
 export function PriceRulesScreen() {
   const { t } = useTranslation();
   const { state } = useAuth();
@@ -624,6 +811,16 @@ export function PriceRulesScreen() {
     void send({
       authorUserId: userId,
       commandType: 'pricing.rule.activate',
+      aggregateType: 'PRICE_RULE',
+      aggregateId: rule.id,
+      payload: {},
+    });
+
+  // Abandonner un brouillon (jamais une règle active : elle se termine) ; la lignée reste libre pour un autre brouillon.
+  const abandon = (rule: RuleView) =>
+    void send({
+      authorUserId: userId,
+      commandType: 'pricing.rule.cancel',
       aggregateType: 'PRICE_RULE',
       aggregateId: rule.id,
       payload: {},
@@ -943,6 +1140,18 @@ export function PriceRulesScreen() {
                       ) : (
                         <p className="muted">{t('price_rules.activation_by_direction')}</p>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!online || blocked}
+                        aria-label={t('price_rules.abandon_label', {
+                          code: rule.code,
+                          version: rule.version,
+                        })}
+                        onClick={() => abandon(rule)}
+                      >
+                        {t('price_rules.abandon')}
+                      </Button>
                     </>,
                   );
                 })}
@@ -962,6 +1171,7 @@ export function PriceRulesScreen() {
           ) : null}
         </>
       ) : null}
+      <CampaignsSection refs={refs} userId={userId} online={online} />
     </section>
   );
 }

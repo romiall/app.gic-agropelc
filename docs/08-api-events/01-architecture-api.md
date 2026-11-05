@@ -81,7 +81,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 | Élément | Contenu |
 |---|---|
 | Commandes (I) | `catalog.product.create`, `.update`, `.deactivate`, `.reactivate`, `.set_standard_cost` ; `catalog.product_unit.set` ; `catalog.category.set` ; `catalog.unit.set` ; `catalog.reason_code.set` ; `pricing.rule.draft`, `.activate`, `.supersede`, `.end`, `.cancel` ; `pricing.campaign.create`, `.update`, `.cancel` |
-| Requêtes | `GET /products`, `/price-rules?product_id=&at=`, `GET /prices/resolve?product_id=&site_id=&customer_id=&quantity=&at=` (simulateur ; même moteur que l'appareil) |
+| Requêtes | `GET /products`, `GET /products/{id}/standard-costs` (historique des versions du coût standard, la plus récente en tête ; droit de valorisation `inventory.valuation.read`, AV-516), `/price-rules?product_id=&at=`, `GET /prices/resolve?product_id=&site_id=&customer_id=&quantity=&at=` (simulateur ; même moteur que l'appareil) |
 | Événements | `ProductCreated`, `ProductDeactivated`, `PriceRuleActivated`, `PriceRuleSuperseded` |
 | Permissions | `catalog.*`, `pricing.*` |
 

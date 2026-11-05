@@ -36,14 +36,24 @@ import {
   siteCreateCommand,
   siteUpdateCommand,
   teamAssignCommand,
+  teamCloseCommand,
   teamCreateCommand,
   teamRemoveCommand,
   zoneActiveCommand,
   zoneCreateCommand,
   zoneFormOf,
+  zoneMoveCommand,
   zoneUpdateCommand,
+  type TeamView,
   type ZoneView,
 } from '../../pwa/src/features/organization/organization.js';
+import {
+  productEditFormOf,
+  productUpdatePayload,
+  standardCostPayload,
+  type ProductView,
+} from '../../pwa/src/features/catalog/catalog.js';
+import { campaignPayload } from '../../pwa/src/features/pricing/campaign.js';
 import { policyCommand, settingCommand } from '../../pwa/src/features/settings/settings.js';
 import { commandOf, type DeviceAction } from '../../pwa/src/features/devices/devices.js';
 import {
@@ -155,6 +165,31 @@ function samples(): Sample[] {
   const siteId = id();
   const userId = id();
   const teamId = id();
+  const team: TeamView = {
+    id: teamId,
+    code: 'T1',
+    name: 'Équipe',
+    managerUserId: userId,
+    managerName: 'Responsable',
+    isActive: true,
+    members: [],
+  };
+  const product: ProductView = {
+    id: id(),
+    code: 'OEUF',
+    name: 'Œufs',
+    categoryId: id(),
+    stockFamily: 'PRODUCTION_COMMERCIALISABLE',
+    baseUnitCode: 'U',
+    lotTracking: 'OPTIONAL',
+    isSellable: true,
+    isPurchasable: false,
+    isProducible: true,
+    isConsumable: false,
+    pricingMode: 'PER_UNIT',
+    species: null,
+    status: 'ACTIVE',
+  };
 
   const org: Sample[] = [
     fromOrg(
@@ -238,6 +273,16 @@ function samples(): Sample[] {
       zoneUpdateCommand(zone, { ...zoneFormOf(zone), lat: '', lng: '', radiusM: '' })!,
     ),
     fromOrg('organisation : désactivation d’une zone', zoneActiveCommand(zone, false)),
+    fromOrg('organisation : déplacement d’une zone (AV-515)', zoneMoveCommand(zone, id())),
+    fromOrg('organisation : zone remise à la racine (AV-515)', zoneMoveCommand(zone, '')),
+    fromOrg(
+      'organisation : fermeture d’une équipe (AV-515)',
+      teamCloseCommand(team, 'Réorganisation'),
+    ),
+    fromOrg(
+      'organisation : fermeture d’une équipe sans motif (AV-515)',
+      teamCloseCommand(team, ' '),
+    ),
     fromOrg(
       'organisation : équipe',
       teamCreateCommand(
@@ -521,7 +566,46 @@ function samples(): Sample[] {
     payload: command.payload,
   }));
 
-  return [...org, ...devices, ...users, ...sync, ...comm];
+  // Catalogue et prix (AV-516) : produit modifié, coût standard daté, campagne commerciale.
+  const catalog: Sample[] = [
+    {
+      label: 'catalogue : produit modifié (AV-516)',
+      commandType: 'catalog.product.update',
+      payload: productUpdatePayload(product, {
+        ...productEditFormOf(product),
+        name: 'Œufs frais',
+        categoryId: id(),
+        isPurchasable: true,
+      }),
+    },
+    {
+      label: 'catalogue : coût standard avec motif (AV-516)',
+      commandType: 'catalog.product_standard_cost.set',
+      payload: standardCostPayload(product.id, '1 650', 'Nouvelle ration'),
+    },
+    {
+      label: 'catalogue : coût standard sans motif (AV-516)',
+      commandType: 'catalog.product_standard_cost.set',
+      payload: standardCostPayload(product.id, '0', ''),
+    },
+    {
+      label: 'prix : campagne commerciale (AV-516)',
+      commandType: 'pricing.campaign.create',
+      payload: campaignPayload({
+        code: 'RENTREE',
+        name: 'Rentrée scolaire',
+        from: '2026-10-15T08:00',
+        to: '2026-10-31T18:00',
+      }),
+    },
+    {
+      label: 'prix : abandon d’un brouillon (AV-516)',
+      commandType: 'pricing.rule.cancel',
+      payload: {},
+    },
+  ];
+
+  return [...org, ...devices, ...users, ...catalog, ...sync, ...comm];
 }
 
 describe('charges de commande fabriquées par la PWA : le schéma du serveur les accepte, sans rien perdre', () => {
@@ -568,6 +652,12 @@ describe('charges de commande fabriquées par la PWA : le schéma du serveur les
       'identity.device.designate',
       'identity.role_assignment.grant',
       'identity.user.update',
+      'organization.zone.move',
+      'organization.team.close',
+      'catalog.product.update',
+      'catalog.product_standard_cost.set',
+      'pricing.campaign.create',
+      'pricing.rule.cancel',
       'sync.conflict.resolve',
       'crm.customer.reassign',
       'crm.visit.record',

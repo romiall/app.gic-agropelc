@@ -61,6 +61,9 @@ export interface PriceRuleData {
 /** (`commercial_campaign`) */
 export interface CampaignData {
   readonly id: string;
+  /** Code et nom servis par la projection `COMMERCIAL_CAMPAIGN` ; absents d'un jeu d'avant AV-516. */
+  readonly code?: string;
+  readonly name?: string;
   readonly valid_from: string;
   readonly valid_to: string;
   readonly status: string;

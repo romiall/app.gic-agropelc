@@ -1,6 +1,7 @@
 /**
  * ECR-PRX-01 « Catalogue produits, unités, conditionnements » (administrateur ; en ligne). Unités,
- * catégories de produit, produits (création, désactivation, réactivation), conditionnements
+ * catégories de produit, produits (création, modification du nom, de la catégorie et des drapeaux d'usage,
+ * coût standard daté : AV-516 ; désactivation, réactivation), conditionnements
  * (immuables, BR-CAT-004) et motifs (référentiel des écrans de perte, visite, rejet, inventaire…).
  * Les listes se lisent sur le serveur (`GET /units`, `/products`, `/reason-codes`) et sur l'appareil
  * (catégories, conditionnements) ; elles sont relues après chaque opération et la dernière liste lue
@@ -67,6 +68,7 @@ import {
   type ReasonView,
   type UnitView,
 } from './catalog.js';
+import { ProductEditor } from './ProductEditor.js';
 import './catalog.css';
 
 type Section = 'PRODUCTS' | 'UNITS' | 'CATEGORIES' | 'PACKAGING' | 'REASONS';
@@ -307,6 +309,8 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
   const { t } = useTranslation();
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const edited = editing ? products.find((product) => product.id === editing) : undefined;
   const issues = checkProduct(form, [
     ...products,
     ...pending.products.map((code) => ({ code }) as ProductView),
@@ -366,9 +370,26 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
 
   return (
     <>
+      {edited ? (
+        <ProductEditor
+          key={edited.id}
+          product={edited}
+          categories={refs.productCategories}
+          send={send}
+          blocked={blocked}
+          userId={userId}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
       {!creating ? (
         <div className="cat-toolbar">
-          <Button icon="plus" onClick={() => setCreating(true)}>
+          <Button
+            icon="plus"
+            onClick={() => {
+              setEditing(null);
+              setCreating(true);
+            }}
+          >
             {t('catalog.new_product')}
           </Button>
         </div>
@@ -529,6 +550,17 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
                 </Badge>
               </DataCell>
               <DataCell actions>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t('catalog.edit_open', { name: product.name })}
+                  onClick={() => {
+                    setCreating(false);
+                    setEditing(product.id);
+                  }}
+                >
+                  {t('catalog.edit_short')}
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

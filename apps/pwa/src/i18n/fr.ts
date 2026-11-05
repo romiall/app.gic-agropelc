@@ -2006,7 +2006,27 @@ export const fr = {
     edit_short: 'Modifier',
     edit_reason: 'Modifier le motif {{name}}',
     save_reason: 'Enregistrer le motif {{name}}',
+    edit_open: 'Modifier le produit {{name}}',
+    edit_title: 'Produit {{name}}',
+    edit_save: 'Enregistrer le produit {{name}}',
+    edit_immutable_hint:
+      'Le code, la famille, l’unité de base, le suivi par lot et l’espèce ne changent plus une fois le produit créé.',
+    cost_title: 'Coût standard',
+    cost_hint:
+      'Le coût standard valorise le stock et les marges. Chaque saisie ajoute une version datée d’aujourd’hui : les versions antérieures restent lisibles.',
+    cost_denied:
+      'Historique des coûts réservé au droit de valorisation : vous pouvez saisir un coût sans le relire.',
+    cost_unavailable: 'Historique des coûts indisponible : réessayez quand le serveur répond.',
+    cost_none: 'Aucun coût standard saisi pour ce produit.',
+    cost_history: 'Historique du coût standard',
+    cost_value: '{{amount}} par unité de base',
+    cost_since: 'depuis le {{date}}',
+    cost_current: 'en vigueur',
+    cost_label: 'Nouveau coût par {{unit}} (F)',
+    cost_reason_label: 'Motif (facultatif)',
+    cost_save: 'Enregistrer le coût standard',
     issue: {
+      COST_INVALID: 'Coût : nombre entier de francs, zéro ou plus.',
       CODE_INVALID: 'Code : lettres majuscules, chiffres, tiret ou souligné, sans espace.',
       CODE_TAKEN: 'Ce code existe déjà.',
       NAME_REQUIRED: 'Le libellé est obligatoire.',
@@ -2059,8 +2079,27 @@ export const fr = {
     codes_loading: 'Vérification des codes existants…',
     codes_unavailable:
       'Codes existants indisponibles : réessayez quand le serveur répond (un code déjà pris bloquerait l’envoi).',
-    campaign_kept:
-      'Règle de campagne commerciale : la nouvelle version reste rattachée à la même campagne.',
+    campaign_label: 'Campagne commerciale',
+    campaign_none: 'Aucune (règle ordinaire)',
+    campaign_hint:
+      'Une règle rattachée à une campagne ne vaut que pendant cette campagne ; sans campagne, elle vaut en tout temps (dans sa période).',
+    campaign_unknown: 'campagne inconnue de ce téléphone',
+    campaigns_title: 'Campagnes commerciales',
+    campaigns_none: 'Aucune campagne pour le moment.',
+    campaign_inactive: 'Inactive',
+    campaign_new: 'Nouvelle campagne',
+    campaign_code: 'Code de la campagne',
+    campaign_name: 'Nom de la campagne',
+    campaign_from: 'Début (heure de Douala)',
+    campaign_to: 'Fin (heure de Douala)',
+    campaign_create: 'Créer la campagne',
+    campaign_problem: {
+      CODE_TAKEN: 'Une campagne porte déjà ce code.',
+      NAME: 'Le nom de la campagne est obligatoire.',
+      PERIOD: 'La fin doit suivre le début.',
+    },
+    abandon: 'Abandonner',
+    abandon_label: 'Abandonner le brouillon {{code}} v{{version}}',
     end_invalid:
       'La fin doit être à venir, après la date d’effet de la règle et avant sa fin actuelle.',
     resume: 'Reprendre la saisie',

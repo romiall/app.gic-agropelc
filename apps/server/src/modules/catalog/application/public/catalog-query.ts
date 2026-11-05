@@ -162,6 +162,36 @@ export async function findStandardUnitCostXaf(
   return row ? Number(row.unit_cost_xaf) : undefined;
 }
 
+/** Une version du coût standard d'un produit (BR-CAT-011, AV-042) : la plus récente en tête. */
+export interface StandardCostVersion {
+  readonly id: string;
+  readonly unitCostXaf: number;
+  readonly validFrom: Date;
+  readonly reason: string | null;
+  readonly createdBy: string;
+}
+
+/** Historique des coûts standard d'un produit, du plus récent au plus ancien (AV-516). */
+export async function listStandardCosts(
+  executor: Kysely<DB> | Transaction<DB>,
+  productId: string,
+): Promise<readonly StandardCostVersion[]> {
+  const rows = await executor
+    .selectFrom('catalog_product_standard_costs')
+    .select(['id', 'unit_cost_xaf', 'valid_from', 'reason', 'created_by'])
+    .where('product_id', '=', toBin(productId))
+    .orderBy('valid_from', 'desc')
+    .orderBy('id', 'desc')
+    .execute();
+  return rows.map((row) => ({
+    id: fromBin(row.id),
+    unitCostXaf: Number(row.unit_cost_xaf),
+    validFrom: row.valid_from,
+    reason: row.reason,
+    createdBy: fromBin(row.created_by),
+  }));
+}
+
 export interface UnitSummary {
   readonly code: string;
   readonly name: string;

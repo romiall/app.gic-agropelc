@@ -77,7 +77,11 @@ const REASONS: ReasonView[] = [
   },
 ];
 
+/** Réponse de l'historique du coût standard (AV-516), propre à chaque essai. */
+let costsAnswer: unknown = { ok: true, data: { costs: [] } };
+
 function answer(path: string) {
+  if (path.includes('/standard-costs')) return costsAnswer;
   if (path.startsWith('/api/v1/units')) return { ok: true, data: { units: UNITS } };
   if (path.startsWith('/api/v1/products')) return { ok: true, data: { products: PRODUCTS } };
   return { ok: true, data: { reason_codes: REASONS } };
@@ -111,6 +115,7 @@ describe('Catalogue (ECR-PRX-01)', () => {
     const db = getDb();
     await db.projections.clear();
     await db.outbox.clear();
+    costsAnswer = { ok: true, data: { costs: [] } };
     await seedSalesFixtures(db);
     await db.projections.put({
       key: `product_category:PRODUCT_CATEGORY:${CATEGORY}`,
@@ -132,6 +137,96 @@ describe('Catalogue (ECR-PRX-01)', () => {
     vi.mocked(authorizedRequest).mockReset();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+  });
+
+  it('modifie un produit (AV-516) : seuls les champs modifiés partent ; coût standard daté, historique lu', async () => {
+    costsAnswer = {
+      ok: true,
+      data: {
+        product_id: IDS.eggs,
+        costs: [
+          {
+            id: 'c2',
+            unitCostXaf: 1500,
+            validFrom: '2026-10-01T08:00:00.000Z',
+            reason: 'Hausse',
+            createdBy: 'u',
+          },
+          {
+            id: 'c1',
+            unitCostXaf: 1200,
+            validFrom: '2026-09-01T08:00:00.000Z',
+            reason: null,
+            createdBy: 'u',
+          },
+        ],
+      },
+    };
+    const user = userEvent.setup();
+    renderScreen();
+    const list = within(await screen.findByRole('region', { name: 'Produits' }));
+    await user.click(await list.findByRole('button', { name: 'Modifier le produit Œufs' }));
+    const editor = within(await screen.findByRole('group', { name: 'Produit Œufs' }));
+    const save = editor.getByRole('button', { name: 'Enregistrer le produit Œufs' });
+    // Rien de modifié : rien à enregistrer.
+    expect(save).toBeDisabled();
+    const name = editor.getByLabelText('Libellé');
+    expect(name).toHaveValue('Œufs');
+    await user.clear(name);
+    expect(save).toBeDisabled();
+    expect(editor.getByText('Le libellé est obligatoire.')).toBeInTheDocument();
+    await user.type(name, 'Œufs frais');
+    await user.click(editor.getByRole('checkbox', { name: 'Achetable' }));
+    await user.click(save);
+    await waitFor(async () =>
+      expect(await nextCommand()).toMatchObject({
+        command_type: 'catalog.product.update',
+        aggregate_type: 'PRODUCT',
+        aggregate_id: IDS.eggs,
+        payload: { name: 'Œufs frais', isPurchasable: true },
+      }),
+    );
+    expect((await nextCommand())!.payload).not.toHaveProperty('categoryId');
+    await settleLast(1);
+
+    // Coût standard : l'historique lu s'affiche, la version en vigueur est signalée ; la saisie ajoute une version.
+    await user.click(await list.findByRole('button', { name: 'Modifier le produit Œufs' }));
+    const costs = within(await screen.findByRole('group', { name: 'Produit Œufs' }));
+    const history = within(await costs.findByRole('list', { name: 'Historique du coût standard' }));
+    expect(history.getByText(/en vigueur/)).toBeInTheDocument();
+    expect(history.getAllByRole('listitem')).toHaveLength(2);
+    const saveCost = costs.getByRole('button', { name: 'Enregistrer le coût standard' });
+    expect(saveCost).toBeDisabled();
+    await user.type(costs.getByLabelText(/^Nouveau coût par U/), 'abc');
+    expect(costs.getByText('Coût : nombre entier de francs, zéro ou plus.')).toBeInTheDocument();
+    await user.clear(costs.getByLabelText(/^Nouveau coût par U/));
+    await user.type(costs.getByLabelText(/^Nouveau coût par U/), '1 650');
+    await user.type(costs.getByLabelText('Motif (facultatif)'), 'Nouvelle ration');
+    await waitFor(() => expect(saveCost).toBeEnabled());
+    await user.click(saveCost);
+    await waitFor(async () =>
+      expect(await nextCommand()).toMatchObject({
+        command_type: 'catalog.product_standard_cost.set',
+        aggregate_type: 'PRODUCT_STANDARD_COST',
+        payload: { productId: IDS.eggs, unitCostXaf: 1650, reason: 'Nouvelle ration' },
+      }),
+    );
+  });
+
+  it('coût standard réservé au droit de valorisation (AV-516) : refus de lecture signalé, saisie possible', async () => {
+    costsAnswer = { ok: false, reason: 'HTTP_ERROR', status: 403, body: {} };
+    const user = userEvent.setup();
+    renderScreen();
+    const list = within(await screen.findByRole('region', { name: 'Produits' }));
+    await user.click(await list.findByRole('button', { name: 'Modifier le produit Œufs' }));
+    const editor = within(await screen.findByRole('group', { name: 'Produit Œufs' }));
+    expect(
+      await editor.findByText(/Historique des coûts réservé au droit de valorisation/),
+    ).toBeInTheDocument();
+    await user.type(editor.getByLabelText(/^Nouveau coût par U/), '900');
+    await waitFor(() =>
+      expect(editor.getByRole('button', { name: 'Enregistrer le coût standard' })).toBeEnabled(),
+    );
   });
 
   it('produits lus en ligne, création d’un produit biologique, désactivation, réactivation', async () => {

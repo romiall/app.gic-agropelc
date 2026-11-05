@@ -194,6 +194,94 @@ export function checkProduct(form: ProductForm, products: readonly ProductView[]
   return issues;
 }
 
+/**
+ * Ce que `catalog.product.update` modifie d'un produit (AV-516) : nom, catégorie et drapeaux d'usage. Le code,
+ * la famille, l'unité de base, le suivi par lot et l'espèce restent ceux de la création (D16-CAT §14).
+ */
+export interface ProductEditForm {
+  readonly name: string;
+  readonly categoryId: string;
+  readonly isSellable: boolean;
+  readonly isPurchasable: boolean;
+  readonly isProducible: boolean;
+  readonly isConsumable: boolean;
+}
+
+export function productEditFormOf(product: ProductView): ProductEditForm {
+  return {
+    name: product.name,
+    categoryId: product.categoryId,
+    isSellable: product.isSellable,
+    isPurchasable: product.isPurchasable,
+    isProducible: product.isProducible,
+    isConsumable: product.isConsumable,
+  };
+}
+
+export function checkProductEdit(form: ProductEditForm): CatalogIssue[] {
+  const issues: CatalogIssue[] = [];
+  if (!form.name.trim() || form.name.trim().length > 200) issues.push('NAME_REQUIRED');
+  if (!form.categoryId) issues.push('CATEGORY_REQUIRED');
+  return issues;
+}
+
+/** Charge de `catalog.product.update` : les seuls champs modifiés (aucun : `{}`, rien à envoyer). */
+export function productUpdatePayload(
+  product: ProductView,
+  form: ProductEditForm,
+): Record<string, unknown> {
+  const name = form.name.trim();
+  return {
+    ...(name !== product.name ? { name } : {}),
+    ...(form.categoryId !== product.categoryId ? { categoryId: form.categoryId } : {}),
+    ...(form.isSellable !== product.isSellable ? { isSellable: form.isSellable } : {}),
+    ...(form.isPurchasable !== product.isPurchasable ? { isPurchasable: form.isPurchasable } : {}),
+    ...(form.isProducible !== product.isProducible ? { isProducible: form.isProducible } : {}),
+    ...(form.isConsumable !== product.isConsumable ? { isConsumable: form.isConsumable } : {}),
+  };
+}
+
+/** Version du coût standard d'un produit renvoyée par `GET /products/{id}/standard-costs` (AV-516). */
+export interface StandardCostView {
+  readonly id: string;
+  readonly unitCostXaf: number;
+  readonly validFrom: string;
+  readonly reason: string | null;
+  readonly createdBy: string;
+}
+
+export const STANDARD_COST_REASON_MAX = 500;
+
+export const standardCostsPath = (productId: string) =>
+  `/api/v1/products/${encodeURIComponent(productId)}/standard-costs`;
+
+/** Montant saisi en francs entiers (espaces tolérés) ; `null` s'il n'en est pas un. */
+export function parseCostXaf(text: string): number | null {
+  const digits = text.replace(/[\s  ]/g, '');
+  if (!/^\d{1,15}$/.test(digits)) return null;
+  const value = Number(digits);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+export type CostIssue = 'COST_INVALID' | 'REASON_TOO_LONG';
+
+export function checkStandardCost(costText: string, reason: string): CostIssue[] {
+  const issues: CostIssue[] = [];
+  if (parseCostXaf(costText) === null) issues.push('COST_INVALID');
+  if (reason.trim().length > STANDARD_COST_REASON_MAX) issues.push('REASON_TOO_LONG');
+  return issues;
+}
+
+/** Charge de `catalog.product_standard_cost.set` : une nouvelle version datée, l'ancienne reste lisible. */
+export function standardCostPayload(productId: string, costText: string, reason: string) {
+  const text = reason.trim();
+  return {
+    productId,
+    unitCostXaf: parseCostXaf(costText) as number,
+    ...(text === '' ? {} : { reason: text }),
+  };
+}
+
 export function productPayload(form: ProductForm) {
   return {
     code: normalizedCode(form.code),

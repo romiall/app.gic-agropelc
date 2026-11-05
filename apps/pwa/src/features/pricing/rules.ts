@@ -14,6 +14,7 @@
  */
 import { businessDayEndUtc, businessDayOf, findConflicts, xaf, type PriceRule } from '@gic/domain';
 import { MAX_QUANTITY } from '../sales/sale-form.js';
+import { doualaInstant, doualaLocal } from './campaign.js';
 import { inRepeatedFailure, phaseOf } from '../sales/submit.js';
 import type { OutboxCommand } from '../../storage/db.js';
 import type { SiteData, ZoneData } from '../sales/types.js';
@@ -170,18 +171,8 @@ export type RuleIssue =
   | 'OUTSIDE_SUPERSEDED'
   | 'SITE_NOT_IN_ZONE';
 
-/** Instant ISO d'une saisie `datetime-local` lue à l'heure de Douala ; `null` si invalide. */
-export function doualaInstant(value: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}:00+01:00`);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-/** Saisie `datetime-local` (heure de Douala) d'un instant. */
-export function doualaLocal(instant: Date): string {
-  const shifted = new Date(instant.getTime() + 60 * 60 * 1000);
-  return shifted.toISOString().slice(0, 16);
-}
+// Saisies à l'heure de Douala : logique partagée avec les campagnes (`campaign.ts`, sans dépendance d'écran).
+export { doualaInstant, doualaLocal };
 
 /** Instant arrondi à la minute supérieure (une saisie à la minute n'est jamais dans le passé). */
 export function ceilMinute(instant: Date): Date {

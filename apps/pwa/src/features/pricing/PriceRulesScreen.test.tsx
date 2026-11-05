@@ -6,6 +6,7 @@ import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { PriceRulesScreen } from './PriceRulesScreen.js';
+import { campaignPayload, campaignProblem } from './campaign.js';
 import {
   checkRule,
   defaultValidFrom,
@@ -268,7 +269,8 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     renderScreen();
     await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
     await user.click(await screen.findByRole('button', { name: 'Nouvelle version' }));
-    expect(screen.getByText(/reste rattachée à la même campagne/)).toBeInTheDocument();
+    // La campagne de la règle remplacée reste choisie, même inconnue de ce téléphone (AV-516).
+    expect(screen.getByLabelText('Campagne commerciale')).toHaveValue('campagne-noel');
     const price = screen.getByLabelText('Prix par U (F)');
     await user.clear(price);
     await user.type(price, '85');
@@ -284,6 +286,86 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     await settleLast('REJECTED');
     await user.click(await screen.findByRole('button', { name: 'Reprendre la saisie' }));
     expect(screen.getByLabelText('Prix par U (F)')).toHaveValue('85');
+  });
+
+  it('campagnes commerciales (AV-516) : liste, création avec les instants de Douala, règle rattachée à une campagne', async () => {
+    await getDb().projections.put({
+      key: 'commercial_campaign:COMMERCIAL_CAMPAIGN:camp-noel',
+      dataset: 'commercial_campaign',
+      entity_type: 'COMMERCIAL_CAMPAIGN',
+      entity_id: 'camp-noel',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: {
+        id: 'camp-noel',
+        code: 'NOEL',
+        name: 'Campagne de Noël',
+        valid_from: '2026-12-01T00:00:00.000Z',
+        valid_to: '2026-12-31T23:00:00.000Z',
+        status: 'ACTIVE',
+      },
+    });
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const user = userEvent.setup();
+    renderScreen();
+    const list = await screen.findByRole('list', { name: 'Campagnes commerciales' });
+    expect(within(list).getByText('Campagne de Noël')).toBeInTheDocument();
+
+    // Création : code libre, nom, période (heure de Douala, UTC+1).
+    await user.click(screen.getByRole('button', { name: 'Nouvelle campagne' }));
+    const form = within(screen.getByRole('group', { name: 'Nouvelle campagne' }));
+    const create = form.getByRole('button', { name: 'Créer la campagne' });
+    expect(create).toBeDisabled();
+    await user.type(form.getByLabelText('Code de la campagne'), 'NOEL');
+    await user.type(form.getByLabelText('Nom de la campagne'), 'Autre');
+    expect(form.getByText('Une campagne porte déjà ce code.')).toBeInTheDocument();
+    await user.clear(form.getByLabelText('Code de la campagne'));
+    await user.type(form.getByLabelText('Code de la campagne'), 'RENTREE');
+    await user.clear(form.getByLabelText('Nom de la campagne'));
+    await user.type(form.getByLabelText('Nom de la campagne'), 'Rentrée scolaire');
+    fireEvent.change(form.getByLabelText('Début (heure de Douala)'), {
+      target: { value: '2026-10-15T08:00' },
+    });
+    fireEvent.change(form.getByLabelText('Fin (heure de Douala)'), {
+      target: { value: '2026-10-14T08:00' },
+    });
+    expect(form.getByText('La fin doit suivre le début.')).toBeInTheDocument();
+    expect(create).toBeDisabled();
+    fireEvent.change(form.getByLabelText('Fin (heure de Douala)'), {
+      target: { value: '2026-10-31T18:00' },
+    });
+    await waitFor(() => expect(create).toBeEnabled());
+    await user.click(create);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    expect((await getDb().outbox.toArray())[0]).toMatchObject({
+      command_type: 'pricing.campaign.create',
+      aggregate_type: 'COMMERCIAL_CAMPAIGN',
+      payload: {
+        code: 'RENTREE',
+        name: 'Rentrée scolaire',
+        validFrom: '2026-10-15T07:00:00.000Z',
+        validTo: '2026-10-31T17:00:00.000Z',
+      },
+    });
+  });
+
+  it('abandonner un brouillon (AV-516) : commande pricing.rule.cancel sur le brouillon', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.click(
+      await screen.findByRole('button', { name: 'Abandonner le brouillon OEUF-PDV v1' }),
+    );
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    expect((await getDb().outbox.toArray())[0]).toMatchObject({
+      command_type: 'pricing.rule.cancel',
+      aggregate_type: 'PRICE_RULE',
+      aggregate_id: 'd-site',
+      payload: {},
+    });
   });
 
   it('opération retrouvée en attente au retour sur l’écran : tout attend sa réponse et la relecture', async () => {
@@ -657,6 +739,28 @@ describe('Règles tarifaires : gardes', () => {
     validTo: '',
     notes: '',
     ...overrides,
+  });
+
+  it('campagne commerciale (AV-516) : code libre, nom, fin après le début ; charge en instants de Douala', () => {
+    const form = {
+      code: 'RENTREE',
+      name: 'Rentrée',
+      from: '2026-10-15T08:00',
+      to: '2026-10-31T18:00',
+    };
+    expect(campaignProblem(form, ['NOEL', undefined])).toBeNull();
+    expect(campaignProblem({ ...form, code: '  ' }, [])).toBe('CODE');
+    expect(campaignProblem(form, ['NOEL', ' ', 'RENTREE'])).toBe('CODE_TAKEN');
+    expect(campaignProblem({ ...form, name: ' ' }, [])).toBe('NAME');
+    expect(campaignProblem({ ...form, to: '2026-10-15T08:00' }, [])).toBe('PERIOD');
+    expect(campaignProblem({ ...form, to: '' }, [])).toBe('PERIOD');
+    expect(campaignProblem({ ...form, from: 'demain' }, [])).toBe('PERIOD');
+    expect(campaignPayload({ ...form, code: ' RENTREE ', name: ' Rentrée ' })).toEqual({
+      code: 'RENTREE',
+      name: 'Rentrée',
+      validFrom: '2026-10-15T07:00:00.000Z',
+      validTo: '2026-10-31T17:00:00.000Z',
+    });
   });
 
   it('bornes du prix, de la priorité et du seuil ; code pris', () => {

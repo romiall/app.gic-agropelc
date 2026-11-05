@@ -96,3 +96,30 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* Coût standard d'un produit (AV-516) : sous le formulaire du produit, l'historique puis la saisie. */
+.cat-costs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.cat-costs h4 {
+  margin: 0;
+  font: 700 var(--text-md) / 1.2 var(--font-display);
+}
+
+.cat-costs ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.cat-costs .field {
+  margin-bottom: 0;
+}
