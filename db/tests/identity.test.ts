@@ -30,16 +30,19 @@ describe('identity_users', () => {
   it('refuse un second utilisateur ACTIVE avec le même téléphone (index unique partiel)', async () => {
     await withRollback(async (conn) => {
       const admin = await insertBootstrapUser(conn);
+      // Numéro neuf : un numéro fixe échouait dès qu'un compte réel de la base d'essai (le compte local de
+      // `db:create-local-admin`, par exemple) le portait déjà, avant même d'éprouver le doublon.
+      const phone = await freshPhone(conn);
       await conn.query(
         `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
-         VALUES (?, 'Premier', '+237600000001', 'x', 'ACTIVE', ?)`,
-        [randomId(), admin],
+         VALUES (?, 'Premier', ?, 'x', 'ACTIVE', ?)`,
+        [randomId(), phone, admin],
       );
       await expect(
         conn.query(
           `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
-           VALUES (?, 'Doublon', '+237600000001', 'x', 'ACTIVE', ?)`,
-          [randomId(), admin],
+           VALUES (?, 'Doublon', ?, 'x', 'ACTIVE', ?)`,
+          [randomId(), phone, admin],
         ),
       ).rejects.toThrow(/uq_identity_users_active_phone/);
     });
@@ -48,15 +51,16 @@ describe('identity_users', () => {
   it('accepte un téléphone dupliqué si le premier est DEACTIVATED (hors de la contrainte)', async () => {
     await withRollback(async (conn) => {
       const admin = await insertBootstrapUser(conn);
+      const phone = await freshPhone(conn);
       await conn.query(
         `INSERT INTO identity_users (id, full_name, phone, password_hash, status, status_reason, created_by)
-         VALUES (?, 'Ancien', '+237600000002', 'x', 'DEACTIVATED', 'parti', ?)`,
-        [randomId(), admin],
+         VALUES (?, 'Ancien', ?, 'x', 'DEACTIVATED', 'parti', ?)`,
+        [randomId(), phone, admin],
       );
       await conn.query(
         `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
-         VALUES (?, 'Nouveau', '+237600000002', 'x', 'ACTIVE', ?)`,
-        [randomId(), admin],
+         VALUES (?, 'Nouveau', ?, 'x', 'ACTIVE', ?)`,
+        [randomId(), phone, admin],
       );
     });
   });

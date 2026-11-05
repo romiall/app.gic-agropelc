@@ -2,6 +2,35 @@
 
 > À lire en premier par toute nouvelle session, juste après `CLAUDE.md`. Écrit le 01/11/2026 pour que le porteur reprenne dans une autre session (le crédit de la précédente est épuisé). Il remplace `reprise/prompt-reprise-p9.md`, qui décrit l'avant-clôture de P9 et n'est plus à jour.
 
+## 0bis. Bilan du chantier « reste à coder » (05/11/2026, soir) — à lire avant le reste
+
+Le porteur a demandé de coder à la suite, un lot après l'autre, tout ce qui restait. **Onze lots sont faits, en local, en onze commits au-dessus de `9837b79`** ; rien n'est poussé, rien n'est en ligne. Vérification complète et revue adverse : voir la fin de cette section.
+
+| Lot | Commit | Contenu | AV |
+|---|---|---|---|
+| 1 | `f22ac1b` | modifier un compte, déplacer une zone, fermer une équipe, contrôle serveur des valeurs de paramètres | AV-515, 496, 497 |
+| 2 | `9da40ad` | modifier un produit, coût standard daté, campagnes commerciales, abandon d'un brouillon de règle | AV-516 |
+| 3 | `da51ff0` | stock d'ouverture (`inventory.opening.post`), chargements par fichier des comptes de trésorerie et des règles de prix | AV-517 |
+| 4 | `347cfa9` | créances des comptes fusionnés, interrupteur « livré seulement » (`sales.receivables_delivered_only`, faux par défaut), détail des mouvements de trésorerie | AV-513, 518 |
+| 5 | `1b20e1c` | réception sans bon de commande, export CSV du registre de stock, motifs par défaut | AV-519, 320 |
+| 6 | `17393f4` | zones du périmètre côté appareil, compaction du flux de changements à 60 jours, sortie de quarantaine, rapprochement manuel et annulation d'une réception sans document | AV-520 |
+| 7 | `d0fe70a` | essai de connexion réservé d'avance, appareil lié à son premier compte (`identity.device_bound_to_enroller`, faux par défaut), effacement des données d'un appareil hors service | AV-521, 297, 296, 213 |
+| 8 | `ae3953b` | action « Demander un réapprovisionnement » à l'accueil du vendeur, objectifs des équipes dirigées | AV-522 |
+| 9 | `93f2288` | feuille de présence reportée deux fois signalée (`PRESENCE_SHEET_DUPLICATE`) | AV-514 (6) |
+| 10 | `5e42ae5` | identité de la société et régime de TVA lus des paramètres (dix-huit paramètres `company.*`, groupe « Société » de l'écran des paramètres) | AV-324, 451 |
+| 11 | `7d61356` | exploitation de la base : sauvegarde quotidienne avec rotation, copie hors hébergement, purge planifiée des alertes, essai de restauration, contrôle statique de portabilité MariaDB, compteur du semis corrigé | AV-523, 485 |
+
+**À savoir avant toute mise en ligne** : deux migrations nouvelles (`20261203090000` index du flux, `20261203100000` statut « annulée » d'une réception sans document) et dix-huit réglages `company.*` à semer ; les scripts de `deploy/hostinger/` (`install-ops.ps1`, `backup-db.sh`, `purge-alerts-cron.sh`…) ne sont installés nulle part et la table cron du serveur n'a pas été touchée. Rien n'a été essayé sur un téléphone ni dans un navigateur. La base de développement `gic_agropelc_dev` n'a pas été migrée par ce chantier (les essais tournent sur `gic_agropelc_rp`).
+
+**Pas fait, et pourquoi** (à reprendre avec le porteur) :
+- **Web Push** (AV-365) : clés VAPID à fournir par le porteur, chiffrement à éprouver contre un vrai service de push et un téléphone, génération du service worker à modifier avec un essai dans un vrai navigateur (c'est ce qui avait privé les appareils de mise à jour le 03/11). Plan dans AV-365.
+- **Report des pièces BC, DA, FI, FL, FA et VC** par l'écran de report (elles s'impriment et se saisissent par leurs écrans) ; **consultation du registre des carnets par site** depuis le serveur (AV-312) : lecture des numéros dans chaque module.
+- **Restes d'AV-514** : jeux hors ligne des feuilles et des bilans, vue d'analyse de la présence papier, rattachement d'une personne à son compte, allègement du calcul des chiffres.
+- **Appareils** : tirage groupé et cadences paramétrables (AV-319 (b)) ; tablette partagée multi-vendeurs (phase dédiée avec ADR) ; clients du siège (S-12) et objectifs de site du responsable commercial (S-39, seconde partie) : AV-522.
+- **Qualité (RP-5)** : seconde revue adverse des correctifs de P9-25, essais de bout en bout dans un navigateur, mesures de charge et plans `EXPLAIN` (NFR-15) : jamais faits.
+- **Exploitation** : premier essai de restauration sur une vraie sauvegarde de l'hébergement (MariaDB 11.8) ; planification de `pull-backups.ps1` sur le poste du porteur (AV-523).
+- **Décisions du porteur en attente** : AV-513 (créances par ancienneté : défaut conservé), AV-451 (régime de TVA et mention à donner par le comptable), AV-514 (restes), AV-521 (activer `identity.device_bound_to_enroller` ?), AV-296 et AV-297 (motifs de rejet à semer).
+
 ## 0. Prompt court à coller dans la nouvelle session
 
 ```text

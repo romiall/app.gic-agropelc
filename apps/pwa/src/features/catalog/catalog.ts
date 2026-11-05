@@ -257,7 +257,7 @@ export const standardCostsPath = (productId: string) =>
 
 /** Montant saisi en francs entiers (espaces tolérés) ; `null` s'il n'en est pas un. */
 export function parseCostXaf(text: string): number | null {
-  const digits = text.replace(/[\s  ]/g, '');
+  const digits = text.replace(/[\s\u00a0\u202f]/g, '');
   if (!/^\d{1,15}$/.test(digits)) return null;
   const value = Number(digits);
   return Number.isSafeInteger(value) ? value : null;

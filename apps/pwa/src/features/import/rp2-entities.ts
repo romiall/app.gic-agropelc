@@ -43,7 +43,7 @@ const siteOf = (sites: readonly ImportSite[], text: string): ImportSite | undefi
 
 /** Décimal écrit avec un point ou une virgule, trois décimales au plus (colonne `numeric(14,3)`). */
 function quantityOf(text: string): number | null {
-  const compact = text.replace(/[\s  ]/g, '');
+  const compact = text.replace(/[\s\u00a0\u202f]/g, '');
   if (!/^\d{1,11}([.,]\d{1,3})?$/.test(compact)) return null;
   const value = parseDecimal(compact);
   return value !== null && value > 0 ? value : null;
@@ -51,7 +51,7 @@ function quantityOf(text: string): number | null {
 
 /** Francs entiers, espaces tolérés. */
 function xafOf(text: string): number | null {
-  const digits = text.replace(/[\s  ]/g, '');
+  const digits = text.replace(/[\s\u00a0\u202f]/g, '');
   if (!/^\d{1,15}$/.test(digits)) return null;
   const value = Number(digits);
   return Number.isSafeInteger(value) ? value : null;
