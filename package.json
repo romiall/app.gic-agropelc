@@ -20,6 +20,7 @@
     "typecheck": "pnpm -r run typecheck",
     "check:boundaries": "depcruise apps/server/src packages/domain/src packages/contracts/src --config .dependency-cruiser.cjs",
     "check:docs": "python3 docs/_tools/check_refs.py",
+    "check:deploy-kit": "node deploy/hostinger/test-backup-rotate.mjs && node deploy/hostinger/test-restore-check.mjs && node deploy/hostinger/test-mariadb-portability.mjs",
     "db:migrate": "pnpm --filter @gic/db run migrate",
     "db:migrate:test": "pnpm --filter @gic/db run migrate:test",
     "db:seed": "pnpm --filter @gic/db run seed",
@@ -30,7 +31,7 @@
     "db:rollback": "pnpm --filter @gic/db run rollback",
     "server:dev": "pnpm --filter @gic/server run dev",
     "pwa:dev": "pnpm --filter @gic/pwa run dev",
-    "ci": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run check:boundaries && pnpm run test && pnpm run check:docs"
+    "ci": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run check:boundaries && pnpm run test && pnpm run check:docs && pnpm run check:deploy-kit"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

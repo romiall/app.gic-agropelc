@@ -174,9 +174,18 @@ async function seedVirtualLocations(conn: mysql.Connection, systemUserId: Buffer
  * jamais réécrite (un administrateur a pu la modifier, `communication.alert_rule.set`).
  */
 async function seedAlertRules(conn: mysql.Connection): Promise<void> {
-  let inserted = 0;
+  // Le nombre de règles nouvelles se déduit des lignes avant et après : `affectedRows` ne le dit pas (avec l'option
+  // `FOUND_ROWS` de mysql2, une ligne existante laissée inchangée compte pour 1, et le compteur affichait « 37
+  // nouvelles règles sur 37 » à chaque semis).
+  const countRules = async (): Promise<number> => {
+    const [rows] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT COUNT(*) AS c FROM communication_alert_rules',
+    );
+    return Number((rows[0] as { c: number | string }).c);
+  };
+  const before = await countRules();
   for (const rule of ALERT_RULES) {
-    const [result] = await conn.query<mysql.ResultSetHeader>(
+    await conn.query<mysql.ResultSetHeader>(
       `INSERT INTO communication_alert_rules
          (alert_type, enabled, severity, recipient_roles, resolution_mode, escalation_hours, escalation_roles)
        VALUES (?, ?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON))
@@ -191,8 +200,8 @@ async function seedAlertRules(conn: mysql.Connection): Promise<void> {
         JSON.stringify(rule.escalationRoles),
       ],
     );
-    if (result.affectedRows === 1) inserted++;
   }
+  const inserted = (await countRules()) - before;
   console.log(
     `  + communication_alert_rules (${inserted} nouvelles règles sur ${ALERT_RULES.length})`,
   );

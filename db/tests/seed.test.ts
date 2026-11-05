@@ -43,6 +43,16 @@ import { codeEntityId } from '../seeds/code-entity-id.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
 
+/** Comme `runSeed`, en rendant ce que le semis a écrit sur sa sortie standard. */
+function runSeedOutput(): string {
+  return execSync('npx tsx seeds/run.ts', {
+    cwd: dbRoot,
+    env: process.env,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+}
+
 function runSeed(): void {
   // `execSync` (commande unique) plutôt que `execFileSync('npx', [...])` : sous Windows,
   // `npx` résout vers `npx.cmd` (shim npm), que Node ne peut exécuter directement sans
@@ -512,7 +522,10 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
         return Number((rows[0] as { c: number }).c);
       };
       const feedBefore = await feedCount();
-      runSeed();
+      const output = runSeedOutput();
+      // Le compteur du semis dit la vérité : toutes les règles d'alerte existent déjà, aucune n'est « nouvelle »
+      // (il affichait « 37 nouvelles règles sur 37 » à chaque exécution, `affectedRows` comptant les lignes inchangées).
+      expect(output).toMatch(/communication_alert_rules \(0 nouvelles règles sur \d+\)/);
       // P5-18 : la publication des référentiels semés n'ajoute rien à la seconde exécution.
       expect(await feedCount()).toBe(feedBefore);
 

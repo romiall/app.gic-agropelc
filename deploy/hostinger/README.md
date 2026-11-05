@@ -72,6 +72,39 @@ Variables du `.env` du serveur (valeurs jamais versionnées) : `NODE_ENV`, `PORT
 - **Diagnostic de synchronisation, en lecture seule** : `diag-sync.mjs` (session de base en lecture seule, sortie masquée : ni mot de passe, ni jeton, ni e-mail, ni numéro, jamais le contenu des opérations) affiche les appareils et leur état, les commandes en échec répété avec leur erreur, le délai entre la saisie et la réception des commandes d'appareil, les conflits ouverts, le flux de changements, les identifiants qui ne sont pas des UUIDv7 et la fin de `stderr.log` et `console.log`. Rien n'est copié sur le serveur : le script arrive par l'entrée standard. Depuis le poste, en PowerShell : `Get-Content -Raw deploy\hostinger\diag-sync.mjs | ssh -i $env:USERPROFILE\.ssh\gic_agropelc_deploy -p 65002 u720123645@145.79.20.169 'export PATH=/opt/alt/alt-nodejs22/root/usr/bin:$PATH; cd ~/domains/gic-agropelc.com/nodejs-app && node --env-file=.env --input-type=module -'` (`DIAG_LOG_LINES=30` devant `node` réduit les lignes de journal). Son masquage est essayé par `node deploy/hostinger/test-diag-sync.mjs`.
 - **Appareils de test à identifiant non conforme** : `block-legacy-devices.mjs` liste (aucune écriture) les appareils en attente dont l'identifiant n'est pas un UUIDv7 ; avec `--apply` il les refuse (`--only=CODE1,CODE2` pour en nommer), acteur système, audit `identity.device.block`. Même envoi par l'entrée standard que `diag-sync.mjs`, en ajoutant `--apply` après le `-` (`... --input-type=module - --apply`). Aucune écriture sans l'accord du porteur.
 
+## Opérations planifiées : sauvegarde quotidienne, copie hors hébergement, purge des alertes, essai de restauration
+
+Écrit et éprouvé **en local le 05/11/2026** ; **rien n'est installé en ligne** (aucun envoi sans l'accord du porteur). Jusqu'ici la seule sauvegarde de la base était celle que `remote-update.sh` fait avant chaque livraison (`~/backups_db/gic-<horodatage>.sql.gz`) : aucune entre deux livraisons, aucune copie hors de l'hébergement.
+
+| Fichier | Où il tourne | Rôle |
+|---|---|---|
+| `backup-db.sh` | serveur, par cron (chaque nuit) | `mysqldump` (`--single-transaction --routines --triggers --hex-blob`) compressé dans `~/backups_db/daily/gic-daily-AAAAMMJJ-HHMMSS.sql.gz` (UTC) ; contrôle avant de garder le fichier (archive gzip valide, taille minimale, pied « Dump completed », au moins 50 tables) sinon il est supprimé et le script échoue (cron envoie l'erreur) ; verrou contre deux sauvegardes à la fois ; journal `~/backups_db/backup.log` (500 lignes) ; `latest.txt` nomme la plus récente. Lit `DATABASE_URL` dans le `.env` de l'application sans jamais l'afficher. |
+| `backup-rotate.mjs` | serveur, appelé par `backup-db.sh` | garde toute sauvegarde de moins de 14 jours, la plus récente de chacun des 6 derniers mois, et **jamais la dernière**, quel que soit son âge ; ne touche à aucun autre fichier (les sauvegardes de livraison sont dans le dossier parent). Options `--keep-days`, `--keep-months`, `--dry-run`. |
+| `purge-alerts-cron.sh` | serveur, par cron (chaque dimanche) | lance `node dist/purge-alerts.js` (AV-470) tant qu'il reste des alertes closes à purger (dix passes au plus) ; la durée de conservation est le paramètre `communication.alert_retention_days` (plancher de 730 jours). La purge exige normalement le rôle `gic_maintenance` : l'hébergement n'a qu'un seul utilisateur de base, la connexion de maintenance est donc celle du `.env`, lue dans le processus de la purge seulement. |
+| `install-ops.ps1` | poste du porteur | copie ces trois fichiers dans `~/gic-ops` du serveur (hors du dossier de l'application : une livraison ne les écrase pas), met les fins de ligne Unix et affiche les deux lignes à créer dans hPanel > Avancé > Tâches Cron. **Ne modifie pas la table cron et ne lance rien.** `-DryRun` n'ouvre aucune connexion. |
+| `pull-backups.ps1` | poste du porteur | **copie hors hébergement** : rapatrie dans `%USERPROFILE%\gic-backups` les sauvegardes quotidiennes qui n'y sont pas, vérifie chaque archive après copie (lecture complète du gzip), garde les 30 plus récentes en local et ne supprime jamais rien sur le serveur. À planifier dans le Planificateur de tâches de Windows (une fois par jour, après 02 h 30). Le dossier contient toutes les données de GIC : disque du porteur, chiffré si possible, jamais dans le dépôt. |
+| `restore-check.mjs` | poste du porteur (serveur de base **local**) | **essai de restauration** : lit une sauvegarde, la restaure dans une base jetable `gic_agropelc_restore_check_<horodatage>` d'un MySQL ou MariaDB local, contrôle (dump complet, nombre de tables et de déclencheurs, comptes, dernière migration égale à celle du dépôt avec `--expect-version auto`) puis supprime la base jetable. Refuse un serveur qui n'est pas local (`--allow-remote` sciemment) ; seule la base qu'il a créée est supprimée. |
+
+Mise en place (par le porteur, ou sur son accord explicite) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\hostinger\install-ops.ps1
+```
+
+puis, dans hPanel > Avancé > Tâches Cron, les deux lignes que le script affiche (`0 2 * * *` pour la sauvegarde, `30 3 * * 0` pour la purge ; heure du serveur) ; premier essai à la main sur le serveur : `/bin/bash ~/gic-ops/backup-db.sh`. Réinstaller après chaque changement de ces fichiers.
+
+Essai de restauration (poste local avec un client `mysql` ; le mot de passe va dans un fichier d'options que le porteur crée lui-même, jamais dans une commande) :
+
+```powershell
+node deploy\hostinger\restore-check.mjs "%USERPROFILE%\gic-backups\gic-daily-AAAAMMJJ-HHMMSS.sql.gz" --defaults-file "%USERPROFILE%\.restore-check.cnf" --expect-version auto
+```
+
+Éprouvé le 05/11/2026 sur un vrai fichier : sauvegarde de la base d'essai `gic_agropelc_rp` par `backup-db.sh` (22 Mo, 130 tables, rotation et journal), restaurée par `restore-check.mjs` dans une base jetable de MySQL 8.4 (130 tables, 206 déclencheurs, comptes, migration `20261203100000` égale à celle du dépôt), base jetable supprimée. **Limite** : une sauvegarde de l'hébergement vient de MariaDB 11.8 ; la restaurer dans MySQL 8.4 peut échouer pour des écarts entre moteurs (collations, déclencheurs) sans que la sauvegarde soit mauvaise : l'essai le plus parlant se fait sur un MariaDB 11.x, et l'erreur du client est affichée telle quelle. Le premier essai sur une vraie sauvegarde de l'hébergement reste à faire par le porteur.
+
+Contrôles sans serveur (`pnpm run check:deploy-kit`, aussi dans `pnpm run ci`) : `test-backup-rotate.mjs` (nommage, 14 jours, fins de mois, dernière gardée, ligne de commande), `test-restore-check.mjs` (base jetable, serveur local, clause `DEFINER`, flux binaire sans perte, lecture d'archive) et `test-mariadb-portability.mjs` : **contrôle statique de portabilité MariaDB** (AV-485) qui cherche dans `apps/server/src`, `db/seeds` et les migrations les constructions propres à MySQL que ni `mariadb-compat.mjs` ni `migrate.mjs` ne rattrapent (opérateurs `->`/`->>`, `MEMBER OF`, `ANY_VALUE`, `UUID_TO_BIN`, `FOR UPDATE OF`, `LATERAL`, alias de ligne d'un upsert, `FOR SHARE` écrit en SQL brut, `CAST(x AS JSON)` d'un autre opérande qu'un paramètre) ; une exception connue s'inscrit dans `ALLOWED` avec sa raison. Il ne remplace pas `compat-check.mjs`, qui essaie la vraie base à chaque livraison.
+
+Le compteur du semis « N nouvelles règles sur 37 » (règles d'alerte) est exact depuis le 05/11/2026 (`db/seeds/run.ts` compte les lignes avant et après) ; la livraison du 05/11 affichait « 37 nouvelles règles sur 37 » à tort.
+
 ## Points d'attention
 
 - Les mots de passe de base de données et de messagerie qui ont circulé dans les journaux d'Anti-Gravity (`~/.gemini/antigravity/brain/*/.system_generated/`) sont à changer **par le porteur lui-même** (le site n'est pas encore utilisé) ; aucun agent n'y touche, et aucun script de ce dossier n'en contient.
