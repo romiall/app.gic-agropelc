@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMPANY_IDENTITY_SETTINGS,
+  COMPANY_VAT_MENTION_SETTING,
+  COMPANY_VAT_REGIMES,
+  COMPANY_VAT_REGIME_SETTING,
+} from './company-identity.js';
+import {
   DISCOUNT_SETTING_PREFIX,
   SETTING_CATALOG,
   SETTING_GROUPS,
@@ -33,6 +39,22 @@ describe('Catalogue des paramètres système (RP-1, ECR-ADM-07)', () => {
         expect(setting.max, key).toBeUndefined();
       }
     }
+  });
+
+  it('l’identité de la société et le régime de TVA sont des textes libres du groupe « société » (AV-324, AV-451)', () => {
+    const keys = Object.values(COMPANY_IDENTITY_SETTINGS);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const key of [...keys, COMPANY_VAT_MENTION_SETTING]) {
+      expect(settingDefOf(key), key).toEqual({ kind: 'text', group: 'company' });
+      // Une rubrique vidée est permise : elle s'imprime en pointillés.
+      expect(validateSettingValue(settingDefOf(key)!, ''), key).toBeNull();
+    }
+    const regime = settingDefOf(COMPANY_VAT_REGIME_SETTING)!;
+    expect(regime).toMatchObject({ kind: 'choice', group: 'company' });
+    expect(regime.options).toEqual([...COMPANY_VAT_REGIMES]);
+    expect(validateSettingValue(regime, 'VAT_EXEMPT')).toBeNull();
+    expect(validateSettingValue(regime, 'EXONERE')).toBe('OPTION');
+    expect(SETTING_GROUPS).toContain('company');
   });
 
   it('un réglage lu par site est repéré ; un réglage global ne l’est pas', () => {

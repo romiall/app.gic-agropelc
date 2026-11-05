@@ -7,7 +7,7 @@
  * une case sans valeur reste la ligne vierge du papier, à compléter à la main. Chaque fonction
  * renvoie une chaîne HTML ; tout texte venu des données passe par `esc`.
  */
-import { IDENTITE } from './identite.js';
+import { IDENTITE, type Identite } from './identite.js';
 
 /** Valeur d'une case : absente, la case reste vierge. */
 export type Valeur = string | number | null | undefined;
@@ -29,13 +29,16 @@ export function entete({
   numLib = 'N°',
   n = null,
   logo,
+  identite = IDENTITE,
 }: {
   numero?: boolean;
   numLib?: string;
   n?: Valeur;
   logo: string;
+  /** Identité imprimée : celle des paramètres de l'appareil (AV-324), à défaut `IDENTITE`. */
+  identite?: Identite;
 }): string {
-  const id = IDENTITE;
+  const id = identite;
   const forme = id.forme_juridique ? `<div class="forme">${esc(id.forme_juridique)}</div>` : '';
   const nv = present(n) ? String(n) : '';
   // Un numéro officiel `VTE-SITE-2026-000123` est plus long que les six chiffres du carnet.
@@ -344,6 +347,8 @@ export interface Contexte {
   /** URL du logo (pré-caché par le service worker, donc disponible hors ligne). */
   readonly logo: string;
   readonly marques?: Tampons;
+  /** Identité de la société lue des paramètres de l'appareil (AV-324) ; absente : celle de `IDENTITE`. */
+  readonly identite?: Identite;
 }
 
 /**
@@ -384,7 +389,7 @@ export function standard({
   page?: string | null;
   ctx: Contexte;
 }): string {
-  const interieur = `${entete({ numero, numLib, n, logo: ctx.logo })}${bandeau(titre, sous)}<div class="corps"${h ? ` style="--h:${h}mm"` : ''}>${corps}</div>${pied(
+  const interieur = `${entete({ numero, numLib, n, logo: ctx.logo, ...(ctx.identite ? { identite: ctx.identite } : {}) })}${bandeau(titre, sous)}<div class="corps"${h ? ` style="--h:${h}mm"` : ''}>${corps}</div>${pied(
     {
       ex,
       ...(mention ? { mention } : {}),

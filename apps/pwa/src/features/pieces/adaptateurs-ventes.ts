@@ -10,6 +10,7 @@ import type { CustomerData, CustomerPaymentData, SaleData } from '../sales/types
 import { formatQuantity, unitLabel } from '../sales/format.js';
 import type { DemandePiece } from './demande.js';
 import { dateHeurePiece, datePiece, jourPiece, moyenPiece, xafPiece } from './format.js';
+import { identiteDepuisParametres, tvaDepuisParametres } from './identite-parametres.js';
 
 type Refs = Pick<
   SalesReferences,
@@ -24,6 +25,7 @@ type Refs = Pick<
   | 'outbox'
   | 'zones'
   | 'products'
+  | 'settings'
 >;
 
 /** Numéro imprimé : numéro officiel, sinon référence locale, sinon « EN ATTENTE » (AV-310). */
@@ -222,7 +224,15 @@ export function demandeBonDeVente(sale: SaleView, refs: Refs): DemandePiece {
  * unitaire et le montant sont ceux de la vente, la TVA vaut 0 ; le régime de TVA et la mention
  * d'exonération restent à cocher à la main tant qu'AV-451 n'est pas tranché.
  */
-export function demandeFacture(sale: SaleView, refs: Refs): DemandePiece {
+export function demandeFacture(
+  sale: SaleView,
+  refs: Refs,
+  maintenant: Date = new Date(),
+): DemandePiece {
+  // Coordonnées de règlement, régime de TVA et mention d'exonération : paramètres de la société (AV-324, AV-451) ;
+  // une rubrique non renseignée reste la ligne pointillée du papier, à compléter à la main.
+  const identite = identiteDepuisParametres(refs.settings, maintenant);
+  const tva = tvaDepuisParametres(refs.settings, maintenant);
   const c = client(refs, sale.customerId);
   const projection = refs.sales.find((s) => s.id === sale.id);
   const echeance = projection?.due_date ? jourPiece(projection.due_date) : null;
@@ -276,16 +286,16 @@ export function demandeFacture(sale: SaleView, refs: Refs): DemandePiece {
           montantHt: l.lineTotalXaf,
         };
       }),
-      regimeTva: null,
-      mentionExoneration: null,
+      regimeTva: tva.regime,
+      mentionExoneration: tva.mention,
       totalHt: total,
       tva: 0,
       totalTtc: total,
       acompte: sale.amountPaidXaf,
       netAPayer: sale.balanceDueXaf,
-      banque: null,
-      compte: null,
-      mobileMoney: null,
+      banque: identite.banque || null,
+      compte: identite.compte_bancaire || null,
+      mobileMoney: identite.mobile_money || null,
       vendeur: nomUtilisateur(refs, sale.sellerUserId),
     },
   };

@@ -1,8 +1,9 @@
 /**
  * Identité de GIC AGROPELC imprimée dans l'en-tête des pièces : copie de
  * `pieces-papier/charte/identite.json` (vérifiée par un test). Une valeur vide donne la ligne
- * pointillée du papier, à compléter à la main ; on n'invente jamais une valeur. Rendre ces valeurs
- * modifiables dans l'application est l'objet d'AV-324.
+ * pointillée du papier, à compléter à la main ; on n'invente jamais une valeur. Ce sont les valeurs
+ * de départ et de repli : l'application imprime les paramètres `company.*` de l'appareil dès qu'ils
+ * sont arrivés (`identite-parametres.ts`, AV-324 (a)), que l'Admin règle dans l'écran des paramètres.
  */
 export interface Identite {
   readonly raison_sociale: string;

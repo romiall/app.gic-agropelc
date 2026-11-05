@@ -305,3 +305,21 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `sync.stale_horizon_days` | 30 | AV-422 (P9-10) : jours de silence au-delà desquels un appareil actif n'est plus signalé par `SYNC_STALE` (tenu pour abandonné) ; entier ≥ 0 plafonné à 3 650, `0` : aucun horizon |
 | `sync.seq_gap_alert_hours` | 24 | BR-SYN-003, AV-423 (P9-10) : heures après lesquelles un trou de séquence non comblé est signalé (`DEVICE_SEQ_GAP`) ; nombre > 0 plafonné à 87 600 |
 | `audit.finance_entity_types` | `["CASH_ACCOUNT","CASH_RECONCILIATION","CASH_SESSION","CASH_TRANSFER","CASH_TRANSFER_TARGET","CUSTOMER_PAYMENT","EXPENSE","EXPENSE_CATEGORY","LEDGER_RECONCILIATION","PURCHASE_ORDER","SALE","SALE_CANCELLATION","SALES_ORDER","SUPPLIER_INVOICE","SUPPLIER_PAYMENT"]` | AV-493 (RP-1, ADR-051 ; [`03-audit.md`](../../07-security-rbac/03-audit.md) §6) : types d'entité du journal d'audit que lit tout détenteur de `audit.log.read` autre que la Direction et l'Admin (la Finance) ; liste vide : aucune lecture ; valeur absente ou qui n'est pas une liste de textes non vides : la liste par défaut du serveur (`audit-api/audit-scope.ts`, identique à cette valeur semée) ; lecture globale |
+| `company.legal_name` | `GIC AGROPELC` | AV-324 (a) : raison sociale imprimée dans l'en-tête de chaque pièce papier ; texte, vide permis (ligne pointillée à compléter à la main) ; visible de l'appareil, qui retient la valeur en vigueur ; à défaut, la valeur de `pieces-papier/charte/identite.json` |
+| `company.legal_form` | vide | AV-324 (a) : forme juridique (en-tête des pièces) ; texte |
+| `company.head_office` | vide | AV-324 (a) : siège (en-tête des pièces) ; texte |
+| `company.po_box` | `7633 Douala` | AV-324 (a) : boîte postale (en-tête des pièces) ; texte |
+| `company.city` | `Douala` | AV-324 (a) : ville (en-tête des pièces) ; texte |
+| `company.phones` | `+237 699 348 371` | AV-324 (a) : téléphones (en-tête des pièces) ; texte |
+| `company.email` | vide | AV-324 (a) : adresse e-mail de la société ; texte |
+| `company.website` | vide | AV-324 (a) : site web de la société ; texte |
+| `company.rccm` | `24/034CMR/LT/01/GIC/004000/004000002` | AV-324 (a) : numéro « RCCM / autorisation » (en-tête des pièces), à confirmer par le porteur ; texte |
+| `company.niu` | `M032416655486P` | AV-324 (a) : numéro d'identifiant unique (en-tête des pièces) ; texte |
+| `company.tax_system` | vide | AV-324 (a) : régime fiscal imprimé à côté du NIU quand il est renseigné ; texte |
+| `company.bank` | vide | AV-324 (a), AV-451 : banque de règlement (facture) ; texte |
+| `company.bank_account` | vide | AV-324 (a), AV-451 : numéro de compte bancaire de règlement (facture) ; texte |
+| `company.mobile_money` | vide | AV-324 (a), AV-451 : numéro de mobile money de règlement (facture) ; texte |
+| `company.share_capital` | vide | AV-324 (a) : capital de la société ; texte |
+| `company.legal_representative` | vide | AV-324 (a) : représentant légal ; texte |
+| `company.vat_regime` | `NOT_SET` | AV-451 (c) : case « Régime de TVA » cochée sur la facture — `NOT_SET` (aucune, à cocher à la main), `VAT_APPLICABLE` (TVA applicable : la case est cochée, les montants restent sans TVA tant que le taux n'est pas décidé, AV-041) ou `VAT_EXEMPT` (opération exonérée de TVA) ; visible de l'appareil |
+| `company.vat_exemption_mention` | vide | AV-451 (c) : mention d'exonération imprimée sur la facture ; texte, vide permis (pointillés) |

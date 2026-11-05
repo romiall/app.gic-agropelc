@@ -54,6 +54,14 @@ export type {
   SettingProblem,
   SettingUnit,
 } from './settings-catalog.js';
+// Identité de la société imprimée sur les pièces papier (AV-324 (a), AV-451 (c)).
+export {
+  COMPANY_IDENTITY_SETTINGS,
+  COMPANY_VAT_MENTION_SETTING,
+  COMPANY_VAT_REGIMES,
+  COMPANY_VAT_REGIME_SETTING,
+} from './company-identity.js';
+export type { CompanyIdentityField, CompanyVatRegime } from './company-identity.js';
 
 export {
   rawCommandEnvelopeSchema,

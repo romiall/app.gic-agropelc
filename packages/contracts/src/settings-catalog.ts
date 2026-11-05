@@ -10,13 +10,20 @@
  * Une clé hors catalogue reste lisible et modifiable comme un objet JSON (écran : « Autres »).
  */
 
+import {
+  COMPANY_IDENTITY_SETTINGS,
+  COMPANY_VAT_MENTION_SETTING,
+  COMPANY_VAT_REGIMES,
+  COMPANY_VAT_REGIME_SETTING,
+} from './company-identity.js';
+
 export type SettingKind =
   'int' | 'number' | 'bool' | 'text' | 'choice' | 'list' | 'weekdays' | 'json';
 
 export type SettingUnit =
   'xaf' | 'pct' | 'hours' | 'days' | 'minutes' | 'seconds' | 'ms' | 'm' | 'kmh' | 'heads' | 'rows';
 
-/** Domaines de l'écran : sept métiers puis les réglages techniques. */
+/** Domaines de l'écran : sept métiers, la société (en-tête des pièces) puis les réglages techniques. */
 export type SettingGroup =
   | 'sales'
   | 'finance'
@@ -25,6 +32,7 @@ export type SettingGroup =
   | 'production'
   | 'field'
   | 'control'
+  | 'company'
   | 'technical';
 
 export const SETTING_GROUPS: readonly SettingGroup[] = [
@@ -35,6 +43,7 @@ export const SETTING_GROUPS: readonly SettingGroup[] = [
   'production',
   'field',
   'control',
+  'company',
   'technical',
 ];
 
@@ -235,6 +244,13 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'analytics.query_log_retention_days': days('technical'),
   'analytics.export_abandon_hours': hours('technical'),
   'analytics.export_download_revalidate_rights': flag('technical'),
+  // Société (AV-324 (a), AV-451 (c)) : identité imprimée sur les pièces papier ; texte libre, vide permis (la
+  // rubrique s'imprime alors en pointillés, à compléter à la main).
+  ...Object.fromEntries(
+    Object.values(COMPANY_IDENTITY_SETTINGS).map((key) => [key, text('company')]),
+  ),
+  [COMPANY_VAT_REGIME_SETTING]: choice('company', COMPANY_VAT_REGIMES),
+  [COMPANY_VAT_MENTION_SETTING]: text('company'),
 };
 
 /** Plafond de remise d'un rôle : pourcentage de 0 à 100. */

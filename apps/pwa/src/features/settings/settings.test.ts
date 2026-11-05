@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { settingDefOf } from '@gic/contracts';
+import { SETTING_CATALOG, SETTING_GROUPS, settingDefOf } from '@gic/contracts';
+import { fr } from '../../i18n/fr.js';
 import {
   APPROVER_SCOPES,
   discountRoleOf,
@@ -54,6 +55,21 @@ describe('Paramètres : domaines, libellés et recherche (ECR-ADM-07)', () => {
     );
     expect(discountRoleOf('pricing.max_discount_pct.RESP_FERME')).toBe('RESP_FERME');
     expect(discountRoleOf('finance.pos_expense_max_xaf')).toBeNull();
+  });
+
+  it('chaque clé du catalogue a son libellé français, chaque domaine son titre et chaque choix son texte', () => {
+    const texts = fr.settings as unknown as {
+      label: Record<string, string>;
+      group: Record<string, string>;
+      option: Record<string, string>;
+    };
+    const unlabelled = Object.keys(SETTING_CATALOG).filter(
+      (key) => !texts.label[labelKeyOf(key).replace('settings.label.', '')],
+    );
+    expect(unlabelled).toEqual([]);
+    expect(SETTING_GROUPS.filter((group) => !texts.group[group])).toEqual([]);
+    const options = Object.values(SETTING_CATALOG).flatMap((def) => def.options ?? []);
+    expect(options.filter((option) => !texts.option[option])).toEqual([]);
   });
 
   it('regroupe par domaine dans l’ordre du catalogue, techniques repliés, surcharges séparées', () => {

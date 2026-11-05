@@ -5,12 +5,17 @@
  * format de page du gabarit. Tout est calculé sur l'appareil : utilisable hors ligne.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import { clock } from '../../platform/composition.js';
+import { getDb } from '../../storage/db.js';
+import { listProjected } from '../../storage/projections.js';
+import type { SettingData } from '../sales/types.js';
 import type { DemandePiece } from './demande.js';
 import { documentPiece, LOGO_PIECES } from './document.js';
 import { datePiece } from './format.js';
 import { DIMENSIONS } from './gabarit.js';
+import { identiteDepuisParametres } from './identite-parametres.js';
 import { rendrePiece } from './registre.js';
 import { noterImpression, premiereImpression } from './reimpression.js';
 
@@ -49,14 +54,26 @@ export function PieceImprimable({ demande, cle, annulee = false }: PieceImprimab
   const [enAttente, setEnAttente] = useState(false);
   const duplicata = useMemo(() => (deja ? datePiece(clock.now().toISOString()) : null), [deja]);
 
+  // Identité de la société (en-tête de chaque pièce) : paramètres `company.*` de l'appareil (AV-324 (a)) ; tant
+  // qu'ils ne sont pas lus, ou absents, ce sont les valeurs de `IDENTITE`.
+  const parametres = useLiveQuery(() => listProjected<SettingData>(getDb(), 'me', 'SETTING'), []);
+  const identite = useMemo(
+    () => (parametres ? identiteDepuisParametres(parametres, clock.now()) : undefined),
+    [parametres],
+  );
+
   const rendu = useMemo(() => {
     try {
-      const piece = rendrePiece(demande, { logo: LOGO_PIECES, marques: { annulee, duplicata } });
+      const piece = rendrePiece(demande, {
+        logo: LOGO_PIECES,
+        marques: { annulee, duplicata },
+        ...(identite ? { identite } : {}),
+      });
       return { piece, html: documentPiece(piece) };
     } catch {
       return null;
     }
-  }, [demande, annulee, duplicata]);
+  }, [demande, annulee, duplicata, identite]);
 
   useEffect(() => {
     const el = boite.current;

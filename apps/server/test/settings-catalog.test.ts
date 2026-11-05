@@ -3,8 +3,12 @@
  * (`@gic/contracts`), et chaque valeur par défaut respecte la forme, l'unité et les bornes que l'écran impose
  * à la saisie. Sans cela, l'écran proposerait une valeur que le semis lui-même refuserait. Sans base de données.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  COMPANY_IDENTITY_SETTINGS,
+  COMPANY_VAT_MENTION_SETTING,
+  COMPANY_VAT_REGIME_SETTING,
   DISCOUNT_SETTING_PREFIX,
   SETTING_CATALOG,
   settingDefOf,
@@ -47,6 +51,26 @@ describe('catalogue des paramètres système (ECR-ADM-07)', () => {
       expect(settingDefOf(setting.key)).toMatchObject({ kind: 'number', unit: 'pct' });
     }
     expect(settingDefOf(DISCOUNT_SETTING_PREFIX)).toBeUndefined();
+  });
+
+  it('l’identité de la société semée est celle de pieces-papier/charte/identite.json, visible des appareils (AV-324, AV-451)', () => {
+    const json = JSON.parse(
+      readFileSync(new URL('../../../pieces-papier/charte/identite.json', import.meta.url), 'utf8'),
+    ) as Record<string, unknown>;
+    const seededSetting = (key: string) => SYSTEM_SETTINGS.find((setting) => setting.key === key);
+    for (const [field, key] of Object.entries(COMPANY_IDENTITY_SETTINGS)) {
+      expect(seededSetting(key)?.value, `${field} → ${key}`).toBe(json[field]);
+      expect(seededSetting(key)?.isClientVisible, key).toBe(true);
+    }
+    // Régime de TVA non précisé et mention vide : les cases de la facture restent à cocher à la main (AV-451 (a)).
+    expect(seededSetting(COMPANY_VAT_REGIME_SETTING)).toMatchObject({
+      value: 'NOT_SET',
+      isClientVisible: true,
+    });
+    expect(seededSetting(COMPANY_VAT_MENTION_SETTING)).toMatchObject({
+      value: '',
+      isClientVisible: true,
+    });
   });
 
   it('le défaut du serveur pour la Finance égale la liste semée (AV-493)', () => {

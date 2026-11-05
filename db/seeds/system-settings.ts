@@ -622,6 +622,36 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-493',
   },
+  // AV-324 (a) : identité de la société imprimée dans l'en-tête des pièces papier, lue par la PWA (visible de
+  // l'appareil) ; les valeurs sont celles de `pieces-papier/charte/identite.json` (un essai le vérifie). Une
+  // rubrique vide s'imprime en pointillés, à compléter à la main : on n'invente jamais une valeur. Le numéro
+  // « RCCM / autorisation » est à confirmer par le porteur. Modifiable dans l'écran des paramètres (groupe « Société »).
+  { key: 'company.legal_name', value: 'GIC AGROPELC', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.legal_form', value: '', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.head_office', value: '', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.po_box', value: '7633 Douala', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.city', value: 'Douala', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.phones', value: '+237 699 348 371', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.email', value: '', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.website', value: '', isClientVisible: true, ref: 'AV-324' },
+  {
+    key: 'company.rccm',
+    value: '24/034CMR/LT/01/GIC/004000/004000002',
+    isClientVisible: true,
+    ref: 'AV-324',
+  },
+  { key: 'company.niu', value: 'M032416655486P', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.tax_system', value: '', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.bank', value: '', isClientVisible: true, ref: 'AV-324, AV-451' },
+  { key: 'company.bank_account', value: '', isClientVisible: true, ref: 'AV-324, AV-451' },
+  { key: 'company.mobile_money', value: '', isClientVisible: true, ref: 'AV-324, AV-451' },
+  { key: 'company.share_capital', value: '', isClientVisible: true, ref: 'AV-324' },
+  { key: 'company.legal_representative', value: '', isClientVisible: true, ref: 'AV-324' },
+  // AV-451 (c) : régime de TVA coché et mention d'exonération imprimée sur la facture. `NOT_SET` (défaut, comme
+  // avant) laisse les deux cases à cocher à la main et la mention en pointillés, tant que le comptable n'a pas
+  // donné le régime de GIC AGROPELC ni le texte de la mention.
+  { key: 'company.vat_regime', value: 'NOT_SET', isClientVisible: true, ref: 'AV-451' },
+  { key: 'company.vat_exemption_mention', value: '', isClientVisible: true, ref: 'AV-451' },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que
   // dupliqué ici (le rôle doit exister avant que sa clé de remise ait un sens).
