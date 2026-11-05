@@ -712,10 +712,17 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
 
   it('AV-511 : le bon de livraison d’une commande non payée est reporté hors ligne — appliqué et signalé à la Finance, jamais refusé ; saisi « en ligne », il le serait', async () => {
     // Le paiement avant livraison est rétabli à 17 h sur les sites d'essai (levé avant, pour les autres essais).
+    // Client sans droit au crédit : il paie d'abord (un client autorisé serait livré à crédit, AV-512).
+    const cashCustomer = await world.customer('Client sans crédit');
+    await db
+      .updateTable('crm_customers')
+      .set({ credit_allowed: 0, credit_limit_xaf: null })
+      .where('id', '=', toBin(cashCustomer))
+      .execute();
     const order = await report(
       {
         type: 'CC',
-        customerId,
+        customerId: cashCustomer,
         fulfilmentLocationId: world.store,
         lines: [line(2)],
         totalXaf: 2 * product.price,

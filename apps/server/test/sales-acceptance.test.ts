@@ -2,7 +2,9 @@
  * P4-13 — tests d'acceptation des ventes (09-non-functional/03-plan-de-tests.md, parts P4), à
  * travers le vrai pipeline avec les rôles réels du seed :
  * - AT-008 (WF-02) : commande, acompte, vente du disponible, livraison partielle, vente et livraison
- *   du reste, solde affecté — statut de la commande à chaque étape ;
+ *   du reste, solde affecté — statut de la commande à chaque étape ; un client sans crédit paie la
+ *   vente avant de la voir livrée (BR-VEN-034, AV-511), un client autorisé au crédit est livré à
+ *   crédit dans son plafond puis paie le solde (AV-512) ;
  * - AT-009 : annulation directe dans les 15 minutes — stock rendu, remboursement, CA négatif daté de
  *   l'annulation (au jour métier suivant quand l'annulation passe minuit à Douala) ;
  * - AT-010 : annulation hors délai — demande de validation, auto-validation refusée, validation
@@ -513,7 +515,8 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
   it('AT-008 (WF-02) : commande, acompte, vente du disponible, solde avant livraison, livraison partielle, reste, solde', async () => {
     const product = await sellable(1000);
     await stock(product.id, 6);
-    const customer = await newCustomer(sed, { credit: true });
+    // Client sans droit au crédit : il paie d'abord (BR-VEN-034) ; la variante à crédit suit (AV-512).
+    const customer = await newCustomer(sed, { credit: false });
     const orderId = freshUuid();
     // 10 commandés, 6 disponibles : vente des 6 à la confirmation, acompte de 3 000 transféré.
     await ok(sed, 'sales.order.place', 'SALES_ORDER', orderId, at('08:00:00'), {
@@ -593,6 +596,62 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     expect([orderLine.sold_quantity_base, orderLine.delivered_quantity_base].map(Number)).toEqual([
       10, 10,
     ]);
+  });
+
+  it('AT-008 (WF-02, client autorisé au crédit, AV-512) : commande, acompte, vente du disponible, livraison partielle à crédit, reste, solde final', async () => {
+    const product = await sellable(1000);
+    await stock(product.id, 6);
+    const customer = await newCustomer(sed, { credit: true });
+    const orderId = freshUuid();
+    // 10 commandés, 6 disponibles : vente des 6 à la confirmation, acompte de 3 000 transféré.
+    await ok(sed, 'sales.order.place', 'SALES_ORDER', orderId, at('08:00:00'), {
+      customerId: customer,
+      fulfilmentLocationId: storeId,
+      lines: [line(product, 10)],
+      advancePayments: [{ methodCode: 'ESPECES', amountXaf: 3000, cashAccountId: sedCash }],
+    });
+    const [first] = await salesOf(orderId);
+    expect(first).toMatchObject({ total_xaf: 6000, amount_paid_xaf: 3000 });
+    const orderLineId = await orderLineOf(orderId);
+
+    // Client autorisé au crédit : la vente n'est payée qu'à moitié, la livraison de 4 se fait à crédit (3 000 payés
+    // couvrent 3 des 4 pièces remises, 1 000 de crédit accordé, dans le plafond de 1 000 000).
+    await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('10:00:00'), {
+      orderId,
+      lines: [{ orderLineId, quantityBase: 4 }],
+    });
+    expect(await orderRow(orderId)).toMatchObject({ status: 'PARTIALLY_FULFILLED' });
+    expect((await salesOf(orderId))[0]).toMatchObject({ balance_due_xaf: 3000 });
+
+    // Réapprovisionnement, vente du reste, livraison du reste (à crédit aussi : 6 000 de plus, dans le plafond).
+    await stock(product.id, 4, at('11:00:00'));
+    await ok(sed, 'sales.order.confirm_remaining', 'SALES_ORDER', orderId, at('11:30:00'), {});
+    const sales = await salesOf(orderId);
+    expect(sales.map((s) => Number(s.total_xaf))).toEqual([6000, 4000]);
+    await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('14:00:00'), {
+      orderId,
+      lines: [{ orderLineId, quantityBase: 6 }],
+    });
+    expect(await orderRow(orderId)).toMatchObject({ status: 'FULFILLED' });
+    const orderLine = await db
+      .selectFrom('sales_sales_order_lines')
+      .selectAll()
+      .where('id', '=', toBin(orderLineId))
+      .executeTakeFirstOrThrow();
+    expect([orderLine.sold_quantity_base, orderLine.delivered_quantity_base].map(Number)).toEqual([
+      10, 10,
+    ]);
+
+    // Solde : 7 000 affectés de la vente la plus ancienne à la plus récente.
+    await ok(sed, 'sales.payment.record', 'CUSTOMER_PAYMENT', freshUuid(), at('16:00:00'), {
+      customerId: customer,
+      methodCode: 'ESPECES',
+      amountXaf: 7000,
+      cashAccountId: sedCash,
+    });
+    for (const sale of await salesOf(orderId)) {
+      expect(sale).toMatchObject({ payment_status: 'PAID', balance_due_xaf: 0 });
+    }
   });
 
   it('AT-009 : annulation directe dans les 15 minutes — stock rendu, remboursement, CA négatif daté de l’annulation', async () => {

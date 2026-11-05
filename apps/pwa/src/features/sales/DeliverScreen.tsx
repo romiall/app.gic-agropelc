@@ -5,10 +5,12 @@
  * `sales.order.fulfil` (agrégat `DELIVERY_NOTE`), utilisable hors ligne. Une livraison ne consomme pas
  * le stock de l'emplacement : la marchandise vendue l'a quittée à la confirmation (ADR-028 §1).
  *
- * Une commande se reçoit sans argent, elle se livre payée (AV-511, BR-VEN-034) : tant que le reste dû
- * connu de l'appareil n'est pas encaissé, l'écran avertit — le serveur refuse la livraison en ligne,
- * l'applique et la signale à la Finance hors ligne — et mène à l'encaissement ciblé. Il ne bloque pas :
- * le serveur juge seul (`delivery-payment.ts`).
+ * Une commande se reçoit sans argent, elle se livre payée — ou à crédit pour un client autorisé, dans son
+ * plafond (AV-511, AV-512, BR-VEN-034) : tant que le reste dû connu de l'appareil n'est pas encaissé, l'écran
+ * le dit — avertissement quand le serveur refusera la livraison en ligne (client sans crédit, plafond
+ * possiblement dépassé ; il l'applique et la signale à la Finance hors ligne), simple information quand elle
+ * se fera à crédit — et mène à l'encaissement ciblé. Il ne bloque pas : le serveur juge seul
+ * (`delivery-payment.ts`).
  */
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -31,7 +33,13 @@ import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from './CommandResult.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeBonLivraison, type LivraisonSaisie } from '../pieces/adaptateurs-ventes.js';
-import { deliveryPaymentRequired, unpaidOfOrder } from './delivery-payment.js';
+import { localOutstanding } from './credit.js';
+import {
+  deliveryOnCreditAllowed,
+  deliveryPaymentRequired,
+  deliveryPaymentView,
+  unpaidOfOrder,
+} from './delivery-payment.js';
 import { formatMoney, formatQuantity, unitLabel } from './format.js';
 import { openOrders, type OrderView } from './open-orders.js';
 import { useSalesReferences } from './references.js';
@@ -143,8 +151,11 @@ export function DeliverScreen() {
     errors.push(t('orders.deliver.error_empty'));
   }
   const ready = deliverable.length > 0 && errors.length === 0 && !busy;
-  // Paiement avant livraison (AV-511) : reste dû des ventes de la commande, connu de l'appareil.
-  const unpaid = deliveryPaymentRequired(refs.settings, order.siteId, clock.now())
+  // Paiement avant livraison (AV-511, AV-512) : reste dû des ventes de la commande, connu de l'appareil, et crédit
+  // du client (compte conservé s'il a été fusionné).
+  const now = clock.now();
+  const paymentRequired = deliveryPaymentRequired(refs.settings, order.siteId, now);
+  const unpaid = paymentRequired
     ? unpaidOfOrder({
         sales: refs.sales,
         outbox: refs.outbox,
@@ -154,6 +165,23 @@ export function DeliverScreen() {
       })
     : [];
   const unpaidXaf = unpaid.reduce((sum, due) => sum + due.balanceXaf, 0);
+  const payer = refs.customers.find(
+    (candidate) => candidate.id === (refs.customerAlias.get(order.customerId) ?? order.customerId),
+  );
+  const payment = deliveryPaymentView({
+    required: paymentRequired,
+    onCreditAllowed: deliveryOnCreditAllowed(refs.settings, order.siteId, now),
+    unpaidXaf,
+    customer: payer,
+    outstandingXaf: payer
+      ? localOutstanding(payer, refs.outbox, refs.customersPulledAt, refs.customerAlias)
+      : 0,
+  });
+  const collectLink = (
+    <LinkButton to={ROUTES.collectFor(order.customerId, unpaid[0]?.saleId)} variant="outline">
+      {t('orders.deliver.collect')}
+    </LinkButton>
+  );
 
   const submit = async () => {
     if (!ready) return;
@@ -210,21 +238,38 @@ export function DeliverScreen() {
           {t('orders.deliver.offline_banner')}
         </Banner>
       ) : null}
-      {deliverable.length > 0 && unpaidXaf > 0 ? (
-        <Banner
-          tone="warn"
-          role="status"
-          action={
-            <LinkButton
-              to={ROUTES.collectFor(order.customerId, unpaid[0]?.saleId)}
-              variant="outline"
-            >
-              {t('orders.deliver.collect')}
-            </LinkButton>
-          }
-        >
-          {t(online ? 'orders.deliver.unpaid_online' : 'orders.deliver.unpaid_offline', {
-            amount: formatMoney(unpaidXaf),
+      {deliverable.length > 0 && payment.kind === 'PAY_FIRST' ? (
+        <Banner tone="warn" role="status" action={collectLink}>
+          {t(
+            online
+              ? payment.noCredit
+                ? 'orders.deliver.unpaid_no_credit_online'
+                : 'orders.deliver.unpaid_online'
+              : 'orders.deliver.unpaid_offline',
+            { amount: formatMoney(payment.amountXaf) },
+          )}
+        </Banner>
+      ) : null}
+      {deliverable.length > 0 && payment.kind === 'ON_CREDIT' ? (
+        <Banner tone="info" role="status" action={collectLink}>
+          {t('orders.deliver.credit_info', {
+            amount: formatMoney(payment.amountXaf),
+            limit:
+              payment.limitXaf === null
+                ? t('orders.deliver.no_limit')
+                : formatMoney(payment.limitXaf),
+          })}
+        </Banner>
+      ) : null}
+      {deliverable.length > 0 && payment.kind === 'CREDIT_OVER' ? (
+        <Banner tone="warn" role="status" action={collectLink}>
+          {t(online ? 'orders.deliver.credit_over_online' : 'orders.deliver.credit_over_offline', {
+            amount: formatMoney(payment.amountXaf),
+            outstanding: formatMoney(payment.outstandingXaf),
+            limit:
+              payment.limitXaf === null
+                ? t('orders.deliver.no_limit')
+                : formatMoney(payment.limitXaf),
           })}
         </Banner>
       ) : null}

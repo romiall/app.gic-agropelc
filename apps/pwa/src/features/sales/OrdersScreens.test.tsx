@@ -344,15 +344,58 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
     expect(command!.payload).not.toHaveProperty('advancePayments');
   }, 20_000);
 
-  describe('livraison : paiement avant livraison (AV-511)', () => {
+  it('AV-512 : la mention de la commande dit ce qu’elle devra à la livraison — du crédit pour un client autorisé, le paiement sinon, rien si le site n’exige aucun paiement', async () => {
+    const user = userEvent.setup();
+    const note = () => screen.getByText(/Une commande peut se passer sans payer/);
+    const chooseCustomer = async () => {
+      await user.type(await screen.findByPlaceholderText(/Rechercher un client/), 'Mvog');
+      await user.click(screen.getByRole('button', { name: /Boutique Mvog-Mbi/ }));
+    };
+
+    // Client du jeu : autorisé au crédit (plafond de 50 000) ; sans client choisi, la mention est celle du paiement.
+    const first = renderAt('/commandes/nouvelle');
+    await screen.findByPlaceholderText(/Rechercher un client/);
+    expect(note()).toHaveTextContent('entièrement payée avant d’être livrée');
+    await chooseCustomer();
+    expect(note()).toHaveTextContent('autorisé au crédit');
+    expect(note()).toHaveTextContent('livré à crédit dans son plafond');
+    first.unmount();
+
+    // Crédit à la livraison interdit pour le site : le client autorisé paie d'abord, comme les autres.
+    await getDb().projections.put(meSettingRow('sales.delivery_on_credit_allowed', false));
+    const second = renderAt('/commandes/nouvelle');
+    await chooseCustomer();
+    expect(note()).toHaveTextContent('entièrement payée avant d’être livrée');
+    expect(note()).not.toHaveTextContent('crédit');
+    second.unmount();
+
+    // Aucun paiement exigé à la livraison : une simple mention.
+    await getDb().projections.put(meSettingRow('sales.delivery_requires_full_payment', false));
+    renderAt('/commandes/nouvelle');
+    await chooseCustomer();
+    expect(note()).toHaveTextContent(/^Une commande peut se passer sans payer\.$/);
+  }, 30_000);
+
+  describe('livraison : paiement avant livraison, ou à crédit pour un client autorisé (AV-511, AV-512)', () => {
     const orderSale = (overrides: Record<string, unknown> = {}) =>
       saleRow({ sale_type: 'ORDER', order_id: ORDER_ID, ...overrides });
+    /** Le client de la commande (compte servi par le jeu `customers`) : droit au crédit, plafond, encours. */
+    const setCustomer = async (patch: Record<string, unknown>) => {
+      const customer = await getDb().projections.get(`customers:CUSTOMER:${IDS.customer}`);
+      await getDb().projections.put({
+        ...customer!,
+        data: { ...(customer!.data as Record<string, unknown>), ...patch },
+      });
+    };
+    const noCredit = { credit_allowed: false, credit_limit_xaf: null };
 
-    it('vente à solde dû : avertit du reste dû et mène à l’encaissement ciblé, sans empêcher la saisie (le serveur refuse en ligne)', async () => {
+    it('client sans crédit, vente à solde dû : avertit du reste dû et mène à l’encaissement ciblé, sans empêcher la saisie (le serveur refuse en ligne)', async () => {
+      await setCustomer(noCredit);
       await getDb().projections.put(orderSale());
       renderAt(`/commandes/${ORDER_ID}/livrer`);
       const banner = await screen.findByText(/n’est pas entièrement payée/);
       expect(banner).toHaveTextContent('reste dû : 2 000 F CFA');
+      expect(banner).toHaveTextContent('n’a pas droit au crédit');
       expect(banner).toHaveTextContent('le serveur refusera la livraison');
       expect(screen.getByRole('link', { name: 'Encaisser le reste dû' })).toHaveAttribute(
         'href',
@@ -361,9 +404,10 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
       expect(screen.getByRole('button', { name: 'Enregistrer la livraison' })).toBeEnabled();
     });
 
-    it('hors ligne : la livraison sera enregistrée, mais signalée à la Finance', async () => {
+    it('client sans crédit, hors ligne : la livraison sera enregistrée, mais signalée à la Finance', async () => {
       const offline = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
       try {
+        await setCustomer(noCredit);
         await getDb().projections.put(orderSale());
         renderAt(`/commandes/${ORDER_ID}/livrer`);
         const banner = await screen.findByText(/n’est pas entièrement payée/);
@@ -373,6 +417,52 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
       } finally {
         offline.mockRestore();
       }
+    });
+
+    it('client autorisé au crédit, dans son plafond : livraison à crédit, une information et non un avertissement', async () => {
+      // Le client du jeu : crédit autorisé, plafond de 50 000, encours de 12 000.
+      await getDb().projections.put(orderSale());
+      renderAt(`/commandes/${ORDER_ID}/livrer`);
+      const banner = await screen.findByText(/Livraison à crédit/);
+      expect(banner).toHaveTextContent('le reste dû (2 000 F CFA) reste à encaisser');
+      expect(banner).toHaveTextContent('plafond de crédit du client (50 000 F CFA)');
+      expect(screen.queryByText(/n’est pas entièrement payée/)).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Encaisser le reste dû' })).toHaveAttribute(
+        'href',
+        `/encaisser?client=${IDS.customer}&vente=${SALE_ID}`,
+      );
+      expect(screen.getByRole('button', { name: 'Enregistrer la livraison' })).toBeEnabled();
+    });
+
+    it('client autorisé dont le plafond pourrait être dépassé : avertissement prudent (le serveur juge), en ligne puis hors ligne', async () => {
+      await setCustomer({ credit_limit_xaf: 10_000 });
+      await getDb().projections.put(orderSale());
+      const online = renderAt(`/commandes/${ORDER_ID}/livrer`);
+      const warning = await screen.findByText(/pourrait être dépassé/);
+      expect(warning).toHaveTextContent('plafond de crédit de ce client (10 000 F CFA)');
+      expect(warning).toHaveTextContent('reste dû : 2 000 F CFA, encours : 12 000 F CFA');
+      expect(warning).toHaveTextContent('le serveur peut refuser la livraison');
+      expect(screen.queryByText(/Livraison à crédit/)).not.toBeInTheDocument();
+      online.unmount();
+
+      const offline = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      try {
+        renderAt(`/commandes/${ORDER_ID}/livrer`);
+        const offlineWarning = await screen.findByText(/pourrait être dépassé/);
+        expect(offlineWarning).toHaveTextContent('signalée à la Finance');
+      } finally {
+        offline.mockRestore();
+      }
+    });
+
+    it('crédit à la livraison interdit par `sales.delivery_on_credit_allowed` : le client autorisé paie d’abord, sans qu’on lui reproche un droit au crédit absent', async () => {
+      await getDb().projections.put(orderSale());
+      await getDb().projections.put(meSettingRow('sales.delivery_on_credit_allowed', false));
+      renderAt(`/commandes/${ORDER_ID}/livrer`);
+      const banner = await screen.findByText(/n’est pas entièrement payée/);
+      expect(banner).toHaveTextContent('le serveur refusera la livraison');
+      expect(banner).not.toHaveTextContent('droit au crédit');
+      expect(screen.queryByText(/Livraison à crédit/)).not.toBeInTheDocument();
     });
 
     it('rien d’impayé de connu, ou paramètre `sales.delivery_requires_full_payment` faux : aucun avertissement', async () => {

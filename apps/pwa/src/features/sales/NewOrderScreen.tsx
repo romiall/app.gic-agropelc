@@ -20,6 +20,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from './CommandResult.js';
 import { CustomerPicker } from './CustomerPicker.js';
+import { deliveryOnCreditAllowed, deliveryPaymentRequired } from './delivery-payment.js';
 import { formatMoney } from './format.js';
 import {
   CASH_METHOD_ACCOUNT_TYPE,
@@ -199,6 +200,14 @@ export function NewOrderScreen() {
       errors.push(t('cash.prompt.blocked'));
     }
   }
+  // Ce que la commande devra, à sa livraison (AV-511, AV-512) : rien si le site n'exige aucun paiement, du crédit
+  // pour un client autorisé, sinon le paiement complet.
+  const paymentNote = !deliveryPaymentRequired(refs.settings, location?.site_id, now)
+    ? 'orders.payment_note_free'
+    : customer?.credit_allowed && deliveryOnCreditAllowed(refs.settings, location?.site_id, now)
+      ? 'orders.payment_note_credit'
+      : 'orders.payment_note';
+
   const ready =
     customer !== undefined &&
     location !== undefined &&
@@ -410,7 +419,7 @@ export function NewOrderScreen() {
             onChange={setAdvancePayment}
           />
         ) : null}
-        <p className="home-muted">{t('orders.payment_note')}</p>
+        <p className="home-muted">{t(paymentNote)}</p>
       </section>
 
       {errors.map((message) => (

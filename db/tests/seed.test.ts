@@ -272,6 +272,12 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: true,
       isClientVisible: true,
     });
+    // Et `sales.delivery_on_credit_allowed` à `false` ferait payer d'abord un client autorisé au crédit : le
+    // porteur a répondu « livré à crédit » (AV-512).
+    expect(seeded.get('sales.delivery_on_credit_allowed')).toMatchObject({
+      value: true,
+      isClientVisible: true,
+    });
     expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({
       value: 60,
       isClientVisible: false,
@@ -281,6 +287,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'finance.cash_session_required',
       'finance.cash_session_required_for_payouts',
       'sales.delivery_requires_full_payment',
+      'sales.delivery_on_credit_allowed',
       'sync.pull_record_grain_seconds',
     ]) {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(

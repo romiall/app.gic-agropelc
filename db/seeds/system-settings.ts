@@ -147,6 +147,17 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-511',
   },
+  // AV-512 (décision du porteur, 05/11/2026 : « livré à crédit ») : un client autorisé au crédit est livré avant
+  // d'avoir payé, dans son plafond (`creditCheck` sur son encours de crédit, le seul remis non payé) ; un client
+  // sans droit au crédit paie d'abord. `false` oblige aussi un client autorisé à payer d'abord, pour un site ou
+  // pour tous. Lu par l'appareil (avertissement sur l'écran de livraison) et par le serveur ; absent, il vaut
+  // `true` des deux côtés. Sans effet si `sales.delivery_requires_full_payment` est faux (aucun contrôle).
+  {
+    key: 'sales.delivery_on_credit_allowed',
+    value: true,
+    isClientVisible: true,
+    ref: 'AV-512',
+  },
   // AV-056 (P4-02) : fenêtre de détection d'un doublon d'encaissement sans référence (même
   // client, même montant) — visible de l'appareil, qui contrôle aussi localement.
   {

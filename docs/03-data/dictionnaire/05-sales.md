@@ -351,6 +351,7 @@ Valeurs par défaut posées par les seeds (`db/seeds/system-settings.ts`, `db/se
 | `sales.direct_cancel_minutes` | 15 | Oui | AV-030 |
 | `sales.default_payment_terms_days` | 30 | Non | AV-028 |
 | `sales.delivery_requires_full_payment` | `true` (réglable par site ; seule une valeur fausse lève l'exigence) | Oui | AV-511 |
+| `sales.delivery_on_credit_allowed` | `true` (réglable par site ; seule une valeur fausse oblige aussi un client autorisé à payer d'abord) | Oui | AV-512 |
 | `sales.duplicate_payment_window_minutes` | 10 | Oui | AV-056 |
 | `sales.offline_over_allocation_allowed` | `false` (réglable par site) | Oui | AV-025 |
 | `sales.offline_unallocated_sale_signal` | `WHEN_ALLOCATED` (réglable par site ; `ALWAYS`, `NEVER`) | Non | AV-166 (P5-11) |

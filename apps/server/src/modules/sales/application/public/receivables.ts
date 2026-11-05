@@ -2,7 +2,9 @@
  * Encours d'un client (BR-VEN-025, D09 §7.1) : somme des soldes dus de ses ventes non annulées. Les
  * créances et l'encours ne sont jamais stockés (ADR-010) : ils se calculent sur `balance_due_xaf`
  * (colonne générée, index `(customer_id, occurred_at)`). Un compte fusionné s'ajoute à celui qui
- * l'a absorbé (BR-CRM-007) : l'appelant passe le compte conservé.
+ * l'a absorbé (BR-CRM-007) : l'appelant passe le compte conservé. C'est le **reste à encaisser** ; le contrôle
+ * du crédit à la livraison d'une commande (AV-512) compte seulement le remis non payé :
+ * `customerCreditExposureXaf`.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -31,6 +33,101 @@ export async function customerOutstandingXaf(
     .forShare()
     .executeTakeFirst();
   return Number(row?.outstanding ?? 0);
+}
+
+const milliOf = (value: string | number): number => Math.round(Number(value) * 1000);
+
+/**
+ * Part du montant d'une ligne de vente que représente la quantité livrée (AV-512) : montant × livré ÷
+ * quantité, arrondie au franc (demi supérieur) ; au livré complet, exactement le montant de la ligne.
+ * Quantités en millièmes d'unité de base. Entiers en `BigInt` : le produit intermédiaire dépasse 2^53 pour
+ * une très grosse ligne.
+ */
+export function deliveredShareXaf(
+  lineTotalXaf: number,
+  quantityBaseMilli: number,
+  deliveredBaseMilli: number,
+): number {
+  if (lineTotalXaf <= 0 || quantityBaseMilli <= 0 || deliveredBaseMilli <= 0) return 0;
+  const base = BigInt(quantityBaseMilli);
+  const delivered = BigInt(Math.min(deliveredBaseMilli, quantityBaseMilli));
+  return Number((2n * BigInt(lineTotalXaf) * delivered + base) / (2n * base));
+}
+
+/**
+ * Encours de crédit d'une vente (AV-512) : ce que le client doit pour de la marchandise **déjà remise**. Une
+ * vente directe est remise à la vente : son solde dû. Une vente sur commande n'est remise qu'à la livraison :
+ * valeur livrée moins ce qui est payé, jamais négative (le payé s'impute d'abord sur le livré) ; le non livré,
+ * même impayé, n'est pas un crédit accordé.
+ */
+export function saleCreditExposureXaf(input: {
+  readonly saleType: string;
+  readonly balanceDueXaf: number;
+  readonly amountPaidXaf: number;
+  readonly deliveredValueXaf: number;
+}): number {
+  if (input.saleType !== 'ORDER') return Math.max(0, input.balanceDueXaf);
+  return Math.max(0, Math.min(input.balanceDueXaf, input.deliveredValueXaf - input.amountPaidXaf));
+}
+
+/**
+ * Encours de crédit d'un client (AV-512, BR-VEN-034) : somme des encours de crédit de ses ventes non annulées
+ * (`saleCreditExposureXaf`), comptes absorbés compris (BR-CRM-007) ; l'appelant passe le compte conservé. Il
+ * diffère de `customerOutstandingXaf` (le **reste à encaisser**) par le non livré des commandes : une commande
+ * qu'on n'a pas livrée n'est pas un crédit. Sert au contrôle du crédit **à la livraison** d'une commande.
+ * Lectures verrouillantes, comme `customerOutstandingXaf`, sous le verrou du compte pris par l'appelant : seules
+ * les ventes à solde dû peuvent porter un encours, elles sont lues seules.
+ */
+export async function customerCreditExposureXaf(
+  executor: Kysely<DB> | Transaction<DB>,
+  keptCustomerId: string,
+): Promise<number> {
+  const accounts = [keptCustomerId, ...(await absorbedCustomerIds(executor, keptCustomerId))];
+  const sales = await executor
+    .selectFrom('sales_sales')
+    .select(['id', 'sale_type', 'amount_paid_xaf', 'balance_due_xaf'])
+    .where(
+      'customer_id',
+      'in',
+      accounts.map((id) => toBin(id)),
+    )
+    .where('status', '<>', 'CANCELLED')
+    .where('balance_due_xaf', '>', 0)
+    .forShare()
+    .execute();
+  const orderSaleIds = sales.filter((sale) => sale.sale_type === 'ORDER').map((sale) => sale.id);
+  const delivered = new Map<string, number>();
+  if (orderSaleIds.length > 0) {
+    const lines = await executor
+      .selectFrom('sales_sale_lines')
+      .select(['sale_id', 'line_total_xaf', 'quantity_base', 'delivered_quantity_base'])
+      .where('sale_id', 'in', orderSaleIds)
+      .forShare()
+      .execute();
+    for (const line of lines) {
+      const saleId = fromBin(line.sale_id);
+      delivered.set(
+        saleId,
+        (delivered.get(saleId) ?? 0) +
+          deliveredShareXaf(
+            Number(line.line_total_xaf),
+            milliOf(line.quantity_base),
+            milliOf(line.delivered_quantity_base),
+          ),
+      );
+    }
+  }
+  return sales.reduce(
+    (sum, sale) =>
+      sum +
+      saleCreditExposureXaf({
+        saleType: sale.sale_type,
+        balanceDueXaf: Number(sale.balance_due_xaf),
+        amountPaidXaf: Number(sale.amount_paid_xaf),
+        deliveredValueXaf: delivered.get(fromBin(sale.id)) ?? 0,
+      }),
+    0,
+  );
 }
 
 export interface ReceivableLine {

@@ -16,18 +16,25 @@
  * surplus devient une **vente directe de régularisation** au prix convenu, depuis l'emplacement de
  * préparation (stock négatif admis), avec un conflit `ORDER_OVER_FULFILMENT` pour le Resp. commercial.
  *
- * **Paiement avant livraison** (AV-511, ADR-055, BR-VEN-034 ; décision du porteur du 04/11/2026) : une
- * commande se reçoit sans argent, elle se livre payée. Chaque vente qui fournit la marchandise livrée doit
- * être payée en entier (solde dû nul, net des annulations). En ligne : refus `ORDER_NOT_PAID`, sans écriture.
- * Hors ligne, la remise a eu lieu (BR-SYN-007) : la livraison est appliquée, avec l'avertissement et le conflit
- * `DELIVERY_UNPAID` pour la Finance. Paramètre `sales.delivery_requires_full_payment` (par site, **vrai par
- * défaut** : seule une valeur explicitement fausse lève l'exigence).
+ * **Paiement avant livraison** (AV-511, AV-512, ADR-055, BR-VEN-034 ; décisions du porteur des 04 et
+ * 05/11/2026) : une commande se reçoit sans argent, elle se livre payée — ou à crédit pour un client autorisé.
+ * Chaque vente qui fournit la marchandise livrée doit être payée en entier (solde dû nul, net des annulations),
+ * sauf pour un client autorisé au crédit : sa livraison est un crédit accordé, contrôlé comme celui d'une vente
+ * (`creditCheck`, BR-VEN-025) sur son **encours de crédit**, c'est-à-dire le seul remis non payé
+ * (`customerCreditExposureXaf`), plafond compris. En ligne : refus sans écriture, `ORDER_NOT_PAID` (paiement
+ * exigé) ou `CREDIT_LIMIT_EXCEEDED` (plafond dépassé ou absent). Hors ligne, la remise a eu lieu (BR-SYN-007) :
+ * la livraison est appliquée, avec l'avertissement et le conflit `DELIVERY_UNPAID` pour la Finance (motif et
+ * chiffres dans le conflit). Paramètres, par site : `sales.delivery_requires_full_payment` (**vrai par défaut** :
+ * seule une valeur explicitement fausse lève tout contrôle) et `sales.delivery_on_credit_allowed` (**vrai par
+ * défaut** : seule une valeur explicitement fausse oblige aussi un client autorisé au crédit à payer d'abord).
+ * Verrous : le compte du client avant la commande et ses ventes (ADR-038, rang N3).
  *
  * Un bon de livraison est en ajout seul : ni modification ni suppression (AV-134 : non en V1).
  * `version` de la commande ne bouge pas (progression, comme une vente du reste : D04 §15).
  */
 import { z } from 'zod';
 import {
+  creditCheck,
   deliveryAllocation,
   dueDateOf,
   lineAmountXaf,
@@ -51,7 +58,11 @@ import { loadCommandOrigin, type CommandOrigin } from '../../../../platform/sync
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { areAttachmentsAvailable } from '../../../attachments/application/public/index.js';
 import { findProduct } from '../../../catalog/application/public/index.js';
-import { getCustomer } from '../../../crm/application/public/index.js';
+import {
+  getCustomer,
+  lockCustomerAccount,
+  type CustomerSummary,
+} from '../../../crm/application/public/index.js';
 import { findWorkSessionAt } from '../../../fieldwork/application/public/index.js';
 import { checkUserActive, evaluateAccess } from '../../../identity/application/public/index.js';
 import {
@@ -60,6 +71,7 @@ import {
   virtualLocationId,
 } from '../../../inventory/application/public/index.js';
 import { siteThenGlobalSetting } from '../../../organization/application/public/index.js';
+import { customerCreditExposureXaf, deliveredShareXaf } from '../public/receivables.js';
 import { lockOrder, refreshOrderStatus, type OrderLineRow, type OrderRow } from './order-sale.js';
 import { lockSale, type LockedSale } from './sale-cancellation.js';
 import { moveSoldStock } from './sale-stock.js';
@@ -136,6 +148,24 @@ async function isFullPaymentRequired(uow: Uow, siteId: string, at: Date): Promis
   return value !== false;
 }
 
+/**
+ * Paramètre qui permet de livrer à crédit un client autorisé au crédit, dans son plafond (AV-512, décision du
+ * porteur du 05/11/2026). Réglable par site, **vrai par défaut** ; faux, tout client paie d'abord.
+ */
+export const DELIVERY_ON_CREDIT_ALLOWED_SETTING = 'sales.delivery_on_credit_allowed';
+
+/** Livrer à crédit un client autorisé est-il permis depuis `siteId` à `at` ? Seule une valeur fausse l'interdit. */
+async function isDeliveryOnCreditAllowed(uow: Uow, siteId: string, at: Date): Promise<boolean> {
+  const value = await siteThenGlobalSetting(
+    uow,
+    DELIVERY_ON_CREDIT_ALLOWED_SETTING,
+    siteId,
+    at,
+    (candidate) => typeof candidate === 'boolean',
+  );
+  return value !== false;
+}
+
 interface UnpaidSale {
   readonly saleId: string;
   readonly docNumber: string;
@@ -159,6 +189,105 @@ function unpaidSalesOf(delivered: readonly { readonly locked: LockedSale }[]): U
 
 /** Montant en francs entiers, milliers séparés par une espace ordinaire (message d'un refus). */
 const spaced = (amount: number): string => String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+/**
+ * Crédit que cette livraison accorde (AV-512) : pour chaque vente servie, la hausse du remis non payé,
+ * `(livré après − payé)⁺ − (livré avant − payé)⁺`, le livré d'une vente étant la somme des parts de ses
+ * lignes (`deliveredShareXaf`). Livrer ce qui est déjà payé n'accorde aucun crédit.
+ */
+function newCreditOf(delivered: readonly DeliveredSaleLine[]): number {
+  const bySale = new Map<string, { locked: LockedSale; added: Map<string, number> }>();
+  for (const entry of delivered) {
+    const saleId = fromBin(entry.locked.sale.id);
+    const known = bySale.get(saleId) ?? { locked: entry.locked, added: new Map<string, number>() };
+    const lineId = fromBin(entry.line.id);
+    known.added.set(lineId, (known.added.get(lineId) ?? 0) + entry.quantityMilli);
+    bySale.set(saleId, known);
+  }
+  let total = 0;
+  for (const { locked, added } of bySale.values()) {
+    const paid = Number(locked.sale.amount_paid_xaf);
+    let before = 0;
+    let after = 0;
+    for (const line of locked.lines) {
+      const quantity = milliOf(line.quantity_base);
+      const deliveredBefore = milliOf(line.delivered_quantity_base);
+      const lineTotal = Number(line.line_total_xaf);
+      before += deliveredShareXaf(lineTotal, quantity, deliveredBefore);
+      after += deliveredShareXaf(
+        lineTotal,
+        quantity,
+        deliveredBefore + (added.get(fromBin(line.id)) ?? 0),
+      );
+    }
+    total += Math.max(0, after - paid) - Math.max(0, before - paid);
+  }
+  return total;
+}
+
+/** Livraison que la règle de paiement ne permet pas (en ligne : refus ; hors ligne : signalement). */
+interface BlockedDelivery {
+  readonly code: 'ORDER_NOT_PAID' | 'CREDIT_LIMIT_EXCEEDED';
+  readonly messageFr: string;
+  /** Motif et chiffres, repris dans le conflit informatif d'une livraison hors ligne. */
+  readonly details: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Juge la livraison de ventes à solde dû (AV-511, AV-512). Client sans droit au crédit, ou crédit à la
+ * livraison interdit par le paramètre : le paiement complet est exigé (`ORDER_NOT_PAID`). Client autorisé : la
+ * livraison est un crédit accordé, contrôlé comme celui d'une vente (`creditCheck`, BR-VEN-025) sur son encours
+ * de crédit — le remis non payé, hors cette livraison — et son plafond (`CREDIT_LIMIT_EXCEEDED` s'il est dépassé,
+ * ou absent : tout crédit dépasse un plafond non défini). Rien n'est refusé si la livraison n'accorde aucun crédit
+ * (marchandise déjà payée). Le compte du client est verrouillé par l'appelant.
+ */
+async function judgeUnpaidDelivery(
+  uow: Uow,
+  input: {
+    readonly delivered: readonly DeliveredSaleLine[];
+    readonly unpaid: readonly UnpaidSale[];
+    readonly customer: CustomerSummary | undefined;
+    readonly onCreditAllowed: boolean;
+  },
+): Promise<BlockedDelivery | null> {
+  const owed = input.unpaid
+    .map((sale) => `${spaced(sale.balanceDueXaf)} F CFA sur ${sale.docNumber}`)
+    .join(', ');
+  const { customer } = input;
+  if (!input.onCreditAllowed || customer === undefined || !customer.creditAllowed) {
+    return {
+      code: 'ORDER_NOT_PAID',
+      messageFr:
+        `La commande doit être entièrement payée avant d’être livrée : reste dû ${owed}.` +
+        (input.onCreditAllowed ? ' Ce client n’a pas droit au crédit.' : ''),
+      details: { reason: 'ORDER_NOT_PAID', creditAllowed: customer?.creditAllowed ?? false },
+    };
+  }
+  const newCreditXaf = newCreditOf(input.delivered);
+  if (newCreditXaf <= 0) return null;
+  const exposureBeforeXaf = await customerCreditExposureXaf(uow, customer.id);
+  const check = creditCheck({
+    creditAllowed: true,
+    creditLimitXaf: customer.creditLimitXaf === null ? null : xaf(customer.creditLimitXaf),
+    outstandingXaf: xaf(exposureBeforeXaf),
+    newCreditXaf: xaf(newCreditXaf),
+  });
+  if (check.outcome === 'NO_CREDIT' || check.outcome === 'WITHIN_LIMIT') return null;
+  const limit = customer.creditLimitXaf;
+  return {
+    code: 'CREDIT_LIMIT_EXCEEDED',
+    messageFr:
+      limit === null
+        ? `Ce client est autorisé au crédit sans plafond défini : encaisser le reste dû (${owed}) avant de livrer.`
+        : `Plafond de crédit du client dépassé : livrer à crédit porterait son encours à ${spaced(exposureBeforeXaf + newCreditXaf)} F CFA pour un plafond de ${spaced(limit)} F CFA. Encaisser le reste dû (${owed}) avant de livrer.`,
+    details: {
+      reason: 'CREDIT_LIMIT_EXCEEDED',
+      creditLimitXaf: limit,
+      exposureBeforeXaf,
+      newCreditXaf,
+    },
+  };
+}
 
 const milliOf = (value: string | number): number =>
   quantityMilliUnits(quantityFromDecimal(Number(value)));
@@ -212,7 +341,23 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const at = new Date(envelope.occurred_at);
     const offline = envelope.captured_offline;
 
-    // --- Commande verrouillée, puis ses ventes (ordre de verrous commun : commande, ventes) ------------
+    // --- Compte du client, puis commande verrouillée, puis ses ventes (ADR-038 : les comptes avant les -------
+    // commandes et les ventes du client). Le compte conservé porte le droit au crédit et le plafond (AV-512).
+    const orderOwner = await uow
+      .selectFrom('sales_sales_orders')
+      .select('customer_id')
+      .where('id', '=', toBin(p.orderId))
+      .executeTakeFirst();
+    let customer: CustomerSummary | undefined;
+    if (orderOwner) {
+      const ownerId = fromBin(orderOwner.customer_id);
+      const found = await getCustomer(uow, ownerId);
+      const accountIds = [ownerId];
+      if (found?.stage === 'MERGED' && found.mergedIntoId) accountIds.push(found.mergedIntoId);
+      for (const id of [...new Set(accountIds)].sort()) await lockCustomerAccount(uow, id);
+      const keptId = found?.stage === 'MERGED' ? found.mergedIntoId : found?.id;
+      customer = keptId ? await getCustomer(uow, keptId) : undefined;
+    }
     const lockedOrder = await lockOrder(uow, p.orderId);
     if (!lockedOrder) return rejected('ORDER_NOT_FOUND', 'Commande inconnue.');
     const { order, lines: orderLines } = lockedOrder;
@@ -344,23 +489,26 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       }
     }
 
-    // --- Paiement avant livraison (AV-511, BR-VEN-034) : lecture seule jusqu'ici, un refus ne laisse rien -----
-    // Une commande se reçoit sans argent, elle se livre payée : chaque vente qui fournit la marchandise doit
-    // être payée en entier. Hors ligne la remise a eu lieu (fait accompli, BR-SYN-007) : appliquée, signalée.
-    let unpaidDelivered: readonly UnpaidSale[] = [];
+    // --- Paiement avant livraison (AV-511, AV-512, BR-VEN-034) : lecture seule jusqu'ici, un refus ne laisse -
+    // rien. Une commande se reçoit sans argent, elle se livre payée — ou à crédit pour un client autorisé, dans
+    // son plafond. Hors ligne la remise a eu lieu (fait accompli, BR-SYN-007) : appliquée, signalée.
+    let flagged: {
+      readonly unpaid: readonly UnpaidSale[];
+      readonly blocked: BlockedDelivery;
+    } | null = null;
     if (delivered.length > 0) {
       const unpaid = unpaidSalesOf(delivered);
       if (unpaid.length > 0 && (await isFullPaymentRequired(uow, site.id, at))) {
-        if (!offline) {
-          const owed = unpaid
-            .map((sale) => `${spaced(sale.balanceDueXaf)} F CFA sur ${sale.docNumber}`)
-            .join(', ');
-          return rejected(
-            'ORDER_NOT_PAID',
-            `La commande doit être entièrement payée avant d’être livrée : reste dû ${owed}.`,
-          );
+        const blocked = await judgeUnpaidDelivery(uow, {
+          delivered,
+          unpaid,
+          customer,
+          onCreditAllowed: await isDeliveryOnCreditAllowed(uow, site.id, at),
+        });
+        if (blocked) {
+          if (!offline) return rejected(blocked.code, blocked.messageFr);
+          flagged = { unpaid, blocked };
         }
-        unpaidDelivered = unpaid;
       }
     }
 
@@ -528,8 +676,9 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
     }
 
-    // --- Livré avant le paiement complet, hors ligne (AV-511) : fait appliqué, signalé à la Finance --------------
-    if (unpaidDelivered.length > 0) {
+    // --- Livré sans que la règle de paiement le permette, hors ligne (AV-511, AV-512) : fait appliqué, signalé ---
+    // à la Finance, avec le motif (paiement exigé, ou plafond de crédit dépassé) et ses chiffres.
+    if (flagged !== null) {
       warnings.add('DELIVERY_UNPAID');
       await recordConflict(uow, {
         id: idGenerator.newId(),
@@ -543,7 +692,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         details: {
           orderDocNumber: order.doc_number,
           deliveryNoteId: noteId,
-          sales: unpaidDelivered.map((sale) => ({
+          ...flagged.blocked.details,
+          sales: flagged.unpaid.map((sale) => ({
             saleId: sale.saleId,
             docNumber: sale.docNumber,
             balanceDueXaf: sale.balanceDueXaf,

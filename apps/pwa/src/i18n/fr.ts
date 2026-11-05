@@ -461,6 +461,9 @@ export const fr = {
     error_advance_invalid: 'Montant de l’acompte invalide (francs entiers).',
     payment_note:
       'Une commande peut se passer sans payer : elle devra être entièrement payée avant d’être livrée.',
+    payment_note_credit:
+      'Une commande peut se passer sans payer : ce client est autorisé au crédit, il pourra être livré à crédit dans son plafond.',
+    payment_note_free: 'Une commande peut se passer sans payer.',
     offline_banner:
       'Hors ligne : la commande sera enregistrée sur ce téléphone et confirmée par le serveur au retour du réseau.',
     submit: 'Passer la commande',
@@ -553,6 +556,15 @@ export const fr = {
         'Cette commande n’est pas entièrement payée (reste dû : {{amount}}) : le serveur refusera la livraison tant que le reste n’est pas encaissé.',
       unpaid_offline:
         'Cette commande n’est pas entièrement payée (reste dû : {{amount}}) : la livraison sera enregistrée, mais signalée à la Finance.',
+      unpaid_no_credit_online:
+        'Cette commande n’est pas entièrement payée (reste dû : {{amount}}) et ce client n’a pas droit au crédit : le serveur refusera la livraison tant que le reste n’est pas encaissé.',
+      credit_info:
+        'Livraison à crédit : le reste dû ({{amount}}) reste à encaisser, dans le plafond de crédit du client ({{limit}}).',
+      credit_over_online:
+        'Le plafond de crédit de ce client ({{limit}}) pourrait être dépassé (reste dû : {{amount}}, encours : {{outstanding}}) : le serveur peut refuser la livraison tant que le reste n’est pas encaissé.',
+      credit_over_offline:
+        'Le plafond de crédit de ce client ({{limit}}) pourrait être dépassé (reste dû : {{amount}}, encours : {{outstanding}}) : la livraison sera enregistrée, mais signalée à la Finance.',
+      no_limit: 'non défini',
       collect: 'Encaisser le reste dû',
       result: {
         WAITING_offline:
@@ -5143,7 +5155,9 @@ export const fr = {
       sales_direct_cancel_minutes: 'Délai d’annulation directe d’une vente',
       sales_default_payment_terms_days: 'Délai de paiement par défaut (vente à crédit)',
       sales_delivery_requires_full_payment:
-        'Exiger la vente payée en entier avant de livrer une commande',
+        'Exiger le paiement d’une commande avant sa livraison (sauf crédit autorisé du client)',
+      sales_delivery_on_credit_allowed:
+        'Livrer à crédit un client autorisé au crédit, dans son plafond',
       sales_duplicate_payment_window_minutes: 'Fenêtre de détection d’un encaissement en double',
       sales_offline_over_allocation_allowed: 'Vente hors ligne au-delà du quota autorisée',
       sales_offline_unallocated_sale_signal: 'Signalement d’une vente hors ligne sans quota',

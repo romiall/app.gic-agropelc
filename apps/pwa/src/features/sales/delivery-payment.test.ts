@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboxCommand } from '../../storage/db.js';
 import {
+  DELIVERY_ON_CREDIT_ALLOWED_SETTING,
   DELIVERY_REQUIRES_FULL_PAYMENT_SETTING,
+  deliveryOnCreditAllowed,
   deliveryPaymentRequired,
+  deliveryPaymentView,
   unpaidOfOrder,
 } from './delivery-payment.js';
 import type { SaleData, SettingData } from './types.js';
@@ -180,5 +183,75 @@ describe('paiement avant livraison, vu par l’appareil (AV-511)', () => {
         alias,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('livraison à crédit, vue par l’appareil (AV-512)', () => {
+  const creditSetting = (
+    value: unknown,
+    scope: { type: 'SITE' | 'GLOBAL'; id: string | null },
+  ) => ({
+    ...setting(value, scope),
+    key: DELIVERY_ON_CREDIT_ALLOWED_SETTING,
+  });
+
+  it('livrer à crédit est permis par défaut : seule une valeur explicitement fausse l’interdit', () => {
+    expect(deliveryOnCreditAllowed([], SITE, NOW)).toBe(true);
+    expect(deliveryOnCreditAllowed([creditSetting(true, GLOBAL)], SITE, NOW)).toBe(true);
+    expect(deliveryOnCreditAllowed([creditSetting('false', GLOBAL)], SITE, NOW)).toBe(true);
+    expect(deliveryOnCreditAllowed([creditSetting(false, GLOBAL)], SITE, NOW)).toBe(false);
+    expect(deliveryOnCreditAllowed([creditSetting(false, site(SITE))], SITE, NOW)).toBe(false);
+    expect(deliveryOnCreditAllowed([creditSetting(false, site(SITE))], 'site-dla', NOW)).toBe(true);
+    // Le réglage du paiement exigé est un autre réglage : il n'interdit pas le crédit à lui seul.
+    expect(deliveryOnCreditAllowed([setting(false, GLOBAL)], SITE, NOW)).toBe(true);
+  });
+
+  const view = (overrides: Partial<Parameters<typeof deliveryPaymentView>[0]> = {}) =>
+    deliveryPaymentView({
+      required: true,
+      onCreditAllowed: true,
+      unpaidXaf: 3_000,
+      customer: { credit_allowed: true, credit_limit_xaf: 50_000 },
+      outstandingXaf: 12_000,
+      ...overrides,
+    });
+
+  it('rien d’impayé de connu, ou exigence levée : rien à dire', () => {
+    expect(view({ unpaidXaf: 0 })).toEqual({ kind: 'NONE' });
+    expect(view({ required: false })).toEqual({ kind: 'NONE' });
+  });
+
+  it('client sans crédit, client inconnu, ou crédit interdit par le paramètre : il paie d’abord', () => {
+    expect(view({ customer: { credit_allowed: false, credit_limit_xaf: null } })).toEqual({
+      kind: 'PAY_FIRST',
+      amountXaf: 3_000,
+      noCredit: true,
+    });
+    expect(view({ customer: undefined })).toMatchObject({ kind: 'PAY_FIRST', noCredit: true });
+    // Crédit interdit pour tous : le client autorisé paie d'abord, sans que ce soit faute de droit au crédit.
+    expect(view({ onCreditAllowed: false })).toEqual({
+      kind: 'PAY_FIRST',
+      amountXaf: 3_000,
+      noCredit: false,
+    });
+  });
+
+  it('client autorisé : à crédit si son reste à encaisser tient dans son plafond, sinon le serveur peut refuser', () => {
+    expect(view()).toEqual({ kind: 'ON_CREDIT', amountXaf: 3_000, limitXaf: 50_000 });
+    // Pile le plafond : accordé (≤).
+    expect(view({ outstandingXaf: 50_000 })).toMatchObject({ kind: 'ON_CREDIT' });
+    expect(view({ outstandingXaf: 50_001 })).toEqual({
+      kind: 'CREDIT_OVER',
+      amountXaf: 3_000,
+      limitXaf: 50_000,
+      outstandingXaf: 50_001,
+    });
+    // Autorisé sans plafond défini : tout crédit dépasse (BR-VEN-025).
+    expect(view({ customer: { credit_allowed: true, credit_limit_xaf: null } })).toEqual({
+      kind: 'CREDIT_OVER',
+      amountXaf: 3_000,
+      limitXaf: null,
+      outstandingXaf: 12_000,
+    });
   });
 });

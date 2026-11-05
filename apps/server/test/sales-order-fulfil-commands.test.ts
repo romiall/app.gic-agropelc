@@ -41,7 +41,8 @@ import {
   insertTestZone,
   freshPhone,
 } from './helpers.js';
-import { allowDeliveryWithoutPayment } from './delivery-payment-fixtures.js';
+import { customerCreditExposureXaf } from '../src/modules/sales/application/public/index.js';
+import { allowDeliveryWithoutPayment, setDeliveryOnCredit } from './delivery-payment-fixtures.js';
 
 const NOW = '2026-10-10T18:00:00.000Z';
 const at = (hhmmss: string) => `2026-10-10T${hhmmss}.000Z`;
@@ -1068,8 +1069,8 @@ describe('sales.order.fulfil (P4-07)', () => {
       .where('conflict_type', '=', type)
       .execute();
 
-  it('AV-511 : en ligne, une vente non payée ou payée en partie n’est pas livrée (ORDER_NOT_PAID), sans aucune écriture, même pour un client autorisé au crédit', async () => {
-    const unpaid = await soldOrder({ quantity: 4, credit: true, at: at('16:10:00') });
+  it('AV-511 : en ligne, une vente non payée ou payée en partie n’est pas livrée à un client sans crédit (ORDER_NOT_PAID), sans aucune écriture', async () => {
+    const unpaid = await soldOrder({ quantity: 4, credit: false, at: at('16:10:00') });
     const unpaidLine = await lineOf(unpaid.id);
     const before = await stateOf(unpaid.id);
     const refused = await fulfil(unpaid.id, at('16:20:00'), [
@@ -1078,6 +1079,8 @@ describe('sales.order.fulfil (P4-07)', () => {
     expect(code(refused.result)).toBe('ORDER_NOT_PAID');
     expect(reason(refused.result)).toContain('4 000 F CFA');
     expect(reason(refused.result)).toContain(unpaid.sale.doc_number);
+    // Le client n'a pas droit au crédit (AV-512) : le message le dit.
+    expect(reason(refused.result)).toContain('Ce client n’a pas droit au crédit');
     expect(await stateOf(unpaid.id)).toEqual(before);
     expect(await notesOf(unpaid.id)).toHaveLength(0);
     expect(await deliveredOf(unpaid.id)).toEqual([[4, 4, 0]]);
@@ -1240,5 +1243,184 @@ describe('sales.order.fulfil (P4-07)', () => {
         ).result,
       ),
     ).toBe('ORDER_NOT_PAID');
+  });
+
+  // --- 10. Livraison à crédit d'un client autorisé (AV-512) ------------------------------------------------
+  // Un client autorisé au crédit est livré avant d'avoir payé, dans son plafond : la livraison est un crédit
+  // accordé, contrôlé (`creditCheck`) sur son encours de crédit, le seul remis non payé. Heures de 17 h 41 à
+  // 17 h 59, paiement avant livraison exigé (rétabli à 16 h).
+
+  /** Commande d'un client donné : un produit neuf, le stock, la commande confirmée, sa vente. */
+  async function creditOrder(customerId: string, quantity: number, when: string) {
+    const product = await sellable(1000);
+    await stock(product.id, quantity, 600);
+    const { id } = await placed({ customerId, lines: [line(product, quantity)] }, when);
+    const [sale] = await ordersSales(id);
+    return { id, sale: sale!, saleId: fromBin(sale!.id), orderLineId: await lineOf(id) };
+  }
+  const setLimit = (customerId: string, limitXaf: number | null) =>
+    db
+      .updateTable('crm_customers')
+      .set({ credit_limit_xaf: limitXaf })
+      .where('id', '=', toBin(customerId))
+      .execute();
+  /** Encaissement ciblé sur une vente, comme le fait « Encaisser le reste dû ». */
+  async function payInFull(customerId: string, saleId: string, amountXaf: number, when: string) {
+    const payment = await run(
+      commercial,
+      'sales.payment.record',
+      'CUSTOMER_PAYMENT',
+      freshUuid(),
+      when,
+      {
+        customerId,
+        methodCode: 'ESPECES',
+        amountXaf,
+        cashAccountId,
+        allocations: [{ saleId, amountXaf }],
+      },
+    );
+    expect(payment.status, JSON.stringify(payment)).toMatch(/^APPLIED/);
+  }
+  const exposureOf = (customerId: string) => customerCreditExposureXaf(db, customerId);
+
+  it('AV-512 : un client autorisé au crédit est livré à crédit dans son plafond — sans refus ni signalement, la vente reste due', async () => {
+    const customer = await newCustomer({ credit: true });
+    const order = await creditOrder(customer, 4, at('17:41:00'));
+    // Commandée, vendue, pas livrée : rien n'est encore un crédit (AV-512).
+    expect(await exposureOf(customer)).toBe(0);
+
+    const delivered = await fulfil(order.id, at('17:41:30'), [
+      { orderLineId: order.orderLineId, quantityBase: 4 },
+    ]);
+    expect(delivered.result.status, JSON.stringify(delivered.result)).toBe('APPLIED');
+    expect(warningsOf(delivered.result)).toEqual([]);
+    expect(await conflictsOfType(order.id, 'DELIVERY_UNPAID')).toHaveLength(0);
+    expect((await orderRow(order.id)).status).toBe('FULFILLED');
+    // La vente reste due (créance) et la marchandise remise est devenue un crédit accordé.
+    expect((await ordersSales(order.id))[0]).toMatchObject({
+      balance_due_xaf: 4000,
+      payment_status: 'UNPAID',
+    });
+    expect(await exposureOf(customer)).toBe(4000);
+  });
+
+  it('AV-512 : plafond dépassé ou absent — CREDIT_LIMIT_EXCEEDED en ligne sans écriture ; hors ligne, appliquée et signalée avec le motif', async () => {
+    const customer = await newCustomer({ credit: true });
+    await setLimit(customer, 3000);
+    const order = await creditOrder(customer, 4, at('17:42:00'));
+    const before = await stateOf(order.id);
+    const refused = await fulfil(order.id, at('17:42:20'), [
+      { orderLineId: order.orderLineId, quantityBase: 4 },
+    ]);
+    expect(code(refused.result)).toBe('CREDIT_LIMIT_EXCEEDED');
+    expect(reason(refused.result)).toContain('Plafond de crédit du client dépassé');
+    expect(reason(refused.result)).toContain('4 000 F CFA pour un plafond de 3 000 F CFA');
+    expect(reason(refused.result)).toContain(order.sale.doc_number);
+    expect(await stateOf(order.id)).toEqual(before);
+    expect(await notesOf(order.id)).toHaveLength(0);
+
+    // Hors ligne : la remise a eu lieu, elle est appliquée ; le conflit porte le motif et les chiffres.
+    const offline = await fulfil(
+      order.id,
+      at('17:42:40'),
+      [{ orderLineId: order.orderLineId, quantityBase: 4 }],
+      {},
+      { offline: true },
+    );
+    expect(offline.result.status, JSON.stringify(offline.result)).toBe('APPLIED_WITH_WARNINGS');
+    expect(warningsOf(offline.result)).toEqual(['DELIVERY_UNPAID']);
+    const [conflict] = await conflictsOfType(order.id, 'DELIVERY_UNPAID');
+    expect(conflict).toMatchObject({ owner_role: 'FINANCE', applied: 1 });
+    expect(conflict!.details).toMatchObject({
+      reason: 'CREDIT_LIMIT_EXCEEDED',
+      creditLimitXaf: 3000,
+      exposureBeforeXaf: 0,
+      newCreditXaf: 4000,
+    });
+
+    // Autorisé au crédit mais sans plafond défini : tout crédit dépasse (BR-VEN-025), même refus en ligne.
+    const unlimited = await newCustomer({ credit: true });
+    await setLimit(unlimited, null);
+    const noLimit = await creditOrder(unlimited, 2, at('17:43:00'));
+    const refusedNoLimit = await fulfil(noLimit.id, at('17:43:20'), [
+      { orderLineId: noLimit.orderLineId, quantityBase: 2 },
+    ]);
+    expect(code(refusedNoLimit.result)).toBe('CREDIT_LIMIT_EXCEEDED');
+    expect(reason(refusedNoLimit.result)).toContain('sans plafond défini');
+    expect(await notesOf(noLimit.id)).toHaveLength(0);
+  });
+
+  it('AV-512 : l’encours de crédit ne compte que le remis non payé — une commande non livrée n’en est pas un, le payé s’impute sur le livré', async () => {
+    const customer = await newCustomer({ credit: true });
+    await setLimit(customer, 5000);
+    const first = await creditOrder(customer, 3, at('17:44:00'));
+    const second = await creditOrder(customer, 3, at('17:44:05'));
+    // Deux commandes de 3 000 non livrées : aucun crédit accordé, l'encours de crédit est nul.
+    expect(await exposureOf(customer)).toBe(0);
+
+    // La première, livrée : 3 000 de crédit, dans le plafond de 5 000 (la seconde, non livrée, ne compte pas).
+    const firstDelivery = await fulfil(first.id, at('17:44:10'), [
+      { orderLineId: first.orderLineId, quantityBase: 3 },
+    ]);
+    expect(firstDelivery.result.status, JSON.stringify(firstDelivery.result)).toBe('APPLIED');
+    expect(await exposureOf(customer)).toBe(3000);
+
+    // La seconde porterait l'encours à 6 000 : refusée tant que la première n'est pas payée.
+    const blocked = await fulfil(second.id, at('17:44:20'), [
+      { orderLineId: second.orderLineId, quantityBase: 3 },
+    ]);
+    expect(code(blocked.result)).toBe('CREDIT_LIMIT_EXCEEDED');
+    expect(reason(blocked.result)).toContain('6 000 F CFA pour un plafond de 5 000 F CFA');
+    expect(await notesOf(second.id)).toHaveLength(0);
+
+    // La première payée : l'encours retombe à 0, la seconde se livre.
+    await payInFull(customer, first.saleId, 3000, at('17:44:30'));
+    expect(await exposureOf(customer)).toBe(0);
+    const secondDelivery = await fulfil(second.id, at('17:44:40'), [
+      { orderLineId: second.orderLineId, quantityBase: 3 },
+    ]);
+    expect(secondDelivery.result.status, JSON.stringify(secondDelivery.result)).toBe('APPLIED');
+    expect(await exposureOf(customer)).toBe(3000);
+
+    // Livraisons partielles d'une même vente : le crédit se compte à la quantité remise, au franc près.
+    const partial = await newCustomer({ credit: true });
+    await setLimit(partial, 6000);
+    const big = await creditOrder(partial, 10, at('17:45:00'));
+    const part = (quantityBase: number, when: string) =>
+      fulfil(big.id, when, [{ orderLineId: big.orderLineId, quantityBase }]);
+    expect((await part(4, at('17:45:10'))).result.status).toBe('APPLIED');
+    expect(await exposureOf(partial)).toBe(4000);
+    // 4 000 + 3 000 > 6 000 : refusé ; 4 000 + 2 000 = 6 000, pile le plafond : accordé.
+    expect(code((await part(3, at('17:45:20'))).result)).toBe('CREDIT_LIMIT_EXCEEDED');
+    expect((await part(2, at('17:45:30'))).result.status).toBe('APPLIED');
+    expect(await exposureOf(partial)).toBe(6000);
+    // 2 000 payés s'imputent sur le livré : l'encours tombe à 4 000, 2 000 de plus de marchandise passent.
+    await payInFull(partial, big.saleId, 2000, at('17:45:40'));
+    expect(await exposureOf(partial)).toBe(4000);
+    expect((await part(2, at('17:45:50'))).result.status).toBe('APPLIED');
+    expect(await exposureOf(partial)).toBe(6000);
+    expect(await deliveredOf(big.id)).toEqual([[10, 10, 8]]);
+  });
+
+  it('AV-512 : paramètre `sales.delivery_on_credit_allowed` faux — un client autorisé au crédit paie d’abord, comme un client sans crédit', async () => {
+    // À partir de 17 h 50, le site d'essai n'accorde plus de livraison à crédit.
+    await setDeliveryOnCredit(siteId, admin.userId, false, at('17:50:00'));
+    const customer = await newCustomer({ credit: true });
+    const order = await creditOrder(customer, 4, at('17:51:00'));
+    const refused = await fulfil(order.id, at('17:51:20'), [
+      { orderLineId: order.orderLineId, quantityBase: 4 },
+    ]);
+    expect(code(refused.result)).toBe('ORDER_NOT_PAID');
+    // Le paiement est exigé de tous : le message ne parle pas du droit au crédit.
+    expect(reason(refused.result)).not.toContain('droit au crédit');
+    expect(await notesOf(order.id)).toHaveLength(0);
+
+    // Payée en entier, elle se livre.
+    await payInFull(customer, order.saleId, 4000, at('17:51:40'));
+    const delivered = await fulfil(order.id, at('17:51:50'), [
+      { orderLineId: order.orderLineId, quantityBase: 4 },
+    ]);
+    expect(delivered.result.status, JSON.stringify(delivered.result)).toBe('APPLIED');
   });
 });
