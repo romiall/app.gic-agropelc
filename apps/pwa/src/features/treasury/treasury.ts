@@ -129,6 +129,25 @@ export interface CashMovementItem {
   readonly sourceDocId?: string;
   readonly occurredAt: string;
   readonly isReversal: boolean;
+  /** Session de caisse du mouvement (AV-518), `null` hors caisse de PDV. */
+  readonly cashSessionId?: string | null;
+  /** Détail de la pièce d'origine (AV-518) : numéro, libellé, mode de paiement, référence. */
+  readonly docNumber?: string | null;
+  readonly label?: string | null;
+  readonly paymentMethodCode?: string | null;
+  readonly reference?: string | null;
+}
+
+/** Ligne de détail d'un mouvement : numéro de pièce, libellé et référence quand le serveur les sert. */
+export function movementDetailParts(
+  movement: Pick<CashMovementItem, 'docNumber' | 'label' | 'reference'>,
+  referenceLabel: (reference: string) => string,
+): string[] {
+  return [
+    movement.docNumber ?? null,
+    movement.label ?? null,
+    movement.reference ? referenceLabel(movement.reference) : null,
+  ].filter((part): part is string => part !== null && part !== '');
 }
 
 /**

@@ -158,6 +158,16 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-512',
   },
+  // AV-513 (05/11/2026, en attente du porteur) : `true` ne compte, dans les créances par ancienneté, l'encours de
+  // crédit et le contrôle de crédit d'une vente directe, que le **livré non payé** d'une commande, avec une échéance
+  // comptée depuis la première livraison ; `false` (défaut, comportement d'avant) compte le reste à encaisser dès
+  // la confirmation. Lu par le serveur seulement (réglage global).
+  {
+    key: 'sales.receivables_delivered_only',
+    value: false,
+    isClientVisible: false,
+    ref: 'AV-513',
+  },
   // AV-056 (P4-02) : fenêtre de détection d'un doublon d'encaissement sans référence (même
   // client, même montant) — visible de l'appareil, qui contrôle aussi localement.
   {

@@ -8,15 +8,42 @@
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { receivableAging, type AgingBucket } from '@gic/domain';
+import { businessDayOf, receivableAging, type AgingBucket } from '@gic/domain';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { absorbedCustomerIds } from '../../../crm/application/public/index.js';
+import { currentSettingValue } from '../../../organization/application/public/index.js';
 import type { ListScope } from './sales-query.js';
+
+/** Interrupteur d'AV-513 (réglage global, serveur seulement) : voir `receivablesDeliveredOnly`. */
+export const RECEIVABLES_DELIVERED_ONLY_SETTING = 'sales.receivables_delivered_only';
+
+/**
+ * AV-513 (en attente du porteur) : vrai seulement si le réglage global vaut exactement `true`. Alors les créances
+ * par ancienneté, l'encours qui sert au contrôle du crédit d'une vente directe et la liste des créances ne comptent
+ * que le **livré non payé** d'une commande, avec une échéance comptée depuis la première livraison ; faux (défaut),
+ * le reste à encaisser compte dès la confirmation, comme avant.
+ */
+export async function receivablesDeliveredOnly(
+  executor: Kysely<DB> | Transaction<DB>,
+  at: Date,
+): Promise<boolean> {
+  const value = await currentSettingValue(executor, {
+    key: RECEIVABLES_DELIVERED_ONLY_SETTING,
+    scopeType: 'GLOBAL',
+    scopeId: null,
+    at,
+  });
+  return value === true;
+}
 
 export async function customerOutstandingXaf(
   executor: Kysely<DB> | Transaction<DB>,
   keptCustomerId: string,
 ): Promise<number> {
+  // AV-513 : le contrôle du crédit d'une vente directe compte le livré non payé, comme celui d'une livraison.
+  if (await receivablesDeliveredOnly(executor, new Date())) {
+    return customerCreditExposureXaf(executor, keptCustomerId);
+  }
   const accounts = [keptCustomerId, ...(await absorbedCustomerIds(executor, keptCustomerId))];
   const row = await executor
     .selectFrom('sales_sales')
@@ -149,9 +176,29 @@ export interface ReceivableLine {
   readonly bucket: AgingBucket;
 }
 
+/** Jour `AAAA-MM-JJ` décalé de `days` jours (calendrier civil, sans fuseau). */
+function addDays(day: string, days: number): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Écart en jours entre deux jours `AAAA-MM-JJ` (`to` moins `from`). */
+function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (new Date(`${to}T00:00:00.000Z`).getTime() - new Date(`${from}T00:00:00.000Z`).getTime()) /
+      86_400_000,
+  );
+}
+
 export interface ReceivableFilter {
   /** Jour métier de référence `AAAA-MM-JJ` (Africa/Douala). */
   readonly today: string;
+  /**
+   * AV-513 : ne compter que le livré non payé d'une commande, échéance depuis la première livraison. Absent : le
+   * réglage `sales.receivables_delivered_only` en vigueur (faux par défaut).
+   */
+  readonly deliveredOnly?: boolean;
   readonly customerIds?: readonly string[];
   readonly siteIds?: readonly string[];
   /** Périmètre d'une liste (sites OU titulaires : commercial attributaire, à défaut vendeur). */
@@ -173,6 +220,8 @@ export async function listReceivables(
   if (filter.customerIds?.length === 0 || filter.siteIds?.length === 0) return [];
   const scope = filter.anyOf;
   if (scope && scope.siteIds.length === 0 && scope.ownerUserIds.length === 0) return [];
+  const deliveredOnly =
+    filter.deliveredOnly ?? (await receivablesDeliveredOnly(executor, new Date()));
   const rows = await executor
     .selectFrom('sales_sales')
     .select([
@@ -187,12 +236,18 @@ export async function listReceivables(
       'net_total_xaf',
       'amount_paid_xaf',
       'balance_due_xaf',
+      'sale_type',
+      'order_id',
       sql<string>`DATE_FORMAT(due_date, '%Y-%m-%d')`.as('due'),
+      sql<string>`DATE_FORMAT(business_date, '%Y-%m-%d')`.as('business_day'),
     ])
     .where('status', '<>', 'CANCELLED')
     .where('balance_due_xaf', '>', 0)
     .where('due_date', 'is not', null)
-    .$if(filter.overdueOnly === true, (qb) => qb.where('due_date', '<', sql<Date>`${filter.today}`))
+    // En mode « livré seulement », l'échéance change après lecture : l'échu et la limite se jugent ensuite.
+    .$if(filter.overdueOnly === true && !deliveredOnly, (qb) =>
+      qb.where('due_date', '<', sql<Date>`${filter.today}`),
+    )
     .$if(filter.customerIds !== undefined, (qb) =>
       qb.where(
         'customer_id',
@@ -237,11 +292,74 @@ export async function listReceivables(
     .orderBy('due_date', 'asc')
     .orderBy('occurred_at', 'asc')
     .orderBy('id', 'asc')
-    .$if(filter.limit !== undefined, (qb) => qb.limit(filter.limit!))
+    .$if(filter.limit !== undefined && !deliveredOnly, (qb) => qb.limit(filter.limit!))
     .execute();
-  return rows.map((row) => {
-    const aging = receivableAging(row.due!, filter.today);
-    return {
+
+  // AV-513 : valeur livrée de chaque vente sur commande et jour de sa première livraison.
+  const orderSaleIds = deliveredOnly
+    ? rows.filter((row) => row.sale_type === 'ORDER').map((row) => row.id)
+    : [];
+  const deliveredValue = new Map<string, number>();
+  const firstDelivery = new Map<string, string>();
+  if (orderSaleIds.length > 0) {
+    const lines = await executor
+      .selectFrom('sales_sale_lines')
+      .select(['sale_id', 'line_total_xaf', 'quantity_base', 'delivered_quantity_base'])
+      .where('sale_id', 'in', orderSaleIds)
+      .execute();
+    for (const line of lines) {
+      const saleId = fromBin(line.sale_id);
+      deliveredValue.set(
+        saleId,
+        (deliveredValue.get(saleId) ?? 0) +
+          deliveredShareXaf(
+            Number(line.line_total_xaf),
+            milliOf(line.quantity_base),
+            milliOf(line.delivered_quantity_base),
+          ),
+      );
+    }
+    const orderIds = rows
+      .filter((row) => row.sale_type === 'ORDER' && row.order_id !== null)
+      .map((row) => row.order_id!);
+    const notes =
+      orderIds.length === 0
+        ? []
+        : await executor
+            .selectFrom('sales_delivery_notes')
+            .select(['order_id', sql<Date | string>`MIN(occurred_at)`.as('first_at')])
+            .where('order_id', 'in', orderIds)
+            .groupBy('order_id')
+            .execute();
+    for (const note of notes) {
+      firstDelivery.set(fromBin(note.order_id), businessDayOf(new Date(note.first_at)));
+    }
+  }
+
+  const lines: ReceivableLine[] = [];
+  for (const row of rows) {
+    let balanceDueXaf = Number(row.balance_due_xaf);
+    let dueDate = row.due!;
+    if (deliveredOnly) {
+      balanceDueXaf = saleCreditExposureXaf({
+        saleType: row.sale_type,
+        balanceDueXaf,
+        amountPaidXaf: Number(row.amount_paid_xaf),
+        deliveredValueXaf: deliveredValue.get(fromBin(row.id)) ?? 0,
+      });
+      // Une commande qu'on n'a pas livrée n'est pas une créance.
+      if (balanceDueXaf <= 0) continue;
+      const delivered =
+        row.order_id === null ? undefined : firstDelivery.get(fromBin(row.order_id));
+      if (row.sale_type === 'ORDER' && delivered !== undefined) {
+        // L'échéance garde le délai accordé à la confirmation, compté depuis la première livraison.
+        const soldOn = row.business_day ?? businessDayOf(row.occurred_at);
+        dueDate = addDays(delivered, Math.max(0, daysBetween(soldOn, dueDate)));
+      }
+    }
+    const aging = receivableAging(dueDate, filter.today);
+    if (deliveredOnly && filter.overdueOnly === true && !aging.overdue) continue;
+    lines.push({
       saleId: fromBin(row.id),
       docNumber: row.doc_number,
       customerId: fromBinOrNull(row.customer_id),
@@ -250,13 +368,24 @@ export async function listReceivables(
       sellerUserId: fromBin(row.seller_user_id),
       zoneId: fromBin(row.zone_id),
       occurredAt: row.occurred_at,
-      dueDate: row.due!,
+      dueDate,
       netTotalXaf: Number(row.net_total_xaf),
       amountPaidXaf: Number(row.amount_paid_xaf),
-      balanceDueXaf: Number(row.balance_due_xaf),
+      balanceDueXaf,
       ...aging,
-    };
-  });
+    });
+  }
+  if (deliveredOnly) {
+    // Même ordre qu'en lecture directe : la plus ancienne échéance d'abord.
+    lines.sort(
+      (a, b) =>
+        a.dueDate.localeCompare(b.dueDate) ||
+        a.occurredAt.getTime() - b.occurredAt.getTime() ||
+        a.saleId.localeCompare(b.saleId),
+    );
+    return filter.limit !== undefined ? lines.slice(0, filter.limit) : lines;
+  }
+  return lines;
 }
 
 export interface ReceivableAgingSummary {

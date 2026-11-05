@@ -40,7 +40,7 @@ import {
   type ResourceLocator,
 } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-import { getCustomer } from '../modules/crm/application/public/index.js';
+import { absorbedCustomerIds, getCustomer } from '../modules/crm/application/public/index.js';
 import {
   SALES_LIST_DEFAULT_LIMIT,
   SALES_LIST_MAX_LIMIT,
@@ -508,11 +508,16 @@ export class SalesReadController {
     await this.requirePermission(request, now, RECEIVABLE_READ, { type: 'RECEIVABLE' });
     const scope = await this.listScope(request, now, RECEIVABLE_READ);
     const today = query.as_of ?? businessDayOf(now);
+    // S-22 : les ventes des comptes absorbés par le compte demandé lui reviennent (BR-CRM-007), comme sa fiche.
+    const customerIds =
+      query.customer_id !== undefined
+        ? [query.customer_id, ...(await absorbedCustomerIds(this.db, query.customer_id))]
+        : undefined;
     const lines = await listReceivables(this.db, {
       today,
       ...(scope.anyOf !== undefined ? { anyOf: scope.anyOf } : {}),
       ...(query.site_id !== undefined ? { siteIds: [query.site_id] } : {}),
-      ...(query.customer_id !== undefined ? { customerIds: [query.customer_id] } : {}),
+      ...(customerIds !== undefined ? { customerIds } : {}),
       ...(query.commercial_user_id !== undefined
         ? { commercialUserId: query.commercial_user_id }
         : {}),

@@ -16,7 +16,7 @@ import { clock } from '../../platform/composition.js';
 import { useSalesReferences } from '../sales/references.js';
 import { PieceAction } from '../pieces/PieceAction.js';
 import { demandeFeuilleCaisse } from '../pieces/adaptateurs-finance.js';
-import type { CashMovementItem, CashMovementsPage } from './treasury.js';
+import { movementDetailParts, type CashMovementItem, type CashMovementsPage } from './treasury.js';
 
 /** Taille d'une page de mouvements (défaut du serveur). */
 const MOVEMENTS_PAGE = 50;
@@ -108,6 +108,9 @@ export function AccountMovements({
           {items.map((movement) => {
             const date = formatDateTime(movement.occurredAt);
             const amount = `${movement.direction === 'OUT' ? '−' : '+'}${formatMoney(movement.amountXaf)}`;
+            const detail = movementDetailParts(movement, (reference) =>
+              t('treasury.movement_reference', { reference }),
+            );
             return (
               <li key={movement.id} className="tre-move">
                 <span className="tre-move-text">
@@ -119,6 +122,9 @@ export function AccountMovements({
                     amount,
                   })}
                   {movement.isReversal ? ` ${t('treasury.reversal')}` : ''}
+                  {detail.length > 0 ? (
+                    <span className="home-muted tre-move-detail"> · {detail.join(' · ')}</span>
+                  ) : null}
                 </span>
                 <MovementDocument
                   movement={movement}
@@ -151,15 +157,18 @@ export function AccountMovements({
               jour: today,
               session: null,
               refs,
+              // Numéro de pièce, libellé et mode de paiement servis par le serveur (AV-518) ; à défaut, le type.
               mouvements: todayItems.map((m) => ({
                 occurredAt: m.occurredAt,
                 direction: m.direction,
                 montant: m.amountXaf,
-                piece: null,
-                libelle: t(`treasury.movement_type.${m.movementType}`, {
-                  defaultValue: m.movementType,
-                }),
-                moyen: null,
+                piece: m.docNumber ?? null,
+                libelle:
+                  m.label ??
+                  t(`treasury.movement_type.${m.movementType}`, {
+                    defaultValue: m.movementType,
+                  }),
+                moyen: m.paymentMethodCode ?? null,
               })),
             })
           }

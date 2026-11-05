@@ -3,6 +3,7 @@ import {
   closeDiscrepancyPayload,
   currentVarianceXaf,
   imputationOptions,
+  movementDetailParts,
   movementDocumentPath,
   sessionReasonRequired,
   sessionValidationBlock,
@@ -110,5 +111,21 @@ describe('pièce d’origine d’un mouvement (P8E-04, AV-300)', () => {
     ).toBeNull();
     expect(movementDocumentPath({ sourceDocType: 'EXPENSE' })).toBeNull();
     expect(movementDocumentPath({})).toBeNull();
+  });
+
+  it('détail d’un mouvement (AV-518) : numéro, libellé et référence quand le serveur les sert, dans cet ordre', () => {
+    const ref = (reference: string) => `réf. ${reference}`;
+    expect(
+      movementDetailParts({ docNumber: 'ENC-2026-000012', label: null, reference: 'OM123' }, ref),
+    ).toEqual(['ENC-2026-000012', 'réf. OM123']);
+    expect(
+      movementDetailParts(
+        { docNumber: 'DEP-DLA-2026-000003', label: 'Moto-taxi', reference: null },
+        ref,
+      ),
+    ).toEqual(['DEP-DLA-2026-000003', 'Moto-taxi']);
+    // Un serveur d'avant AV-518 ne sert rien : aucune ligne de détail.
+    expect(movementDetailParts({}, ref)).toEqual([]);
+    expect(movementDetailParts({ docNumber: '', label: null, reference: '' }, ref)).toEqual([]);
   });
 });

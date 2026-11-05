@@ -85,6 +85,7 @@ describe('créances, CA et marges (P4-09)', () => {
   let pipeline: CommandPipelineService;
   let admin: Actor;
   let commercial: Actor;
+  let keeper: Actor;
   let zoneId: string;
   let siteId: string;
   let storeId: string;
@@ -349,6 +350,16 @@ describe('créances, CA et marges (P4-09)', () => {
         return { userId, deviceId };
       };
       commercial = await actor(sedentary);
+      // Magasinier du site : il livre les commandes (AV-513, créances « livré seulement »).
+      const keeperUserId = await insertTestUser(trx);
+      keeper = {
+        userId: keeperUserId,
+        deviceId: await insertTestDevice(trx, keeperUserId, { status: 'ACTIVE' }),
+      };
+      await assignTestRole(trx, keeperUserId, await roleId('MAGASINIER'), adminId, {
+        scopeType: 'SITE',
+        scopeSiteId: siteId,
+      });
       categoryId = freshUuid();
       await trx
         .insertInto('catalog_product_categories')
@@ -528,6 +539,27 @@ describe('créances, CA et marges (P4-09)', () => {
     const [sale] = await ordersSales(id);
     return fromBin(sale!.id);
   }
+  /** Livraison par le magasinier de `quantity` pièces de la (seule) ligne de la commande de la vente. */
+  async function deliver(saleId: string, quantity: number, occurredAt: string): Promise<void> {
+    const orderId = fromBin((await saleRow(saleId)).order_id!);
+    const orderLine = await db
+      .selectFrom('sales_sales_order_lines')
+      .select('id')
+      .where('order_id', '=', toBin(orderId))
+      .executeTakeFirstOrThrow();
+    const result = await run(
+      keeper,
+      'sales.order.fulfil',
+      'DELIVERY_NOTE',
+      freshUuid(),
+      occurredAt,
+      {
+        orderId,
+        lines: [{ orderLineId: fromBin(orderLine.id), quantityBase: quantity }],
+      },
+    );
+    expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+  }
   const cancelSale = (saleId: string, hhmmss: string) =>
     run(commercial, 'sales.sale.cancel', 'SALE_CANCELLATION', freshUuid(), at(hhmmss), {
       saleId,
@@ -686,4 +718,85 @@ describe('créances, CA et marges (P4-09)', () => {
       }
     },
   );
+
+  // --- 4. Créances « livré seulement » (AV-513, réglage sales.receivables_delivered_only) -------------
+
+  it('AV-513 : le reste à encaisser compte dès la confirmation (défaut) ; « livré seulement » ne compte que le livré non payé', async () => {
+    const customer = await newCustomer({ credit: true });
+    const product = await sellable(1000);
+    await stock(product.id, 10, 600);
+    const sale = await orderSale(customer, product, 4, '09:00:00');
+    const view = async (deliveredOnly: boolean) =>
+      (await listReceivables(db, { today: DAY, customerIds: [customer], deliveredOnly })).map(
+        (line) => [line.saleId, line.balanceDueXaf],
+      );
+
+    // Commande confirmée, rien de remis : créance au défaut (comportement historique), aucune en « livré seulement ».
+    expect(await view(false)).toEqual([[sale, 4000]]);
+    expect(await view(true)).toEqual([]);
+
+    // Une pièce sur quatre remise : le livré (1 000) est la créance, le reste de la commande n'en est pas une.
+    await deliver(sale, 1, at('10:00:00'));
+    expect(await view(false)).toEqual([[sale, 4000]]);
+    expect(await view(true)).toEqual([[sale, 1000]]);
+
+    // Le payé s'impute d'abord sur le livré : 600 encaissés laissent 400 de créance livrée.
+    expect(
+      (await pay({ customerId: customer, amountXaf: 600 }, at('11:00:00'))).result.status,
+    ).toBe('APPLIED');
+    expect(await view(false)).toEqual([[sale, 3400]]);
+    expect(await view(true)).toEqual([[sale, 400]]);
+
+    // Payé au-delà du livré (1 250 en tout pour 1 000 livrés) : plus de créance livrée, la vente reste due.
+    expect(
+      (await pay({ customerId: customer, amountXaf: 650 }, at('11:30:00'))).result.status,
+    ).toBe('APPLIED');
+    expect(await view(false)).toEqual([[sale, 2750]]);
+    expect(await view(true)).toEqual([]);
+  });
+
+  it('AV-513 : en « livré seulement », l’échéance garde le délai accordé mais se compte depuis la première livraison', async () => {
+    const customer = await newCustomer({ credit: true });
+    const product = await sellable(1000);
+    await stock(product.id, 10, 600);
+    // Commande confirmée le 05/10 (échéance à 30 jours : 04/11), livrée le 12/10.
+    const { id: orderId } = await placed(
+      { customerId: customer, lines: [line(product, 2)] },
+      '2026-10-05T09:00:00.000Z',
+    );
+    const [saleRowOfOrder] = await ordersSales(orderId);
+    const sale = fromBin(saleRowOfOrder!.id);
+    const confirmedDue = await listReceivables(db, {
+      today: DAY,
+      customerIds: [customer],
+      deliveredOnly: false,
+    });
+    expect(confirmedDue.map((l) => [l.saleId, l.dueDate])).toEqual([[sale, '2026-11-04']]);
+
+    await deliver(sale, 2, at('10:00:00'));
+    const delivered = await listReceivables(db, {
+      today: '2026-11-20',
+      customerIds: [customer],
+      deliveredOnly: true,
+    });
+    // Livraison le 12/10, délai de 30 jours : échéance le 11/11, soit 9 jours de retard au 20/11.
+    expect(delivered.map((l) => [l.saleId, l.balanceDueXaf, l.dueDate, l.daysOverdue])).toEqual([
+      [sale, 2000, '2026-11-11', 9],
+    ]);
+    // Au 08/11, la créance n'est pas échue (11/11) alors qu'elle l'aurait été depuis la confirmation (04/11).
+    const notYet = await listReceivables(db, {
+      today: '2026-11-08',
+      customerIds: [customer],
+      deliveredOnly: true,
+      overdueOnly: true,
+    });
+    expect(notYet).toEqual([]);
+    const sinceConfirmation = await listReceivables(db, {
+      today: '2026-11-08',
+      customerIds: [customer],
+      deliveredOnly: false,
+      overdueOnly: true,
+    });
+    expect(sinceConfirmation.map((l) => l.saleId)).toEqual([sale]);
+  });
 });

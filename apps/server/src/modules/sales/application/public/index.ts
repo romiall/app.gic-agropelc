@@ -12,6 +12,9 @@ export {
 } from './receivables.js';
 // P5-14 : vendeur de chaque encaissement (sous-totaux par vendeur d'une session de caisse).
 export { paymentReceivers } from './payment-receivers.js';
+// Lot Finance du 05/11/2026 (AV-518) : numéro, mode et référence de chaque encaissement (détail des mouvements).
+export { customerPaymentDetails } from './payment-details.js';
+export type { CustomerPaymentDetail } from './payment-details.js';
 export type { ReceivableLine, ReceivableFilter, ReceivableAgingSummary } from './receivables.js';
 export { listUndeliveredSales } from './undelivered-sales.js';
 export type { UndeliveredSale } from './undelivered-sales.js';

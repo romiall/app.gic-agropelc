@@ -76,6 +76,8 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
   let saleB: string;
   let paymentA: string;
   let deliveryA: string;
+  let productId = '';
+  let ruleId = '';
 
   async function get(actor: Actor, url: string) {
     return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${actor.token}` } });
@@ -156,8 +158,6 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
       finance: await roleId('FINANCE'),
       production: await roleId('RESP_PRODUCTION'),
     };
-    let productId = '';
-    let ruleId = '';
     await db.transaction().execute(async (trx) => {
       const adminId = await insertTestUser(trx);
       const zoneId = await insertTestZone(trx, adminId);
@@ -683,8 +683,25 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     const response = await get(comA, `/api/v1/cash-accounts/${cashA}/movements?from=${DAY}`);
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json().cash_account).toMatchObject({ id: cashA });
+    // AV-518 : numéro de pièce, mode de paiement et session servis avec le mouvement d'un encaissement.
+    const payment = await db
+      .selectFrom('sales_customer_payments')
+      .select('doc_number')
+      .where('id', '=', toBin(paymentA))
+      .executeTakeFirstOrThrow();
     expect(response.json().movements).toEqual([
-      expect.objectContaining({ amountXaf: 1000, direction: 'IN', businessDate: DAY }),
+      expect.objectContaining({
+        amountXaf: 1000,
+        direction: 'IN',
+        businessDate: DAY,
+        sourceDocType: 'CUSTOMER_PAYMENT',
+        sourceDocId: paymentA,
+        docNumber: payment.doc_number,
+        paymentMethodCode: 'ESPECES',
+        cashSessionId: null,
+        label: null,
+        reference: null,
+      }),
     ]);
     expect(response.json().next_cursor).toBeNull();
     expect((await get(comA, `/api/v1/cash-accounts/${cashB}/movements`)).statusCode).toBe(404);
@@ -724,5 +741,89 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     expect(sales.receivables.totalXaf).toBe(2000);
     expect(idsOf(sales.recent_orders)).toEqual([orderA]);
     expect(idsOf(sales.recent_sales)).toEqual([saleA]);
+  });
+
+  // Dernier essai du fichier : il ajoute une vente au client A (par un compte absorbé), ce que les essais
+  // précédents (volet ventes de la fiche, synthèse des créances) ne doivent pas voir.
+  it('GET /receivables?customer_id= : les créances d’un compte absorbé s’ajoutent à celles du compte conservé (S-22, BR-CRM-007)', async () => {
+    const base = await db
+      .selectFrom('crm_customers')
+      .select(['pipeline_step_id', 'zone_id', 'source_code'])
+      .where('id', '=', toBin(custA))
+      .executeTakeFirstOrThrow();
+    const custC = freshUuid();
+    await db
+      .insertInto('crm_customers')
+      .values({
+        id: toBin(custC),
+        stage: 'PROSPECT',
+        pipeline_step_id: base.pipeline_step_id,
+        display_name: 'Restaurant du port (doublon)',
+        phone_primary: await freshPhone(),
+        zone_id: base.zone_id,
+        source_code: base.source_code,
+        acquired_by_user_id: toBin(comA.userId),
+        owner_user_id: toBin(comA.userId),
+        acquired_at: new Date('2026-01-01T00:00:00.000Z'),
+        occurred_at: new Date('2026-01-01T00:00:00.000Z'),
+        credit_allowed: 1,
+        credit_limit_xaf: 1_000_000,
+        payment_terms_days: 30,
+        created_by: toBin(comA.userId),
+      })
+      .execute();
+    await db
+      .insertInto('crm_customer_assignments')
+      .values({
+        id: toBin(freshUuid()),
+        customer_id: toBin(custC),
+        user_id: toBin(comA.userId),
+        valid_from: new Date('2026-01-01T00:00:00.000Z'),
+        assigned_by: toBin(comA.userId),
+      })
+      .execute();
+    // Une vente du doublon (1 pièce), avant la fusion.
+    const orderC = freshUuid();
+    await command(comA, 'sales.order.place', 'SALES_ORDER', orderC, at('12:00:00'), {
+      customerId: custC,
+      fulfilmentLocationId: storeA,
+      lines: [
+        {
+          productId,
+          quantity: 1,
+          unitCode: 'PIECE',
+          quantityBase: 1,
+          listUnitPriceXaf: PRICE,
+          priceRuleId: ruleId,
+          unitPriceXaf: PRICE,
+        },
+      ],
+    });
+    const saleC = await saleOfOrder(orderC);
+
+    // Fusion du doublon dans le compte A par la vraie commande (la Direction fusionne).
+    const directionRole = await roleId('DIRECTION');
+    const director = await db.transaction().execute(async (trx) => {
+      const userId = await insertTestUser(trx);
+      const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
+      await assignTestRole(trx, userId, directionRole, userId, { scopeType: 'GLOBAL' });
+      return { userId, deviceId, token: '' } satisfies Actor;
+    });
+    await command(director, 'crm.customer.merge', 'CUSTOMER', custC, at('13:00:00'), {
+      intoCustomerId: custA,
+    });
+
+    // Le compte conservé porte les créances des deux comptes ; le compte absorbé garde les siennes.
+    const kept = await get(fin, `/api/v1/receivables?customer_id=${custA}&as_of=${DAY}`);
+    expect(kept.statusCode, kept.body).toBe(200);
+    expect(
+      idsOf(kept.json().receivables.map((r: { saleId: string }) => ({ id: r.saleId }))),
+    ).toEqual(expect.arrayContaining([saleA, saleC]));
+    expect(kept.json().receivables).toHaveLength(2);
+    expect(kept.json().summary.totalXaf).toBe(2000 + PRICE);
+    const absorbed = await get(fin, `/api/v1/receivables?customer_id=${custC}&as_of=${DAY}`);
+    expect(absorbed.json().receivables).toEqual([
+      expect.objectContaining({ saleId: saleC, customerId: custC, balanceDueXaf: PRICE }),
+    ]);
   });
 });

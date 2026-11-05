@@ -84,6 +84,96 @@ export interface CashMovementLine {
   readonly isReversal: boolean;
   readonly reversesMovementId: string | null;
   readonly createdBy: string;
+  /** Session de caisse du mouvement (espèces d'une caisse de PDV, ADR-032), sinon `null`. */
+  readonly cashSessionId: string | null;
+  /**
+   * Détail de la pièce d'origine, pour la feuille de caisse (AV-518) : numéro de pièce, libellé, mode de paiement
+   * et référence. Servi ici pour les pièces de `finance` (dépense, paiement fournisseur, remise de fonds) ; les
+   * encaissements clients sont complétés par le transport (`sales`), les autres restent `null`.
+   */
+  readonly docNumber: string | null;
+  readonly label: string | null;
+  readonly paymentMethodCode: string | null;
+  readonly reference: string | null;
+}
+
+interface MovementDetail {
+  readonly docNumber: string | null;
+  readonly label: string | null;
+  readonly paymentMethodCode: string | null;
+  readonly reference: string | null;
+}
+
+const NO_DETAIL: MovementDetail = {
+  docNumber: null,
+  label: null,
+  paymentMethodCode: null,
+  reference: null,
+};
+
+/** Libellé court d'un mouvement : au plus 120 caractères (la feuille de caisse imprime une ligne). */
+const LABEL_MAX = 120;
+const clip = (text: string | null): string | null => {
+  const trimmed = text?.trim() ?? '';
+  if (trimmed === '') return null;
+  return trimmed.length > LABEL_MAX ? `${trimmed.slice(0, LABEL_MAX - 1)}…` : trimmed;
+};
+
+/** Détail des pièces que `finance` possède, par `type:identifiant` de la pièce d'origine. */
+async function financeMovementDetails(
+  executor: Executor,
+  rows: readonly { readonly source_doc_type: string; readonly source_doc_id: Buffer }[],
+): Promise<ReadonlyMap<string, MovementDetail>> {
+  const details = new Map<string, MovementDetail>();
+  const idsOf = (type: string): Buffer[] =>
+    [
+      ...new Set(
+        rows.filter((r) => r.source_doc_type === type).map((r) => fromBin(r.source_doc_id)),
+      ),
+    ].map((id) => toBin(id));
+  const expenseIds = idsOf('EXPENSE');
+  if (expenseIds.length > 0) {
+    const found = await executor
+      .selectFrom('finance_expenses')
+      .select(['id', 'doc_number', 'description'])
+      .where('id', 'in', expenseIds)
+      .execute();
+    for (const row of found) {
+      details.set(`EXPENSE:${fromBin(row.id)}`, {
+        ...NO_DETAIL,
+        docNumber: row.doc_number,
+        label: clip(row.description),
+      });
+    }
+  }
+  const supplierPaymentIds = idsOf('SUPPLIER_PAYMENT');
+  if (supplierPaymentIds.length > 0) {
+    const found = await executor
+      .selectFrom('finance_supplier_payments')
+      .select(['id', 'doc_number', 'payment_method_code', 'external_reference', 'comment'])
+      .where('id', 'in', supplierPaymentIds)
+      .execute();
+    for (const row of found) {
+      details.set(`SUPPLIER_PAYMENT:${fromBin(row.id)}`, {
+        docNumber: row.doc_number,
+        label: clip(row.comment),
+        paymentMethodCode: row.payment_method_code,
+        reference: row.external_reference,
+      });
+    }
+  }
+  const transferIds = idsOf('CASH_TRANSFER');
+  if (transferIds.length > 0) {
+    const found = await executor
+      .selectFrom('finance_cash_transfers')
+      .select(['id', 'doc_number'])
+      .where('id', 'in', transferIds)
+      .execute();
+    for (const row of found) {
+      details.set(`CASH_TRANSFER:${fromBin(row.id)}`, { ...NO_DETAIL, docNumber: row.doc_number });
+    }
+  }
+  return details;
 }
 
 export async function listCashMovements(
@@ -109,6 +199,7 @@ export async function listCashMovements(
     .execute();
   const hasMore = rows.length > filter.limit;
   const page = hasMore ? rows.slice(0, filter.limit) : rows;
+  const details = await financeMovementDetails(executor, page);
   return {
     items: page.map((row) => ({
       id: fromBin(row.id),
@@ -122,6 +213,8 @@ export async function listCashMovements(
       isReversal: Boolean(row.is_reversal),
       reversesMovementId: fromBinOrNull(row.reverses_movement_id),
       createdBy: fromBin(row.created_by),
+      cashSessionId: fromBinOrNull(row.cash_session_id),
+      ...(details.get(`${row.source_doc_type}:${fromBin(row.source_doc_id)}`) ?? NO_DETAIL),
     })),
     nextCursor: hasMore ? fromBin(page[page.length - 1]!.id) : null,
   };

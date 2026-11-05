@@ -281,6 +281,12 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: true,
       isClientVisible: true,
     });
+    // AV-513 : l'interrupteur des créances « livré seulement » part à `false` (le comportement d'avant) tant que le
+    // porteur n'a pas tranché.
+    expect(seeded.get('sales.receivables_delivered_only')).toMatchObject({
+      value: false,
+      isClientVisible: false,
+    });
     expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({
       value: 60,
       isClientVisible: false,
@@ -291,6 +297,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'finance.cash_session_required_for_payouts',
       'sales.delivery_requires_full_payment',
       'sales.delivery_on_credit_allowed',
+      'sales.receivables_delivered_only',
       'sync.pull_record_grain_seconds',
     ]) {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(

@@ -17,6 +17,7 @@ import { registerRequestCommands } from '../src/modules/approvals/application/co
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import { registerCashSessionCommands } from '../src/modules/finance/application/commands/cash-session-commands.js';
 import { registerExpenseCommands } from '../src/modules/finance/application/commands/expense-commands.js';
+import { listCashMovements } from '../src/modules/finance/application/public/index.js';
 import {
   lockOverheadPool,
   recordCostEntry,
@@ -325,6 +326,18 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
       movement_type: 'EXPENSE',
     });
     expect(fromBin(movement!.cash_session_id!)).toBe(pdv.sessionId);
+    // AV-518 : le détail de la pièce d'origine est servi avec le mouvement (numéro, libellé, session).
+    const listed = (await listCashMovements(db, pdv.pos, { limit: 50 })).items.find(
+      (item) => item.sourceDocId === id,
+    );
+    expect(listed).toMatchObject({
+      sourceDocType: 'EXPENSE',
+      docNumber: row!.doc_number,
+      label: 'Moto-taxi pour la livraison',
+      paymentMethodCode: null,
+      reference: null,
+      cashSessionId: pdv.sessionId,
+    });
     expect(await balanceOf(pdv.pos)).toBe(98_000);
     expect(
       (await eventsOf(id))

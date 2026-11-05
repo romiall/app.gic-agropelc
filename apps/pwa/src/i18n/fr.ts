@@ -4063,6 +4063,7 @@ export const fr = {
     movements_empty: 'Aucun mouvement.',
     movements_more: 'Mouvements plus anciens',
     movement_line: '{{date}} · {{type}} : {{amount}}',
+    movement_reference: 'réf. {{reference}}',
     reversal: '(annulation)',
     movement_type: {
       CUSTOMER_PAYMENT: 'Encaissement',
@@ -5224,6 +5225,8 @@ export const fr = {
         'Exiger le paiement d’une commande avant sa livraison (sauf crédit autorisé du client)',
       sales_delivery_on_credit_allowed:
         'Livrer à crédit un client autorisé au crédit, dans son plafond',
+      sales_receivables_delivered_only:
+        'Créances : ne compter que le livré non payé d’une commande (échéance depuis la livraison)',
       sales_duplicate_payment_window_minutes: 'Fenêtre de détection d’un encaissement en double',
       sales_offline_over_allocation_allowed: 'Vente hors ligne au-delà du quota autorisée',
       sales_offline_unallocated_sale_signal: 'Signalement d’une vente hors ligne sans quota',

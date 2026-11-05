@@ -20,6 +20,7 @@ import { recordDenied } from '../audit/record-denied.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
 import { evaluateAccess, hasPermissionAt } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { customerPaymentDetails } from '../modules/sales/application/public/index.js';
 import {
   CASH_ACCOUNT_TYPES,
   CASH_LIST_DEFAULT_LIMIT,
@@ -171,6 +172,26 @@ export class FinanceReadController {
       ...(query.cursor !== undefined ? { beforeId: query.cursor } : {}),
       limit: query.limit ?? CASH_LIST_DEFAULT_LIMIT,
     });
-    return { cash_account: account, movements: page.items, next_cursor: page.nextCursor };
+    // AV-518 : les encaissements clients appartiennent à `sales` (`finance` ne l'importe pas) ; le transport
+    // complète leur numéro de pièce, leur mode de paiement et leur référence.
+    const payments = await customerPaymentDetails(
+      this.db,
+      page.items.filter((m) => m.sourceDocType === 'CUSTOMER_PAYMENT').map((m) => m.sourceDocId),
+    );
+    const movements = page.items.map((movement) => {
+      const payment =
+        movement.sourceDocType === 'CUSTOMER_PAYMENT'
+          ? payments.get(movement.sourceDocId)
+          : undefined;
+      return payment
+        ? {
+            ...movement,
+            docNumber: payment.docNumber,
+            paymentMethodCode: payment.paymentMethodCode,
+            reference: payment.externalReference,
+          }
+        : movement;
+    });
+    return { cash_account: account, movements, next_cursor: page.nextCursor };
   }
 }

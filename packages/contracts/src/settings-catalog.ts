@@ -113,6 +113,7 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   // AV-512 : livrer à crédit un client autorisé au crédit, dans son plafond (vrai par défaut) ; faux, tout client
   // paie d'abord.
   'sales.delivery_on_credit_allowed': flag('sales', { site: true }),
+  'sales.receivables_delivered_only': flag('sales'),
   'sales.duplicate_payment_window_minutes': minutes('sales'),
   'sales.offline_over_allocation_allowed': flag('sales', { site: true }),
   'sales.offline_unallocated_sale_signal': choice('sales', ['WHEN_ALLOCATED', 'ALWAYS', 'NEVER'], {
