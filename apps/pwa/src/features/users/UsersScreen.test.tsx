@@ -12,6 +12,8 @@ import {
   canSendStatus,
   createBody,
   createRoleBody,
+  editFormOf,
+  editUserProblem,
   EMPTY_NEW_USER,
   failureOutcome,
   grantPayload,
@@ -27,6 +29,7 @@ import {
   statusActionsFor,
   statusCommand,
   statusReasonRequired,
+  updatePayload,
   usersPath,
   type AssignmentView,
   type RoleView,
@@ -72,6 +75,7 @@ const ROLES: readonly RoleView[] = [
 ];
 
 const NO_ACTIONS = {
+  update: false,
   resetPassword: false,
   suspend: false,
   reactivate: false,
@@ -371,6 +375,38 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
       commandType: 'identity.user.reactivate',
       payload: {},
     });
+  });
+
+  it('modification d’un compte (AV-515) : saisie de départ, seuls les champs modifiés partent, défauts dans l’ordre', () => {
+    const awa = account({ email: 'awa@gic-agropelc.test' });
+    expect(editFormOf(awa)).toEqual({
+      fullName: 'Awa Nde',
+      phone: '+237690000001',
+      email: 'awa@gic-agropelc.test',
+    });
+    expect(editFormOf(account()).email).toBe('');
+    // Rien de modifié : rien à envoyer.
+    expect(updatePayload(editFormOf(awa), awa)).toEqual({});
+    expect(editUserProblem(editFormOf(awa), awa)).toBe('UNCHANGED');
+    // Le nom, espaces retirés.
+    expect(updatePayload({ ...editFormOf(awa), fullName: '  Awa Nde-Bell ' }, awa)).toEqual({
+      fullName: 'Awa Nde-Bell',
+    });
+    // Un numéro saisi sans l'indicatif est normalisé ; le même numéro écrit autrement n'est pas un changement.
+    expect(updatePayload({ ...editFormOf(awa), phone: '690 00 00 02' }, awa)).toEqual({
+      phone: '+237690000002',
+    });
+    expect(updatePayload({ ...editFormOf(awa), phone: '690 00 00 01' }, awa)).toEqual({});
+    // Une adresse vidée est retirée (`null`) ; une adresse ajoutée part sans espaces.
+    expect(updatePayload({ ...editFormOf(awa), email: '  ' }, awa)).toEqual({ email: null });
+    expect(
+      updatePayload({ ...editFormOf(account()), email: ' paul@gic.test ' }, account()),
+    ).toEqual({ email: 'paul@gic.test' });
+    // Premier défaut : le nom, puis le numéro, puis l'adresse.
+    expect(editUserProblem({ ...editFormOf(awa), fullName: ' ' }, awa)).toBe('NAME');
+    expect(editUserProblem({ ...editFormOf(awa), phone: '12' }, awa)).toBe('PHONE');
+    expect(editUserProblem({ ...editFormOf(awa), email: 'pas-une-adresse' }, awa)).toBe('EMAIL');
+    expect(editUserProblem({ ...editFormOf(awa), fullName: 'Awa Bell' }, awa)).toBeNull();
   });
 
   it('création d’un compte : téléphone normalisé, défauts de saisie dans l’ordre, corps de la requête', () => {
@@ -925,6 +961,57 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
       await screen.findByText(/Opération refusée : Aucun autre ADMIN actif/),
     ).toBeInTheDocument();
     await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+  });
+
+  it('modifie un compte (AV-515) : formulaire prérempli, seule la modification part, commande identity.user.update', async () => {
+    serve({
+      users: [
+        account({ email: 'awa@gic-agropelc.test', actions: { ...NO_ACTIONS, update: true } }),
+      ],
+      roles: ROLES,
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    await user.click(
+      within(card).getByRole('button', { name: 'Modifier les informations de Awa Nde' }),
+    );
+    const submit = within(card).getByRole('button', {
+      name: 'Enregistrer les informations de Awa Nde',
+    });
+    // Rien de modifié : rien à enregistrer.
+    expect(submit).toBeDisabled();
+    const name = within(card).getByLabelText('Nom complet');
+    const email = within(card).getByLabelText('Adresse e-mail (facultative)');
+    expect(name).toHaveValue('Awa Nde');
+    expect(within(card).getByLabelText('Téléphone')).toHaveValue('+237690000001');
+    expect(email).toHaveValue('awa@gic-agropelc.test');
+    await user.clear(name);
+    expect(submit).toBeDisabled();
+    expect(within(card).getByText('Le nom ne peut pas être vide.')).toBeInTheDocument();
+    await user.type(name, 'Awa Nde-Bell');
+    await user.clear(email);
+    await user.click(submit);
+
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'identity.user.update',
+      aggregate_type: 'USER',
+      aggregate_id: AWA,
+      payload: { fullName: 'Awa Nde-Bell', email: null },
+    });
+    expect(command!.payload).not.toHaveProperty('phone');
+    // Le formulaire est refermé ; l'envoi est suivi.
+    expect(within(card).queryByLabelText('Nom complet')).toBeNull();
+    expect(await screen.findByText('Opération en cours d’envoi…')).toBeInTheDocument();
+  });
+
+  it('sans le droit de modifier (AV-515), aucun bouton « Modifier »', async () => {
+    serve({ users: [account()], roles: ROLES });
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    expect(within(card).queryByRole('button', { name: /Modifier les informations/ })).toBeNull();
   });
 
   it('une commande d’appareil en attente ne retient pas l’écran des comptes', async () => {

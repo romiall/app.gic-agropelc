@@ -6,9 +6,10 @@
  * - Écritures : les commandes `organization.*` (droit `org.structure.manage`, Admin seul), envoyées par la
  *   file d'envoi, en ligne seulement. Le serveur reste juge : les contrôles d'ici ne servent qu'à éviter un
  *   aller-retour inutile et à dire en français ce qui manque.
- * - Le serveur n'offre ni renommage ni déplacement d'une zone, ni fermeture d'une équipe, ni changement de
- *   code ou de zone d'un site, ni retrait de la capacité d'un emplacement ou de la précision GPS d'une zone
- *   (une valeur absente d'une mise à jour est « inchangée ») (AV-497) : ces actions ne sont pas proposées.
+ * - Une zone se renomme (`organization.zone.update`) et se déplace (`organization.zone.move`), une équipe se
+ *   ferme (`organization.team.close`) (AV-515). Le serveur n'offre toujours pas de changement de code ou de
+ *   zone d'un site, ni de retrait de la capacité d'un emplacement ou de la précision GPS d'une zone (une
+ *   valeur absente d'une mise à jour est « inchangée ») (AV-497) : ces actions ne sont pas proposées.
  */
 
 import { parseDecimal } from '../admin/parse.js';
@@ -479,6 +480,41 @@ export function zoneActiveCommand(zone: ZoneView, isActive: boolean): Organizati
   };
 }
 
+/**
+ * Zones sous lesquelles `zone` peut être déplacée (AV-515) : actives, hors d'elle-même et de ses descendantes
+ * (le serveur refuse un cycle) et hors de sa parente actuelle.
+ */
+export function moveTargetsOf(zone: ZoneView, zones: readonly ZoneView[]): ZoneView[] {
+  const excluded = new Set<string>([zone.id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const candidate of zones) {
+      if (
+        candidate.parentId !== null &&
+        excluded.has(candidate.parentId) &&
+        !excluded.has(candidate.id)
+      ) {
+        excluded.add(candidate.id);
+        grew = true;
+      }
+    }
+  }
+  return zones.filter(
+    (candidate) =>
+      candidate.isActive && !excluded.has(candidate.id) && candidate.id !== zone.parentId,
+  );
+}
+
+/** Déplacement d'une zone et de ses descendantes ; `''` : à la racine. */
+export function zoneMoveCommand(zone: ZoneView, parentId: string): OrganizationCommand {
+  return {
+    commandType: 'organization.zone.move',
+    aggregateType: 'ZONE',
+    aggregateId: zone.id,
+    payload: { parentId: parentId === '' ? null : parentId },
+  };
+}
+
 export interface ZoneNode {
   readonly zone: ZoneView;
   readonly children: readonly ZoneNode[];
@@ -567,6 +603,20 @@ export function teamRemoveCommand(userId: string, commandAggregateId: string): O
     payload: { userId },
   };
 }
+
+/** Fermeture d'une équipe (AV-515) : ses membres la quittent, elle n'en reçoit plus ; le motif est facultatif. */
+export function teamCloseCommand(team: TeamView, reason: string): OrganizationCommand {
+  const text = reason.trim();
+  return {
+    commandType: 'organization.team.close',
+    aggregateType: 'TEAM',
+    aggregateId: team.id,
+    payload: text === '' ? {} : { reason: text.slice(0, TEAM_CLOSE_REASON_MAX) },
+  };
+}
+
+/** Longueur maximale du motif de fermeture (schéma de la commande). */
+export const TEAM_CLOSE_REASON_MAX = 500;
 
 /** Équipe actuelle d'une personne, d'après les équipes lues. */
 export function teamOfUser(teams: readonly TeamView[], userId: string): TeamView | undefined {

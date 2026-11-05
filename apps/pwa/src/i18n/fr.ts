@@ -2694,7 +2694,7 @@ export const fr = {
   },
   users: {
     intro:
-      'Comptes de votre portée. L’administrateur crée un compte avec un mot de passe provisoire, y ajoute ou retire des rôles, suspend ou désactive un compte, et réinitialise le mot de passe d’une personne qui l’a oublié : elle devra le changer à sa prochaine connexion.',
+      'Comptes de votre portée. L’administrateur crée un compte avec un mot de passe provisoire, corrige son nom, son numéro ou son adresse e-mail, y ajoute ou retire des rôles, suspend ou désactive un compte, et réinitialise le mot de passe d’une personne qui l’a oublié : elle devra le changer à sa prochaine connexion.',
     online_only: 'Écran en ligne seulement : reconnectez-vous pour gérer les comptes.',
     help_title: 'À quoi sert cet écran ?',
     refreshing: 'Relecture des comptes après la dernière opération…',
@@ -2737,6 +2737,11 @@ export const fr = {
     last_login: 'Dernière connexion : {{date}}',
     never_logged_in: 'Jamais connecté.',
     must_change: 'Mot de passe provisoire : à changer à la prochaine connexion.',
+    edit_action: 'Modifier',
+    edit_open: 'Modifier les informations de {{name}}',
+    edit_title: 'Informations de {{name}}',
+    edit_submit: 'Enregistrer les informations de {{name}}',
+    edit_name_required: 'Le nom ne peut pas être vide.',
     reset_action: 'Réinitialiser le mot de passe',
     reset_open: 'Réinitialiser le mot de passe de {{name}}',
     reset_title: 'Mot de passe provisoire de {{name}}',
@@ -4953,6 +4958,15 @@ export const fr = {
       deactivate: 'Désactiver',
       reactivate: 'Réactiver',
       unchanged: 'Aucun changement à enregistrer.',
+      move: 'Déplacer',
+      move_open: 'Déplacer la zone {{name}}',
+      move_label: 'Nouvelle zone parente de {{name}}',
+      move_current: '{{name}} (actuelle)',
+      move_current_root: 'À la racine (actuelle)',
+      move_root: 'À la racine (aucune zone parente)',
+      move_hint:
+        'La zone est déplacée avec toutes ses zones filles. Les rôles donnés sur une zone parente couvrent alors ses nouvelles zones filles, et ne couvrent plus celles qu’elle quitte.',
+      move_confirm: 'Déplacer {{name}}',
     },
     position: {
       use: 'Utiliser ma position',
@@ -4980,6 +4994,16 @@ export const fr = {
         'Cette personne quitte l’équipe {{team}} : elle n’est membre que d’une équipe à la fois.',
       add_confirm: 'Ajouter à {{name}}',
       add: 'Ajouter un membre',
+      close: 'Fermer l’équipe',
+      close_open: 'Fermer l’équipe {{name}}',
+      close_warning_one:
+        'La fermeture retire le membre de l’équipe et l’équipe ne reçoit plus personne. Les rôles donnés sur cette équipe restent listés dans l’écran des comptes : retirez-les à la main.',
+      close_warning_other:
+        'La fermeture retire les {{count}} membres de l’équipe et l’équipe ne reçoit plus personne. Les rôles donnés sur cette équipe restent listés dans l’écran des comptes : retirez-les à la main.',
+      close_warning_none:
+        'L’équipe n’a aucun membre. Fermée, elle ne reçoit plus personne ; les rôles donnés sur cette équipe restent listés dans l’écran des comptes.',
+      close_reason: 'Motif (facultatif)',
+      close_confirm: 'Confirmer la fermeture de {{name}}',
     },
     pos: {
       new: 'Configurer un point de vente',

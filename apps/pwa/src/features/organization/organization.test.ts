@@ -13,6 +13,7 @@ import {
   locationProblems,
   locationUpdateCommand,
   locationsPath,
+  moveTargetsOf,
   normalizeCode,
   parseCapacity,
   posConfigureCommand,
@@ -24,7 +25,9 @@ import {
   siteProblems,
   siteUpdateCommand,
   sourceChoices,
+  TEAM_CLOSE_REASON_MAX,
   teamAssignCommand,
+  teamCloseCommand,
   teamCreateCommand,
   teamOfUser,
   teamProblems,
@@ -32,6 +35,7 @@ import {
   zoneActiveCommand,
   zoneCreateCommand,
   zoneFormOf,
+  zoneMoveCommand,
   zoneProblems,
   zoneTree,
   zoneUpdateCommand,
@@ -297,6 +301,33 @@ describe('Organisation : zones et géorepères', () => {
     ]);
     expect(zoneTree([])).toEqual([]);
   });
+
+  it('déplacement (AV-515) : ni elle-même, ni ses descendantes, ni sa parente actuelle, ni une zone inactive', () => {
+    const zones = [
+      zone({ id: 'a', code: 'A', name: 'A' }),
+      zone({ id: 'b', parentId: 'a', code: 'B', name: 'B', depth: 2 }),
+      zone({ id: 'c', parentId: 'b', code: 'C', name: 'C', depth: 3 }),
+      zone({ id: 'd', code: 'D', name: 'D' }),
+      zone({ id: 'e', parentId: 'd', code: 'E', name: 'E', depth: 2 }),
+      zone({ id: 'f', code: 'F', name: 'F', isActive: false }),
+    ];
+    const names = (target: ZoneView) => moveTargetsOf(target, zones).map((row) => row.name);
+    // B sous D ou E (ou à la racine, qui n'est pas une zone) : pas A (sa parente), ni C (sa fille), ni F (inactive).
+    expect(names(zones[1]!)).toEqual(['D', 'E']);
+    expect(names(zones[0]!)).toEqual(['D', 'E']);
+    // Une zone racine peut aller sous n'importe quelle zone active qui n'est pas dans sa branche.
+    expect(names(zones[3]!)).toEqual(['A', 'B', 'C']);
+    // Jamais sous une descendante, même lointaine.
+    expect(names(zones[1]!)).not.toContain('C');
+    expect(zoneMoveCommand(zones[1]!, 'e')).toEqual({
+      commandType: 'organization.zone.move',
+      aggregateType: 'ZONE',
+      aggregateId: 'b',
+      payload: { parentId: 'e' },
+    });
+    // La racine s'écrit `null`.
+    expect(zoneMoveCommand(zones[1]!, '').payload).toEqual({ parentId: null });
+  });
 });
 
 describe('Organisation : équipes et points de vente', () => {
@@ -335,6 +366,20 @@ describe('Organisation : équipes et points de vente', () => {
       aggregateId: 'm10',
       payload: { userId: 'u2' },
     });
+  });
+
+  it('fermeture d’une équipe (AV-515) : motif facultatif, coupé à la longueur du schéma', () => {
+    expect(teamCloseCommand(team(), '   ')).toEqual({
+      commandType: 'organization.team.close',
+      aggregateType: 'TEAM',
+      aggregateId: 't1',
+      payload: {},
+    });
+    expect(teamCloseCommand(team(), ' Réorganisation ').payload).toEqual({
+      reason: 'Réorganisation',
+    });
+    const long = teamCloseCommand(team(), 'x'.repeat(TEAM_CLOSE_REASON_MAX + 20));
+    expect((long.payload.reason as string).length).toBe(TEAM_CLOSE_REASON_MAX);
   });
 
   it('équipe actuelle d’une personne', () => {

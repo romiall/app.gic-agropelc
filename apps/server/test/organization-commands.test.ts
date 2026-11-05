@@ -20,7 +20,7 @@ import {
   listSettingHistory,
   currentSettingValue,
 } from '../src/modules/organization/application/public/index.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -309,6 +309,122 @@ describe('organization.* (P0-11)', () => {
         .executeTakeFirstOrThrow();
       expect(row.name).toBe('Après');
       expect(row.is_active).toBe(0);
+    });
+  });
+
+  describe('zone — déplacement (AV-515)', () => {
+    const createZone = async (parentId?: string): Promise<string> => {
+      const id = freshUuid();
+      const result = await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'organization.zone.create',
+          aggregate_type: 'ZONE',
+          aggregate_id: id,
+          occurred_at: OCCURRED_AT,
+          payload: {
+            code: `Z-${id.slice(-8)}`,
+            name: `Zone ${id.slice(-4)}`,
+            level: 'VILLE',
+            ...(parentId ? { parentId } : {}),
+          },
+        }),
+        ctx(),
+      );
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+      return id;
+    };
+    const moveZone = (id: string, parentId: string | null) =>
+      pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'organization.zone.move',
+          aggregate_type: 'ZONE',
+          aggregate_id: id,
+          occurred_at: LATER_OCCURRED_AT,
+          payload: { parentId },
+        }),
+        ctx(),
+      );
+    /** Fermeture d'une zone : ancêtre → distance. */
+    const closureOf = async (id: string): Promise<Record<string, number>> =>
+      Object.fromEntries(
+        (
+          await db
+            .selectFrom('organization_zone_ancestors')
+            .select(['ancestor_id', 'depth'])
+            .where('zone_id', '=', toBin(id))
+            .execute()
+        ).map((row) => [fromBin(row.ancestor_id), row.depth]),
+      );
+    const rowOf = (id: string) =>
+      db
+        .selectFrom('organization_zones')
+        .select(['parent_id', 'depth', 'version'])
+        .where('id', '=', toBin(id))
+        .executeTakeFirstOrThrow();
+
+    it('une zone et sa sous-arborescence changent de parente : fermeture, profondeurs et publication aux appareils', async () => {
+      // A > B > C et D > E : B (avec C) passe sous D, puis à la racine.
+      const a = await createZone();
+      const b = await createZone(a);
+      const c = await createZone(b);
+      const d = await createZone();
+      const e = await createZone(d);
+      expect(await closureOf(c)).toEqual({ [c]: 0, [b]: 1, [a]: 2 });
+
+      const moved = await moveZone(b, e);
+      expect(moved.status, JSON.stringify(moved)).toBe('APPLIED');
+      expect(await closureOf(b)).toEqual({ [b]: 0, [e]: 1, [d]: 2 });
+      expect(await closureOf(c)).toEqual({ [c]: 0, [b]: 1, [e]: 2, [d]: 3 });
+      expect(await closureOf(a)).toEqual({ [a]: 0 });
+      expect(fromBin((await rowOf(b)).parent_id!)).toBe(e);
+      expect((await rowOf(b)).depth).toBe(3);
+      expect((await rowOf(c)).depth).toBe(4);
+      // La zone déplacée et ses descendantes sont publiées (la profondeur d'une règle de prix en dépend).
+      const published = await db
+        .selectFrom('sync_change_feed')
+        .select('entity_id')
+        .where('dataset', '=', 'zone')
+        .where('entity_id', 'in', [toBin(b), toBin(c)])
+        .execute();
+      expect(published.map((row) => fromBin(row.entity_id))).toContain(c);
+
+      // À la racine : plus aucune ancêtre au-dessus de la zone déplacée.
+      const toRoot = await moveZone(b, null);
+      expect(toRoot.status, JSON.stringify(toRoot)).toBe('APPLIED');
+      expect(await closureOf(b)).toEqual({ [b]: 0 });
+      expect(await closureOf(c)).toEqual({ [c]: 0, [b]: 1 });
+      expect((await rowOf(b)).parent_id).toBeNull();
+      expect([(await rowOf(b)).depth, (await rowOf(c)).depth]).toEqual([1, 2]);
+      expect(await closureOf(e)).toEqual({ [e]: 0, [d]: 1 });
+
+      // Même parente : appliqué sans effet (la version de la zone ne bouge pas).
+      const before = (await rowOf(b)).version;
+      expect((await moveZone(b, null)).status).toBe('APPLIED');
+      expect((await rowOf(b)).version).toBe(before);
+    });
+
+    it('refus : sous elle-même ou sous une descendante (cycle), parente ou zone introuvable', async () => {
+      const a = await createZone();
+      const b = await createZone(a);
+      const c = await createZone(b);
+      expect(await moveZone(a, c)).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'ZONE_CYCLE' },
+      });
+      expect(await moveZone(a, a)).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'ZONE_CYCLE' },
+      });
+      expect(await moveZone(c, freshUuid())).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'NOT_FOUND' },
+      });
+      expect(await moveZone(freshUuid(), a)).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'NOT_FOUND' },
+      });
+      // Rien n'a bougé.
+      expect(await closureOf(c)).toEqual({ [c]: 0, [b]: 1, [a]: 2 });
     });
   });
 
@@ -675,6 +791,117 @@ describe('organization.* (P0-11)', () => {
     });
   });
 
+  describe('équipe — fermeture (AV-515)', () => {
+    it('close : équipe inactive, appartenances closes et publiées, plus de membre accepté, rejeu sans effet', async () => {
+      const manager = await createRealUser();
+      const teamId = freshUuid();
+      await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'organization.team.create',
+          aggregate_type: 'TEAM',
+          aggregate_id: teamId,
+          occurred_at: OCCURRED_AT,
+          payload: {
+            code: `T-${teamId.slice(-8)}`,
+            name: 'Équipe à fermer',
+            managerUserId: manager,
+          },
+        }),
+        ctx(),
+      );
+      const memberships: string[] = [];
+      for (let index = 0; index < 2; index++) {
+        const membershipId = freshUuid();
+        memberships.push(membershipId);
+        const assigned = await pipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'organization.team.assign_member',
+            aggregate_type: 'TEAM_MEMBERSHIP',
+            aggregate_id: membershipId,
+            occurred_at: OCCURRED_AT,
+            payload: { userId: await createRealUser(), teamId },
+          }),
+          ctx(),
+        );
+        expect(assigned.status, JSON.stringify(assigned)).toBe('APPLIED');
+      }
+      const close = (reason?: string) =>
+        pipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'organization.team.close',
+            aggregate_type: 'TEAM',
+            aggregate_id: teamId,
+            occurred_at: LATER_OCCURRED_AT,
+            payload: reason === undefined ? {} : { reason },
+          }),
+          ctx(),
+        );
+      const closed = await close('Réorganisation');
+      expect(closed.status, JSON.stringify(closed)).toBe('APPLIED');
+
+      const team = await db
+        .selectFrom('organization_teams')
+        .select(['is_active', 'version'])
+        .where('id', '=', toBin(teamId))
+        .executeTakeFirstOrThrow();
+      expect(Number(team.is_active)).toBe(0);
+      const rows = await db
+        .selectFrom('organization_team_memberships')
+        .select('valid_to')
+        .where('team_id', '=', toBin(teamId))
+        .execute();
+      expect(rows).toHaveLength(2);
+      for (const row of rows) expect(row.valid_to).not.toBeNull();
+      // Chaque appartenance close est republiée (l'appareil cesse de compter ces membres).
+      const published = await db
+        .selectFrom('sync_change_feed')
+        .select('entity_id')
+        .where('dataset', '=', 'team_membership')
+        .where(
+          'entity_id',
+          'in',
+          memberships.map((id) => toBin(id)),
+        )
+        .execute();
+      expect(published.length).toBeGreaterThanOrEqual(4);
+
+      // Une équipe fermée ne reçoit plus de membre.
+      const refused = await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'organization.team.assign_member',
+          aggregate_type: 'TEAM_MEMBERSHIP',
+          aggregate_id: freshUuid(),
+          occurred_at: LATER_OCCURRED_AT,
+          payload: { userId: await createRealUser(), teamId },
+        }),
+        ctx(),
+      );
+      expect(refused).toMatchObject({ status: 'REJECTED', error: { code: 'TEAM_CLOSED' } });
+
+      // Rejeu sous un autre identifiant de commande : sans effet.
+      expect((await close()).status).toBe('APPLIED');
+      const after = await db
+        .selectFrom('organization_teams')
+        .select('version')
+        .where('id', '=', toBin(teamId))
+        .executeTakeFirstOrThrow();
+      expect(after.version).toBe(team.version);
+      expect(await close()).not.toMatchObject({ status: 'REJECTED' });
+      expect(
+        await pipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'organization.team.close',
+            aggregate_type: 'TEAM',
+            aggregate_id: freshUuid(),
+            occurred_at: LATER_OCCURRED_AT,
+            payload: {},
+          }),
+          ctx(),
+        ),
+      ).toMatchObject({ status: 'REJECTED', error: { code: 'NOT_FOUND' } });
+    });
+  });
+
   describe('paramètre système (critère de sortie P0-11)', () => {
     it('setting.set : versionne (jamais d’UPDATE), historique lisible, valeur en vigueur correcte à chaque instant', async () => {
       const key = `test.p0_11.${freshUuid()}`;
@@ -731,6 +958,78 @@ describe('organization.* (P0-11)', () => {
         at: new Date('2026-09-24T12:00:00.000Z'),
       });
       expect(afterSecondChange).toBe(200);
+    });
+
+    it('AV-496 : la valeur d’une clé du catalogue est contrôlée par le serveur ; une clé hors catalogue reste libre', async () => {
+      const set = (payload: Record<string, unknown>) =>
+        pipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'organization.setting.set',
+            aggregate_type: 'SETTING',
+            aggregate_id: freshUuid(),
+            occurred_at: OCCURRED_AT,
+            payload,
+          }),
+          ctx(),
+        );
+      const refusal = { status: 'REJECTED', error: { code: 'SETTING_VALUE_INVALID' } };
+      // Ces refus n'écrivent rien : les clés réelles restent intactes sur la base partagée.
+      expect(
+        await set({ key: 'finance.cash_session_force_close_hours', value: 0, scopeType: 'GLOBAL' }),
+      ).toMatchObject(refusal);
+      expect(
+        await set({
+          key: 'finance.cash_session_force_close_hours',
+          value: '24',
+          scopeType: 'GLOBAL',
+        }),
+      ).toMatchObject(refusal);
+      expect(
+        await set({
+          key: 'finance.cash_session_force_close_hours',
+          value: 1.5,
+          scopeType: 'GLOBAL',
+        }),
+      ).toMatchObject(refusal);
+      expect(
+        await set({
+          key: 'sales.delivery_requires_full_payment',
+          value: 'oui',
+          scopeType: 'GLOBAL',
+        }),
+      ).toMatchObject(refusal);
+      expect(
+        await set({
+          key: 'production.egg_grade_product_codes',
+          value: ['GROS', ' '],
+          scopeType: 'GLOBAL',
+        }),
+      ).toMatchObject(refusal);
+      expect(
+        await set({ key: 'pricing.max_discount_pct.VENDEUR_PDV', value: 150, scopeType: 'GLOBAL' }),
+      ).toMatchObject(refusal);
+      // Valeur absente, même pour une clé hors catalogue.
+      expect(await set({ key: `test.av496.${freshUuid()}`, scopeType: 'GLOBAL' })).toMatchObject(
+        refusal,
+      );
+
+      // Valide : posée sur un site d'essai (jamais en global sur une clé réelle) ; hors catalogue : toute valeur.
+      const zoneId = await db.transaction().execute((trx) => insertTestZone(trx, admin));
+      const siteId = await db.transaction().execute((trx) => insertTestSite(trx, admin, zoneId));
+      expect(
+        (
+          await set({
+            key: 'finance.cash_session_force_close_hours',
+            value: 12,
+            scopeType: 'SITE',
+            scopeId: siteId,
+          })
+        ).status,
+      ).toBe('APPLIED');
+      expect(
+        (await set({ key: `test.av496.${freshUuid()}`, value: { a: [1, 2] }, scopeType: 'GLOBAL' }))
+          .status,
+      ).toBe('APPLIED');
     });
 
     it('setting.set : scopeType SITE exige un scopeId, et une cible réelle', async () => {

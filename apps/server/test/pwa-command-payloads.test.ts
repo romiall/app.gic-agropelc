@@ -46,7 +46,12 @@ import {
 } from '../../pwa/src/features/organization/organization.js';
 import { policyCommand, settingCommand } from '../../pwa/src/features/settings/settings.js';
 import { commandOf, type DeviceAction } from '../../pwa/src/features/devices/devices.js';
-import { grantPayload, revokePayload, statusCommand } from '../../pwa/src/features/users/users.js';
+import {
+  grantPayload,
+  revokePayload,
+  statusCommand,
+  updatePayload,
+} from '../../pwa/src/features/users/users.js';
 import {
   CONFLICT_RESOLUTIONS,
   conflictCommandOf,
@@ -324,6 +329,14 @@ function samples(): Sample[] {
     fromOrg('comptes : désactivation', statusCommand('DEACTIVATE', 'Motif')),
     fromOrg('comptes : réactivation', statusCommand('REACTIVATE', '')),
     {
+      label: 'comptes : modification du nom, du numéro et de l’adresse (AV-515)',
+      commandType: 'identity.user.update',
+      payload: updatePayload(
+        { fullName: 'Awa Nde-Bell', phone: '690 00 00 02', email: '' },
+        { fullName: 'Awa Nde', phone: '+237690000001', email: 'awa@gic-agropelc.test' },
+      ),
+    },
+    {
       label: 'comptes : retrait d’un rôle',
       commandType: 'identity.role_assignment.revoke',
       payload: revokePayload('Motif'),
@@ -554,6 +567,7 @@ describe('charges de commande fabriquées par la PWA : le schéma du serveur les
       'approvals.policy.set',
       'identity.device.designate',
       'identity.role_assignment.grant',
+      'identity.user.update',
       'sync.conflict.resolve',
       'crm.customer.reassign',
       'crm.visit.record',

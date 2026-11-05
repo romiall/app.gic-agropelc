@@ -1,8 +1,9 @@
 /**
  * Onglet « Zones » de l'écran Organisation (ECR-ADM-06 ; UC-ADM-02 ; BR-ADM-012, BR-TER-001) : arbre des zones,
  * création, et modification du nom, du géorepère de pointage et de la précision GPS maximale. Le géorepère se
- * saisit en latitude, longitude et rayon, ou par « Ma position » (AV-492, pas de carte). Le code, le niveau et
- * le parent d'une zone ne se changent pas (AV-497).
+ * saisit en latitude, longitude et rayon, ou par « Ma position » (AV-492, pas de carte). Le code et le niveau
+ * d'une zone ne se changent pas (AV-497) ; sa parente, si : « Déplacer » place la zone et ses descendantes sous
+ * une autre zone ou à la racine (AV-515).
  */
 import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -24,9 +25,11 @@ import {
   ZONE_LEVELS,
   flattenZones,
   formatCoordinate,
+  moveTargetsOf,
   zoneActiveCommand,
   zoneCreateCommand,
   zoneFormOf,
+  zoneMoveCommand,
   zoneProblems,
   zoneTree,
   zoneUpdateCommand,
@@ -139,6 +142,7 @@ export function ZonesPanel(props: PanelProps) {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [editing, setEditing] = useState<{ zone: ZoneView; form: ZoneForm } | null>(null);
+  const [moving, setMoving] = useState<{ zone: ZoneView; parentId: string } | null>(null);
   const rows = flattenZones(zoneTree(data.zones));
   const createProblems = zoneProblems(form, 'CREATE');
   const editProblems = editing ? zoneProblems(editing.form, 'UPDATE') : [];
@@ -159,6 +163,12 @@ export function ZonesPanel(props: PanelProps) {
 
   const toggleActive = (zone: ZoneView) =>
     void commands.send(zoneActiveCommand(zone, !zone.isActive), blocked);
+
+  const move = async () => {
+    if (!moving) return;
+    if (await commands.send(zoneMoveCommand(moving.zone, moving.parentId), blocked))
+      setMoving(null);
+  };
 
   return (
     <>
@@ -292,7 +302,55 @@ export function ZonesPanel(props: PanelProps) {
                     {zone.isActive ? t('org.zones.active') : t('org.zones.inactive')}
                   </Badge>
                 </div>
-                {!isEditing ? (
+                {moving?.zone.id === zone.id ? (
+                  <div className="adm-form adm-panel">
+                    <Field label={t('org.zones.move_label', { name: zone.name })}>
+                      {(control) => (
+                        <Select
+                          {...control}
+                          value={moving.parentId}
+                          onChange={(event) =>
+                            setMoving({ ...moving, parentId: event.target.value })
+                          }
+                        >
+                          {zone.parentId !== null ? (
+                            <>
+                              <option value={zone.parentId}>
+                                {t('org.zones.move_current', {
+                                  name:
+                                    data.zones.find((candidate) => candidate.id === zone.parentId)
+                                      ?.name ?? '…',
+                                })}
+                              </option>
+                              <option value="">{t('org.zones.move_root')}</option>
+                            </>
+                          ) : (
+                            <option value="" disabled>
+                              {t('org.zones.move_current_root')}
+                            </option>
+                          )}
+                          {moveTargetsOf(zone, data.zones).map((target) => (
+                            <option key={target.id} value={target.id}>
+                              {target.name}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                    <p className="adm-note">{t('org.zones.move_hint')}</p>
+                    <div className="adm-actions">
+                      <Button
+                        disabled={blocked || moving.parentId === (zone.parentId ?? '')}
+                        onClick={() => void move()}
+                      >
+                        {t('org.zones.move_confirm', { name: zone.name })}
+                      </Button>
+                      <Button variant="ghost" onClick={() => setMoving(null)}>
+                        {t('org.cancel')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : !isEditing ? (
                   <div className="adm-actions">
                     <Button
                       variant="ghost"
@@ -300,10 +358,24 @@ export function ZonesPanel(props: PanelProps) {
                       disabled={blocked}
                       onClick={() => {
                         setCreating(false);
+                        setMoving(null);
                         setEditing({ zone, form: zoneFormOf(zone) });
                       }}
                     >
                       {t('org.edit')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={blocked}
+                      aria-label={t('org.zones.move_open', { name: zone.name })}
+                      onClick={() => {
+                        setCreating(false);
+                        setEditing(null);
+                        setMoving({ zone, parentId: zone.parentId ?? '' });
+                      }}
+                    >
+                      {t('org.zones.move')}
                     </Button>
                     <Button
                       variant="ghost"

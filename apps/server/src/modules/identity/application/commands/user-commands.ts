@@ -25,17 +25,34 @@ import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@gic/domain';
 const emptyPayloadSchema = z.object({});
 const reasonRequiredSchema = z.object({ reason: z.string().min(1).max(500) });
 // BR-ADM-001 : E.164 (voir aussi ck_identity_users_phone).
+const phoneSchema = z.string().regex(/^\+[1-9][0-9]{7,14}$/, 'Numéro attendu au format E.164.');
 const createPayloadSchema = z.object({
   fullName: z.string().min(1).max(200),
-  phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, 'Numéro attendu au format E.164.'),
+  phone: phoneSchema,
   // MP-08 (AV-280) : règles partagées ; masqué dans la charge conservée (ADR-045).
   initialPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
   email: z.string().email().optional(),
 });
+/**
+ * Modification des informations d'un compte (AV-515) : nom, numéro, adresse e-mail. Un champ absent reste
+ * inchangé ; `email: null` retire l'adresse. Le mot de passe et l'état du compte ont leurs propres commandes.
+ */
+const updatePayloadSchema = z
+  .object({
+    fullName: z.string().trim().min(1).max(200).optional(),
+    phone: phoneSchema.optional(),
+    email: z.string().trim().email().max(200).nullable().optional(),
+  })
+  .refine(
+    (payload) =>
+      payload.fullName !== undefined || payload.phone !== undefined || payload.email !== undefined,
+    { message: 'Aucune information à modifier.' },
+  );
 
 type EmptyPayload = z.infer<typeof emptyPayloadSchema>;
 type ReasonRequiredPayload = z.infer<typeof reasonRequiredSchema>;
 type CreatePayload = z.infer<typeof createPayloadSchema>;
+type UpdatePayload = z.infer<typeof updatePayloadSchema>;
 
 function invalidTransition(currentStatus: string): CommandHandlerOutcome {
   return {
@@ -81,6 +98,37 @@ async function phoneTakenByOther(uow: UnitOfWork, phone: string, userId: Buffer)
     .where('id', '!=', userId)
     .executeTakeFirst();
   return other !== undefined;
+}
+
+function emailAlreadyUsed(): CommandHandlerOutcome {
+  return {
+    status: 'REJECTED',
+    errorCode: 'EMAIL_ALREADY_USED',
+    messageFr: 'Cette adresse e-mail est déjà utilisée par un compte actif.',
+  };
+}
+
+/** Un autre compte non désactivé porte cette adresse (la connexion par e-mail serait ambiguë). */
+async function emailTakenByOther(uow: UnitOfWork, email: string, userId: Buffer): Promise<boolean> {
+  const other = await uow
+    .selectFrom('identity_users')
+    .select('id')
+    .where(sql<boolean>`LOWER(email) = ${email.toLowerCase()}`)
+    .where('status', '!=', 'DEACTIVATED')
+    .where('id', '!=', userId)
+    .executeTakeFirst();
+  return other !== undefined;
+}
+
+/** Numéro et adresse ne s'écrivent jamais en clair au journal d'audit : on y garde de quoi les reconnaître. */
+function maskPhone(phone: string): string {
+  return `${phone.slice(0, 4)}${'•'.repeat(Math.max(phone.length - 7, 0))}${phone.slice(-3)}`;
+}
+
+function maskEmail(email: string | null): string | null {
+  if (email === null) return null;
+  const at = email.lastIndexOf('@');
+  return at <= 0 ? '•••' : `${email.slice(0, 1)}•••${email.slice(at)}`;
 }
 
 function lastAdmin(): CommandHandlerOutcome {
@@ -222,6 +270,81 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
+/**
+ * Modifie le nom, le numéro ou l'adresse e-mail d'un compte (AV-515). Jamais le compte système ni un compte
+ * désactivé (il se réactive d'abord, ce qui revérifie son numéro). Les sessions restent valides : elles
+ * tiennent au compte, pas à son identifiant de connexion. Rejouée avec les mêmes valeurs : sans effet.
+ */
+const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
+  const userId = toBin(envelope.aggregate_id);
+  const user = await uow
+    .selectFrom('identity_users')
+    .select(['status', 'full_name', 'phone', 'email', 'is_system'])
+    .where('id', '=', userId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!user) return notFound();
+  if (Number(user.is_system) === 1) {
+    return {
+      status: 'REJECTED',
+      errorCode: 'SYSTEM_ACCOUNT',
+      messageFr: 'Le compte système ne se modifie pas.',
+    };
+  }
+  if (user.status === 'DEACTIVATED') {
+    return {
+      status: 'REJECTED',
+      errorCode: 'INVALID_TRANSITION',
+      messageFr: 'Un compte désactivé ne se modifie pas : réactivez-le d’abord.',
+    };
+  }
+
+  const { fullName, phone, email } = envelope.payload;
+  const next = {
+    full_name: fullName ?? user.full_name,
+    phone: phone ?? user.phone,
+    email: email === undefined ? user.email : email,
+  };
+  const nameChanged = next.full_name !== user.full_name;
+  const phoneChanged = next.phone !== user.phone;
+  const emailChanged = next.email !== user.email;
+  // Rien ne change : l'audit reste vide, sans quoi le pipeline y copierait la charge de la commande (numéro compris).
+  if (!nameChanged && !phoneChanged && !emailChanged) {
+    return { status: 'APPLIED', audit: { before: {}, after: {} } };
+  }
+  if (phoneChanged && (await phoneTakenByOther(uow, next.phone, userId))) return phoneAlreadyUsed();
+  if (emailChanged && next.email !== null && (await emailTakenByOther(uow, next.email, userId))) {
+    return emailAlreadyUsed();
+  }
+
+  await uow
+    .updateTable('identity_users')
+    .set({
+      full_name: next.full_name,
+      phone: next.phone,
+      email: next.email,
+      updated_by: toBin(envelope.author_user_id),
+      version: sql`version + 1`,
+    })
+    .where('id', '=', userId)
+    .execute();
+  return {
+    status: 'APPLIED',
+    audit: {
+      before: {
+        ...(nameChanged ? { fullName: user.full_name } : {}),
+        ...(phoneChanged ? { phone: maskPhone(user.phone) } : {}),
+        ...(emailChanged ? { email: maskEmail(user.email) } : {}),
+      },
+      after: {
+        ...(nameChanged ? { fullName: next.full_name } : {}),
+        ...(phoneChanged ? { phone: maskPhone(next.phone) } : {}),
+        ...(emailChanged ? { email: maskEmail(next.email) } : {}),
+      },
+    },
+  };
+};
+
 export function registerUserCommands(registry: CommandHandlerRegistry): void {
   registry.register({
     commandType: 'identity.user.create',
@@ -229,6 +352,13 @@ export function registerUserCommands(registry: CommandHandlerRegistry): void {
     payloadSchema: createPayloadSchema,
     permissionCode: 'identity.user.manage',
     handler: create,
+  });
+  registry.register({
+    commandType: 'identity.user.update',
+    version: 1,
+    payloadSchema: updatePayloadSchema,
+    permissionCode: 'identity.user.manage',
+    handler: update,
   });
   registry.register({
     commandType: 'identity.user.suspend',

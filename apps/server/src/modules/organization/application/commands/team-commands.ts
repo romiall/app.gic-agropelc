@@ -15,6 +15,7 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { emitTeamMembershipChange } from '../sync-changes.js';
 
 const createPayloadSchema = z.object({
@@ -32,9 +33,15 @@ const removeMemberPayloadSchema = z.object({
   userId: z.string().uuid(),
 });
 
+/** Fermeture d'une équipe (AV-515) : motif facultatif, gardé au journal d'audit. */
+const closePayloadSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+
 type CreatePayload = z.infer<typeof createPayloadSchema>;
 type AssignMemberPayload = z.infer<typeof assignMemberPayloadSchema>;
 type RemoveMemberPayload = z.infer<typeof removeMemberPayloadSchema>;
+type ClosePayload = z.infer<typeof closePayloadSchema>;
 
 function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
@@ -87,10 +94,17 @@ const assignMember: CommandHandler<AssignMemberPayload> = async (uow, envelope) 
 
   const team = await uow
     .selectFrom('organization_teams')
-    .select('id')
+    .select(['id', 'is_active'])
     .where('id', '=', toBin(teamId))
     .executeTakeFirst();
   if (!team) return notFound('Équipe introuvable.');
+  if (!team.is_active) {
+    return {
+      status: 'REJECTED',
+      errorCode: 'TEAM_CLOSED',
+      messageFr: 'Cette équipe est fermée : choisissez une autre équipe.',
+    };
+  }
 
   const current = await uow
     .selectFrom('organization_team_memberships')
@@ -156,6 +170,67 @@ const removeMember: CommandHandler<RemoveMemberPayload> = async (uow, envelope) 
   return { status: 'APPLIED' };
 };
 
+/**
+ * Ferme une équipe (AV-515) : elle devient inactive (`is_active`, jamais supprimée : règle 4) et ses
+ * appartenances encore ouvertes se closent à `occurred_at`, chacune publiée aux appareils. Elle ne reçoit plus
+ * de membre (`TEAM_CLOSED`). Les affectations de rôle de périmètre `TEAM` sur cette équipe restent lisibles
+ * (elles ne couvrent plus personne) ; l'Admin les retire depuis l'écran des comptes. Rejeu : sans effet.
+ */
+const close: CommandHandler<ClosePayload> = async (uow, envelope) => {
+  const teamId = toBin(envelope.aggregate_id);
+  const team = await uow
+    .selectFrom('organization_teams')
+    .select(['id', 'is_active'])
+    .where('id', '=', teamId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!team) return notFound('Équipe introuvable.');
+  if (!team.is_active) return { status: 'APPLIED' };
+
+  const occurredAt = new Date(envelope.occurred_at);
+  const open = await uow
+    .selectFrom('organization_team_memberships')
+    .select('id')
+    .where('team_id', '=', teamId)
+    .where('valid_from', '<', occurredAt)
+    .where((eb) => eb.or([eb('valid_to', 'is', null), eb('valid_to', '>', occurredAt)]))
+    .orderBy('id')
+    .execute();
+  for (const membership of open) {
+    await uow
+      .updateTable('organization_team_memberships')
+      .set({
+        valid_to: occurredAt,
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
+      .where('id', '=', membership.id)
+      .execute();
+    await emitTeamMembershipChange(uow, fromBin(membership.id));
+  }
+  await uow
+    .updateTable('organization_teams')
+    .set({
+      is_active: toDbBool(false),
+      updated_by: toBin(envelope.author_user_id),
+      version: sql`version + 1`,
+    })
+    .where('id', '=', teamId)
+    .execute();
+  const reason = envelope.payload.reason;
+  return {
+    status: 'APPLIED',
+    audit: {
+      before: { isActive: true },
+      after: {
+        isActive: false,
+        closedMemberships: open.length,
+        ...(reason !== undefined && reason !== '' ? { reason } : {}),
+      },
+    },
+  };
+};
+
 export function registerTeamCommands(registry: CommandHandlerRegistry): void {
   registry.register({
     commandType: 'organization.team.create',
@@ -177,5 +252,12 @@ export function registerTeamCommands(registry: CommandHandlerRegistry): void {
     payloadSchema: removeMemberPayloadSchema,
     permissionCode: 'org.structure.manage',
     handler: removeMember,
+  });
+  registry.register({
+    commandType: 'organization.team.close',
+    version: 1,
+    payloadSchema: closePayloadSchema,
+    permissionCode: 'org.structure.manage',
+    handler: close,
   });
 }

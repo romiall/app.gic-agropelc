@@ -58,6 +58,7 @@ interface UserEntry {
     readonly validTo: string | null;
   }[];
   readonly actions: {
+    readonly update: boolean;
     readonly resetPassword: boolean;
     readonly suspend: boolean;
     readonly reactivate: boolean;
@@ -498,6 +499,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       self: await readUser(admin, admin.userId),
     };
     expect(forAdmin.active!.actions).toEqual({
+      update: true,
       resetPassword: true,
       suspend: true,
       reactivate: false,
@@ -506,6 +508,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       revokeRoles: true,
     });
     expect(forAdmin.suspended!.actions).toEqual({
+      update: true,
       resetPassword: true,
       suspend: false,
       reactivate: true,
@@ -515,6 +518,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     });
     // Désactivé : plus d'octroi, mais ses rôles restants se retirent sans le réactiver.
     expect(forAdmin.deactivated!.actions).toEqual({
+      update: false,
       resetPassword: false,
       suspend: false,
       reactivate: true,
@@ -525,6 +529,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     // Soi-même : ni suspension, ni désactivation, ni réinitialisation ; les rôles restent gérables
     // (AV-327).
     expect(forAdmin.self!.actions).toEqual({
+      update: true,
       resetPassword: false,
       suspend: false,
       reactivate: false,
@@ -537,6 +542,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     // (leurs sites peuvent sortir de sa portée) : les codes de rôle seulement.
     const forFerme = await readUser(respFerme, activeBody.id);
     expect(forFerme!.actions).toEqual({
+      update: false,
       resetPassword: false,
       suspend: false,
       reactivate: false,
@@ -560,6 +566,123 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     expect(after!.assignments).toEqual([]);
     expect(after!.roles).toEqual([]);
     expect(after!.status).toBe('ACTIVE');
+  });
+
+  it('AV-515 : identity.user.update — nom, numéro, e-mail ; numéro ou e-mail déjà pris, compte désactivé ou système refusés ; audit sans valeur en clair', async () => {
+    const phone = await freshPhone();
+    const created = await create(admin, {
+      full_name: 'Marie Ngo',
+      phone,
+      email: 'marie.ngo@gic-agropelc.test',
+      password: PROVISIONAL,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = (created.json() as { id: string }).id;
+    const otherPhone = await freshPhone();
+    const other = await create(admin, {
+      full_name: 'Autre Compte',
+      phone: otherPhone,
+      email: 'autre.compte@gic-agropelc.test',
+      password: PROVISIONAL,
+    });
+    expect(other.statusCode, other.body).toBe(201);
+    const update = (payload: unknown, actor: Actor = admin, aggregateId: string = id) =>
+      command(actor, 'identity.user.update', 'USER', aggregateId, payload);
+    const versionOf = async () =>
+      (
+        await db
+          .selectFrom('identity_users')
+          .select('version')
+          .where('id', '=', toBin(id))
+          .executeTakeFirstOrThrow()
+      ).version;
+
+    // Rien à modifier, ou un numéro qui n'est pas du E.164 : refus de validation, rien n'est écrit.
+    expect((await update({})).status).toBe('REJECTED');
+    expect((await update({ phone: '0612345678' })).status).toBe('REJECTED');
+    expect((await update({ fullName: '   ' })).status).toBe('REJECTED');
+
+    // Le nom seul, espaces retirés ; le numéro et l'adresse restent.
+    const renamed = await update({ fullName: '  Marie Ngo-Bell ' });
+    expect(renamed.status, JSON.stringify(renamed)).toBe('APPLIED');
+    expect(await userByPhone(phone)).toMatchObject({
+      full_name: 'Marie Ngo-Bell',
+      email: 'marie.ngo@gic-agropelc.test',
+    });
+
+    // Numéro et adresse : l'ancien numéro ne désigne plus personne, le nouveau désigne le compte.
+    const newPhone = await freshPhone();
+    const moved = await update({ phone: newPhone, email: 'marie.bell@gic-agropelc.test' });
+    expect(moved.status, JSON.stringify(moved)).toBe('APPLIED');
+    expect(await userByPhone(phone)).toBeUndefined();
+    expect(await userByPhone(newPhone)).toMatchObject({
+      full_name: 'Marie Ngo-Bell',
+      email: 'marie.bell@gic-agropelc.test',
+    });
+
+    // Le numéro et l'adresse d'un autre compte actif (casse de l'adresse comprise) : refus propres.
+    expect(await update({ phone: otherPhone })).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'PHONE_ALREADY_USED' },
+    });
+    expect(await update({ email: 'AUTRE.compte@gic-agropelc.test' })).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'EMAIL_ALREADY_USED' },
+    });
+    expect(await userByPhone(newPhone)).toMatchObject({ email: 'marie.bell@gic-agropelc.test' });
+
+    // Mêmes valeurs : appliqué sans effet (la version du compte ne bouge pas) ; adresse retirée avec `null`.
+    const before = await versionOf();
+    expect((await update({ fullName: 'Marie Ngo-Bell', phone: newPhone })).status).toBe('APPLIED');
+    expect(await versionOf()).toBe(before);
+    expect((await update({ email: null })).status).toBe('APPLIED');
+    expect((await userByPhone(newPhone))!.email).toBeNull();
+
+    // Un compte modifie le sien (même droit) ; un lecteur sans le droit est refusé par le pipeline.
+    expect((await update({ fullName: 'Admin renommé' }, admin, admin.userId)).status).toBe(
+      'APPLIED',
+    );
+    const denied = await update({ fullName: 'Pirate' }, respFerme);
+    expect(denied.status).toBe('REJECTED');
+    expect((await userByPhone(newPhone))!.full_name).toBe('Marie Ngo-Bell');
+
+    // Audit : ce qui a changé, avec le nom en clair mais numéro et adresse masqués.
+    const audit = await db
+      .selectFrom('audit_audit_log')
+      .select(['action', 'result', 'before', 'after'])
+      .where('entity_id', '=', toBin(id))
+      .where('action', '=', 'identity.user.update')
+      .where('result', '=', 'SUCCESS')
+      .execute();
+    expect(audit.length).toBeGreaterThanOrEqual(3);
+    const text = JSON.stringify(audit);
+    expect(text).toContain('Marie Ngo-Bell');
+    expect(text).not.toContain(phone);
+    expect(text).not.toContain(newPhone);
+    expect(text).not.toContain('marie.bell@gic-agropelc.test');
+
+    // Compte désactivé : refusé tant qu'il n'est pas réactivé.
+    const deactivated = await command(admin, 'identity.user.deactivate', 'USER', id, {
+      reason: 'Départ',
+    });
+    expect(deactivated.status, JSON.stringify(deactivated)).toBe('APPLIED');
+    expect(await update({ fullName: 'Trop tard' })).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'INVALID_TRANSITION' },
+    });
+
+    // Le compte système ne se modifie pas.
+    const system = await db
+      .selectFrom('identity_users')
+      .select('id')
+      .where('is_system', '=', 1)
+      .executeTakeFirst();
+    if (system) {
+      expect(await update({ fullName: 'Système' }, admin, fromBin(system.id))).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'SYSTEM_ACCOUNT' },
+      });
+    }
   });
 
   it('octroi par commande après le refactor de l’écriture partagée : mêmes contrôles qu’avant', async () => {

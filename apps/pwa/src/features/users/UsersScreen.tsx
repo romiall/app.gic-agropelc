@@ -70,6 +70,8 @@ import {
   CREATE_PATH,
   createBody,
   DEFAULT_COUNTRY_CODE,
+  editFormOf,
+  editUserProblem,
   EMPTY_NEW_USER,
   failureOutcome,
   grantPayload,
@@ -87,11 +89,13 @@ import {
   statusActionsFor,
   statusCommand,
   statusReasonRequired,
+  updatePayload,
   USER_FILTERS,
   usersPath,
   type AssignmentChoice,
   type AssignmentView,
   type CreateOutcome,
+  type EditUserForm,
   type NewUserForm,
   type ResetOutcome,
   type RoleView,
@@ -125,6 +129,7 @@ interface ScopeRow extends SiteOption {
 
 /** Ce que l'écran a ouvert sous un compte (un seul formulaire à la fois). */
 type Open =
+  | { readonly userId: string; readonly kind: 'EDIT' }
   | { readonly userId: string; readonly kind: 'RESET' }
   | { readonly userId: string; readonly kind: 'STATUS'; readonly action: StatusAction }
   | { readonly userId: string; readonly kind: 'ASSIGN' }
@@ -531,6 +536,88 @@ function CreateForm({
         </Button>
       </div>
     </Card>
+  );
+}
+
+// --- Modification des informations d'un compte (AV-515) ------------------------------------------
+
+interface EditFormProps {
+  readonly user: UserView;
+  readonly countryCode: string;
+  readonly blocked: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: (payload: Record<string, unknown>) => void;
+}
+
+function EditForm({ user, countryCode, blocked, onCancel, onConfirm }: EditFormProps) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState<EditUserForm>(() => editFormOf(user));
+  const set = (patch: Partial<EditUserForm>) => setForm((current) => ({ ...current, ...patch }));
+  const problem = editUserProblem(form, user, countryCode);
+  return (
+    <div
+      className="adm-panel"
+      role="group"
+      aria-label={t('users.edit_title', { name: user.fullName })}
+    >
+      <div className="adm-form">
+        <Field label={t('users.name_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              autoFocus
+              autoComplete="off"
+              maxLength={200}
+              value={form.fullName}
+              onChange={(event) => set({ fullName: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={t('users.phone_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="tel"
+              autoComplete="off"
+              placeholder="+237 6XX XX XX XX"
+              value={form.phone}
+              onChange={(event) => set({ phone: event.target.value })}
+            />
+          )}
+        </Field>
+        <Field label={t('users.email_label')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="email"
+              autoComplete="off"
+              maxLength={200}
+              value={form.email}
+              onChange={(event) => set({ email: event.target.value })}
+            />
+          )}
+        </Field>
+        {/* Un défaut ne se signale que sur un champ commencé ; « rien à changer » n'est pas une erreur. */}
+        {(problem === 'PHONE' && form.phone.trim() !== '') ||
+        (problem === 'EMAIL' && form.email.trim() !== '') ? (
+          <p className="adm-note is-warn">{t(`users.create_problem.${problem}`)}</p>
+        ) : null}
+        {problem === 'NAME' ? (
+          <p className="adm-note is-warn">{t('users.edit_name_required')}</p>
+        ) : null}
+      </div>
+      <div className="adm-actions">
+        <Button
+          disabled={problem !== null || blocked}
+          onClick={() => onConfirm(updatePayload(form, user, countryCode))}
+        >
+          {t('users.edit_submit', { name: user.fullName })}
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          {t('price_rules.cancel')}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -987,6 +1074,22 @@ export function UsersScreen() {
                     }}
                   />
                 ) : null}
+                {mine?.kind === 'EDIT' ? (
+                  <EditForm
+                    user={user}
+                    countryCode={countryCode}
+                    blocked={blocked}
+                    onCancel={() => setOpen(null)}
+                    onConfirm={(payload) =>
+                      void send({
+                        commandType: 'identity.user.update',
+                        aggregateType: 'USER',
+                        aggregateId: user.id,
+                        payload,
+                      })
+                    }
+                  />
+                ) : null}
                 {mine?.kind === 'STATUS' ? (
                   <ReasonForm
                     label={t(`users.status_action.${mine.action}`, { name: user.fullName })}
@@ -1049,6 +1152,19 @@ export function UsersScreen() {
                 ) : null}
                 {!mine ? (
                   <div className="adm-actions">
+                    {user.actions.update ? (
+                      <Button
+                        variant="tonal"
+                        aria-label={t('users.edit_open', { name: user.fullName })}
+                        onClick={() => {
+                          setOutcome(null);
+                          closeCreate();
+                          setOpen({ userId: user.id, kind: 'EDIT' });
+                        }}
+                      >
+                        {t('users.edit_action')}
+                      </Button>
+                    ) : null}
                     {user.actions.resetPassword ? (
                       <Button
                         variant="tonal"

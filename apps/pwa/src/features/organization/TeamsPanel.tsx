@@ -1,8 +1,8 @@
 /**
  * Onglet « Équipes » de l'écran Organisation (ECR-ADM-06 ; UC-ADM-03 ; S-28) : équipes avec leur responsable et
  * leurs membres, création, ajout et retrait d'un membre. Une personne n'est membre que d'une équipe à la fois :
- * l'ajouter à une autre l'y déplace (le serveur ferme l'appartenance précédente). Le serveur n'offre pas de
- * fermeture ni de renommage d'équipe (AV-497).
+ * l'ajouter à une autre l'y déplace (le serveur ferme l'appartenance précédente). Une équipe se ferme (AV-515) :
+ * ses membres la quittent et elle n'en reçoit plus ; elle ne se renomme pas (AV-497).
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +12,9 @@ import { formatBusinessDate } from '../home/format-home.js';
 import {
   EMPTY_TEAM_FORM,
   LIMITS,
+  TEAM_CLOSE_REASON_MAX,
   teamAssignCommand,
+  teamCloseCommand,
   teamCreateCommand,
   teamOfUser,
   teamProblems,
@@ -29,7 +31,13 @@ export function TeamsPanel(props: PanelProps) {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<TeamForm>(EMPTY_TEAM_FORM);
   const [adding, setAdding] = useState<{ teamId: string; userId: string } | null>(null);
+  const [closing, setClosing] = useState<{ teamId: string; reason: string } | null>(null);
   const problems = teamProblems(form);
+
+  const closeTeam = async (team: TeamView) => {
+    if (!closing) return;
+    if (await commands.send(teamCloseCommand(team, closing.reason), blocked)) setClosing(null);
+  };
 
   const create = async () => {
     const sent = await commands.send(teamCreateCommand(form, idGenerator.newId()), blocked);
@@ -220,16 +228,55 @@ export function TeamsPanel(props: PanelProps) {
                       </Button>
                     </div>
                   </div>
+                ) : closing?.teamId === team.id ? (
+                  <div className="adm-form adm-panel">
+                    <p className="adm-note is-warn">
+                      {team.members.length === 0
+                        ? t('org.teams.close_warning_none')
+                        : t('org.teams.close_warning', { count: team.members.length })}
+                    </p>
+                    <Field label={t('org.teams.close_reason')}>
+                      {(control) => (
+                        <Input
+                          {...control}
+                          maxLength={TEAM_CLOSE_REASON_MAX}
+                          value={closing.reason}
+                          onChange={(event) =>
+                            setClosing({ ...closing, reason: event.target.value })
+                          }
+                        />
+                      )}
+                    </Field>
+                    <div className="adm-actions">
+                      <Button disabled={blocked} onClick={() => void closeTeam(team)}>
+                        {t('org.teams.close_confirm', { name: team.name })}
+                      </Button>
+                      <Button variant="ghost" onClick={() => setClosing(null)}>
+                        {t('org.cancel')}
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="adm-actions">
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={blocked || candidates.length === 0}
+                      disabled={blocked || candidates.length === 0 || !team.isActive}
                       onClick={() => setAdding({ teamId: team.id, userId: '' })}
                     >
                       {t('org.teams.add')}
                     </Button>
+                    {team.isActive ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={blocked}
+                        aria-label={t('org.teams.close_open', { name: team.name })}
+                        onClick={() => setClosing({ teamId: team.id, reason: '' })}
+                      >
+                        {t('org.teams.close')}
+                      </Button>
+                    ) : null}
                   </div>
                 )}
               </li>

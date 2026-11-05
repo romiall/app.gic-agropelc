@@ -1769,20 +1769,22 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
     });
 
     it('Finance : sessions à valider, écart critique du jour, remise non reçue, appareils (base partagée : minorants)', async () => {
-      // Seuil de session ouverte mal saisi sur le site du PDV (0) : le défaut reprend, rien n'échoue.
-      await ok(admin, {
-        type: 'organization.setting.set',
-        aggregateType: 'SETTING',
-        aggregateId: freshUuid(),
-        occurredAt: new Date().toISOString(),
-        payload: {
+      // Seuil de session ouverte mal saisi sur le site du PDV (0) : le défaut reprend, rien n'échoue. Écrit
+      // directement : la commande refuse désormais cette valeur (AV-496), mais une base peut en garder une
+      // ancienne, que le lecteur doit supporter.
+      await db
+        .insertInto('organization_system_settings')
+        .values({
+          id: toBin(freshUuid()),
           key: 'finance.cash_session_force_close_hours',
-          value: 0,
-          scopeType: 'SITE',
-          scopeId: siteP,
+          value: JSON.stringify(0),
+          scope_type: 'SITE',
+          scope_id: toBin(siteP),
+          valid_from: new Date(),
+          created_by: toBin(admin.userId),
           reason: 'Saisie absurde (test P5-20)',
-        },
-      });
+        })
+        .execute();
       expect(
         (await cashSessionThresholdsAt(db, { siteIds: [siteP], at: new Date() })).get(siteP),
       ).toMatchObject({ forceCloseHours: 24 });

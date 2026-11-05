@@ -6,6 +6,7 @@
  * `application/public/setting-query.ts`, pas ici.
  */
 import { z } from 'zod';
+import { settingDefOf, validateSettingValue, type SettingProblem } from '@gic/contracts';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
@@ -48,6 +49,42 @@ function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
 }
 
+const PROBLEM_MESSAGES_FR: Readonly<Record<SettingProblem, string>> = {
+  TYPE: 'le type de la valeur ne convient pas à ce paramètre',
+  NOT_INTEGER: 'ce paramètre attend un nombre entier',
+  MIN: 'la valeur est inférieure au minimum de ce paramètre',
+  MAX: 'la valeur dépasse le maximum de ce paramètre',
+  OPTION: 'la valeur n’est pas l’un des choix de ce paramètre',
+  EMPTY_ITEM: 'un élément de la liste est vide',
+  WEEKDAY: 'les jours se numérotent de 1 (lundi) à 7 (dimanche)',
+  JSON_OBJECT: 'ce paramètre attend un objet',
+};
+
+/**
+ * AV-496 (b) : la valeur d'une clé du catalogue partagé (`settings-catalog.ts`, celui de l'écran des
+ * paramètres) est contrôlée par le serveur lui-même, pour qu'un autre client de l'API ne pose pas une valeur
+ * de mauvais type. Une clé hors catalogue reste libre (toute valeur JSON).
+ */
+function invalidValue(key: string, value: unknown): CommandHandlerOutcome | null {
+  if (value === undefined) {
+    return {
+      status: 'REJECTED',
+      errorCode: 'SETTING_VALUE_INVALID',
+      messageFr: `Valeur absente pour le paramètre ${key}.`,
+    };
+  }
+  const def = settingDefOf(key);
+  if (def === undefined) return null;
+  const problem = validateSettingValue(def, value);
+  return problem === null
+    ? null
+    : {
+        status: 'REJECTED',
+        errorCode: 'SETTING_VALUE_INVALID',
+        messageFr: `Valeur refusée pour le paramètre ${key} : ${PROBLEM_MESSAGES_FR[problem]}.`,
+      };
+}
+
 const scopeTable: Record<
   'SITE' | 'ZONE' | 'ROLE',
   'organization_sites' | 'organization_zones' | 'identity_roles'
@@ -67,6 +104,9 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
   if (already) return { status: 'APPLIED' }; // rejeu idempotent
 
   const { key, value, scopeType, scopeId, isClientVisible, reason } = envelope.payload;
+
+  const invalid = invalidValue(key, value);
+  if (invalid) return invalid;
 
   if (scopeType !== 'GLOBAL' && scopeId !== undefined) {
     const table = scopeTable[scopeType];

@@ -374,6 +374,56 @@ describe('Organisation (ECR-ADM-06)', () => {
     });
   });
 
+  it('déplace une zone (AV-515) : la parente actuelle est signalée, la racine se choisit, commande organization.zone.move', async () => {
+    serve();
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('tab', { name: 'Zones' }));
+    // La racine n'a ni parente à quitter ni autre zone qui ne soit pas sa fille : rien à choisir.
+    const country = await screen.findByRole('listitem', { name: 'Zone Cameroun' });
+    await user.click(within(country).getByRole('button', { name: 'Déplacer la zone Cameroun' }));
+    expect(within(country).getByRole('button', { name: 'Déplacer Cameroun' })).toBeDisabled();
+    await user.click(within(country).getByRole('button', { name: 'Annuler' }));
+
+    const douala = await screen.findByRole('listitem', { name: 'Zone Douala' });
+    await user.click(within(douala).getByRole('button', { name: 'Déplacer la zone Douala' }));
+    const select = within(douala).getByLabelText('Nouvelle zone parente de Douala');
+    expect(select).toHaveValue(COUNTRY);
+    expect(within(select).getByRole('option', { name: 'Cameroun (actuelle)' })).toBeInTheDocument();
+    // Pas de changement : rien à envoyer.
+    expect(within(douala).getByRole('button', { name: 'Déplacer Douala' })).toBeDisabled();
+    await user.selectOptions(select, '');
+    await user.click(within(douala).getByRole('button', { name: 'Déplacer Douala' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    expect(await lastCommand()).toMatchObject({
+      command_type: 'organization.zone.move',
+      aggregate_type: 'ZONE',
+      aggregate_id: DOUALA,
+      payload: { parentId: null },
+    });
+  });
+
+  it('ferme une équipe (AV-515) : avertissement, motif facultatif, commande organization.team.close ; plus d’ajout', async () => {
+    serve();
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('tab', { name: 'Équipes' }));
+    const team = await screen.findByRole('listitem', { name: 'Équipe Littoral' });
+    await user.click(within(team).getByRole('button', { name: 'Fermer l’équipe Littoral' }));
+    expect(within(team).getByText(/retire le membre de l’équipe/)).toBeInTheDocument();
+    await user.type(within(team).getByLabelText('Motif (facultatif)'), 'Réorganisation');
+    await user.click(
+      within(team).getByRole('button', { name: 'Confirmer la fermeture de Littoral' }),
+    );
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    expect(await lastCommand()).toMatchObject({
+      command_type: 'organization.team.close',
+      aggregate_type: 'TEAM',
+      aggregate_id: TEAM,
+      payload: { reason: 'Réorganisation' },
+    });
+  });
+
   it('équipes : ajoute un membre (appartenance neuve) et en retire un (organization.team.*)', async () => {
     serve();
     const user = userEvent.setup();

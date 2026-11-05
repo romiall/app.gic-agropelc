@@ -46,6 +46,8 @@ export interface UserView {
   readonly roles: readonly string[];
   readonly assignments: readonly AssignmentView[];
   readonly actions: {
+    /** Modifier le nom, le numéro et l'adresse e-mail (AV-515) : compte actif ou suspendu. */
+    readonly update: boolean;
     readonly resetPassword: boolean;
     readonly suspend: boolean;
     readonly reactivate: boolean;
@@ -344,6 +346,53 @@ export function createBody(
     password: form.password,
     ...(form.roleId ? { role: createRoleBody(form) } : {}),
   };
+}
+
+// --- Modification d'un compte (AV-515) -----------------------------------------------------------
+
+/** Informations modifiables d'un compte, telles que l'écran les saisit. */
+export interface EditUserForm {
+  readonly fullName: string;
+  readonly phone: string;
+  readonly email: string;
+}
+
+/** Saisie de départ : ce que le compte porte déjà. */
+export function editFormOf(user: Pick<UserView, 'fullName' | 'phone' | 'email'>): EditUserForm {
+  return { fullName: user.fullName, phone: user.phone, email: user.email ?? '' };
+}
+
+/**
+ * Charge de `identity.user.update` : les seuls champs qui changent (un champ absent reste tel quel ; une
+ * adresse vidée vaut `null`, qui la retire).
+ */
+export function updatePayload(
+  form: EditUserForm,
+  user: Pick<UserView, 'fullName' | 'phone' | 'email'>,
+  countryCode: string = DEFAULT_COUNTRY_CODE,
+): Record<string, unknown> {
+  const fullName = form.fullName.trim();
+  const phone = phoneOf(form.phone, countryCode);
+  const email = form.email.trim();
+  return {
+    ...(fullName !== user.fullName ? { fullName } : {}),
+    ...(phone !== null && phone !== user.phone ? { phone } : {}),
+    ...(email !== (user.email ?? '') ? { email: email === '' ? null : email } : {}),
+  };
+}
+
+export type EditUserProblem = 'NAME' | 'PHONE' | 'EMAIL' | 'UNCHANGED';
+
+/** Premier défaut de la saisie, ou `null` : le nom, le numéro et l'adresse doivent être valides et changer. */
+export function editUserProblem(
+  form: EditUserForm,
+  user: Pick<UserView, 'fullName' | 'phone' | 'email'>,
+  countryCode: string = DEFAULT_COUNTRY_CODE,
+): EditUserProblem | null {
+  if (!form.fullName.trim()) return 'NAME';
+  if (phoneOf(form.phone, countryCode) === null) return 'PHONE';
+  if (form.email.trim() && !EMAIL_SHAPE.test(form.email.trim())) return 'EMAIL';
+  return Object.keys(updatePayload(form, user, countryCode)).length === 0 ? 'UNCHANGED' : null;
 }
 
 export type CreateOutcome =

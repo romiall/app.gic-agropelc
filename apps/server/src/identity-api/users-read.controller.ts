@@ -11,7 +11,8 @@
  * Chaque compte porte les codes de ses rôles actifs et, pour un lecteur qui peut y gérer les rôles, le
  * détail de ses affectations (identifiant, rôle, périmètre, validité : l'écran révoque par l'identifiant,
  * MP-13) ; un autre lecteur ne voit pas les sites, zones et équipes des affectations, qui peuvent sortir de
- * sa portée. Actions que le lecteur peut y faire : `resetPassword`, `suspend`, `reactivate`, `deactivate`
+ * sa portée. Actions que le lecteur peut y faire : `update` (nom, numéro, e-mail ; AV-515), `resetPassword`,
+ * `suspend`, `reactivate`, `deactivate`
  * (`identity.user.manage`, jamais sur son propre compte pour suspendre, désactiver ou réinitialiser, ce que
  * les commandes imposent aussi ; un compte désactivé ne se réinitialise ni ne se suspend, et ne se réactive
  * pas si un autre compte a repris son numéro ; AV-252, AV-281), `manageRoles` (octroi,
@@ -201,6 +202,8 @@ export class UsersReadController {
           validTo: assignment.validTo?.toISOString() ?? null,
         })),
         actions: {
+          // AV-515 : nom, numéro et adresse e-mail se modifient sur un compte actif ou suspendu, même le sien.
+          update: user.status !== 'DEACTIVATED' && canManage,
           resetPassword: !self && user.status !== 'DEACTIVATED' && canManage,
           suspend: !self && user.status === 'ACTIVE' && canManage,
           reactivate:

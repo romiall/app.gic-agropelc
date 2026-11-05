@@ -43,7 +43,7 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 
 | ID | Cas d'usage | Commande technique | Acteur | Hors ligne |
 |---|---|---|---|---|
-| UC-ADM-01 | Créer ou modifier un utilisateur (création depuis l'écran : `POST /users`, route hors commandes, mot de passe provisoire, première affectation facultative ; MP-13, AV-325 ; `identity.user.update` non enregistrée) | `identity.user.create`, `identity.user.update` | ADMIN | Non |
+| UC-ADM-01 | Créer ou modifier un utilisateur (création depuis l'écran : `POST /users`, route hors commandes, mot de passe provisoire, première affectation facultative ; MP-13, AV-325 ; modification du nom, du numéro et de l'adresse e-mail par `identity.user.update`, uniques parmi les comptes actifs, jamais sur un compte désactivé ni sur le compte système, AV-515) | `identity.user.create`, `identity.user.update` | ADMIN | Non |
 | UC-ADM-02 | Suspendre, désactiver ou réactiver un utilisateur | `identity.user.suspend`, `identity.user.deactivate`, `identity.user.reactivate` | ADMIN | Non |
 | UC-ADM-03 | Affecter ou révoquer un rôle sur un périmètre (pas d'octroi sur un compte désactivé, retrait toujours possible ; l'Admin gère aussi ses propres rôles, AV-327) | `identity.role_assignment.grant`, `identity.role_assignment.revoke` | ADMIN | Non |
 | UC-ADM-04 | Configurer les permissions d'un rôle | `identity.role.set_permissions` | ADMIN | Non |
@@ -53,9 +53,9 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 | UC-ADM-08 | Révoquer les sessions d'un utilisateur | `identity.session.revoke` | ADMIN | Non |
 | UC-ADM-09 | Créer, modifier ou fermer un site ; configurer un point de vente | `organization.site.create`, `organization.site.update`, `organization.site.close`, `organization.pos.configure` | ADMIN | Non |
 | UC-ADM-10 | Créer, modifier ou désactiver un emplacement ; créer un stock mobile pour un utilisateur | `organization.location.create`, `organization.location.update`, `organization.location.deactivate` | ADMIN | Non |
-| UC-ADM-11 | Gérer les zones et leur géorepère | `organization.zone.create`, `organization.zone.update` | ADMIN | Non |
-| UC-ADM-12 | Gérer les équipes et leurs membres | `organization.team.create`, `organization.team.set_members` | ADMIN, RESP_COMMERCIAL (lecture) | Non |
-| UC-ADM-13 | Modifier un paramètre système | `organization.setting.set` | ADMIN (DIRECTION pour les seuils financiers) | Non |
+| UC-ADM-11 | Gérer les zones et leur géorepère ; renommer une zone ; la déplacer avec toutes ses zones filles sous une autre zone ou à la racine, sans cycle (AV-515) | `organization.zone.create`, `organization.zone.update`, `organization.zone.move` | ADMIN | Non |
+| UC-ADM-12 | Gérer les équipes et leurs membres ; fermer une équipe (ses membres la quittent, elle n'en reçoit plus ; AV-515) | `organization.team.create`, `organization.team.assign_member`, `organization.team.remove_member`, `organization.team.close` | ADMIN, RESP_COMMERCIAL (lecture) | Non |
+| UC-ADM-13 | Modifier un paramètre système ; la valeur d'une clé du catalogue est contrôlée par le serveur (forme, unité, bornes ; AV-496 (b), AV-515) | `organization.setting.set` | ADMIN (DIRECTION pour les seuils financiers) | Non |
 | UC-ADM-14 | Définir une politique de contrôle | `approvals.policy.set` | DIRECTION, ADMIN | Non |
 | UC-ADM-15 | Traiter la file de validation (approuver ou rejeter) ; lecture `GET /approvals/inbox` (ECR-ADM-08, MP-07) | `approvals.request.approve`, `approvals.request.reject` | Responsables, DIRECTION, FINANCE | Non |
 | UC-ADM-16 | Joindre une pièce justificative à une opération | `attachments.attachment.register` + upload | Tous | **Oui** (capture et file d'upload) |
