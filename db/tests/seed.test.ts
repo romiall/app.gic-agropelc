@@ -35,6 +35,7 @@ import {
   PAYMENT_METHODS,
 } from '../seeds/finance-references.js';
 import { CONTROL_POLICIES } from '../seeds/production-references.js';
+import { STOCK_SALES_REASON_CODES } from '../seeds/stock-sales-references.js';
 import { SALES_CONTROL_POLICIES } from '../seeds/sales-references.js';
 import { PROCUREMENT_CONTROL_POLICIES } from '../seeds/procurement-references.js';
 import { STOCK_FIELDWORK_CONTROL_POLICIES } from '../seeds/stock-fieldwork-references.js';
@@ -159,6 +160,53 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       [CUSTOMER_CATEGORIES.map((c) => c.code)],
     );
     expect(categories).toHaveLength(5);
+  });
+
+  it('crée les motifs par défaut du stock et des ventes (AV-320) : « Autre » exige un commentaire, les pertes portent leur catégorie', async () => {
+    const [reasons] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT category, code, requires_comment, loss_category, is_active FROM catalog_reason_codes
+        WHERE category IN ('REJECTION', 'INVENTORY_ADJUSTMENT', 'TRANSFER_DISCREPANCY', 'PRICE_OVERRIDE', 'LOSS')`,
+    );
+    for (const seed of STOCK_SALES_REASON_CODES) {
+      const row = reasons.find((r) => r.category === seed.category && r.code === seed.code);
+      expect(row, `${seed.category} ${seed.code}`).toBeDefined();
+      expect(row!.requires_comment, `${seed.category} ${seed.code}`).toBe(
+        seed.requiresComment ? 1 : 0,
+      );
+      expect(row!.loss_category, `${seed.category} ${seed.code}`).toBe(seed.lossCategory ?? null);
+      expect(row!.is_active, `${seed.category} ${seed.code}`).toBe(1);
+    }
+    // Les quatre listes de saisie ont leur « Autre » avec commentaire.
+    for (const category of [
+      'REJECTION',
+      'INVENTORY_ADJUSTMENT',
+      'TRANSFER_DISCREPANCY',
+      'PRICE_OVERRIDE',
+    ]) {
+      expect(
+        STOCK_SALES_REASON_CODES.some(
+          (r) => r.category === category && r.code === 'AUTRE' && r.requiresComment === true,
+        ),
+        category,
+      ).toBe(true);
+    }
+    // Catégories de perte admises par la base (inventory_loss_declarations) : un motif ne peut pas en inventer.
+    const lossCategories = [
+      'MORTALITE',
+      'CASSE',
+      'DETERIORATION',
+      'IMPROPRE',
+      'DESTRUCTION',
+      'INEXPLIQUEE',
+      'VOL_SUSPECTE',
+      'ECART_TRANSFERT',
+    ];
+    for (const seed of STOCK_SALES_REASON_CODES.filter((r) => r.category === 'LOSS')) {
+      expect(lossCategories, seed.code).toContain(seed.lossCategory);
+    }
+    // Aucun doublon de clé (catégorie, code) dans le jeu semé.
+    const keys = STOCK_SALES_REASON_CODES.map((r) => `${r.category}/${r.code}`);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it('crée les cinq moyens de paiement (AV-056), référence exigée hors espèces', async () => {

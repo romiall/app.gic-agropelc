@@ -50,6 +50,8 @@ export interface ReasonCodeSeed {
   readonly label: string;
   /** Commentaire exigé à la saisie (motif « Autre », AV-248) ; faux par défaut. */
   readonly requiresComment?: boolean;
+  /** Catégorie de perte d'un motif `LOSS` (`inventory_loss_declarations.category`), sinon absente. */
+  readonly lossCategory?: string;
 }
 
 export const PRODUCTION_REASON_CODES: readonly ReasonCodeSeed[] = [

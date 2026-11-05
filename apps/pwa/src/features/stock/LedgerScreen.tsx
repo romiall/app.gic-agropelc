@@ -17,12 +17,19 @@ import { authorizedRequest } from '../../sync/api-client.js';
 import { formatClockTime } from '../home/format-home.js';
 import { formatMoney, formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
+import { downloadTextFile } from '../../platform/download.js';
+import { toCsv } from '../import/csv.js';
 import {
   balanceAtPath,
   checkPeriod,
   closingInstant,
   defaultPeriod,
   explainGap,
+  LEDGER_EXPORT_MAX_PAGES,
+  LEDGER_PAGE_SIZE,
+  ledgerCsvColumns,
+  ledgerCsvRows,
+  ledgerFileName,
   movesPath,
   openingInstant,
   quantityOf,
@@ -100,6 +107,12 @@ interface Balances {
   readonly closing: number | null;
 }
 
+/** État de l'export CSV, attaché à la lecture (emplacement, produit, période) qu'il concerne. */
+interface ExportState {
+  readonly key: string;
+  readonly status: 'running' | 'failed' | 'truncated' | 'done';
+}
+
 export function LedgerScreen() {
   const { t } = useTranslation();
   const refs = useSalesReferences();
@@ -111,6 +124,7 @@ export function LedgerScreen() {
   const [loaded, setLoaded] = useState<Loaded>();
   const [balances, setBalances] = useState<Balances>();
   const [loadingMore, setLoadingMore] = useState(false);
+  const [exportState, setExportState] = useState<ExportState>();
   const [refresh, setRefresh] = useState(0);
   // Nouvel essai des seuls soldes (la liste, complète, n'est pas relue).
   const [balancesAttempt, setBalancesAttempt] = useState(0);
@@ -252,6 +266,53 @@ export function LedgerScreen() {
       setLoadingMore(false);
     }
   };
+
+  // Export CSV (AV-519) : toutes les pages de la lecture en cours (au plus LEDGER_EXPORT_MAX_PAGES), puis le fichier.
+  const exportCsv = async () => {
+    if (!current || current.denied || exportState?.status === 'running') return;
+    const exportKey = key;
+    setExportState({ key: exportKey, status: 'running' });
+    let moves = current.moves;
+    let next = current.next;
+    let pages = 0;
+    while (next && pages < LEDGER_EXPORT_MAX_PAGES) {
+      const result = await authorizedRequest<MovesPage>(
+        getDb(),
+        movesPath({ locationId, productId, from: period.from, to: period.to, cursor: next }),
+        { method: 'GET' },
+      );
+      if (!result.ok) {
+        setExportState({ key: exportKey, status: 'failed' });
+        return;
+      }
+      moves = [...moves, ...result.data.moves];
+      next = result.data.next_cursor;
+      pages += 1;
+    }
+    const columns = ledgerCsvColumns(moves);
+    const rows = ledgerCsvRows(moves, columns, {
+      when: (iso) => `${businessDayOf(new Date(iso))} ${formatClockTime(iso)}`,
+      header: (column) => t(`ledger.csv.col.${column}`),
+      moveType: (moveType) => t(`ledger.move_type.${moveType}`, { defaultValue: moveType }),
+      product: (id) => products.get(id)?.name ?? id,
+      unit: (id) => unitLabel(unitOf(id), 1, refs.units),
+      counterpart: (move) => counterpartOf(move) ?? '',
+      direction: (direction) => t(direction === 'IN' ? 'ledger.csv.in' : 'ledger.csv.out'),
+      yes: t('ledger.csv.yes'),
+      no: t('ledger.csv.no'),
+    });
+    downloadTextFile(
+      ledgerFileName({
+        locationName: locationNames.get(locationId) ?? '',
+        productName: productId ? (products.get(productId)?.name ?? null) : null,
+        from: period.from,
+        to: period.to,
+      }),
+      toCsv(rows),
+    );
+    setExportState({ key: exportKey, status: next ? 'truncated' : 'done' });
+  };
+  const exportStatus = exportState?.key === key ? exportState.status : undefined;
 
   return (
     <section className="sale">
@@ -480,6 +541,33 @@ export function LedgerScreen() {
             >
               {t('ledger.more')}
             </button>
+          ) : null}
+          {current && !current.denied && current.moves.length > 0 ? (
+            <button
+              type="button"
+              className="secondary"
+              disabled={exportStatus === 'running'}
+              onClick={() => void exportCsv()}
+            >
+              {exportStatus === 'running' ? t('ledger.export_running') : t('ledger.export_csv')}
+            </button>
+          ) : null}
+          {exportStatus === 'failed' ? (
+            <p className="alert alert-error" role="alert">
+              {t('ledger.export_failed')}
+            </p>
+          ) : null}
+          {exportStatus === 'truncated' ? (
+            <p className="text-warn" role="status">
+              {t('ledger.export_truncated', {
+                count: LEDGER_EXPORT_MAX_PAGES * LEDGER_PAGE_SIZE,
+              })}
+            </p>
+          ) : null}
+          {exportStatus === 'done' ? (
+            <p className="home-muted" role="status">
+              {t('ledger.export_done')}
+            </p>
           ) : null}
         </section>
       ) : null}

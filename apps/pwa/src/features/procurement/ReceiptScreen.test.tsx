@@ -442,4 +442,104 @@ describe('Réceptionner (ECR-APP-04)', () => {
       observations: 'Camion dérouté vers Bonabéri suite aux travaux',
     });
   });
+
+  it('AV-519 : réception sans bon de commande — fournisseur, produit achetable, prix exigé ; hors ligne, l’accepté entre au disponible', async () => {
+    // Les produits du banc d'essai ne sont pas achetables : l'œuf le devient pour cet essai.
+    await getDb().projections.put(
+      projection('product', 'PRODUCT', IDS.eggs, {
+        code: 'OEUF',
+        name: 'Œufs de table',
+        category_id: IDS.zone,
+        base_unit_code: 'U',
+        is_sellable: true,
+        is_purchasable: true,
+        pricing_mode: 'PER_UNIT',
+        status: 'ACTIVE',
+      }),
+    );
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt('/achats/receptions');
+    await user.click(
+      await screen.findByRole('link', { name: 'Réceptionner sans bon de commande' }),
+    );
+    expect(
+      await screen.findByText(/soumise à la revue du responsable des achats/),
+    ).toBeInTheDocument();
+
+    const submit = screen.getByRole('button', { name: 'Enregistrer la réception' });
+    expect(submit).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Fournisseur'), SUPPLIER);
+    await user.selectOptions(screen.getByLabelText('Reçu sur'), IDS.pos);
+    const first = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(first).getByLabelText('Produit reçu'), IDS.eggs);
+    await user.type(within(first).getByLabelText('Livré (U)'), '120');
+    // Quantité saisie, prix pas encore : refus affiché, envoi impossible.
+    expect(
+      within(first).getByText(/Sans bon de commande, le prix unitaire est exigé/),
+    ).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+    await user.type(within(first).getByLabelText('Prix unitaire (U, en francs)'), '95');
+    expect(within(first).getByText('Valeur acceptée : 11 400 F CFA')).toBeInTheDocument();
+
+    // Rejet de 20 : motif exigé, accepté recalculé.
+    await user.type(within(first).getByLabelText('Rejeté (U)'), '20');
+    expect(submit).toBeDisabled();
+    await user.selectOptions(within(first).getByLabelText('Motif du rejet'), REJECT);
+    expect(within(first).getByText('Accepté : 100 U')).toBeInTheDocument();
+    expect(submit).toBeEnabled();
+
+    // Une deuxième ligne vide ne bloque rien ; elle se retire.
+    await user.click(screen.getByRole('button', { name: 'Ajouter une ligne' }));
+    expect(screen.getByRole('listitem', { name: 'Ligne 2' })).toBeInTheDocument();
+    expect(submit).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Retirer la ligne 2' }));
+    expect(screen.queryByRole('listitem', { name: 'Ligne 2' })).toBeNull();
+
+    await user.type(screen.getByLabelText('N° du bon de livraison du fournisseur'), 'BL-5');
+    await user.click(submit);
+    expect(await screen.findByText(/Réception enregistrée sur ce téléphone/)).toBeInTheDocument();
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'procurement.receipt.record',
+      aggregate_type: 'GOODS_RECEIPT',
+      captured_offline: true,
+    });
+    // Ni bon de commande ni ligne de bon ; le prix déclaré est envoyé.
+    expect(command?.payload).toEqual({
+      supplierId: SUPPLIER,
+      locationId: IDS.pos,
+      supplierDeliveryNoteRef: 'BL-5',
+      lines: [
+        {
+          productId: IDS.eggs,
+          unitCode: 'U',
+          qtyDeliveredBase: 120,
+          qtyRejectedBase: 20,
+          rejectionReasonCodeId: REJECT,
+          unitCostXaf: 95,
+        },
+      ],
+    });
+    expect(command?.local_flags).toBeUndefined();
+    // L'accepté (100) entre aussitôt au disponible local (entrée en attente : quantité négative).
+    const refs = await loadSalesReferences(getDb());
+    expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(-100);
+  });
+
+  it('AV-519 : sans produit achetable ou sans fournisseur, l’écran le dit au lieu d’un formulaire vide', async () => {
+    const user = userEvent.setup();
+    renderAt('/achats/receptions');
+    await user.click(
+      await screen.findByRole('link', { name: 'Réceptionner sans bon de commande' }),
+    );
+    expect(
+      await screen.findByText('Aucun produit achetable connu de cet appareil.'),
+    ).toBeInTheDocument();
+    cleanup();
+    await getDb().projections.delete(`procurement:SUPPLIER:${SUPPLIER}`);
+    renderAt('/achats/receptions/sans-bon');
+    expect(await screen.findByText(/Aucun fournisseur connu de cet appareil/)).toBeInTheDocument();
+  });
 });

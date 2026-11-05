@@ -12,8 +12,9 @@
  *   appliqué avec revue selon `procurement.offline_over_receipt_mode` (BR-APP-010, AV-095). Une
  *   réception annoncée en quarantaine n'entre pas au disponible local (indice `EXPECTED_QUARANTINE`).
  * - Paramètres `procurement.*` lus en portée globale seulement, comme le serveur.
- * - Sans bon de commande : non proposé par l'écran, qui part d'un bon de commande ; la photo du bon
- *   de livraison n'en est plus la raison (réception signalée sans photo : AV-246, MP-04 et MP-10).
+ * - Sans bon de commande : écran distinct (`FreeReceiptForm`, `free-receipt.ts`, AV-519) ; la photo du
+ *   bon de livraison n'est plus la raison d'une revue (réception signalée sans photo : AV-246, MP-04
+ *   et MP-10).
  */
 import {
   DomainError,
@@ -32,6 +33,12 @@ import type {
   PurchaseOrderData,
   SettingData,
 } from '../sales/types.js';
+
+/** Segment de l'adresse d'une réception sans bon de commande (`ROUTES.purchaseReceiptFree`). */
+export const FREE_RECEIPT_SEGMENT = 'sans-bon';
+
+/** Photo du bon de livraison d'une réception (sur bon de commande ou non), citée par la commande (ADR-046). */
+export const RECEIPT_PHOTO = { kind: 'DELIVERY_NOTE', ownerType: 'GOODS_RECEIPT' } as const;
 
 export const DEFAULT_OVER_TOLERANCE_PCT = 0;
 export const DEFAULT_PHOTO_THRESHOLD_XAF = 100_000;
@@ -178,7 +185,8 @@ export interface ReceiptLineCheck {
   readonly issues: readonly ReceiptLineIssue[];
 }
 
-const parseQty = (text: string): number | null => {
+/** Quantité saisie : décimale à trois chiffres au plus, virgule admise, bornée par `MAX_QUANTITY` ; `null` sinon. */
+export const parseQty = (text: string): number | null => {
   const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
   if (!/^\d+(\.\d{1,3})?$/.test(normalized)) return null;
   const value = Number(normalized);

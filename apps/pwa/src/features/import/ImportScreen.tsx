@@ -27,6 +27,7 @@ import {
 } from '../../components/ui/index.js';
 import { holdsAnyRole } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
+import { downloadTextFile } from '../../platform/download.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -80,18 +81,6 @@ const STATUS_ORDER: Readonly<Record<RowStatus, number>> = {
 async function readBytes(file: Blob): Promise<ArrayBuffer> {
   if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
   return new Response(file).arrayBuffer();
-}
-
-function downloadCsv(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  // Certains navigateurs lisent l'adresse après le clic : la révoquer aussitôt annulerait le téléchargement.
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
 /** Les mêmes référentiels, avec l'heure du contrôle : « maintenant » sert aux fenêtres d'antidatage et au futur. */
@@ -489,7 +478,7 @@ export function ImportScreen() {
   };
 
   const download = () => {
-    if (entity) downloadCsv(`modele-${entity.id}.csv`, toCsv(templateRows(entity)));
+    if (entity) downloadTextFile(`modele-${entity.id}.csv`, toCsv(templateRows(entity)));
   };
 
   return (

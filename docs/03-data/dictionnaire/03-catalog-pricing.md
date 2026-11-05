@@ -88,6 +88,7 @@
 | `is_active` | boolean | Non | true | |
 | [STD-AUDIT] | | | | |
 
+- **Motifs semés** (le seed n'insère que les codes absents, jamais un motif modifié ou désactivé depuis) : CRM (AV-248 : `VISIT_OUTCOME`, `PROSPECT_LOST`, `CANCELLATION`), production (`PRODUCTION_YIELD`), puis, **AV-320 (05/11/2026, défaut à valider avec GIC)**, `REJECTION` (périmé, abîmé, non conforme, quantité erronée, autre), `INVENTORY_ADJUSTMENT`, `TRANSFER_DISCREPANCY`, `PRICE_OVERRIDE` (remises) et `LOSS` (causes de perte de stock, rattachées à leur `loss_category`) ; « Autre » exige un commentaire. `CHECKIN_OVERRIDE` et `CASH_VARIANCE` n'ont pas d'écran de choix de motif : non semés ; la mortalité d'un lot reste à définir avec la production.
 - **PK** `id`. **UQ** `(category, code)`. **Suppr.** `DESACTIVATION` (BR-CAT-010) : `catalog.reason_code.deactivate` / `.reactivate` ; libellé et `requires_comment` modifiables par `catalog.reason_code.update`, code et catégorie jamais (MP-11, AV-248) ; chaque modification incrémente `version`. **Offline** DL — jeu `catalog` (P5-18, AV-196) : `REASON_CODE`, ligne `GLOBAL`, une ligne de flux par version ; motifs semés publiés par le seed. **Semés** (rejouable, codes absents seulement) : rendements de production (P7-04) ; résultats de visite, perte d'un prospect et annulation (MP-02, AV-248 : `COMMANDE_PRISE`, code figé lu par KPI-COM-12 ; `AUTRE` avec `requires_comment`).
 
 ## catalog.product_standard_costs

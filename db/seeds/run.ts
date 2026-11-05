@@ -25,6 +25,7 @@ import {
   PRODUCTION_REASON_CODES,
   type ReasonCodeSeed,
 } from './production-references.js';
+import { STOCK_SALES_REASON_CODES } from './stock-sales-references.js';
 import {
   EXPENSE_CATEGORIES,
   FINANCE_CONTROL_POLICIES,
@@ -328,6 +329,8 @@ async function seedProductionReferences(
   }
   console.log(`  + approvals_control_policies (${policies} nouvelle(s) sur ${allPolicies.length})`);
   await seedReasonCodes(conn, systemUserId, 'production', PRODUCTION_REASON_CODES);
+  // AV-320 : motifs de rejet, d'inventaire, de transfert, de remise et de perte de stock.
+  await seedReasonCodes(conn, systemUserId, 'stock et ventes', STOCK_SALES_REASON_CODES);
 }
 
 /**
@@ -348,13 +351,14 @@ async function seedReasonCodes(
     );
     if (existing.length > 0) continue;
     await conn.query(
-      `INSERT INTO catalog_reason_codes (id, category, code, label, requires_comment, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO catalog_reason_codes (id, category, code, label, loss_category, requires_comment, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         newId(),
         reason.category,
         reason.code,
         reason.label,
+        reason.lossCategory ?? null,
         reason.requiresComment ?? false,
         systemUserId,
       ],

@@ -19,6 +19,7 @@ import {
   DataRow,
   Field,
   Input,
+  LinkButton,
   PageHeader,
   Section,
   Select,
@@ -46,18 +47,21 @@ import {
   checkReceiptLine,
   duplicateDeliveryNote,
   EMPTY_LINE,
+  FREE_RECEIPT_SEGMENT,
   inFlightAccepted,
   isLocationOverride,
   localRemaining,
   MAX_DELIVERY_NOTE_REF,
   MAX_LOT_REF,
   MAX_OBSERVATIONS,
+  RECEIPT_PHOTO,
   receiptLocations,
   receiptPayload,
   receiptSettings,
   receivableOrders,
   type ReceiptLineDraft,
 } from './receipt.js';
+import { FreeReceiptForm } from './FreeReceiptForm.js';
 import { orderStatusTone, receiptStatusTone } from './tones.js';
 import './procurement.css';
 
@@ -68,8 +72,6 @@ interface FormProps {
   readonly order: PurchaseOrderData;
   readonly onDone: (commandId: string, receiptId: string) => void;
 }
-
-const RECEIPT_PHOTO = { kind: 'DELIVERY_NOTE', ownerType: 'GOODS_RECEIPT' } as const;
 
 /**
  * Réceptions saisies par l'utilisateur sur cet appareil : leur photo se joint ou se reprend ici ;
@@ -511,6 +513,42 @@ export function ReceiptScreen() {
   const supplierName = (id: string) =>
     refs.suppliers.get(id)?.name ?? t('purchase_receipt.supplier_unknown');
 
+  // Réception sans bon de commande (AV-519) : le segment « sans-bon » prend la place de l'identifiant du bon.
+  if (orderId === FREE_RECEIPT_SEGMENT) {
+    return (
+      <section className="sale proc-screen">
+        <PageHeader
+          title={t('purchase_receipt.free_title')}
+          backTo={ROUTES.purchaseReceipts}
+          backLabel={t('purchase_receipt.back')}
+        />
+        {!online ? (
+          <Banner tone="warn" role="status">
+            {t('purchase_receipt.offline_banner')}
+          </Banner>
+        ) : null}
+        {submitted && submitted.orderId === FREE_RECEIPT_SEGMENT ? (
+          <>
+            <CommandResult commandId={submitted.commandId} messages="purchase_receipt.result" />
+            <ReceiptPhotoResult
+              commandId={submitted.commandId}
+              receiptId={submitted.receiptId}
+              userId={userId}
+            />
+          </>
+        ) : (
+          <FreeReceiptForm
+            refs={refs}
+            userId={userId}
+            onDone={(commandId, receiptId) =>
+              setSubmitted({ commandId, orderId: FREE_RECEIPT_SEGMENT, receiptId })
+            }
+          />
+        )}
+      </section>
+    );
+  }
+
   if (orderId) {
     if (submitted && submitted.orderId === orderId) {
       return (
@@ -570,6 +608,11 @@ export function ReceiptScreen() {
     <section className="sale proc-screen">
       <PageHeader title={t('nav.screens.purchase_receipt')} />
       <Section title={t('purchase_receipt.orders_title')}>
+        <div className="result-actions">
+          <LinkButton to={ROUTES.purchaseReceiptFree} variant="outline">
+            {t('purchase_receipt.free_open')}
+          </LinkButton>
+        </div>
         {orders.length === 0 ? (
           <p className="muted">{t('purchase_receipt.no_order')}</p>
         ) : (

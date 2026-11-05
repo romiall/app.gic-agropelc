@@ -50,6 +50,8 @@ export const ROUTES = {
   orderMatching: '/achats/rapprochement',
   purchaseReceiptPattern: '/achats/receptions/:orderId',
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
+  /** ECR-APP-04, réception sans bon de commande (AV-519) : le segment prend la place de l'identifiant du bon. */
+  purchaseReceiptFree: '/achats/receptions/sans-bon',
   priceSimulator: '/prix/simulateur',
   priceRules: '/prix/regles',
   catalog: '/catalogue',

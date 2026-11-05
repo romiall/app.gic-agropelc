@@ -126,6 +126,140 @@ export function quantityOf(lines: readonly BalanceAtLine[], productId: string): 
   );
 }
 
+// --- Export CSV du registre (AV-519) -------------------------------------------------------------------
+
+/** Pages lues au plus pour un export (100 mouvements par page) : au-delà, l'export s'arrête et le dit. */
+export const LEDGER_EXPORT_MAX_PAGES = 200;
+
+/**
+ * Colonnes du fichier exporté. Les deux colonnes de valeur n'existent que si le serveur a servi au moins
+ * une valeur (droit de valorisation, RC-05) : sans ce droit, jamais de colonne vide qui ferait croire à
+ * un coût nul.
+ */
+export type LedgerCsvColumn =
+  | 'WHEN'
+  | 'BUSINESS_DAY'
+  | 'MOVE'
+  | 'PRODUCT'
+  | 'DIRECTION'
+  | 'QUANTITY'
+  | 'UNIT'
+  | 'COUNTERPART'
+  | 'LOT'
+  | 'UNIT_COST'
+  | 'VALUE'
+  | 'REVERSAL'
+  | 'OFFLINE'
+  | 'SOURCE_TYPE'
+  | 'SOURCE_ID';
+
+export function ledgerCsvColumns(moves: readonly MoveView[]): LedgerCsvColumn[] {
+  const valued = moves.some((move) => move.valueXaf !== null || move.unitCostXaf !== null);
+  return [
+    'WHEN',
+    'BUSINESS_DAY',
+    'MOVE',
+    'PRODUCT',
+    'DIRECTION',
+    'QUANTITY',
+    'UNIT',
+    'COUNTERPART',
+    'LOT',
+    ...(valued ? (['UNIT_COST', 'VALUE'] as const) : []),
+    'REVERSAL',
+    'OFFLINE',
+    'SOURCE_TYPE',
+    'SOURCE_ID',
+  ];
+}
+
+/** Libellés et correspondances que l'écran fournit (traduction, référentiels de l'appareil). */
+export interface LedgerCsvLookups {
+  /** Instant d'un mouvement, à l'heure de Douala (`AAAA-MM-JJ HH:MM`). */
+  readonly when: (iso: string) => string;
+  readonly header: (column: LedgerCsvColumn) => string;
+  readonly moveType: (moveType: string) => string;
+  readonly product: (productId: string) => string;
+  readonly unit: (productId: string) => string;
+  readonly counterpart: (move: MoveView) => string;
+  readonly direction: (direction: 'IN' | 'OUT') => string;
+  readonly yes: string;
+  readonly no: string;
+}
+
+/** Nombre à la française pour un tableur (virgule décimale, sans séparateur de milliers). */
+const decimalText = (value: number): string => String(value).replace('.', ',');
+
+/** En-têtes puis une ligne par mouvement ; quantités signées (sortie négative) pour qu'une somme donne le solde. */
+export function ledgerCsvRows(
+  moves: readonly MoveView[],
+  columns: readonly LedgerCsvColumn[],
+  lookups: LedgerCsvLookups,
+): string[][] {
+  const cell = (move: MoveView, column: LedgerCsvColumn): string => {
+    switch (column) {
+      case 'WHEN':
+        return lookups.when(move.occurredAt);
+      case 'BUSINESS_DAY':
+        return move.businessDate ?? '';
+      case 'MOVE':
+        return lookups.moveType(move.moveType);
+      case 'PRODUCT':
+        return lookups.product(move.productId);
+      case 'DIRECTION':
+        return lookups.direction(move.direction);
+      case 'QUANTITY':
+        return `${move.direction === 'IN' ? '' : '-'}${decimalText(move.quantity)}`;
+      case 'UNIT':
+        return lookups.unit(move.productId);
+      case 'COUNTERPART':
+        return lookups.counterpart(move);
+      case 'LOT':
+        return move.lotId ?? '';
+      case 'UNIT_COST':
+        return move.unitCostXaf === null ? '' : String(move.unitCostXaf);
+      case 'VALUE':
+        return move.valueXaf === null ? '' : String(move.valueXaf);
+      case 'REVERSAL':
+        return move.isReversal ? lookups.yes : lookups.no;
+      case 'OFFLINE':
+        return move.capturedOffline ? lookups.yes : lookups.no;
+      case 'SOURCE_TYPE':
+        return move.sourceDocType;
+      case 'SOURCE_ID':
+        return move.sourceDocId;
+    }
+  };
+  return [
+    columns.map((column) => lookups.header(column)),
+    ...moves.map((move) => columns.map((column) => cell(move, column))),
+  ];
+}
+
+const slug = (text: string): string =>
+  text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/œ/g, 'oe')
+    .replace(/æ/g, 'ae')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+
+/** Nom du fichier exporté : emplacement, produit éventuel et période (`registre-stock_magasin-central_2026-10-01_2026-10-31.csv`). */
+export function ledgerFileName(input: {
+  readonly locationName: string;
+  readonly productName: string | null;
+  readonly from: string;
+  readonly to: string;
+}): string {
+  const parts = ['registre-stock', slug(input.locationName)];
+  if (input.productName) parts.push(slug(input.productName));
+  parts.push(input.from, input.to);
+  return `${parts.filter(Boolean).join('_')}.csv`;
+}
+
 export interface TypeTotal {
   readonly moveType: string;
   readonly entries: number;
