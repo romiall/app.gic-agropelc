@@ -605,7 +605,65 @@ function samples(): Sample[] {
     },
   ];
 
-  return [...org, ...devices, ...users, ...catalog, ...sync, ...comm];
+  // Chargements par fichier de la reprise (AV-517, `features/import/rp2-entities.ts`) : les clefs de ces charges sont
+  // celles que le contrôle du fichier fabrique (essai de `rp2-entities.test.ts`) ; le serveur doit les lire toutes.
+  const loading: Sample[] = [
+    {
+      label: 'chargement : stock d’ouverture (AV-517)',
+      commandType: 'inventory.opening.post',
+      payload: {
+        locationId: id(),
+        lines: [
+          { productId: id(), quantityBase: 1200, unitCostXaf: 1850 },
+          { productId: id(), quantityBase: 50.5, unitCostXaf: 3000 },
+        ],
+      },
+    },
+    {
+      label: 'chargement : caisse de point de vente (AV-517)',
+      commandType: 'finance.cash_account.create',
+      payload: {
+        code: 'CAISSE-AKWA',
+        name: 'Caisse du point de vente Akwa',
+        accountType: 'CAISSE_PDV',
+        siteId,
+        responsibleUserId: userId,
+        externalRef: '+237 677 00 00 00',
+      },
+    },
+    {
+      label: 'chargement : caisse personnelle (AV-517)',
+      commandType: 'finance.cash_account.create',
+      payload: {
+        code: 'CAISSE-PAUL',
+        name: 'Caisse de Paul',
+        accountType: 'CAISSE_UTILISATEUR',
+        holderUserId: userId,
+        responsibleUserId: userId,
+      },
+    },
+    {
+      label: 'chargement : règle de prix en brouillon (AV-517)',
+      commandType: 'pricing.rule.draft',
+      payload: {
+        code: 'OEUF-GROS',
+        productId: id(),
+        unitPriceXaf: 1850,
+        pricingUnitCode: 'U',
+        zoneId: id(),
+        siteId,
+        customerCategoryId: id(),
+        channelCode: 'PDV',
+        minQuantity: 30,
+        priority: 10,
+        validFrom: '2026-11-09T23:00:00.000Z',
+        validTo: '2026-12-30T23:00:00.000Z',
+        notes: 'Prix de gros',
+      },
+    },
+  ];
+
+  return [...org, ...devices, ...users, ...catalog, ...loading, ...sync, ...comm];
 }
 
 describe('charges de commande fabriquées par la PWA : le schéma du serveur les accepte, sans rien perdre', () => {

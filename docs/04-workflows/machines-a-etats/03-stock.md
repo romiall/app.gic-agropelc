@@ -104,7 +104,7 @@ stateDiagram-v2
 | `IN_PROGRESS` | `inventory.count.cancel` | — | `CANCELLED` | — | — | — | `inventory.count.perform` |
 | `POSTED` | Réaction : mouvement tardif de `occurred_at` ≤ `counted_at` (BR-STK-044) | — | `POSTED` | Écart net mis à jour ; `InventoryCountReconciled` | Ajustement compensatoire rattaché | Valeur d'écart ajustée | `system` |
 
-Inventaire d'ouverture (`count_type = OPENING`) : même machine ; théorique nul ; mouvements `OPENING_BALANCE` depuis `V_OPENING` ; toujours soumis à validation (`inventory.opening.post`).
+Inventaire d'ouverture (`count_type = OPENING`) : même machine ; théorique nul ; mouvements `OPENING_BALANCE` depuis `V_OPENING` ; toujours soumis à validation (`inventory.opening.post`). **Réalisation (AV-517, 05/11/2026)** : une seule commande `inventory.opening.post` pose le document et ses lignes (`quantityBase`, `unitCostXaf` déclaré), qui passe directement à `PENDING_APPROVAL` (demande `INVENTORY_ADJUSTMENT`, sans seuil : toujours) ; la décision l'approuve (`POSTED`, un `OPENING_BALANCE` par ligne au coût déclaré) ou le rejette (`REJECTED`, aucun mouvement). Un seul stock d'ouverture `PENDING_APPROVAL` ou `POSTED` par emplacement ; ni animal, ni service, ni produit suivi par lot obligatoire (leurs lots naissent des commandes de production et de réception).
 
 **Hors ligne** : ouverture, comptage et soumission (mise en file) sont possibles. Le calcul du théorique et la comptabilisation sont serveur.
 

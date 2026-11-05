@@ -54,9 +54,9 @@ par le serveur et auditées (règle 3) — et ses écrans de saisie portent déj
 - Pas de migration, pas de commande serveur nouvelle ; le serveur n'a changé que pour reconnaître un rejeu (point 5).
 - Le chargement passe par l'outbox : il part par lots de 50 commandes, dans l'ordre, et s'arrête proprement hors ligne
   (les lignes partent à la reconnexion). Les refus du serveur reviennent avec leur motif, ligne par ligne.
-- Les types sont des ajouts de 100 à 300 lignes (`entities.ts`, `slips.ts`) ; les règles de prix, les comptes de trésorerie
-  et le stock d'ouverture restent à ajouter — le dernier exige d'abord la commande `inventory.opening.post`, absente côté
-  serveur.
+- Les types sont des ajouts de 100 à 300 lignes (`entities.ts`, `slips.ts`). **Suite du 05/11/2026 (AV-517)** : le stock
+  d'ouverture (commande serveur `inventory.opening.post`, qui n'existait pas), les comptes de trésorerie et les règles de
+  prix (brouillons seulement) sont chargeables (`rp2-entities.ts`, contrôlés contre les référentiels de l'appareil).
 - **Limite connue** : un code pris par une donnée que l'appareil ne connaît pas (produit non vendable absent du jeu
   `product`) n'est vu que du serveur, qui le refuse (`CODE_EXISTS`) ; la ligne est listée au résultat.
 - **Garde-fous du fichier** (revue du 04/11/2026) : un guillemet jamais refermé rend le fichier entier non chargeable (tout

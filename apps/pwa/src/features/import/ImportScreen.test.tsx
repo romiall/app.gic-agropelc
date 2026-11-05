@@ -94,11 +94,15 @@ describe('ImportScreen (RP-2, PP-C)', () => {
     expect(options).toEqual([
       'Catégories de produit',
       'Produits',
+      'Stock d’ouverture',
+      'Comptes de trésorerie',
       'Pièces papier (historique des carnets)',
       'Présence du personnel (fiche PT)',
     ]);
     expect(
-      screen.getByText(/Réservé à d’autres rôles : Fournisseurs, Clients\./),
+      screen.getByText(
+        /Réservé à d’autres rôles : Règles de prix \(brouillons\), Fournisseurs, Clients\./,
+      ),
     ).toBeInTheDocument();
   });
 

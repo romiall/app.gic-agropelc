@@ -505,6 +505,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-514 | Présence du personnel et bilan hebdomadaire : choix de conception à confirmer et restes (PP-E) | SECONDAIRE | PP | Défauts mis en œuvre le 05/11/2026 : feuille corrigée par annulation puis nouveau report, droits à portée de site, bilan corrigible jusqu'au « vu » du responsable ; restes : jeu hors ligne, vue d'analyse, feuille en double, rattachement à un compte | OUVERT |
 | AV-515 | Administration : modifier un compte, déplacer une zone, fermer une équipe, contrôler les paramètres | IMPORTANTE | RP-1 | Défauts mis en œuvre le 05/11/2026 : `identity.user.update` (nom, numéro, e-mail uniques parmi les comptes actifs), `organization.zone.move` (sous-arborescence recalculée, cycle refusé), `organization.team.close` (membres retirés, plus d'ajout), valeur de paramètre contrôlée par le serveur d'après le catalogue (AV-496 (b)) | OUVERT |
 | AV-516 | Catalogue et prix : modifier un produit, coût standard daté, campagnes commerciales, abandon d'un brouillon | SECONDAIRE | RP-1 | Défauts mis en œuvre le 05/11/2026 : écran de modification d'un produit (nom, catégorie, usages), coût standard en versions datées (saisie Admin, historique au droit de valorisation), création de campagnes et choix d'une campagne dans une règle, abandon d'un brouillon | OUVERT |
+| AV-517 | Stock d'ouverture (commande `inventory.opening.post`) et chargements par fichier : stock d'ouverture, comptes de trésorerie, règles de prix | IMPORTANTE | RP-2 | Défauts mis en œuvre le 05/11/2026 : un document en attente de validation (toujours), coût déclaré, un par emplacement, ni animal ni lot obligatoire ; trois types de chargement | OUVERT |
 
 ---
 
@@ -3866,6 +3867,20 @@ Politique par défaut, paramétrable :
   4. *Abandonner un brouillon de règle* (`pricing.rule.cancel`, droit de rédaction) : un brouillon passe à « annulé » ; une règle active se termine, elle ne s'abandonne pas.
 - **Recommandation** : garder les défauts 1 à 4.
 - **Impact** : `catalog-api/catalog-read.controller.ts`, `catalog/application/public/catalog-query.ts` (`listStandardCosts`), écrans `features/catalog/` (`ProductEditor`) et `features/pricing/` ; aucune migration ; aucun nouveau droit. Défauts mis en œuvre : 1 à 4. Non paramétrable.
+
+### AV-517 — Stock d'ouverture et chargements de la reprise des données : comptes de trésorerie, règles de prix — IMPORTANTE
+- **Question** : les choix faits pour le stock d'ouverture (commande `inventory.opening.post`) et pour les trois nouveaux types de chargement par fichier conviennent-ils ?
+- **Pourquoi** : AV-072 attendait la commande du stock d'ouverture (BR-STK-046) et les types de chargement du palier suivant de RP-2 ; demande du porteur du 05/11/2026. **DÉDUIT**
+- **Choix** :
+  1. *Forme du stock d'ouverture* : (a) une seule commande pose le document et ses lignes (quantité en unité de base, coût unitaire déclaré par ligne) et le met en attente de validation (défaut mis en œuvre) ; (b) reprendre le circuit de l'inventaire ordinaire (ouvrir, saisir, soumettre).
+  2. *Validation* : (a) toujours (le stock initial valorise le bilan), par la demande `INVENTORY_ADJUSTMENT` et sa politique de contrôle, sans seuil (défaut mis en œuvre, conforme à BR-STK-046) ; (b) un seuil en valeur sous lequel il est comptabilisé tout de suite.
+  3. *Produits chargeables* : (a) ni animal, ni service, ni produit suivi par lot obligatoire : leurs lots naissent des commandes de production et de réception (défaut mis en œuvre) ; (b) un stock d'ouverture par lot, avec création du lot.
+  4. *Un seul stock d'ouverture par emplacement* tant qu'il n'est pas rejeté (en attente ou comptabilisé) ; un rejet libère l'emplacement. Le coût déclaré devient le coût moyen pondéré du produit (CMUP).
+  5. *Comptes de trésorerie par fichier* : code, nom, type, site (caisse PDV), titulaire (caisse utilisateur), responsable (nom complet d'un utilisateur actif, refusé s'il est ambigu), référence externe ; le solde ne se charge jamais (un solde d'ouverture est un mouvement `OPENING_BALANCE`).
+  6. *Règles de prix par fichier* : brouillons de version 1 seulement (jamais d'activation, AV-062) ; début au plus tôt aujourd'hui (heure de Douala) ; le code déjà pris et la détection des conflits restent jugés par le serveur à l'activation.
+  7. *Rôles* : stock d'ouverture et comptes de trésorerie pour l'Admin et la Finance ; règles de prix pour le responsable commercial et la Direction (rôles de leurs écrans).
+- **Recommandation** : garder les défauts 1 à 7.
+- **Impact** : `inventory/application/commands/count-commands.ts` (`openingPost`, décision `OPENING_BALANCE`), `features/import/rp2-entities.ts` ; aucune migration (la table des inventaires porte déjà `OPENING`) ; aucun droit nouveau (`inventory.opening.post` existait). Défauts mis en œuvre : 1 à 7. Non paramétrable.
 
 ## 3. Journal des décisions
 

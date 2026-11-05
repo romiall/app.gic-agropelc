@@ -52,7 +52,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | UC-STK-11 | INVENTORIER : ouvrir, compter, soumettre | `inventory.count.open`, `inventory.count.record_lines`, `inventory.count.submit` | MAGASINIER, VENDEUR_PDV, RESP_FERME | **Oui** (comptage) |
 | UC-STK-12 | Valider un inventaire (écarts au-dessus du seuil) | `approvals.request.approve` / `reject` | Responsable du site, DIRECTION, FINANCE | Non |
 | UC-STK-13 | Accorder, augmenter, libérer ou révoquer une allocation | `inventory.allocation.grant`, `inventory.allocation.release`, `inventory.allocation.revoke` | MAGASINIER, responsable du PDV ; l'appareil détenteur pour la libération | Non (octroi, révocation) / **Oui** (libération) |
-| UC-STK-14 | Charger le stock d'ouverture | `inventory.count.open` (type `OPENING`) | ADMIN, MAGASINIER | Non |
+| UC-STK-14 | Charger le stock d'ouverture (une commande pose le document et ses lignes au coût déclaré, puis il attend sa validation ; AV-517) | `inventory.opening.post` (type `OPENING`) | ADMIN, FINANCE, MAGASINIER (son site) | Non |
 | UC-STK-15 | Paramétrer les seuils de réapprovisionnement | `inventory.threshold.set` | Responsables, DIRECTION | Non |
 | UC-STK-16 | Expliquer un écart : parcourir le registre d'un emplacement × produit | requête | Responsables, DIRECTION | Non |
 | UC-STK-17 | Retourner un transfert expédié à la source (P5-16, BR-STK-025) | `inventory.transfer.return_to_source` | MAGASINIER, RESP_FERME (permission `inventory.transfer.dispatch`) | **Oui** |

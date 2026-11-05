@@ -4,9 +4,11 @@
  * animaux est validé par le Responsable production). Portée de P2-04 : natures
  * `FULL`/`PARTIAL`/`SPOT`.
  *
- * Hors périmètre, documenté et non simulé : inventaire d'ouverture (`count_type = 'OPENING'`,
- * `inventory.opening.post`) — `OPENING_BALANCE` reste utilisable directement via
- * `recordStockMove` (déjà testé en P2-03), sans passer par ce workflow ; BR-STK-044
+ * Inventaire d'ouverture (`count_type = 'OPENING'`, `inventory.opening.post`, BR-STK-046, AV-517) : une seule
+ * commande pose le document avec ses lignes (théorique nul, coût unitaire déclaré par ligne) et demande sa
+ * validation (toujours : le stock initial valorise le bilan) ; la décision l'approuve en comptabilisant un mouvement
+ * `OPENING_BALANCE` (`V_OPENING` vers l'emplacement) par ligne, ou le rejette sans mouvement. Hors périmètre,
+ * documenté et non simulé : BR-STK-044
  * (rapprochement tardif d'un mouvement dont `occurred_at <= counted_at` arrive après la
  * comptabilisation — `net_variance_after_reconciliation_xaf`/`reconciled_adjustment_qty_base`
  * restent NULL/0, jamais mis à jour ici) ; BR-STK-045 (répartition FIFO inverse de l'écart
@@ -32,7 +34,7 @@
  * plutôt que de l'appliquer sans contrôle ou de sauter la validation.
  */
 import { z } from 'zod';
-import { receivedQuantitySchema } from '@gic/contracts';
+import { positiveQuantitySchema, receivedQuantitySchema } from '@gic/contracts';
 import { sql, type Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
 import { roundCmupToXaf, businessDayOf } from '@gic/domain';
@@ -81,8 +83,25 @@ const COUNT_APPROVAL_THRESHOLD_KEY = 'inventory.count_approval_threshold_xaf';
 /** AV-039 : repli documenté, utilisé seulement si la clé n'existe pas encore dans la base. */
 const COUNT_APPROVAL_THRESHOLD_FALLBACK_XAF = 25_000;
 
-// `OPENING` exclu : hors périmètre (`inventory.opening.post`, non implémenté ici).
+// `OPENING` n'est pas ouvert par `inventory.count.open` : il a sa propre commande (`inventory.opening.post`).
 const COUNT_TYPES = ['FULL', 'PARTIAL', 'SPOT'] as const;
+
+/** Lignes d'un stock d'ouverture au plus par document (un chargement plus gros se découpe par emplacement). */
+const OPENING_MAX_LINES = 500;
+
+const openingLineSchema = z.object({
+  productId: z.string().uuid(),
+  /** Quantité en unité de base du produit, strictement positive (bornée à `numeric(14,3)`). */
+  quantityBase: positiveQuantitySchema,
+  /** Coût unitaire déclaré (XAF entiers par unité de base) : il valorise le stock initial (CMUP). */
+  unitCostXaf: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
+const openingPostPayloadSchema = z.object({
+  locationId: z.string().uuid(),
+  lines: z.array(openingLineSchema).min(1).max(OPENING_MAX_LINES),
+  comment: z.string().max(2000).optional(),
+});
+type OpeningPostPayload = z.infer<typeof openingPostPayloadSchema>;
 
 const openPayloadSchema = z.object({
   locationId: z.string().uuid(),
@@ -238,6 +257,7 @@ function buildCountCommands(
   recordLines: CommandHandler<RecordLinesPayload>;
   submit: CommandHandler<SubmitPayload>;
   cancel: CommandHandler<CancelPayload>;
+  openingPost: CommandHandler<OpeningPostPayload>;
 } {
   const deps: RecordMoveDeps = { idGenerator };
 
@@ -539,7 +559,191 @@ function buildCountCommands(
     return { status: 'APPLIED' };
   };
 
-  return { open, recordLines, submit, cancel };
+  /**
+   * Pose un inventaire d'ouverture et demande sa validation (BR-STK-046, AV-517). Un seul par emplacement tant
+   * qu'il n'est pas rejeté ou annulé ; des produits distincts ; ni produit biologique ni produit suivi par lot
+   * obligatoire (leurs lots naissent des commandes de production et de réception). Le document reste
+   * `PENDING_APPROVAL` jusqu'à la décision (`registerInventoryAdjustmentDecisionHandler`) : aucun mouvement avant.
+   */
+  const openingPost: CommandHandler<OpeningPostPayload> = async (uow, envelope) => {
+    const countId = envelope.aggregate_id;
+    const { locationId, lines, comment } = envelope.payload;
+    const already = await uow
+      .selectFrom('inventory_inventory_counts')
+      .select('id')
+      .where('id', '=', toBin(countId))
+      .executeTakeFirst();
+    if (already) return { status: 'APPLIED' }; // rejeu
+
+    const refuse = (errorCode: string, messageFr: string): CommandHandlerOutcome => ({
+      status: 'REJECTED',
+      errorCode,
+      messageFr,
+    });
+    const location = await uow
+      .selectFrom('organization_locations')
+      .select(['site_id', 'is_virtual', 'status'])
+      .where('id', '=', toBin(locationId))
+      .executeTakeFirst();
+    if (!location) return refuse('NOT_FOUND', 'Emplacement introuvable.');
+    if (Boolean(location.is_virtual) || location.site_id === null || location.status !== 'ACTIVE') {
+      return refuse(
+        'OPENING_LOCATION_INVALID',
+        'Le stock d’ouverture se pose sur un emplacement physique actif.',
+      );
+    }
+    const existing = await uow
+      .selectFrom('inventory_inventory_counts')
+      .select('status')
+      .where('location_id', '=', toBin(locationId))
+      .where('count_type', '=', 'OPENING')
+      .where('status', 'in', ['PENDING_APPROVAL', 'POSTED'])
+      .executeTakeFirst();
+    if (existing) {
+      return refuse(
+        'OPENING_ALREADY_EXISTS',
+        existing.status === 'POSTED'
+          ? 'Cet emplacement a déjà son stock d’ouverture (BR-STK-046).'
+          : 'Le stock d’ouverture de cet emplacement attend sa validation.',
+      );
+    }
+
+    const productIds = lines.map((line) => line.productId);
+    if (new Set(productIds).size !== productIds.length) {
+      return refuse(
+        'OPENING_DUPLICATE_PRODUCT',
+        'Un produit ne figure qu’une fois au stock d’ouverture.',
+      );
+    }
+    const products = await uow
+      .selectFrom('catalog_products')
+      .select(['id', 'status', 'stock_family', 'lot_tracking'])
+      .where(
+        'id',
+        'in',
+        productIds.map((id) => toBin(id)),
+      )
+      .execute();
+    if (products.length !== productIds.length) return refuse('NOT_FOUND', 'Produit introuvable.');
+    for (const product of products) {
+      if (product.status !== 'ACTIVE') {
+        return refuse('PRODUCT_INACTIVE', 'Un produit du stock d’ouverture est désactivé.');
+      }
+      if (
+        product.stock_family === 'BIOLOGIQUE' ||
+        product.stock_family === 'SERVICE' ||
+        product.lot_tracking === 'REQUIRED'
+      ) {
+        return refuse(
+          'OPENING_PRODUCT_NOT_ALLOWED',
+          'Les animaux, les services et les produits suivis par lot obligatoire ne se chargent pas ici : leurs lots naissent des commandes de production et de réception.',
+        );
+      }
+    }
+
+    const occurredAt = new Date(envelope.occurred_at);
+    const policy = await decidablePolicyFor(
+      uow,
+      'INVENTORY_ADJUSTMENT',
+      occurredAt,
+      envelope.captured_offline
+        ? (await loadCommandOrigin(uow, envelope.command_id)).receivedAt
+        : undefined,
+    );
+    if (!policy) {
+      return refuse(
+        'CONTROL_POLICY_MISSING',
+        'Aucune politique de contrôle INVENTORY_ADJUSTMENT configurée (approvals.policy.set).',
+      );
+    }
+
+    const { siteId, codeSite } = await loadLocationSite(uow, locationId);
+    const origin = await loadCommandOrigin(uow, envelope.command_id);
+    const docNumber = await documentSequences.next(uow, {
+      docType: 'INV',
+      siteId,
+      codeSite,
+      year: Number(businessDayOf(occurredAt).slice(0, 4)),
+    });
+    const totalValueXaf = lines.reduce(
+      (sum, line) => sum + line.quantityBase * line.unitCostXaf,
+      0,
+    );
+    const valueXaf = Math.round(totalValueXaf);
+    const approvalRequestId = idGenerator.newId();
+
+    await uow
+      .insertInto('inventory_inventory_counts')
+      .values({
+        id: toBin(countId),
+        doc_number: docNumber,
+        site_id: toBin(siteId),
+        location_id: toBin(locationId),
+        count_type: 'OPENING',
+        status: 'PENDING_APPROVAL',
+        opened_by: toBin(envelope.author_user_id),
+        submitted_by: toBin(envelope.author_user_id),
+        submitted_at: occurredAt,
+        variance_value_xaf: valueXaf,
+        abs_variance_value_xaf: valueXaf,
+        occurred_at: occurredAt,
+        client_created_at: new Date(envelope.client_created_at),
+        command_id: toBin(envelope.command_id),
+        created_device_id: toBinOrNull(origin.deviceId),
+        captured_offline: envelope.captured_offline ? 1 : 0,
+        backdated_reason: envelope.backdated_reason,
+        created_by: toBin(envelope.author_user_id),
+      })
+      .execute();
+    // La demande de validation référence le document : elle vient après lui, le document la référence ensuite.
+    await requestApproval(uow, {
+      requestId: approvalRequestId,
+      operationType: 'INVENTORY_ADJUSTMENT',
+      subjectType: 'INVENTORY_COUNT',
+      subjectId: countId,
+      // Aucune valeur au coût dans le résumé (RC-05) : le montant reste dans `amount_xaf`.
+      subjectSummary: `Stock d’ouverture ${docNumber}`,
+      siteId,
+      amountXaf: valueXaf,
+      requestedBy: envelope.author_user_id,
+      requestedAt: occurredAt,
+      policyId: policy.id,
+      policyVersion: policy.version,
+    });
+    await uow
+      .updateTable('inventory_inventory_counts')
+      .set({ approval_request_id: toBin(approvalRequestId) })
+      .where('id', '=', toBin(countId))
+      .execute();
+    for (const line of lines) {
+      await uow
+        .insertInto('inventory_inventory_count_lines')
+        .values({
+          id: toBin(idGenerator.newId()),
+          count_id: toBin(countId),
+          product_id: toBin(line.productId),
+          lot_id: null,
+          counted_at: occurredAt,
+          counted_qty_base: String(line.quantityBase),
+          theoretical_qty_base: '0',
+          variance_qty_base: String(line.quantityBase),
+          unit_cost_xaf: line.unitCostXaf,
+          declared_unit_cost_xaf: line.unitCostXaf,
+          comment: comment ?? null,
+          command_id: toBin(envelope.command_id),
+        })
+        .execute();
+    }
+    await recordChanges(uow, [inventoryCountChange(countId, locationId)]);
+    return {
+      status: 'APPLIED',
+      audit: {
+        after: { countType: 'OPENING', lines: lines.length, valueXaf, status: 'PENDING_APPROVAL' },
+      },
+    };
+  };
+
+  return { open, recordLines, submit, cancel, openingPost };
 }
 
 /** Décision `INVENTORY_ADJUSTMENT` (SM-INVENTORY-COUNT `PENDING_APPROVAL -> {POSTED,
@@ -556,7 +760,7 @@ function registerInventoryAdjustmentDecisionHandler(
     decisionRegistry.register(operationType, async (uow, ctx) => {
       const row = await uow
         .selectFrom('inventory_inventory_counts')
-        .select(['id', 'location_id', 'site_id', 'variance_value_xaf'])
+        .select(['id', 'location_id', 'site_id', 'variance_value_xaf', 'count_type'])
         .where('id', '=', toBin(ctx.subjectId))
         .executeTakeFirstOrThrow();
 
@@ -571,6 +775,39 @@ function registerInventoryAdjustmentDecisionHandler(
           uow,
           lines.map((line) => ({ locationId, productId: fromBin(line.product_id) })),
         );
+        if (row.count_type === 'OPENING') {
+          // Stock d'ouverture (AV-517) : un `OPENING_BALANCE` par ligne, depuis `V_OPENING`, au coût déclaré.
+          const openingLocationId = await virtualLocationId(uow, 'V_OPENING');
+          for (const line of lines) {
+            await recordStockMove(uow, deps, {
+              productId: fromBin(line.product_id),
+              quantityBase: Number(line.counted_qty_base),
+              fromLocationId: openingLocationId,
+              toLocationId: locationId,
+              moveType: 'OPENING_BALANCE',
+              occurredAt: line.counted_at,
+              sourceDocType: 'INVENTORY_COUNT',
+              sourceDocId: ctx.subjectId,
+              sourceLineId: fromBin(line.id),
+              declaredUnitCostXaf: Number(line.unit_cost_xaf ?? 0),
+              createdBy: ctx.decidedBy,
+              capturedOffline: false,
+              allowNegative: false,
+            });
+          }
+          await uow
+            .updateTable('inventory_inventory_counts')
+            .set({
+              status: 'POSTED',
+              posted_at: ctx.decidedAt,
+              updated_by: toBin(ctx.decidedBy),
+              version: sql`version + 1`,
+            })
+            .where('id', '=', row.id)
+            .execute();
+          await recordCountChange(uow, row);
+          return;
+        }
         for (const line of lines) {
           const variance = line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0;
           await applyLineAdjustment(uow, deps, {
@@ -706,6 +943,18 @@ export function registerCountCommands(
       (uow, envelope) =>
         documentLocation(uow, 'inventory_inventory_counts', envelope.payload.countId),
       handlers.cancel,
+    ),
+  });
+  registry.register({
+    commandType: 'inventory.opening.post',
+    version: 1,
+    payloadSchema: openingPostPayloadSchema,
+    permissionCode: 'inventory.opening.post',
+    // Portée de l'emplacement chargé (comme `inventory.count.open`, AV-182).
+    handler: withStockScope(
+      'inventory.opening.post',
+      async (_uow, envelope) => [envelope.payload.locationId],
+      handlers.openingPost,
     ),
   });
   registerInventoryAdjustmentDecisionHandler(decisionRegistry, idGenerator);

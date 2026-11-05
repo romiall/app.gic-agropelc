@@ -47,6 +47,7 @@ import {
 } from './model.js';
 import { customersByPhone } from './phones.js';
 import { PRESENCE_ENTITY } from './presence-entity.js';
+import { RP2_ENTITIES } from './rp2-entities.js';
 import { SLIPS_ENTITY } from './slips.js';
 
 const CATALOG_ISSUES: Readonly<Record<CatalogIssue, string>> = {
@@ -756,4 +757,5 @@ export const IMPORT_ENTITIES: readonly ImportEntity[] = [
   CUSTOMERS_ENTITY,
   SLIPS_ENTITY,
   PRESENCE_ENTITY,
+  ...RP2_ENTITIES,
 ].sort((a, b) => a.order - b.order);

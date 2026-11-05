@@ -504,6 +504,9 @@ describe('contrôle d’un fichier', () => {
       // Les pièces papier se contrôlent avec les référentiels d'un appareil (emplacements, produits, comptes) :
       // leur fichier modèle est gardé dans `slips.test.ts`, colonne par colonne.
       if (entity.id === 'slips') continue;
+      // Stock d'ouverture, comptes de trésorerie et règles de prix se contrôlent contre les référentiels d'un
+      // appareil : leur exemple est gardé dans `rp2-entities.test.ts`.
+      if (['opening_stock', 'cash_accounts', 'price_rules'].includes(entity.id)) continue;
       // L'exemple de produit cite la catégorie VOLAILLE (qui doit exister) ; celui des catégories la crée.
       // Celui de la présence nomme un site de l'application (« Ferme de Bonabéri »).
       const context =
@@ -534,12 +537,15 @@ describe('contrôle d’un fichier', () => {
     }
   });
 
-  it('les types sont proposés dans l’ordre de chargement : catégories, produits, fournisseurs, clients, pièces, présence', () => {
+  it('les types sont proposés dans l’ordre de chargement : catégories, produits, règles de prix, stock d’ouverture, fournisseurs, clients, comptes de trésorerie, pièces, présence', () => {
     expect(IMPORT_ENTITIES.map((entity) => entity.id)).toEqual([
       'categories',
       'products',
+      'price_rules',
+      'opening_stock',
       'suppliers',
       'customers',
+      'cash_accounts',
       'slips',
       'presence',
     ]);
