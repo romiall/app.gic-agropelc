@@ -178,3 +178,33 @@ export async function dayLossByLocation(
     }))
     .sort((a, b) => b.valueXaf - a.valueXaf);
 }
+
+export interface LossesDeclaredBy {
+  /** Déclarations comptées (constatées, non justifiées, en annulation) de la période. */
+  readonly declarations: number;
+  /** Valeur au coût figé des déclarations (champ protégé : jamais servi sans droit de valorisation, RC-05). */
+  readonly valueXaf: number;
+}
+
+/**
+ * Pertes **déclarées par une personne** sur `[fromUtc, toUtc[` (PP-E ; REQ-307, AV-314 : « casses et pertes » du bilan
+ * hebdomadaire d'un commercial). Mêmes statuts comptés que {@link lossValueSummary} (les déclarations en attente de
+ * validation et celles rejetées et rendues ne sont pas des pertes constatées).
+ */
+export async function lossesDeclaredBy(
+  executor: Kysely<DB> | Transaction<DB>,
+  filter: { readonly userId: string; readonly fromUtc: Date; readonly toUtc: Date },
+): Promise<LossesDeclaredBy> {
+  const row = await executor
+    .selectFrom('inventory_loss_declarations')
+    .select([
+      sql<string>`COUNT(*)`.as('declarations'),
+      sql<string>`COALESCE(SUM(value_xaf), 0)`.as('value'),
+    ])
+    .where('declared_by', '=', toBin(filter.userId))
+    .where('occurred_at', '>=', filter.fromUtc)
+    .where('occurred_at', '<', filter.toUtc)
+    .where('status', 'in', [...COUNTED])
+    .executeTakeFirstOrThrow();
+  return { declarations: Number(row.declarations), valueXaf: Number(row.value) };
+}

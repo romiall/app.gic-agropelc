@@ -78,7 +78,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(124); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03)
+    expect(PERMISSIONS.length).toBe(129); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -94,8 +94,11 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // + 1 octroi finance.cash_transfer.record OWN (Resp. commercial : alignement sur la matrice §5.5, P5-15) ;
     // + 2 octrois finance.expense_category.manage (Finance, Administrateur : AV-270, P8-03) ;
     // + 1 octroi finance.expense.record OWN (Resp. commercial : alignement sur la matrice §5.5, P8-03) ;
-    // + 1 octroi identity.device.read SITE du Resp. production (AV-261, MP-06).
-    expect(ROLE_PERMISSIONS.length).toBe(504);
+    // + 1 octroi identity.device.read SITE du Resp. production (AV-261, MP-06) ;
+    // + 16 octrois de PP-E (AV-313, AV-314) : fieldwork.presence.record et .read (Direction, Administrateur : ALL ;
+    // Resp. production, Resp. ferme : SITE) = 8 ; crm.weekly_report.read et .review (Direction : ALL, Resp. commercial :
+    // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
+    expect(ROLE_PERMISSIONS.length).toBe(520);
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>

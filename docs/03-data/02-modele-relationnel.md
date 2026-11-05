@@ -84,7 +84,9 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `crm.customer_stage_history` | HIST | Évolution des stades et étapes | customers, users | SRV (consultation en ligne) | idem |
 | `crm.visits` | TX | Visites | customers, users, work_sessions (fieldwork), reason_codes | DL (90 j), CR | idem |
 | `crm.interactions` | TX | Interactions hors Kommo | customers, users | DL (90 j), CR | idem |
+| `crm.visit_market_watch` | TX | Veille marché relevée pendant une visite (PP-D) | visits, products | DL (avec la visite), CR | idem |
 | `crm.sales_targets` | TX | Objectifs | users, teams, sites, products | DL (les siens) | idem |
+| `crm.weekly_reports` | TX | Bilan hebdomadaire du commercial (PP-E, ADR-056) | users | SRV (lecture en ligne), CR | idem |
 
 ### 2.6 `fieldwork`
 
@@ -92,6 +94,8 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 |---|---|---|---|---|---|
 | `fieldwork.geo_checkins` | TX (journal) | Tentatives de pointage | users, devices, zones, work_sessions | CR | [dict](dictionnaire/04-crm-fieldwork.md) |
 | `fieldwork.work_sessions` | TX | Sessions de travail | users, devices, zones, approval_requests | DL (la session ouverte), CR | idem |
+| `fieldwork.presence_sheets` | TX | Feuilles de présence du personnel reportées depuis la fiche PT (PP-E, ADR-056) | sites, users | SRV (lecture en ligne), CR | idem |
+| `fieldwork.staff_presence` | TX | Une ligne par personne et par jour d'une feuille de présence | presence_sheets, users (facultatif) | SRV (avec la feuille), CR | idem |
 
 ### 2.7 `sales`
 

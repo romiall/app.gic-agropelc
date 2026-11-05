@@ -20,6 +20,7 @@ import {
   type SessionRejectedListenerRegistry,
 } from '../session-rejection.js';
 import { registerCheckinCommands } from './checkin-commands.js';
+import { registerPresenceCommands } from './presence-commands.js';
 
 @Injectable()
 export class FieldworkCommandsRegistrar implements OnModuleInit {
@@ -41,5 +42,6 @@ export class FieldworkCommandsRegistrar implements OnModuleInit {
       this.idGenerator,
       this.clock,
     );
+    registerPresenceCommands(this.registry, this.idGenerator);
   }
 }

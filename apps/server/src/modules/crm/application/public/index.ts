@@ -54,6 +54,12 @@ export type {
 /** P4-11 : l'encours d'un compte change avec ses ventes et encaissements (jeu `customers`). */
 export { emitCustomerChange } from '../sync-changes.js';
 export {
+  WEEKLY_REPORT_LIST_DEFAULT_LIMIT,
+  WEEKLY_REPORT_LIST_MAX_LIMIT,
+  listWeeklyReports,
+} from './weekly-report-query.js';
+export type { WeeklyReportFilter, WeeklyReportSummary } from './weekly-report-query.js';
+export {
   conversionCohort,
   ORDER_TAKEN_REASON_CODE,
   portfolioActivity,

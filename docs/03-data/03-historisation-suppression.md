@@ -60,6 +60,9 @@ Codes : `IMMUABLE` (ni modification ni suppression, correction par écriture inv
 | `production.*` (entrées, collectes, pesées, incubations) | ANNULATION | Statut + mouvements inverses |
 | `crm.visits`, `crm.interactions` | ANNULATION | Statut `CANCELLED` |
 | `fieldwork.geo_checkins`, `fieldwork.work_sessions` | IMMUABLE | — (transitions de statut seulement) |
+| `crm.visit_market_watch`, `fieldwork.staff_presence` | IMMUABLE | — (ajout seul ; la visite ou la feuille parente s'annule, ses lignes restent) |
+| `fieldwork.presence_sheets` | ANNULATION | Statut `CANCELLED` motivé ; une feuille annulée ne change plus ; corriger = annuler puis reporter de nouveau |
+| `crm.weekly_reports` | IMMUABLE sauf correction avant le « vu » | Textes corrigeables tant que le bilan n'est pas `REVIEWED` (anciens textes au journal d'audit) ; vu, il ne redevient pas modifiable |
 | `approvals.approval_requests` | IMMUABLE après décision | Nouvelle opération |
 | `attachments.attachments` | IMMUABLE | Remplacement (`SUPERSEDED`) ; fichier purgé après la rétention, métadonnées conservées |
 | `audit.audit_log`, `platform.domain_events`, `platform.event_consumer_marks` (P0-08), `sync.command_inbox` | IMMUABLE | — |

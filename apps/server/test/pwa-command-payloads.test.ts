@@ -54,6 +54,12 @@ import {
 import { reassignPayload } from '../../pwa/src/features/crm/reassign.js';
 import { profileOf, profilePatch } from '../../pwa/src/features/crm/profile.js';
 import { EMPTY_VISIT, visitPayload } from '../../pwa/src/features/crm/visit.js';
+import { reportPayload } from '../../pwa/src/features/crm/weekly-report.js';
+import {
+  emptyLine,
+  emptySheet,
+  recordPayload,
+} from '../../pwa/src/features/presence/presence-form.js';
 import type { CustomerData } from '../../pwa/src/features/sales/types.js';
 
 /** Compte sans profil : le point de départ d'une première modification du profil. */
@@ -401,6 +407,51 @@ function samples(): Sample[] {
         ],
       }),
     },
+    // Présence du personnel (fiche PT) et bilan hebdomadaire (fiche BH) : PP-E, AV-313, AV-314.
+    {
+      label: 'présence : feuille hebdomadaire',
+      commandType: 'fieldwork.presence.record',
+      payload: recordPayload({
+        ...emptySheet('2026-11-02', 'a'),
+        siteId: id(),
+        paperRef: '000042',
+        responsibleName: 'Joseph Ngo Bayiha',
+        lines: [
+          {
+            ...emptyLine('a'),
+            personName: 'Paul Essomba',
+            personRole: 'Ouvrier',
+            missionLabel: 'Poulailler B2',
+            days: [
+              { arrival: '07:00', departure: '16:00', absence: '' },
+              { arrival: '', departure: '', absence: 'M' },
+              ...emptyLine('b').days.slice(2),
+            ],
+          },
+        ],
+      }),
+    },
+    {
+      label: 'présence : annulation de la feuille',
+      commandType: 'fieldwork.presence.cancel',
+      payload: { comment: 'Feuille saisie deux fois' },
+    },
+    {
+      label: 'bilan hebdomadaire : rédaction',
+      commandType: 'crm.weekly_report.submit',
+      payload: reportPayload('2026-11-02', {
+        successes: 'Deux commandes',
+        difficulties: 'Route coupée',
+        needs: 'Plateaux',
+        priorities: 'Relancer Mboppi',
+        marketInfo: 'Concurrent à 2 500',
+      }),
+    },
+    {
+      label: 'bilan hebdomadaire : vu par le responsable',
+      commandType: 'crm.weekly_report.review',
+      payload: { comment: 'Bon rythme' },
+    },
   ];
 
   const comm: Sample[] = [
@@ -507,6 +558,10 @@ describe('charges de commande fabriquées par la PWA : le schéma du serveur les
       'crm.customer.reassign',
       'crm.visit.record',
       'crm.customer.update',
+      'fieldwork.presence.record',
+      'fieldwork.presence.cancel',
+      'crm.weekly_report.submit',
+      'crm.weekly_report.review',
       'communication.alert_rule.set',
       'communication.note.publish',
       'analytics.view.share',

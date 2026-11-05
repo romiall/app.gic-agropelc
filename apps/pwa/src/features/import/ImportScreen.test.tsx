@@ -95,6 +95,7 @@ describe('ImportScreen (RP-2, PP-C)', () => {
       'Catégories de produit',
       'Produits',
       'Pièces papier (historique des carnets)',
+      'Présence du personnel (fiche PT)',
     ]);
     expect(
       screen.getByText(/Réservé à d’autres rôles : Fournisseurs, Clients\./),

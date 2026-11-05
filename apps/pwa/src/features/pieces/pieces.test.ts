@@ -48,6 +48,9 @@ const DEMANDES: readonly DemandePiece[] = [
   { code: 'FP', donnees: X.EXEMPLE_FP },
   { code: 'FI', donnees: X.EXEMPLE_FI },
   { code: 'FL', donnees: X.EXEMPLE_FL },
+  { code: 'PT', donnees: X.EXEMPLE_PT },
+  { code: 'BH', donnees: X.EXEMPLE_BH },
+  { code: 'VC', donnees: X.EXEMPLE_VC },
 ];
 
 describe('fidélité aux fichiers du porteur (REQ-303)', () => {

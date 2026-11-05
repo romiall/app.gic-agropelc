@@ -135,6 +135,10 @@ export const ROUTES = {
   paperSlipReport: '/pieces/report',
   /** ECR-IMP-01 (RP-2, PP-C) : chargement de données par fichier CSV (AV-072, AV-508). */
   dataImport: '/chargement',
+  /** ECR-TER-03 (PP-E) : présence du personnel, report de la fiche PT (AV-313). */
+  presence: '/presence',
+  /** ECR-CRM-08 (PP-E) : bilan hebdomadaire du commercial et vu du responsable (AV-314). */
+  weeklyReport: '/bilan-hebdomadaire',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -509,6 +513,13 @@ export const ROLE_SETS = {
    * les autres : au-delà de 16 entrées il ne déplie plus tous les domaines (UX-01, `EXPAND_ALL_UNTIL`).
    */
   dataImport: ['ADMIN', 'RESP_COMMERCIAL', 'FINANCE', 'DIRECTION'],
+  /** ECR-TER-03 (PP-E) : `fieldwork.presence.record` et `.read` (Direction et Admin partout, responsables de site sur leur site). */
+  presence: ['ADMIN', 'DIRECTION', 'RESP_PRODUCTION', 'RESP_FERME'],
+  /**
+   * ECR-CRM-08 (PP-E) : `crm.weekly_report.submit` (commerciaux, pour soi), `.read` et `.review` (responsable commercial
+   * pour son équipe, Direction pour tous).
+   */
+  weeklyReport: ['COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE', 'RESP_COMMERCIAL', 'DIRECTION'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -1185,6 +1196,24 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'data_import',
     group: 'general',
     roles: ROLE_SETS.dataImport,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-TER-03',
+    path: ROUTES.presence,
+    labelKey: 'presence',
+    group: 'general',
+    roles: ROLE_SETS.presence,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-CRM-08',
+    path: ROUTES.weeklyReport,
+    labelKey: 'weekly_report',
+    group: 'crm',
+    roles: ROLE_SETS.weeklyReport,
     actionCodes: [],
     offline: true,
   },

@@ -23,6 +23,8 @@ import type {
   DonneesFP,
 } from './pieces-operations.js';
 
+import type { DonneesBH, DonneesPT, DonneesVC } from './pieces-terrain.js';
+
 export type DemandePiece =
   | { readonly code: 'BV'; readonly donnees: DonneesBV }
   | { readonly code: 'RE'; readonly donnees: DonneesRE }
@@ -39,6 +41,9 @@ export type DemandePiece =
   | { readonly code: 'BT'; readonly donnees: DonneesBT }
   | { readonly code: 'FP'; readonly donnees: DonneesFP }
   | { readonly code: 'FI'; readonly donnees: DonneesFI }
-  | { readonly code: 'FL'; readonly donnees: DonneesFL };
+  | { readonly code: 'FL'; readonly donnees: DonneesFL }
+  | { readonly code: 'PT'; readonly donnees: DonneesPT }
+  | { readonly code: 'BH'; readonly donnees: DonneesBH }
+  | { readonly code: 'VC'; readonly donnees: DonneesVC };
 
 export type CodePiece = DemandePiece['code'];

@@ -14,6 +14,7 @@ import { registerCustomerCommands } from './customer-commands.js';
 import { registerPipelineCommands } from './pipeline-commands.js';
 import { registerActivityCommands } from './activity-commands.js';
 import { registerTargetCommands } from './target-commands.js';
+import { registerWeeklyReportCommands } from './weekly-report-commands.js';
 
 @Injectable()
 export class CrmCommandsRegistrar implements OnModuleInit {
@@ -27,5 +28,6 @@ export class CrmCommandsRegistrar implements OnModuleInit {
     registerPipelineCommands(this.registry);
     registerActivityCommands(this.registry, this.idGenerator);
     registerTargetCommands(this.registry);
+    registerWeeklyReportCommands(this.registry);
   }
 }

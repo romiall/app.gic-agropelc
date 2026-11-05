@@ -197,6 +197,26 @@
 - **PK** `id`. **Non-chevauchement** pour (cible, métrique, produit) actifs (BR-CRM-018) : verrouillage de ligne + déclencheur de re-vérification (MySQL, ADR-023).
 - **Suppr.** `ANNULATION`. **Offline** DL (les siens et ceux de son équipe).
 
+## crm.weekly_reports
+
+**Responsabilité** : bilan hebdomadaire du commercial (PP-E ; REQ-307, AV-314, [ADR-056](../../decisions/ADR-056-presence-du-personnel-et-bilan-hebdomadaire.md)) — un bilan par commercial et par semaine (lundi au dimanche, jours métier de Douala) : réussites, difficultés, besoins et demandes à la direction, priorités de la semaine suivante, informations du marché ; le « vu » du responsable et son commentaire. **Les chiffres de la fiche papier BH** (visites, nouveaux prospects et clients, chiffre d'affaires, encaissé, casses et pertes) **ne sont pas stockés** : `GET /api/v1/weekly-reports/figures` les calcule à la lecture avec les définitions déjà publiées. Migration `20261104130000_create_crm_weekly_reports.sql`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | Identifiant dérivé du couple (commercial, semaine) : renvoyer le bilan est une correction |
+| `user_id` | uuid → identity.users | Non | — | Le commercial auteur |
+| `week_start` | date | Non | — | Lundi de la semaine (contrôle `DAYOFWEEK`) |
+| `successes`, `difficulties`, `needs`, `priorities`, `market_info` | text | Oui | — | Cinq textes de 2 000 caractères au plus ; au moins un est renseigné |
+| `status` | enum(`SUBMITTED`,`REVIEWED`) | Non | `SUBMITTED` | `REVIEWED` : vu par le responsable, textes figés |
+| `last_edited_at` | ts | Non | — | `occurred_at` du dernier envoi retenu (le plus récent l'emporte) |
+| `reviewed_at`, `reviewed_by` | ts, uuid → identity.users | Oui | — | Renseignés si et seulement si `REVIEWED` |
+| `manager_comment` | text | Oui | — | Commentaire du responsable ; nul tant que le bilan n'est pas vu |
+| [STD-ORIGIN] | | | | |
+| [STD-AUDIT] | | | | |
+
+- **PK** `id`. **UQ** `command_id`, `(user_id, week_start)`. **IX** `(week_start)`.
+- **Suppr.** `IMMUABLE` : déclencheur de refus de la suppression ; le commercial et la semaine ne changent jamais ; une fois `REVIEWED`, déclencheurs de refus de la modification des textes et du retour à `SUBMITTED`. **Audit** Envoi, correction (textes d'avant et d'après), revue. **Offline** CR (outbox : `crm.weekly_report.submit`) ; lecture en ligne seulement (aucun jeu hors ligne : AV-514).
+
 ---
 
 ## fieldwork.geo_checkins
@@ -250,3 +270,44 @@
 - **PK** `id`. **UQ** une session `OPEN` par `user_id` (index unique partiel, INV-TER-01).
 - **IX** `(user_id, started_at)`.
 - **Suppr.** `IMMUABLE` sauf transitions. **Audit** Ouverture, clôture, dérogation. **Offline** DL (sa session ouverte), CR.
+
+## fieldwork.presence_sheets
+
+**Responsabilité** : feuille de présence du personnel reportée depuis la fiche papier PT (PP-E ; REQ-306, AV-313, [ADR-056](../../decisions/ADR-056-presence-du-personnel-et-bilan-hebdomadaire.md)) — site, semaine (lundi), numéro de la feuille papier et responsable. Le pointage numérique (`fieldwork.work_sessions`) ne couvre que les commerciaux de terrain : ces feuilles couvrent les ouvriers et le personnel administratif, qui n'ont pas tous un compte. Usage statistique et de suivi, ni paie ni discipline. Migration `20261104120000_create_fieldwork_staff_presence.sql`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | Identifiant choisi par l'appareil (agrégat `PRESENCE_SHEET`) |
+| `site_id` | uuid → organization.sites | Non | — | Portée de saisie et de lecture |
+| `week_start` | date | Non | — | Lundi de la semaine (contrôle `DAYOFWEEK`) |
+| `paper_ref` | varchar(30) | Oui | — | Numéro de la feuille papier |
+| `responsible_name` | varchar(120) | Oui | — | Responsable qui a tenu la feuille |
+| `source` | enum(`PAPER`) | Non | `PAPER` | |
+| `status` | enum(`RECORDED`,`CANCELLED`) | Non | `RECORDED` | |
+| [STD-CANCEL] | | | | Annulation motivée (`cancel_comment` obligatoire) |
+| [STD-ORIGIN] | | | | |
+| [STD-AUDIT] | | | | |
+
+- **PK** `id`. **UQ** `command_id`. **IX** `(site_id, week_start)`.
+- **Suppr.** `ANNULATION` : déclencheur de refus de toute modification autre que l'annulation motivée, et de toute modification d'une feuille annulée, qui ne redevient pas `RECORDED` (corriger une feuille, c'est l'annuler puis la reporter de nouveau, règle 4), et de la suppression. **Audit** Report, annulation. **Offline** CR (outbox : `fieldwork.presence.record` et `.cancel`) ; lecture en ligne seulement (AV-514).
+
+## fieldwork.staff_presence
+
+**Responsabilité** : une ligne par personne et par jour d'une feuille de présence (PP-E ; REQ-306, AV-313). Un jour s'écrit en heures (arrivée, départ) **ou** par un code d'absence, jamais les deux ; un départ suppose une arrivée. Ces lignes ne sont pas des sessions de travail : elles n'entrent ni dans le pointage numérique ni dans `analytics.f_attendance` (aucun jour de présence d'un commercial n'est compté deux fois).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | Choisi par le serveur |
+| `sheet_id` | uuid → fieldwork.presence_sheets | Non | — | |
+| `line_no` | smallint | Non | — | Ligne de la feuille (une personne par ligne, 50 au plus) |
+| `presence_date` | date | Non | — | Jour de la semaine de la feuille |
+| `person_name` | varchar(120) | Non | — | Libellé libre |
+| `person_role` | varchar(80) | Oui | — | Fonction |
+| `mission_label` | varchar(80) | Oui | — | Zone ou mission |
+| `user_id` | uuid → identity.users | Oui | — | Compte lié, facultatif (ni l'écran ni le chargement ne le renseignent : AV-514) |
+| `arrival_time`, `departure_time` | time | Oui | — | Heures métier de Douala |
+| `absence_code` | enum(`A`,`M`,`C`,`R`,`MI`) | Oui | — | Absent, maladie, congé, repos, mission hors zone |
+| `created_at`, `created_by` | | Non | — | |
+
+- **PK** `id`. **UQ** `(sheet_id, line_no, presence_date)`. **IX** `(presence_date)`, `(user_id, presence_date)`.
+- **Suppr.** `IMMUABLE` (déclencheurs de refus de la modification et de la suppression). **Offline** CR avec la feuille.

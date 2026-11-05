@@ -427,3 +427,87 @@
   font-size: var(--text-md);
   color: var(--ink);
 }
+
+/* --- Bilan hebdomadaire (ECR-CRM-08, PP-E) ------------------------------------------------------- */
+
+.weekly-week {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.weekly-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.weekly-figures > div {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.weekly-figures dt {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+}
+
+.weekly-figures dd {
+  margin: var(--space-1) 0 0;
+  font-weight: 700;
+}
+
+.weekly-team {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.weekly-team-report {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.weekly-team-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.weekly-field-title {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+
+.weekly-field-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.weekly-review {
+  margin-top: var(--space-2);
+}
+
+.weekly-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Fiche de visite (VC) sous une visite de l'activité du compte : la ligne ne porte pas de repère. */
+.crm-visit-sheet {
+  list-style: none;
+  padding: 0 var(--space-3) var(--space-3);
+}

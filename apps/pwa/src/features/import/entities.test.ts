@@ -505,12 +505,23 @@ describe('contrôle d’un fichier', () => {
       // leur fichier modèle est gardé dans `slips.test.ts`, colonne par colonne.
       if (entity.id === 'slips') continue;
       // L'exemple de produit cite la catégorie VOLAILLE (qui doit exister) ; celui des catégories la crée.
+      // Celui de la présence nomme un site de l'application (« Ferme de Bonabéri »).
       const context =
         entity.id === 'categories'
           ? refs({ categories: [] })
-          : refs({
-              zones: [{ id: '01900000-0000-7000-8000-0000000000a1', label: 'Douala › Bonabéri' }],
-            });
+          : entity.id === 'presence'
+            ? refs({
+                sites: [
+                  {
+                    id: '01900000-0000-7000-8000-0000000000b1',
+                    code: 'BONABERI',
+                    name: 'Ferme de Bonabéri',
+                  },
+                ],
+              })
+            : refs({
+                zones: [{ id: '01900000-0000-7000-8000-0000000000a1', label: 'Douala › Bonabéri' }],
+              });
       const rows = [templateRows(entity)[0]!, exampleRow(entity)];
       expect(rows[0]).toHaveLength(entity.columns.length);
       const result = await planImport(entity, parseCsv(toCsv(rows)), context);
@@ -523,13 +534,14 @@ describe('contrôle d’un fichier', () => {
     }
   });
 
-  it('les types sont proposés dans l’ordre de chargement : catégories, produits, fournisseurs, clients, pièces', () => {
+  it('les types sont proposés dans l’ordre de chargement : catégories, produits, fournisseurs, clients, pièces, présence', () => {
     expect(IMPORT_ENTITIES.map((entity) => entity.id)).toEqual([
       'categories',
       'products',
       'suppliers',
       'customers',
       'slips',
+      'presence',
     ]);
   });
 

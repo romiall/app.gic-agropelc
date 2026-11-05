@@ -119,7 +119,7 @@ export interface ImportEntity {
    * clé de regroupement d'une ligne, ou `undefined` pour une ligne isolée. Avec elle, `planGroup` remplace `planRow` :
    * il reçoit toutes les lignes du même élément, dans l'ordre du fichier.
    */
-  groupKey?(record: Readonly<Record<string, string>>): string | undefined;
+  groupKey?(record: Readonly<Record<string, string>>, refs: ImportRefs): string | undefined;
   planGroup?(
     group: readonly FileRecord[],
     refs: ImportRefs,
@@ -164,12 +164,16 @@ export function mapHeader(
  * Éléments à contrôler : une ligne chacun, ou, pour un type groupé, toutes les lignes d'un même élément (réunies à la
  * place de sa première ligne, dans l'ordre du fichier). Une ligne sans clé de regroupement reste seule.
  */
-function groupRecords(entity: ImportEntity, records: readonly FileRecord[]): FileRecord[][] {
+function groupRecords(
+  entity: ImportEntity,
+  records: readonly FileRecord[],
+  refs: ImportRefs,
+): FileRecord[][] {
   if (!entity.groupKey) return records.map((record) => [record]);
   const groups: FileRecord[][] = [];
   const byKey = new Map<string, FileRecord[]>();
   for (const record of records) {
-    const key = entity.groupKey(record.record);
+    const key = entity.groupKey(record.record, refs);
     const known = key === undefined ? undefined : byKey.get(key);
     if (known) {
       known.push(record);
@@ -212,7 +216,7 @@ export async function planImport(
       const extraCells = row.cells.slice(csv.header.length).filter((value) => value !== '').length;
       return { line: row.line, record, ...(extraCells > 0 ? { extraCells } : {}) };
     });
-    for (const group of groupRecords(entity, records)) {
+    for (const group of groupRecords(entity, records, refs)) {
       const row = group[0]!;
       const outcome = entity.planGroup
         ? await entity.planGroup(group, refs, planned)

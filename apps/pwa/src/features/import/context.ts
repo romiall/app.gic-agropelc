@@ -93,6 +93,14 @@ export function buildImportRefs({
     if (type && ref) reportedSlips.add(`${type}|${ref}`);
   }
 
+  // Feuilles de présence déjà dans la file de l'appareil (PP-E) : leur identifiant est celui du chargement précédent.
+  const pendingPresenceSheets = new Set<string>();
+  for (const command of live) {
+    if (command.command_type === 'fieldwork.presence.record') {
+      pendingPresenceSheets.add(command.aggregate_id);
+    }
+  }
+
   return {
     authorUserId: userId,
     unitCodes: new Set(
@@ -126,5 +134,6 @@ export function buildImportRefs({
     phoneCountryCode,
     slipContext: { refs: references, userId, roles: roles.length > 0 ? roles : null, now },
     reportedSlips,
+    pendingPresenceSheets,
   };
 }

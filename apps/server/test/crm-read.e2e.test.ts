@@ -417,4 +417,625 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
     expect(colleague.json().sessions).toEqual([]);
     expect((await get(mag, `/api/v1/work-sessions?date=${DAY}`)).statusCode).toBe(403);
   });
+
+  // ---- PP-E : présence du personnel (fiche PT, AV-313) et bilan hebdomadaire (fiche BH, AV-314) ----------------
+  describe('présence du personnel et bilan hebdomadaire (PP-E)', () => {
+    /** Lundi de la semaine du 20/09 (journée de données ci-dessus). */
+    const WEEK = '2026-09-14';
+    let rfe: Actor;
+    let rfeOther: Actor;
+    /** Responsable de production : affectation globale, droits de présence « de site ». */
+    let rpr: Actor;
+    let dir: Actor;
+    let rcoOther: Actor;
+    let siteOther: string;
+    const sheetId = freshUuid();
+    const reportId = freshUuid();
+
+    async function attempt(
+      actor: Actor,
+      commandType: string,
+      aggregateType: string,
+      aggregateId: string,
+      occurredAt: string,
+      payload: unknown,
+      baseVersion: number | null = null,
+    ) {
+      return pipeline.handle(
+        {
+          command_id: freshUuid(),
+          device_seq: ++deviceSeq,
+          command_version: 1,
+          command_type: commandType,
+          aggregate_type: aggregateType,
+          aggregate_id: aggregateId,
+          author_user_id: actor.userId,
+          base_version: baseVersion,
+          depends_on: [],
+          occurred_at: occurredAt,
+          client_created_at: occurredAt,
+          captured_offline: false,
+          backdated_reason: null,
+          attachment_ids: [],
+          payload,
+        },
+        {
+          authenticatedUserId: actor.userId,
+          authenticatedDeviceId: actor.deviceId,
+          transport: 'ONLINE_API',
+        },
+      );
+    }
+    const code = (r: Awaited<ReturnType<typeof attempt>>) =>
+      r.status === 'REJECTED' ? r.error.code : r.status;
+
+    beforeAll(async () => {
+      const jwtKeys = app.get(JWT_KEYS);
+      await db.transaction().execute(async (trx) => {
+        const admin = await insertTestUser(trx);
+        siteOther = await insertTestSite(trx, admin, zoneId);
+        const actor = async (
+          role: string,
+          options: Parameters<typeof assignTestRole>[4] = {},
+        ): Promise<Actor> => {
+          const userId = await insertTestUser(trx);
+          const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
+          await assignTestRole(trx, userId, role, admin, options);
+          return { userId, deviceId, token: '' };
+        };
+        rfe = await actor(await roleId('RESP_FERME'), { scopeType: 'SITE', scopeSiteId: siteId });
+        rfeOther = await actor(await roleId('RESP_FERME'), {
+          scopeType: 'SITE',
+          scopeSiteId: siteOther,
+        });
+        dir = await actor(await roleId('DIRECTION'));
+        rpr = await actor(await roleId('RESP_PRODUCTION'));
+        const rcoOtherId = await insertTestUser(trx);
+        const emptyTeam = await insertTestTeam(trx, rcoOtherId, admin);
+        await assignTestRole(trx, rcoOtherId, await roleId('RESP_COMMERCIAL'), admin, {
+          scopeType: 'TEAM',
+          scopeTeamId: emptyTeam,
+        });
+        rcoOther = {
+          userId: rcoOtherId,
+          deviceId: await insertTestDevice(trx, rcoOtherId),
+          token: '',
+        };
+      });
+      for (const a of [rfe, rfeOther, rpr, dir, rcoOther]) {
+        a.token = await signTestAccessToken(
+          jwtKeys.privateKey,
+          { sub: a.userId, device_id: a.deviceId, session_id: freshUuid() },
+          clock.now(),
+        );
+      }
+    });
+
+    const sheetPayload = (overrides: Record<string, unknown> = {}) => ({
+      siteId,
+      weekStart: WEEK,
+      paperRef: '000042',
+      responsibleName: 'Joseph Ngo Bayiha',
+      lines: [
+        {
+          personName: 'Paul Essomba',
+          personRole: 'Ouvrier',
+          missionLabel: 'Poulailler B2',
+          days: [
+            { date: '2026-09-14', arrival: '07:00', departure: '16:00' },
+            { date: '2026-09-15', absenceCode: 'M' },
+            { date: '2026-09-16', arrival: '07:15', departure: '15:30' },
+          ],
+        },
+        {
+          personName: 'Rose Atangana',
+          days: [{ date: '2026-09-14', arrival: '18:00', departure: '23:30' }],
+        },
+      ],
+      ...overrides,
+    });
+
+    it('fieldwork.presence.record : feuille reportée par le responsable du site, rejeu sans doublon, lecture bornée au site', async () => {
+      const first = await attempt(
+        rfe,
+        'fieldwork.presence.record',
+        'PRESENCE_SHEET',
+        sheetId,
+        `${DAY}T10:00:00.000Z`,
+        sheetPayload(),
+      );
+      expect(first.status, JSON.stringify(first)).toBe('APPLIED');
+      // Même feuille renvoyée sous une autre commande : reconnue, aucune ligne en double.
+      const replay = await attempt(
+        rfe,
+        'fieldwork.presence.record',
+        'PRESENCE_SHEET',
+        sheetId,
+        `${DAY}T10:05:00.000Z`,
+        sheetPayload(),
+      );
+      expect(replay.status, JSON.stringify(replay)).toBe('APPLIED');
+      const rows = await db
+        .selectFrom('fieldwork_staff_presence')
+        .select('id')
+        .where('sheet_id', '=', toBin(sheetId))
+        .execute();
+      expect(rows).toHaveLength(4);
+
+      const mine = await get(rfe, `/api/v1/staff-presence?week_start=${WEEK}`);
+      expect(mine.statusCode, mine.body).toBe(200);
+      const sheets = mine.json().sheets as {
+        id: string;
+        paperRef: string;
+        responsibleName: string;
+        status: string;
+        lines: {
+          personName: string;
+          days: { date: string; arrival: string | null; absenceCode: string | null }[];
+        }[];
+      }[];
+      expect(sheets.map((s) => s.id)).toEqual([sheetId]);
+      expect(sheets[0]).toMatchObject({
+        paperRef: '000042',
+        responsibleName: 'Joseph Ngo Bayiha',
+        status: 'RECORDED',
+      });
+      expect(sheets[0]!.lines.map((l) => l.personName)).toEqual(['Paul Essomba', 'Rose Atangana']);
+      expect(sheets[0]!.lines[0]!.days).toEqual([
+        { date: '2026-09-14', arrival: '07:00', departure: '16:00', absenceCode: null },
+        { date: '2026-09-15', arrival: null, departure: null, absenceCode: 'M' },
+        { date: '2026-09-16', arrival: '07:15', departure: '15:30', absenceCode: null },
+      ]);
+      // Portée : un responsable d'un autre site ne la voit pas ; la Direction, si ; un commercial n'a pas le droit.
+      expect(
+        (await get(rfeOther, `/api/v1/staff-presence?week_start=${WEEK}`)).json().sheets,
+      ).toEqual([]);
+      expect(
+        (await get(rfeOther, `/api/v1/staff-presence?site_id=${siteId}&week_start=${WEEK}`)).json()
+          .sheets,
+      ).toEqual([]);
+      expect(
+        (await get(dir, `/api/v1/staff-presence?week_start=${WEEK}`))
+          .json()
+          .sheets.map((s: { id: string }) => s.id),
+      ).toContain(sheetId);
+      expect((await get(cte1, `/api/v1/staff-presence?week_start=${WEEK}`)).statusCode).toBe(403);
+    });
+
+    it('fieldwork.presence.record : site hors périmètre, droit absent et feuille invalide sont refusés', async () => {
+      const at10 = `${DAY}T10:30:00.000Z`;
+      const record = (actor: Actor, payload: unknown) =>
+        attempt(actor, 'fieldwork.presence.record', 'PRESENCE_SHEET', freshUuid(), at10, payload);
+      expect(code(await record(rfeOther, sheetPayload()))).toBe('FORBIDDEN_SCOPE');
+      expect((await record(cte1, sheetPayload())).status).toBe('REJECTED');
+      expect(code(await record(rfe, sheetPayload({ siteId: freshUuid() })))).toBe('SITE_NOT_FOUND');
+      expect(code(await record(rfe, sheetPayload({ weekStart: '2026-09-15' })))).toBe(
+        'PRESENCE_WEEK_NOT_MONDAY',
+      );
+      expect(
+        code(
+          await record(
+            rfe,
+            sheetPayload({
+              lines: [{ personName: 'A', days: [{ date: '2026-09-21', arrival: '07:00' }] }],
+            }),
+          ),
+        ),
+      ).toBe('PRESENCE_DAY_OUT_OF_WEEK');
+      expect(
+        code(
+          await record(
+            rfe,
+            sheetPayload({
+              lines: [
+                {
+                  personName: 'A',
+                  days: [{ date: '2026-09-14', arrival: '07:00', absenceCode: 'A' }],
+                },
+              ],
+            }),
+          ),
+        ),
+      ).toBe('PRESENCE_ABSENCE_WITH_TIMES');
+      expect(
+        code(
+          await record(
+            rfe,
+            sheetPayload({
+              lines: [
+                {
+                  personName: 'A',
+                  days: [{ date: '2026-09-14', arrival: '16:00', departure: '07:00' }],
+                },
+              ],
+            }),
+          ),
+        ),
+      ).toBe('PRESENCE_DEPARTURE_NOT_AFTER_ARRIVAL');
+      const day = { date: '2026-09-14', absenceCode: 'R' };
+      expect(
+        code(
+          await record(
+            rfe,
+            sheetPayload({
+              lines: [
+                { personName: 'Paul', days: [day] },
+                { personName: ' paul ', days: [day] },
+              ],
+            }),
+          ),
+        ),
+      ).toBe('PRESENCE_PERSON_DUPLICATE');
+      expect(
+        code(
+          await record(
+            rfe,
+            sheetPayload({ lines: [{ personName: 'A', userId: freshUuid(), days: [day] }] }),
+          ),
+        ),
+      ).toBe('REFERENCE_INVALID');
+    });
+
+    it('fieldwork.presence.cancel : annulation motivée, rien ne disparaît, feuille figée', async () => {
+      const cancel = (actor: Actor, comment: string) =>
+        attempt(
+          actor,
+          'fieldwork.presence.cancel',
+          'PRESENCE_SHEET',
+          sheetId,
+          `${DAY}T11:00:00.000Z`,
+          { comment },
+        );
+      expect(code(await cancel(rfeOther, 'Pas ma feuille'))).toBe('FORBIDDEN_SCOPE');
+      const done = await cancel(rfe, 'Feuille saisie deux fois');
+      expect(done.status, JSON.stringify(done)).toBe('APPLIED');
+      expect(code(await cancel(rfe, 'Encore'))).toBe('ALREADY_CANCELLED');
+      expect((await get(rfe, `/api/v1/staff-presence?week_start=${WEEK}`)).json().sheets).toEqual(
+        [],
+      );
+      const all = await get(
+        rfe,
+        `/api/v1/staff-presence?week_start=${WEEK}&include_cancelled=true`,
+      );
+      expect(all.json().sheets).toMatchObject([
+        { id: sheetId, status: 'CANCELLED', cancelComment: 'Feuille saisie deux fois' },
+      ]);
+      // La feuille et ses lignes ne se modifient ni ne se suppriment (déclencheurs).
+      await expect(
+        db
+          .updateTable('fieldwork_presence_sheets')
+          .set({ paper_ref: 'X' })
+          .where('id', '=', toBin(sheetId))
+          .execute(),
+      ).rejects.toThrow();
+      await expect(
+        db
+          .updateTable('fieldwork_staff_presence')
+          .set({ person_name: 'X' })
+          .where('sheet_id', '=', toBin(sheetId))
+          .execute(),
+      ).rejects.toThrow();
+      await expect(
+        db.deleteFrom('fieldwork_staff_presence').where('sheet_id', '=', toBin(sheetId)).execute(),
+      ).rejects.toThrow();
+      // Une feuille annulée ne redevient pas `RECORDED` (garde du déclencheur, règle 4).
+      await expect(
+        db
+          .updateTable('fieldwork_presence_sheets')
+          .set({
+            status: 'RECORDED',
+            cancelled_at: null,
+            cancelled_by: null,
+            cancel_comment: null,
+          })
+          .where('id', '=', toBin(sheetId))
+          .execute(),
+      ).rejects.toThrow();
+    });
+
+    it('fieldwork.presence.record : un identifiant déjà pris par une autre feuille, ou par une feuille annulée, n’est pas un rejeu', async () => {
+      const record = (actor: Actor, payload: unknown) =>
+        attempt(
+          actor,
+          'fieldwork.presence.record',
+          'PRESENCE_SHEET',
+          sheetId,
+          `${DAY}T12:00:00.000Z`,
+          payload,
+        );
+      // La feuille a été annulée plus haut : la renvoyer à l'identique ne réussit pas en silence (rien n'est reporté).
+      expect(code(await record(rfe, sheetPayload()))).toBe('PRESENCE_SHEET_CANCELLED');
+      // Autre contenu sous le même identifiant, ou même contenu d'un autre auteur : refusé, jamais avalé.
+      expect(code(await record(rfe, sheetPayload({ paperRef: '000043' })))).toBe(
+        'PRESENCE_ID_TAKEN',
+      );
+      expect(code(await record(dir, sheetPayload()))).toBe('PRESENCE_ID_TAKEN');
+      const rows = await db
+        .selectFrom('fieldwork_staff_presence')
+        .select('id')
+        .where('sheet_id', '=', toBin(sheetId))
+        .execute();
+      expect(rows).toHaveLength(4);
+    });
+
+    it('fieldwork.presence.record : une semaine qui n’a pas commencé est refusée, elle se reporte dès qu’elle a commencé', async () => {
+      // DAY est un dimanche : la semaine du lundi 21/09 n'a pas encore commencé.
+      const next = sheetPayload({
+        weekStart: '2026-09-21',
+        lines: [
+          { personName: 'A', days: [{ date: '2026-09-21', arrival: '07:00', departure: '16:00' }] },
+        ],
+      });
+      const record = (occurredAt: string) =>
+        attempt(rfe, 'fieldwork.presence.record', 'PRESENCE_SHEET', freshUuid(), occurredAt, next);
+      expect(code(await record(`${DAY}T10:00:00.000Z`))).toBe('PRESENCE_WEEK_IN_FUTURE');
+      const started = await record('2026-09-21T08:00:00.000Z');
+      expect(started.status, JSON.stringify(started)).toBe('APPLIED');
+    });
+
+    it('GET /staff-presence : un responsable de production (affectation globale, droits de site) lit les feuilles de tous les sites', async () => {
+      const ids = [freshUuid(), freshUuid()];
+      const sites = [siteId, siteOther];
+      for (const [index, id] of ids.entries()) {
+        const recorded = await attempt(
+          rpr,
+          'fieldwork.presence.record',
+          'PRESENCE_SHEET',
+          id,
+          `${DAY}T13:00:00.000Z`,
+          sheetPayload({ siteId: sites[index], paperRef: `RPR-${index}` }),
+        );
+        expect(recorded.status, JSON.stringify(recorded)).toBe('APPLIED');
+      }
+      const idsOf = async (query: string) =>
+        ((await get(rpr, `/api/v1/staff-presence?${query}`)).json().sheets as { id: string }[]).map(
+          (sheet) => sheet.id,
+        );
+      expect(await idsOf(`week_start=${WEEK}`)).toEqual(expect.arrayContaining(ids));
+      const other = await idsOf(`site_id=${siteOther}&week_start=${WEEK}`);
+      expect(other).toContain(ids[1]);
+      expect(other).not.toContain(ids[0]);
+    });
+
+    it('GET /staff-presence et /weekly-reports : une date impossible est un 400, jamais une erreur serveur', async () => {
+      expect((await get(dir, '/api/v1/staff-presence?week_start=2026-02-30')).statusCode).toBe(400);
+      expect((await get(dir, '/api/v1/weekly-reports?week_start=2026-13-01')).statusCode).toBe(400);
+      expect(
+        (await get(dir, '/api/v1/weekly-reports/figures?week_start=2026-02-30')).statusCode,
+      ).toBe(400);
+    });
+
+    it('crm.weekly_report.submit : rédaction, validations, correction (le plus récent l’emporte), bilan d’un autre refusé', async () => {
+      const submit = (actor: Actor, id: string, occurredAt: string, payload: unknown) =>
+        attempt(actor, 'crm.weekly_report.submit', 'WEEKLY_REPORT', id, occurredAt, payload);
+      const MONDAY_AFTER = '2026-09-21T10:00:00.000Z';
+      expect(code(await submit(cte1, freshUuid(), MONDAY_AFTER, { weekStart: WEEK }))).toBe(
+        'REPORT_EMPTY',
+      );
+      expect(
+        code(
+          await submit(cte1, freshUuid(), MONDAY_AFTER, {
+            weekStart: '2026-09-15',
+            successes: 'x',
+          }),
+        ),
+      ).toBe('REPORT_WEEK_INVALID');
+      expect(
+        code(
+          await submit(cte1, freshUuid(), MONDAY_AFTER, {
+            weekStart: '2026-09-28',
+            successes: 'x',
+          }),
+        ),
+      ).toBe('REPORT_WEEK_INVALID');
+      expect(
+        (await submit(mag, freshUuid(), MONDAY_AFTER, { weekStart: WEEK, successes: 'x' })).status,
+      ).toBe('REJECTED');
+
+      const first = await submit(cte1, reportId, MONDAY_AFTER, {
+        weekStart: WEEK,
+        successes: 'Deux commandes',
+        needs: 'Plateaux',
+      });
+      expect(first.status, JSON.stringify(first)).toBe('APPLIED');
+      const read = async (actor: Actor, query: string) =>
+        (await get(actor, `/api/v1/weekly-reports?${query}`)).json().reports as {
+          id: string;
+          userId: string;
+          status: string;
+          successes: string | null;
+          needs: string | null;
+          version: number;
+          managerComment: string | null;
+        }[];
+      expect(await read(cte1, `user_id=me&week_start=${WEEK}`)).toMatchObject([
+        {
+          id: reportId,
+          userId: cte1.userId,
+          status: 'SUBMITTED',
+          successes: 'Deux commandes',
+          needs: 'Plateaux',
+          version: 1,
+        },
+      ]);
+
+      // Correction plus récente : texte remplacé ; envoi plus ancien arrivé après : ignoré.
+      expect(
+        (
+          await submit(cte1, reportId, '2026-09-21T12:00:00.000Z', {
+            weekStart: WEEK,
+            successes: 'Trois commandes',
+          })
+        ).status,
+      ).toBe('APPLIED');
+      expect(
+        (
+          await submit(cte1, reportId, '2026-09-21T09:00:00.000Z', {
+            weekStart: WEEK,
+            successes: 'Ancien texte',
+          })
+        ).status,
+      ).toBe('APPLIED');
+      expect(await read(cte1, `user_id=me&week_start=${WEEK}`)).toMatchObject([
+        { successes: 'Trois commandes', needs: null, version: 2 },
+      ]);
+
+      // Le bilan d'un autre commercial ne se réécrit pas ; une seconde fiche pour la même semaine est refusée.
+      expect(
+        code(
+          await submit(cte2, reportId, '2026-09-21T13:00:00.000Z', {
+            weekStart: WEEK,
+            successes: 'Détournement',
+          }),
+        ),
+      ).toBe('FORBIDDEN_SCOPE');
+      expect(
+        code(
+          await submit(cte1, freshUuid(), '2026-09-21T13:00:00.000Z', {
+            weekStart: WEEK,
+            successes: 'Autre fiche',
+          }),
+        ),
+      ).toBe('REPORT_EXISTS');
+
+      // Lecture : le sien, celui de l'équipe pour le responsable, rien pour un collègue ou un autre responsable.
+      expect((await read(rco, `week_start=${WEEK}`)).map((r) => r.id)).toEqual([reportId]);
+      expect((await read(dir, `week_start=${WEEK}`)).map((r) => r.id)).toContain(reportId);
+      expect(await read(cte2, `user_id=${cte1.userId}&week_start=${WEEK}`)).toEqual([]);
+      expect(await read(rcoOther, `week_start=${WEEK}`)).toEqual([]);
+      expect((await get(mag, `/api/v1/weekly-reports?week_start=${WEEK}`)).statusCode).toBe(403);
+    });
+
+    it('GET /weekly-reports/figures : chiffres calculés de la semaine, valeur des pertes masquée sans droit de valorisation', async () => {
+      const expected = {
+        visits: 1,
+        newProspects: 2,
+        newCustomers: 1,
+        salesXaf: 0,
+        collectedXaf: 0,
+        lossDeclarations: 0,
+      };
+      const own = await get(cte1, `/api/v1/weekly-reports/figures?week_start=${WEEK}`);
+      expect(own.statusCode, own.body).toBe(200);
+      expect(own.json().figures).toEqual({ ...expected, lossValueXaf: null });
+      const team = await get(
+        rco,
+        `/api/v1/weekly-reports/figures?user_id=${cte1.userId}&week_start=${WEEK}`,
+      );
+      expect(team.json().figures).toEqual({ ...expected, lossValueXaf: null });
+      // La Direction détient le droit de valorisation : la valeur des pertes (zéro ici) est servie.
+      const full = await get(
+        dir,
+        `/api/v1/weekly-reports/figures?user_id=${cte1.userId}&week_start=${WEEK}`,
+      );
+      expect(full.json().figures).toEqual({ ...expected, lossValueXaf: 0 });
+      // Semaine suivante : rien.
+      const empty = await get(cte1, '/api/v1/weekly-reports/figures?week_start=2026-09-21');
+      expect(empty.json().figures).toMatchObject({ visits: 0, newProspects: 0, newCustomers: 0 });
+      // Portée et paramètres.
+      expect(
+        (
+          await get(
+            cte2,
+            `/api/v1/weekly-reports/figures?user_id=${cte1.userId}&week_start=${WEEK}`,
+          )
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (await get(cte1, '/api/v1/weekly-reports/figures?week_start=2026-09-15')).statusCode,
+      ).toBe(400);
+      expect((await get(mag, `/api/v1/weekly-reports/figures?week_start=${WEEK}`)).statusCode).toBe(
+        403,
+      );
+    });
+
+    it('crm.weekly_report.review : « vu » par le responsable de l’équipe, bilan ensuite figé', async () => {
+      const review = (
+        actor: Actor,
+        payload: unknown,
+        occurredAt = '2026-09-22T09:00:00.000Z',
+        baseVersion: number | null = null,
+      ) =>
+        attempt(
+          actor,
+          'crm.weekly_report.review',
+          'WEEKLY_REPORT',
+          reportId,
+          occurredAt,
+          payload,
+          baseVersion,
+        );
+      expect((await review(cte1, {})).status).toBe('REJECTED');
+      expect(code(await review(rcoOther, { comment: 'Pas mon équipe' }))).toBe('FORBIDDEN_SCOPE');
+      // Le « vu » vaut pour la version que le responsable a lue : le bilan en est à la version 2 (une correction a eu
+      // lieu depuis une lecture de la version 1), le « vu » est refusé et le bilan reste modifiable.
+      expect(code(await review(rco, { comment: 'Périmé' }, undefined, 1))).toBe('REPORT_CHANGED');
+      expect(
+        (await get(cte1, `/api/v1/weekly-reports?user_id=me&week_start=${WEEK}`)).json().reports[0]
+          .status,
+      ).toBe('SUBMITTED');
+      const done = await review(rco, { comment: 'Bon rythme' }, undefined, 2);
+      expect(done.status, JSON.stringify(done)).toBe('APPLIED');
+      const reports = (
+        await get(cte1, `/api/v1/weekly-reports?user_id=me&week_start=${WEEK}`)
+      ).json().reports;
+      expect(reports).toMatchObject([
+        { status: 'REVIEWED', managerComment: 'Bon rythme', reviewedBy: rco.userId },
+      ]);
+
+      // Figé : plus de correction par le commercial, ni en SQL direct.
+      expect(
+        code(
+          await attempt(
+            cte1,
+            'crm.weekly_report.submit',
+            'WEEKLY_REPORT',
+            reportId,
+            '2026-09-23T10:00:00.000Z',
+            { weekStart: WEEK, successes: 'Trop tard' },
+          ),
+        ),
+      ).toBe('REPORT_LOCKED');
+      await expect(
+        db
+          .updateTable('crm_weekly_reports')
+          .set({ successes: 'Réécrit' })
+          .where('id', '=', toBin(reportId))
+          .execute(),
+      ).rejects.toThrow();
+      // Un bilan vu ne redevient pas modifiable, même en SQL direct (deux UPDATE ne contournent pas le figement).
+      await expect(
+        db
+          .updateTable('crm_weekly_reports')
+          .set({ status: 'SUBMITTED', reviewed_at: null, reviewed_by: null, manager_comment: null })
+          .where('id', '=', toBin(reportId))
+          .execute(),
+      ).rejects.toThrow();
+      const state = async () =>
+        (await get(rco, `/api/v1/weekly-reports?week_start=${WEEK}`)).json().reports[0] as {
+          managerComment: string | null;
+          reviewedBy: string;
+          reviewedAt: string;
+        };
+      // Le responsable peut revoir son commentaire (un « vu » plus récent, pour la version lue).
+      expect(
+        (await review(rco, { comment: 'Voir jeudi' }, '2026-09-22T10:00:00.000Z', 3)).status,
+      ).toBe('APPLIED');
+      expect((await state()).managerComment).toBe('Voir jeudi');
+      // Un « vu » plus ancien arrivé après (écrit hors ligne) ne fait reculer ni la date ni le commentaire.
+      expect((await review(dir, { comment: 'Ancien' }, '2026-09-22T08:00:00.000Z')).status).toBe(
+        'APPLIED',
+      );
+      const afterOlder = await state();
+      expect(afterOlder).toMatchObject({ managerComment: 'Voir jeudi', reviewedBy: rco.userId });
+      // Un second « vu » plus récent, sans commentaire, garde celui qui existe ; la Direction devient le dernier vu.
+      expect((await review(dir, {}, '2026-09-22T11:00:00.000Z')).status).toBe('APPLIED');
+      expect(await state()).toMatchObject({ managerComment: 'Voir jeudi', reviewedBy: dir.userId });
+      // Un commentaire explicitement vide (`null`) l'efface.
+      expect((await review(dir, { comment: null }, '2026-09-22T12:00:00.000Z')).status).toBe(
+        'APPLIED',
+      );
+      expect((await state()).managerComment).toBeNull();
+    });
+  });
 });

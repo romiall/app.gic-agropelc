@@ -1,0 +1,120 @@
+/* Présence du personnel (ECR-TER-03, PP-E ; ADR-049). Feuille de domaine : ce qui n'existe pas dans les composants communs
+   (`components/ui`) ni dans `styles/screens.css`. Aucune couleur en dur : jetons seulement. */
+
+/* Rythme vertical : ni `Section` ni `Banner` n'ont de marge, l'écran leur donne la leur. */
+.presence-screen > .section,
+.presence-screen > .banner {
+  margin-top: var(--space-5);
+}
+
+.presence-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0 var(--space-3);
+}
+
+.presence-pair > .field {
+  margin-bottom: var(--space-3);
+}
+
+/* Une personne : cadre, puis un rang par jour (nom du jour, arrivée, départ, code). */
+.presence-line {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.presence-line > legend {
+  padding: 0 var(--space-2);
+  font-weight: 600;
+}
+
+.presence-days {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+}
+
+.presence-day {
+  display: grid;
+  grid-template-columns: 5.5rem repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.presence-day > .field {
+  margin-bottom: 0;
+}
+
+.presence-day-name {
+  align-self: center;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* Téléphone : le nom du jour passe au-dessus des trois contrôles. */
+@media (max-width: 36rem) {
+  .presence-day {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .presence-day-name {
+    grid-column: 1 / -1;
+  }
+}
+
+.presence-total {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.presence-sheets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.presence-sheet {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.presence-sheet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.presence-people {
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+}
+
+.presence-people > li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+
+.presence-cancel {
+  margin-top: var(--space-2);
+}
+
+.presence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

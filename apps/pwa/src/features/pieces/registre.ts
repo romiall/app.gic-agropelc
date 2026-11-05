@@ -4,6 +4,7 @@ import type { Contexte } from './gabarit.js';
 import type { PieceRendue } from './piece.js';
 import * as A from './pieces-argent.js';
 import * as O from './pieces-operations.js';
+import * as T from './pieces-terrain.js';
 
 export function rendrePiece(d: DemandePiece, ctx: Contexte): PieceRendue {
   switch (d.code) {
@@ -39,5 +40,11 @@ export function rendrePiece(d: DemandePiece, ctx: Contexte): PieceRendue {
       return O.ficheInventaire(d.donnees, ctx);
     case 'FL':
       return O.ficheSuiviLot(d.donnees, ctx);
+    case 'PT':
+      return T.ficheDePresence(d.donnees, ctx);
+    case 'BH':
+      return T.bilanHebdomadaire(d.donnees, ctx);
+    case 'VC':
+      return T.ficheDeVisite(d.donnees, ctx);
   }
 }

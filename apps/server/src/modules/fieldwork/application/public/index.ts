@@ -15,3 +15,14 @@ export {
 export type { SessionRejectedListener } from '../session-rejection.js';
 export { attendanceDays } from './attendance-indicators.js';
 export type { AttendanceDays } from './attendance-indicators.js';
+export {
+  PRESENCE_LIST_DEFAULT_LIMIT,
+  PRESENCE_LIST_MAX_LIMIT,
+  listPresenceSheets,
+} from './presence-query.js';
+export type {
+  PresenceDaySummary,
+  PresenceLineSummary,
+  PresenceSheetFilter,
+  PresenceSheetSummary,
+} from './presence-query.js';

@@ -406,6 +406,8 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     await user.click(profile.getByRole('button', { name: 'Modifier le profil' }));
     await user.selectOptions(profile.getByLabelText('Paiement habituel (facultatif)'), 'ESPECES');
     await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    // Le formulaire se referme d'abord : ses options (« Espèces » en est une) ne sont pas la valeur affichée du profil.
+    expect(await profile.findByRole('button', { name: 'Modifier le profil' })).toBeInTheDocument();
     expect(await screen.findByText('Espèces')).toBeInTheDocument();
 
     const [update] = (await getDb().outbox.toArray()).filter(
@@ -498,6 +500,8 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
       'MOBILE_MONEY_ORANGE',
     );
     await user.click(profile.getByRole('button', { name: 'Enregistrer le profil' }));
+    // Le formulaire se referme d'abord : ses options (« Orange Money » en est une) ne sont pas la valeur affichée.
+    expect(await profile.findByRole('button', { name: 'Modifier le profil' })).toBeInTheDocument();
     expect(await screen.findByText('Orange Money')).toBeInTheDocument();
 
     const [update] = (await getDb().outbox.toArray()).filter(

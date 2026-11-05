@@ -129,9 +129,14 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `crm.target.read` | ALL | — | TEAM | OWN | OWN | SITE | — | — | — | — | — |
 | `crm.target.manage` | ALL | — | TEAM | — | — | — | — | — | — | — | — |
 | `crm.pipeline.configure` | ALL | ALL | — | — | — | — | — | — | — | — | — |
+| `crm.weekly_report.submit` | — | — | — | OWN | OWN | — | — | — | — | — | — |
+| `crm.weekly_report.read` | ALL | — | TEAM | OWN | OWN | — | — | — | — | — | — |
+| `crm.weekly_report.review` | ALL | — | TEAM | — | — | — | — | — | — | — | — |
 | `fieldwork.checkin.perform` | — | — | OWN | OWN | — | — | — | — | — | — | — |
 | `fieldwork.session.read` | ALL | — | TEAM | OWN | — | — | — | — | — | — | — |
 | `fieldwork.checkin_override.approve` | A·ALL | — | A·TEAM | — | — | — | — | — | — | — | — |
+| `fieldwork.presence.record` | ALL | ALL | — | — | — | — | SITE | SITE | — | — | — |
+| `fieldwork.presence.read` | ALL | ALL | — | — | — | — | SITE | SITE | — | — | — |
 | `pricing.price.read` | ALL | — | ALL | ZONE | ALL | SITE | — | SITE | — | — | ALL |
 | `pricing.rule.draft` | ALL | — | ALL | — | — | — | — | — | — | — | — |
 | `pricing.rule.activate` | A·ALL | — | — | — | — | — | — | — | — | — | — |

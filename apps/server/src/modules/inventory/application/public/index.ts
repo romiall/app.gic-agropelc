@@ -230,8 +230,18 @@ export type {
 export { hasNegativeStock, isAllocationOvercommitted } from './stock-conflict-conditions.js';
 
 // P8-11 (ADR-044 §3 ; BR-FIN-044, KPI-FIN-08 ; AT-041) : valeur des pertes d'une période.
-export { LOSS_SUMMARY_GROUPS, dayLossByLocation, lossValueSummary } from './loss-summary.js';
-export type { DayLossLine, LossSummaryGroup, LossSummaryLine } from './loss-summary.js';
+export {
+  LOSS_SUMMARY_GROUPS,
+  dayLossByLocation,
+  lossValueSummary,
+  lossesDeclaredBy,
+} from './loss-summary.js';
+export type {
+  DayLossLine,
+  LossSummaryGroup,
+  LossSummaryLine,
+  LossesDeclaredBy,
+} from './loss-summary.js';
 export {
   COVERAGE_SALES_DAYS,
   countedMortalityOfLots,

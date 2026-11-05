@@ -26,6 +26,7 @@ import {
   businessDayEndUtc,
   businessDayOf,
   businessDayStartUtc,
+  isMondayBusinessDay,
   normalizePhone,
   type Clock,
   type IdGenerator,
@@ -41,8 +42,10 @@ import {
   activeSiteAssignmentsAt,
   evaluateAccess,
   hasPermissionAt,
+  listConfinementAt,
   type ResourceLocator,
 } from '../modules/identity/application/public/index.js';
+import { businessDateParam } from '../read-api/read-access.js';
 import {
   currentSettingValue,
   listManagedTeamMembersAt,
@@ -56,9 +59,11 @@ import {
   summarizeReceivables,
   targetRealized,
 } from '../modules/sales/application/public/index.js';
+import { weeklyFigures } from './weekly-report-figures.js';
 import {
   CRM_LIST_DEFAULT_LIMIT,
   CRM_LIST_MAX_LIMIT,
+  WEEKLY_REPORT_LIST_MAX_LIMIT,
   absorbedCustomerIds,
   commercialEffort,
   customerResourceOf,
@@ -70,6 +75,7 @@ import {
   listInteractions,
   listTargets,
   listVisits,
+  listWeeklyReports,
   type TargetSummary,
 } from '../modules/crm/application/public/index.js';
 
@@ -77,6 +83,8 @@ const CUSTOMER_READ = 'crm.customer.read';
 const CUSTOMER_CREATE = 'crm.customer.create';
 const VISIT_READ = 'crm.visit.read';
 const TARGET_READ = 'crm.target.read';
+const WEEKLY_REPORT_READ = 'crm.weekly_report.read';
+const VALUATION_READ = 'inventory.valuation.read';
 
 const uuid = z.string().uuid();
 const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
@@ -111,6 +119,17 @@ const performanceQuerySchema = z.object({
   user_id: userRef.optional(),
   from: businessDate,
   to: businessDate,
+});
+const weeklyReportsQuerySchema = z.object({
+  user_id: userRef.optional(),
+  week_start: businessDateParam.optional(),
+  from_week: businessDateParam.optional(),
+  to_week: businessDateParam.optional(),
+  limit: z.coerce.number().int().positive().max(WEEKLY_REPORT_LIST_MAX_LIMIT).optional(),
+});
+const weeklyFiguresQuerySchema = z.object({
+  user_id: userRef.optional(),
+  week_start: businessDateParam,
 });
 const idParamSchema = z.object({ id: uuid });
 
@@ -580,6 +599,91 @@ export class CrmReadController {
       targets: await Promise.all(
         targets.map(async (t) => ({ ...t, realized: await realizedOf(t) })),
       ),
+    };
+  }
+
+  /**
+   * Bilans hebdomadaires des commerciaux (fiche BH ; PP-E, REQ-307, AV-314) : `GET /weekly-reports`. Le sien se lit
+   * avec la seule permission ; ceux d'une équipe dirigée ou de tous, selon la portée de `crm.weekly_report.read`
+   * (élément par élément, RC-04). Sans ancrage et hors portée `ALL` : soi et les membres des équipes dirigées.
+   */
+  @Get('weekly-reports')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(WEEKLY_REPORT_READ)
+  async weeklyReports(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
+    const query = parseOrThrow(weeklyReportsQuerySchema, rawQuery);
+    const now = this.clock.now();
+    const me = request.auth!.sub;
+    await this.requirePermission(request, now, { type: 'WEEKLY_REPORT' }, WEEKLY_REPORT_READ);
+    const all = await this.hasAllScope(request, now, WEEKLY_REPORT_READ);
+    const anchored = this.userOf(request, query.user_id);
+    // Sans ancrage et hors portée `ALL` : les titulaires que les octrois admettent (soi, les équipes dirigées, l'équipe
+    // d'une affectation `TEAM`), pas seulement les équipes dirigées.
+    const confinement = all ? null : await listConfinementAt(this.db, me, WEEKLY_REPORT_READ, now);
+    const userIds =
+      anchored !== undefined
+        ? [anchored]
+        : confinement === null
+          ? undefined
+          : [...confinement.ownerUserIds];
+    const reports = await listWeeklyReports(this.db, {
+      ...(userIds !== undefined ? { userIds } : {}),
+      ...(query.week_start !== undefined ? { weekStart: query.week_start } : {}),
+      ...(query.from_week !== undefined ? { fromWeek: query.from_week } : {}),
+      ...(query.to_week !== undefined ? { toWeek: query.to_week } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+    });
+    // Son propre bilan se lit avec la seule permission : l'auteur en est le titulaire par construction, et un commercial
+    // terrain (affectation de zone) ne tomberait jamais dans la portée `OWN` d'une ressource sans zone ni site.
+    const readable: (typeof reports)[number][] = [];
+    for (const report of reports) {
+      if (
+        all ||
+        report.userId === me ||
+        (await this.allowed(request, now, WEEKLY_REPORT_READ, { ownerUserId: report.userId }))
+      ) {
+        readable.push(report);
+      }
+    }
+    return { reports: readable };
+  }
+
+  /**
+   * Chiffres de la semaine d'un commercial (visites, prospects, clients, CA, encaissé, pertes), **calculés** et jamais
+   * saisis : `GET /weekly-reports/figures?week_start=`. Mêmes règles de portée que le bilan ; la valeur des pertes est
+   * au coût, donc `null` sans `inventory.valuation.read` (RC-05).
+   */
+  @Get('weekly-reports/figures')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(WEEKLY_REPORT_READ)
+  async weeklyReportFigures(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
+    const query = parseOrThrow(weeklyFiguresQuerySchema, rawQuery);
+    if (!isMondayBusinessDay(query.week_start)) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'La semaine commence un lundi.');
+    }
+    const now = this.clock.now();
+    const me = request.auth!.sub;
+    const userId = this.userOf(request, query.user_id) ?? me;
+    await this.requirePermission(request, now, { type: 'USER', id: userId }, WEEKLY_REPORT_READ);
+    if (
+      userId !== me &&
+      !(await this.allowed(request, now, WEEKLY_REPORT_READ, { ownerUserId: userId }))
+    ) {
+      return this.deny(
+        request,
+        now,
+        { type: 'USER', id: userId },
+        WEEKLY_REPORT_READ,
+        'OUT_OF_SCOPE',
+      );
+    }
+    const includeCosts = await hasPermissionAt(this.db, toBin(me), VALUATION_READ, now);
+    return {
+      user_id: userId,
+      week_start: query.week_start,
+      figures: await weeklyFigures(this.db, { userId, weekStart: query.week_start, includeCosts }),
     };
   }
 }

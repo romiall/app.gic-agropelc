@@ -391,7 +391,7 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // crm (13)
+  // crm (16)
   {
     code: 'crm.customer.read',
     module: 'crm',
@@ -496,8 +496,48 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isApproval: false,
     isSensitive: false,
   },
+  {
+    code: 'crm.weekly_report.submit',
+    module: 'crm',
+    description: 'Rédiger son bilan hebdomadaire (fiche BH)',
+    supportedScopes: ['OWN'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'crm.weekly_report.read',
+    module: 'crm',
+    description: 'Consulter les bilans hebdomadaires des commerciaux',
+    supportedScopes: ['ALL', 'TEAM', 'OWN'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'crm.weekly_report.review',
+    module: 'crm',
+    description: 'Marquer un bilan hebdomadaire comme vu et le commenter',
+    supportedScopes: ['ALL', 'TEAM'],
+    isApproval: false,
+    isSensitive: false,
+  },
 
-  // fieldwork (3)
+  // fieldwork (5)
+  {
+    code: 'fieldwork.presence.record',
+    module: 'fieldwork',
+    description: 'Reporter la présence hebdomadaire du personnel (fiche PT)',
+    supportedScopes: ['ALL', 'SITE'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'fieldwork.presence.read',
+    module: 'fieldwork',
+    description: 'Consulter la présence hebdomadaire du personnel',
+    supportedScopes: ['ALL', 'SITE'],
+    isApproval: false,
+    isSensitive: false,
+  },
   {
     code: 'fieldwork.checkin.perform',
     module: 'fieldwork',
@@ -1214,7 +1254,7 @@ function grants(
 // la matrice source plutôt que silencieusement omise).
 // ---------------------------------------------------------------------------------------
 export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
-  // DIRECTION — 78, toujours ALL
+  // DIRECTION — 82, toujours ALL
   ...grants('DIRECTION', [
     ['identity.user.read', 'ALL'],
     ['identity.device.read', 'ALL'],
@@ -1243,6 +1283,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.target.read', 'ALL'],
     ['crm.target.manage', 'ALL'],
     ['crm.pipeline.configure', 'ALL'],
+    ['crm.weekly_report.read', 'ALL'],
+    ['crm.weekly_report.review', 'ALL'],
+    ['fieldwork.presence.record', 'ALL'],
+    ['fieldwork.presence.read', 'ALL'],
     ['fieldwork.session.read', 'ALL'],
     ['fieldwork.checkin_override.approve', 'ALL'],
     ['pricing.price.read', 'ALL'],
@@ -1296,9 +1340,11 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // ADMIN — 29, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
+  // ADMIN — 31, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
   // + finance.expense_category.manage, P8-03)
   ...grants('ADMIN', [
+    ['fieldwork.presence.record', 'ALL'],
+    ['fieldwork.presence.read', 'ALL'],
     ['identity.user.read', 'ALL'],
     ['identity.user.manage', 'ALL'],
     ['identity.role.manage', 'ALL'],
@@ -1330,7 +1376,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['finance.expense_category.manage', 'ALL'],
   ]),
 
-  // RESP_COMMERCIAL — 61 (+ finance.cash_transfer.record OWN, matrice §5.5, P5-15 ;
+  // RESP_COMMERCIAL — 63 (+ finance.cash_transfer.record OWN, matrice §5.5, P5-15 ;
   // + finance.expense.record OWN, matrice §5.5, P8-03)
   ...grants('RESP_COMMERCIAL', [
     ['identity.user.read', 'TEAM'],
@@ -1361,6 +1407,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['fieldwork.checkin.perform', 'OWN'],
     ['fieldwork.session.read', 'TEAM'],
     ['fieldwork.checkin_override.approve', 'TEAM'],
+    ['crm.weekly_report.read', 'TEAM'],
+    ['crm.weekly_report.review', 'TEAM'],
     ['pricing.price.read', 'ALL'],
     ['pricing.rule.draft', 'ALL'],
     ['pricing.campaign.manage', 'ALL'],
@@ -1398,7 +1446,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'TEAM'],
   ]),
 
-  // COMMERCIAL_TERRAIN — 45
+  // COMMERCIAL_TERRAIN — 47
   ...grants('COMMERCIAL_TERRAIN', [
     ['org.structure.read', 'ZONE'],
     ['approvals.request.read', 'OWN'],
@@ -1415,6 +1463,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.visit.read', 'OWN'],
     ['crm.interaction.record', 'OWN'],
     ['crm.target.read', 'OWN'],
+    ['crm.weekly_report.submit', 'OWN'],
+    ['crm.weekly_report.read', 'OWN'],
     ['fieldwork.checkin.perform', 'OWN'],
     ['fieldwork.session.read', 'OWN'],
     ['pricing.price.read', 'ZONE'],
@@ -1447,7 +1497,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.commercial', 'OWN'],
   ]),
 
-  // COMMERCIAL_SEDENTAIRE — 33
+  // COMMERCIAL_SEDENTAIRE — 35
   ...grants('COMMERCIAL_SEDENTAIRE', [
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'OWN'],
@@ -1463,6 +1513,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.visit.read', 'OWN'],
     ['crm.interaction.record', 'OWN'],
     ['crm.target.read', 'OWN'],
+    ['crm.weekly_report.submit', 'OWN'],
+    ['crm.weekly_report.read', 'OWN'],
     ['pricing.price.read', 'ALL'],
     ['sales.order.read', 'OWN'],
     ['sales.order.create', 'OWN'],
@@ -1526,8 +1578,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 47 (+ identity.device.read SITE, AV-261, MP-06)
+  // RESP_PRODUCTION — 49 (dont identity.device.read SITE, AV-261, MP-06, et la présence du personnel, PP-E)
   ...grants('RESP_PRODUCTION', [
+    ['fieldwork.presence.record', 'SITE'],
+    ['fieldwork.presence.read', 'SITE'],
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
     ['identity.device.approve', 'SITE'],
@@ -1578,8 +1632,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 54
+  // RESP_FERME — 56 (dont la présence du personnel, PP-E)
   ...grants('RESP_FERME', [
+    ['fieldwork.presence.record', 'SITE'],
+    ['fieldwork.presence.read', 'SITE'],
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
     ['identity.device.approve', 'SITE'],

@@ -26,12 +26,32 @@ import { ApiError } from '../platform/http/api-error.exception.js';
 import { RequiresPermission } from '../platform/http/authorization.decorators.js';
 import { recordDenied } from '../audit/record-denied.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
-import { evaluateAccess, hasPermissionAt } from '../modules/identity/application/public/index.js';
+import {
+  evaluateAccess,
+  hasPermissionAt,
+  listConfinementAt,
+} from '../modules/identity/application/public/index.js';
+import { businessDateParam } from '../read-api/read-access.js';
 import { listTeamMembersAt } from '../modules/organization/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-import { listCheckins, listWorkSessions } from '../modules/fieldwork/application/public/index.js';
+import {
+  PRESENCE_LIST_MAX_LIMIT,
+  listCheckins,
+  listPresenceSheets,
+  listWorkSessions,
+} from '../modules/fieldwork/application/public/index.js';
 
 const SESSION_READ = 'fieldwork.session.read';
+const PRESENCE_READ = 'fieldwork.presence.read';
+
+const presenceQuerySchema = z.object({
+  site_id: z.string().uuid().optional(),
+  week_start: businessDateParam.optional(),
+  from_week: businessDateParam.optional(),
+  to_week: businessDateParam.optional(),
+  include_cancelled: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().positive().max(PRESENCE_LIST_MAX_LIMIT).optional(),
+});
 
 const querySchema = z.object({
   user_id: z.union([z.literal('me'), z.string().uuid()]).optional(),
@@ -117,5 +137,80 @@ export class FieldworkReadController {
       if (await canRead(checkin.userId, checkin.declaredZoneId)) visibleCheckins.push(checkin);
     }
     return { date: day, sessions: visibleSessions, checkins: visibleCheckins };
+  }
+
+  /**
+   * Feuilles de présence du personnel (fiche PT ; PP-E, REQ-306, AV-313) : `GET /staff-presence?site_id=&week_start=`.
+   * Portée `fieldwork.presence.read` jugée sur le site de chaque feuille ; sans portée `ALL` et sans `site_id`, les
+   * sites d'affectation de l'utilisateur. Droit absent ⇒ 403 audité ; feuille hors portée ⇒ absente de la liste.
+   */
+  @Get('staff-presence')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(PRESENCE_READ)
+  async staffPresence(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
+    const parsed = presenceQuerySchema.safeParse(rawQuery);
+    if (!parsed.success) {
+      throw new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        `Paramètres de requête invalides : ${parsed.error.issues.map((i) => i.message).join(' ; ')}`,
+      );
+    }
+    const query = parsed.data;
+    const now = this.clock.now();
+    const me = request.auth!.sub;
+    if (!(await hasPermissionAt(this.db, toBin(me), PRESENCE_READ, now))) {
+      await recordDenied(
+        this.db,
+        { idGenerator: this.idGenerator, clock: this.clock },
+        {
+          occurredAt: now,
+          actorUserId: me,
+          actorRoles: [],
+          deviceId: request.auth!.device_id,
+          action: 'access.denied',
+          entityType: 'PRESENCE_SHEET',
+          entityId: null,
+          reason: `Permission manquante : ${PRESENCE_READ}.`,
+          errorCode: 'FORBIDDEN',
+        },
+      );
+      throw new ApiError(403, 'FORBIDDEN', 'Droit insuffisant pour cette consultation.');
+    }
+    // Pré-filtre par site (sûr, un sur-ensemble) : `null` quand aucun n'est possible (portée `ALL`, ou `SITE` sous une
+    // affectation globale comme le responsable de production : tous les sites), sinon les sites des octrois. Chaque
+    // feuille est ensuite jugée sur son site (RC-04).
+    const confinement = await listConfinementAt(this.db, me, PRESENCE_READ, now);
+    const confinedSites = confinement === null ? undefined : confinement.siteIds;
+    const siteIds =
+      query.site_id !== undefined
+        ? confinedSites === undefined || confinedSites.includes(query.site_id)
+          ? [query.site_id]
+          : []
+        : confinedSites;
+    const sheets = await listPresenceSheets(this.db, {
+      ...(siteIds !== undefined ? { siteIds } : {}),
+      ...(query.week_start !== undefined ? { weekStart: query.week_start } : {}),
+      ...(query.from_week !== undefined ? { fromWeek: query.from_week } : {}),
+      ...(query.to_week !== undefined ? { toWeek: query.to_week } : {}),
+      includeCancelled: query.include_cancelled === 'true',
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+    });
+    const readable = new Map<string, boolean>();
+    const visible = [];
+    for (const sheet of sheets) {
+      if (!readable.has(sheet.siteId)) {
+        const access = await evaluateAccess(this.db, {
+          userId: me,
+          permissionCode: PRESENCE_READ,
+          occurredAt: now,
+          resource: { siteId: sheet.siteId },
+        });
+        readable.set(sheet.siteId, access.allowed);
+      }
+      if (readable.get(sheet.siteId)) visible.push(sheet);
+    }
+    return { sheets: visible };
   }
 }

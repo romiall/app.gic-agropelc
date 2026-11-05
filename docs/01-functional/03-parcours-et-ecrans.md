@@ -145,8 +145,10 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-CRM-05 | Mes objectifs et performances | Commerciaux | Oui (instantané) | P3/P9 |
 | ECR-CRM-06 | Réaffectation de clients | RESP_COMMERCIAL, DIRECTION | Non | P3, livré en RP-3 (03/11/2026) |
 | ECR-CRM-07 | Gestion des objectifs | RESP_COMMERCIAL, DIRECTION | Non | P3 |
+| ECR-CRM-08 | Mon bilan de la semaine (rédaction, chiffres calculés, vu et commentaire du responsable) | COMMERCIAL_TERRAIN, COMMERCIAL_SEDENTAIRE, RESP_COMMERCIAL, DIRECTION | Écriture oui (file d'envoi) ; lecture en ligne | PP-E, livré le 05/11/2026 |
 | ECR-TER-01 | PRENDRE SERVICE / FIN DE SERVICE | COMMERCIAL_TERRAIN | Oui | P3 |
 | ECR-TER-02 | Présences et activité de l'équipe | RESP_COMMERCIAL | Non | P3, livré en RP-3 (03/11/2026) |
+| ECR-TER-03 | Présence du personnel (report de la fiche PT, feuilles de la semaine) | ADMIN, DIRECTION, RESP_PRODUCTION, RESP_FERME | Écriture oui (file d'envoi) ; lecture en ligne | PP-E, livré le 05/11/2026 |
 
 ### 3.4 Ventes, distribution, points de vente
 

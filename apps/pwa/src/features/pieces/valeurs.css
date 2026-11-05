@@ -32,6 +32,9 @@ table.lignes td.val .t2 { display: -webkit-box; -webkit-box-orient: vertical; -w
 table.lignes td.val.c { text-align: center; }
 table.lignes tr.total td.val { font-weight: 700; text-align: right; }
 
+/* zone à lignes remplie (bilan hebdomadaire BH, PP-E) : trois lignes au plus dans les 11 mm de la zone */
+.lignes-fond .zone-texte { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; padding: .3mm 1mm 0; font: 400 7pt/3.55mm var(--f-texte); color: var(--encre); overflow-wrap: anywhere; }
+
 /* montant encadré, en lettres */
 .montant .zone { display: flex; align-items: center; justify-content: flex-end; padding: 0 2.4mm; font: 700 10pt/1 var(--f-titre); color: var(--encre); letter-spacing: .03em; }
 .lettres .reglet { display: flex; align-items: flex-end; }

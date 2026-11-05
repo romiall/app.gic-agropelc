@@ -477,6 +477,8 @@ export interface VisitData {
   readonly notes: string | null;
   readonly next_action_at: string | null;
   readonly next_action_note: string | null;
+  /** Stade du compte le jour de la visite, figé par le serveur ; absent d'une visite saisie sur l'appareil. */
+  readonly customer_stage_at_visit?: string | null;
   /** Veille marché relevée pendant la visite (AV-315) ; absente d'une visite servie avant PP-D. */
   readonly market_watch?: readonly MarketWatchData[];
   readonly flags: readonly string[];

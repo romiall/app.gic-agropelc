@@ -128,6 +128,30 @@ describe('référentiels du chargement par fichier', () => {
     expect(refs.supplierCodes.has('F-NEUF')).toBe(true);
   });
 
+  it('une feuille de présence en attente occupe déjà son identifiant ; une feuille refusée ne l’occupe plus', async () => {
+    const payload = (paperRef: string) => ({
+      siteId: IDS.site,
+      weekStart: '2026-11-02',
+      paperRef,
+      lines: [
+        {
+          personName: 'Paul',
+          days: [{ date: '2026-11-02', arrival: '07:00', departure: '16:00', absenceCode: null }],
+        },
+      ],
+    });
+    const waiting = await enqueue('fieldwork.presence.record', 'PRESENCE_SHEET', payload('1'));
+    const refused = await enqueue('fieldwork.presence.record', 'PRESENCE_SHEET', payload('2'));
+    const update: Partial<OutboxCommand> = {
+      status: 'REJECTED',
+      last_error: { code: 'PRESENCE_WEEK_IN_FUTURE', message_fr: 'Semaine à venir.' },
+    };
+    await getDb().outbox.update(refused.command_id, update);
+    const refs = await build(['ADMIN']);
+    expect(refs.pendingPresenceSheets.has(waiting.aggregate_id)).toBe(true);
+    expect(refs.pendingPresenceSheets.has(refused.aggregate_id)).toBe(false);
+  });
+
   it('un client en attente occupe son téléphone, normalisé comme le serveur le fera', async () => {
     await enqueue('crm.customer.create', 'CUSTOMER', {
       displayName: 'Client en attente',

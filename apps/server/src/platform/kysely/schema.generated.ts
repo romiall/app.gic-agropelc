@@ -819,6 +819,35 @@ export interface CrmVisits {
   work_session_id: Buffer | null;
 }
 
+export interface CrmWeeklyReports {
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  difficulties: string | null;
+  id: Buffer;
+  last_edited_at: Date;
+  manager_comment: string | null;
+  market_info: string | null;
+  needs: string | null;
+  occurred_at: Date;
+  priorities: string | null;
+  received_at_server: Date | null;
+  reviewed_at: Date | null;
+  reviewed_by: Buffer | null;
+  status: Generated<string>;
+  successes: string | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  user_id: Buffer;
+  version: Generated<number>;
+  week_start: Date;
+}
+
 export interface FieldworkGeoCheckins {
   accuracy_m: Decimal | null;
   backdated_reason: string | null;
@@ -847,6 +876,48 @@ export interface FieldworkGeoCheckins {
   suspicion_flags: Generated<Json>;
   user_id: Buffer;
   work_session_id: Buffer | null;
+}
+
+export interface FieldworkPresenceSheets {
+  backdated_reason: string | null;
+  cancel_comment: string | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  id: Buffer;
+  occurred_at: Date;
+  paper_ref: string | null;
+  received_at_server: Date | null;
+  responsible_name: string | null;
+  site_id: Buffer;
+  source: Generated<string>;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+  week_start: Date;
+}
+
+export interface FieldworkStaffPresence {
+  absence_code: string | null;
+  arrival_time: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  departure_time: string | null;
+  id: Buffer;
+  line_no: number;
+  mission_label: string | null;
+  person_name: string;
+  person_role: string | null;
+  presence_date: Date;
+  sheet_id: Buffer;
+  user_id: Buffer | null;
 }
 
 export interface FieldworkWorkSessions {
@@ -2847,7 +2918,10 @@ export interface DB {
   crm_sales_targets: CrmSalesTargets;
   crm_visit_market_watch: CrmVisitMarketWatch;
   crm_visits: CrmVisits;
+  crm_weekly_reports: CrmWeeklyReports;
   fieldwork_geo_checkins: FieldworkGeoCheckins;
+  fieldwork_presence_sheets: FieldworkPresenceSheets;
+  fieldwork_staff_presence: FieldworkStaffPresence;
   fieldwork_work_sessions: FieldworkWorkSessions;
   finance_cash_accounts: FinanceCashAccounts;
   finance_cash_movements: FinanceCashMovements;

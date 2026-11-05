@@ -70,6 +70,11 @@ export interface ImportRefs {
   readonly slipContext?: SlipContext;
   /** Pièces déjà reportées depuis cet appareil et non refusées : `TYPE|numéro` (jamais reportées deux fois). */
   readonly reportedSlips: ReadonlySet<string>;
+  /**
+   * Feuilles de présence (PP-E) déjà dans l'outbox de l'appareil et non refusées : identifiants de leur agrégat (une
+   * feuille de même contenu n'est pas reportée deux fois).
+   */
+  readonly pendingPresenceSheets: ReadonlySet<string>;
   /** Motif d'antidatage commun, saisi à l'écran, pour les pièces de plus de 24 h dont le fichier n'en donne pas. */
   readonly defaultBackdatedReason?: string;
 }
@@ -89,4 +94,5 @@ export const EMPTY_IMPORT_REFS: ImportRefs = {
   pendingCustomerPhones: new Set(),
   phoneCountryCode: '237',
   reportedSlips: new Set(),
+  pendingPresenceSheets: new Set(),
 };

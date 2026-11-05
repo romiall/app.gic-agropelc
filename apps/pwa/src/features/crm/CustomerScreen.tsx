@@ -7,6 +7,7 @@
  * Disposition : en-tête et actions, puis, sur ordinateur, coordonnées et chiffres à gauche, listes à
  * droite ; sur téléphone, tout s'empile dans le même ordre.
  */
+import { Fragment } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
@@ -28,6 +29,8 @@ import { clock } from '../../platform/composition.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatMoment } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
+import { demandeVisite } from '../pieces/adaptateurs-terrain.js';
+import { PieceAction } from '../pieces/PieceAction.js';
 import { localOutstanding } from '../sales/credit.js';
 import { formatMoney } from '../sales/format.js';
 import { openOrders, orderStatusTone } from '../sales/open-orders.js';
@@ -281,35 +284,48 @@ export function CustomerScreen() {
                       : [];
                   const pending = entry.pending_command_id !== undefined;
                   return (
-                    <ListRow
-                      key={entry.id}
-                      icon={item.kind === 'VISIT' ? 'store' : 'phone'}
-                      title={label}
-                      subtitle={
-                        note || entry.next_action_at || watch.length > 0 ? (
-                          <span className="crm-lines">
-                            {note ? <span>{note}</span> : null}
-                            {watch.length > 0 ? (
-                              <span>{t('customer.market_watch', { lines: watch.join(', ') })}</span>
-                            ) : null}
-                            {entry.next_action_at ? (
-                              <span>
-                                {t('portfolio.next_action', {
-                                  date: formatBusinessDay(entry.next_action_at),
-                                  note: entry.next_action_note ?? '',
-                                })}
-                              </span>
-                            ) : null}
+                    <Fragment key={entry.id}>
+                      <ListRow
+                        icon={item.kind === 'VISIT' ? 'store' : 'phone'}
+                        title={label}
+                        subtitle={
+                          note || entry.next_action_at || watch.length > 0 ? (
+                            <span className="crm-lines">
+                              {note ? <span>{note}</span> : null}
+                              {watch.length > 0 ? (
+                                <span>
+                                  {t('customer.market_watch', { lines: watch.join(', ') })}
+                                </span>
+                              ) : null}
+                              {entry.next_action_at ? (
+                                <span>
+                                  {t('portfolio.next_action', {
+                                    date: formatBusinessDay(entry.next_action_at),
+                                    note: entry.next_action_note ?? '',
+                                  })}
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : undefined
+                        }
+                        badge={
+                          <span className="crm-when">
+                            <span>{formatMoment(item.at, today)}</span>
+                            {pending ? <Badge tone="warn">{t('portfolio.pending')}</Badge> : null}
                           </span>
-                        ) : undefined
-                      }
-                      badge={
-                        <span className="crm-when">
-                          <span>{formatMoment(item.at, today)}</span>
-                          {pending ? <Badge tone="warn">{t('portfolio.pending')}</Badge> : null}
-                        </span>
-                      }
-                    />
+                        }
+                      />
+                      {item.kind === 'VISIT' ? (
+                        <li className="crm-visit-sheet">
+                          <PieceAction
+                            cle={`visite:${item.visit.id}`}
+                            libelle={t('visit.show_sheet')}
+                            annulee={item.visit.status === 'CANCELLED'}
+                            demande={() => demandeVisite(item.visit, customer, { refs })}
+                          />
+                        </li>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </List>

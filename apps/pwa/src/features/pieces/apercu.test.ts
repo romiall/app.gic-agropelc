@@ -10,6 +10,7 @@ import { documentPiece, LOGO_PIECES } from './document.js';
 import * as X from './exemples.js';
 import * as A from './pieces-argent.js';
 import * as O from './pieces-operations.js';
+import * as T from './pieces-terrain.js';
 
 const DIR = process.env.PIECES_APERCU_DIR;
 
@@ -34,6 +35,9 @@ describe.runIf(Boolean(DIR))('aperçu des pièces (contrôle visuel)', () => {
       O.fichePerte(X.EXEMPLE_FP, ctx),
       O.ficheInventaire(X.EXEMPLE_FI, ctx),
       O.ficheSuiviLot(X.EXEMPLE_FL, ctx),
+      T.ficheDePresence(X.EXEMPLE_PT, ctx),
+      T.bilanHebdomadaire(X.EXEMPLE_BH, ctx),
+      T.ficheDeVisite(X.EXEMPLE_VC, ctx),
     ];
     for (const p of pieces) writeFileSync(join(DIR!, `${p.code}.html`), documentPiece(p));
   });

@@ -54,6 +54,7 @@ export {
 export {
   businessDayOf,
   businessDayStartUtc,
+  isBusinessDay,
   isoWeekdayOfBusinessDay,
   businessDayEndUtc,
   isWithinBusinessDay,
@@ -782,3 +783,44 @@ export type {
   DirectNotificationSourceType,
   DirectPerimeter,
 } from './direct-notifications.js';
+// Présence du personnel (fiche PT) et bilan hebdomadaire du commercial (PP-E ; REQ-306, REQ-307 ; AV-313, AV-314).
+export {
+  PRESENCE_ABSENCE_CODES,
+  PRESENCE_ABSENCE_LABELS,
+  PRESENCE_MAX_LINES,
+  PRESENCE_WEEK_LENGTH,
+  clockHhmm,
+  clockMinutes,
+  formatWorkedMinutes,
+  isInWeek,
+  isMondayBusinessDay,
+  isPresenceAbsenceCode,
+  mondayOf,
+  personNameKey,
+  presenceDayIssue,
+  presenceLineIssue,
+  presenceWeekIssue,
+  totalWorkedMinutes,
+  weekDaysOf,
+  workedMinutes,
+} from './staff-presence.js';
+export type {
+  PresenceAbsenceCode,
+  PresenceDay,
+  PresenceIssue,
+  PresenceIssueCode,
+} from './staff-presence.js';
+export {
+  WEEKLY_REPORT_STATUSES,
+  WEEKLY_REPORT_TEXT_FIELDS,
+  WEEKLY_REPORT_TEXT_MAX,
+  hasWeeklyReportContent,
+  normalizeWeeklyReportTexts,
+  weeklyReportWeekIssue,
+} from './weekly-report.js';
+export type {
+  WeeklyFigures,
+  WeeklyReportStatus,
+  WeeklyReportTextField,
+  WeeklyReportTexts,
+} from './weekly-report.js';

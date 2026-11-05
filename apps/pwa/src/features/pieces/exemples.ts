@@ -67,6 +67,7 @@ import type {
   DonneesFL,
   DonneesFP,
 } from './pieces-operations.js';
+import type { DonneesBH, DonneesPT, DonneesVC } from './pieces-terrain.js';
 
 const SAISIE = { le: '26/10/2026 à 10 h 05', par: 'Aïcha Mbarga', numero: 'VTE-DLA1-2026-000123' };
 
@@ -516,4 +517,90 @@ export const EXEMPLE_FL: DonneesFL = {
   ],
   totaux: ['8', null, null, '457', null, null, null, null, null, null, null, null, null],
   evenements: 'Vaccin Gumboro rappel le 22/10.',
+};
+
+// ---- PP-E : présence du personnel, bilan hebdomadaire, fiche de visite ----------------------------------------
+export const EXEMPLE_PT: DonneesPT = {
+  numero: '000042',
+  site: 'Ferme de Bonabéri',
+  semaineDu: '02/11/2026',
+  semaineAu: '07/11/2026',
+  responsable: 'Joseph Ngo Bayiha',
+  lignes: [
+    {
+      nom: 'Paul Essomba',
+      fonction: 'Ouvrier',
+      mission: 'Poulailler B2',
+      jours: [
+        { arrivee: '07 h 00', depart: '16 h 00' },
+        { arrivee: '07 h 05', depart: '16 h 00' },
+        { arrivee: 'M', depart: null },
+        { arrivee: '07 h 00', depart: '15 h 30' },
+        { arrivee: '07 h 10', depart: '16 h 00' },
+        { arrivee: '07 h 00', depart: '12 h 00' },
+      ],
+      total: '40 h 15',
+    },
+    {
+      nom: 'Rose Atangana',
+      fonction: 'Gardienne',
+      mission: 'Entrée',
+      jours: [
+        { arrivee: 'R', depart: null },
+        { arrivee: '18 h 00', depart: '23 h 30' },
+        { arrivee: '18 h 00', depart: '23 h 30' },
+        { arrivee: 'C', depart: null },
+        { arrivee: 'C', depart: null },
+        { arrivee: 'A', depart: null },
+      ],
+      total: '11 h',
+    },
+  ],
+};
+
+export const EXEMPLE_BH: DonneesBH = {
+  numero: null,
+  commercial: 'Aïcha Mbarga',
+  semaineDu: '26/10/2026',
+  semaineAu: '01/11/2026',
+  visites: '14',
+  prospects: '5',
+  clients: '2',
+  ca: '1 250 000',
+  encaisse: '980 000',
+  pertes: '12 500',
+  reussites: 'Deux nouveaux restaurants à Akwa, commande de 40 plateaux par semaine.',
+  difficultes: 'Route de Bonabéri coupée mardi : trois visites reportées.',
+  besoins: 'Plateaux supplémentaires et un second carnet de bons de vente.',
+  priorites: 'Relancer le marché de Mboppi, livrer la commande du Palmier.',
+  marche: 'Concurrent à Mboppi : plateau de 30 œufs à 2 500 XAF.',
+  vu: true,
+  commentaire: 'Bon rythme. Prévoir un point jeudi.',
+};
+
+export const EXEMPLE_VC: DonneesVC = {
+  numero: null,
+  commercial: 'Aïcha Mbarga',
+  zone: 'Akwa',
+  date: '04/11/2026',
+  arrivee: '09 h 15',
+  depart: null,
+  compte: 'nouveau prospect',
+  client: 'Restaurant Le Palmier',
+  telephone: '+237 677 12 34 56',
+  personne: 'M. Tchoua (gérant)',
+  adresse: 'Rue Joss, face à la pharmacie',
+  produitInteret: 'Œufs de table',
+  potentiel: '40 plateaux',
+  paiement: 'mobile money',
+  differe: 'non',
+  veille: [
+    { source: 'Concurrent de Mboppi', produit: 'Œufs de table', prix: '2 500', unite: 'plateau' },
+    { source: 'Grossiste Deido', produit: 'Poulet de chair', prix: '3 200', unite: 'kg' },
+  ],
+  resultat: 'commande prise',
+  commentaire: 'Première livraison vendredi.',
+  prochaineAction: 'Appeler pour confirmer la livraison',
+  prochaineActionLe: '06/11/2026',
+  saisie: SAISIE,
 };
