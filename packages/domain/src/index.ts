@@ -797,6 +797,7 @@ export {
   isMondayBusinessDay,
   isPresenceAbsenceCode,
   mondayOf,
+  paperRefKey,
   personNameKey,
   presenceDayIssue,
   presenceLineIssue,

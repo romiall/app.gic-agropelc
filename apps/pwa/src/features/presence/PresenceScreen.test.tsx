@@ -274,6 +274,58 @@ describe('Présence du personnel (ECR-TER-03)', () => {
     expect(week).toHaveValue('2026-10-26');
   });
 
+  it('en ligne : un avis non bloquant signale le numéro d’une feuille déjà reportée du même site et de la même semaine (AV-514)', async () => {
+    vi.mocked(authorizedRequest).mockResolvedValue({
+      ok: true,
+      data: {
+        sheets: [
+          recordedSheet(),
+          recordedSheet({
+            id: '01900000-0000-7000-8000-0000000000a2',
+            paperRef: '000050',
+            status: 'CANCELLED',
+            cancelComment: 'Saisie en double',
+          }),
+        ],
+      },
+    } as never);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <PresenceScreen />
+      </MemoryRouter>,
+    );
+    await screen.findByText('Feuille n° 000042');
+    await user.selectOptions(screen.getByLabelText('Site'), IDS.site);
+    const paperRef = screen.getByLabelText('Numéro de la feuille papier (facultatif)');
+    const notice = /Une feuille n° \S+ est déjà reportée pour ce site et cette semaine/;
+
+    await user.type(paperRef, '000043');
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    // La casse et les espaces de bord ne comptent pas ; l'avis nomme le numéro tel qu'il est saisi, sans espaces de bord.
+    await user.clear(paperRef);
+    await user.type(paperRef, ' 000042 ');
+    expect(await screen.findByText(/Une feuille n° 000042 est déjà reportée/)).toBeInTheDocument();
+    // Une feuille annulée du même numéro ne compte pas.
+    await user.clear(paperRef);
+    await user.type(paperRef, '000050');
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+
+    // L'avis ne bloque pas le report : la feuille part, le serveur la signalera.
+    await user.clear(paperRef);
+    await user.type(paperRef, '000042');
+    expect(await screen.findByText(notice)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Nom et prénom'), 'Rose Atangana');
+    fireEvent.change(screen.getAllByLabelText('Arrivée')[0]!, { target: { value: '07:45' } });
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la feuille' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'fieldwork.presence.record',
+      payload: { paperRef: '000042' },
+    });
+  });
+
   it('hors ligne : les feuilles déjà reportées se lisent en ligne', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     render(

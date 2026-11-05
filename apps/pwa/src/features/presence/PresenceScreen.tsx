@@ -54,6 +54,7 @@ import {
   checkSheet,
   emptyLine,
   emptySheet,
+  findDuplicateSheet,
   lineWorkedMinutes,
   recordPayload,
   serverLineMinutes,
@@ -412,6 +413,10 @@ export function PresenceScreen() {
     .filter((site) => site.status === 'ACTIVE')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const issues = checkSheet(draft, clock.now());
+  // AV-514 (6) : avis (jamais un blocage) quand une feuille du même site, de la même semaine et du même numéro est déjà
+  // reportée ; connu seulement en ligne, hors ligne le serveur la signale à l'envoi.
+  const duplicate =
+    recorded.state.status === 'OK' ? findDuplicateSheet(draft, recorded.state.sheets) : undefined;
   const update = (patch: Partial<SheetDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const updateLine = (key: string, patch: Partial<LineDraft>) =>
     setDraft((current) => ({
@@ -583,6 +588,11 @@ export function PresenceScreen() {
                   <li key={`${issue.code}-${issue.line ?? 0}-${position}`}>{issueText(issue)}</li>
                 ))}
               </ul>
+            </Banner>
+          ) : null}
+          {duplicate ? (
+            <Banner tone="warn" role="status">
+              {t('presence.duplicate_notice', { ref: draft.paperRef.trim() })}
             </Banner>
           ) : null}
           {saveError ? <Banner tone="bad">{t(saveError)}</Banner> : null}

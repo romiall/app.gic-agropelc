@@ -12,6 +12,8 @@
  * - **Personnes** : un nom (la plupart n'ont pas de compte) et, facultativement, le compte lié, vérifié avant l'écriture
  *   (une clé étrangère en échec ferait renvoyer la feuille sans fin). Ce ne sont pas des sessions de travail : rien
  *   n'entre dans le pointage numérique ni dans `analytics_f_attendance` (aucun jour de présence compté deux fois).
+ * - **Feuille en double** (AV-514 (6)) : une feuille du même site, de la même semaine et du même numéro papier qu'une
+ *   feuille non annulée déjà reportée est enregistrée avec l'avertissement `PRESENCE_SHEET_DUPLICATE` (jamais refusée).
  * - Usage statistique et de suivi : ni paie ni discipline (AV-313).
  */
 import { z } from 'zod';
@@ -22,6 +24,7 @@ import {
   PRESENCE_WEEK_LENGTH,
   clockHhmm,
   isMondayBusinessDay,
+  paperRefKey,
   personNameKey,
   presenceLineIssue,
   presenceWeekIssue,
@@ -170,6 +173,31 @@ function sheetMatches(
   });
 }
 
+/**
+ * Une autre feuille non annulée du même site, de la même semaine et du même numéro papier est-elle déjà reportée
+ * (AV-514 (6)) ? Le numéro se compare sans tenir compte de la casse ni des espaces (`paperRefKey`) ; une feuille sans
+ * numéro n'est jamais reconnue comme la seconde saisie d'une autre. Lecture simple, sans verrou : deux appareils qui
+ * reportent la même feuille au même instant peuvent passer sans signalement (le signal n'est pas une garantie).
+ */
+async function hasSheetWithSameNumber(
+  uow: Uow,
+  payload: RecordPayload,
+  sheetId: Buffer,
+): Promise<boolean> {
+  const key = paperRefKey(payload.paperRef);
+  if (key === null) return false;
+  const sameWeek = await uow
+    .selectFrom('fieldwork_presence_sheets')
+    .select('paper_ref')
+    .where('site_id', '=', toBin(payload.siteId))
+    .where(sql<boolean>`week_start = ${payload.weekStart}`)
+    .where('status', '=', 'RECORDED')
+    .where('paper_ref', 'is not', null)
+    .where('id', '<>', sheetId)
+    .execute();
+  return sameWeek.some((row) => paperRefKey(row.paper_ref) === key);
+}
+
 const buildRecordSheet =
   (idGenerator: IdGenerator): CommandHandler<RecordPayload> =>
   async (uow, envelope) => {
@@ -260,6 +288,7 @@ const buildRecordSheet =
       }
     }
 
+    const duplicate = await hasSheetWithSameNumber(uow, p, sheetId);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     await uow
       .insertInto('fieldwork_presence_sheets')
@@ -301,7 +330,10 @@ const buildRecordSheet =
           .execute();
       }
     }
-    return { status: 'APPLIED' };
+    // AV-514 (6) : la seconde feuille d'un même numéro est enregistrée et signalée, jamais refusée (BR-SYN-007).
+    return duplicate
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: ['PRESENCE_SHEET_DUPLICATE'] }
+      : { status: 'APPLIED' };
   };
 
 const cancelSheet: CommandHandler<CancelPayload> = async (uow, envelope) => {

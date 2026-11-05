@@ -14,6 +14,7 @@ import {
   isMondayBusinessDay,
   isPresenceAbsenceCode,
   mondayOf,
+  paperRefKey,
   personNameKey,
   presenceLineIssue,
   presenceWeekIssue,
@@ -233,6 +234,26 @@ export interface ServerPresenceSheet {
       readonly absenceCode: string | null;
     }[];
   }[];
+}
+
+/**
+ * Feuille déjà reportée et non annulée du même site, de la même semaine et du même numéro papier que le brouillon
+ * (AV-514 (6)). Avis seulement : le report n'est jamais empêché, le serveur enregistre la seconde feuille et la signale
+ * (`PRESENCE_SHEET_DUPLICATE`). Une feuille sans numéro ne peut pas être reconnue comme la seconde d'une autre.
+ */
+export function findDuplicateSheet(
+  draft: SheetDraft,
+  recorded: readonly ServerPresenceSheet[],
+): ServerPresenceSheet | undefined {
+  const key = paperRefKey(draft.paperRef);
+  if (key === null || draft.siteId === '') return undefined;
+  return recorded.find(
+    (sheet) =>
+      sheet.status === 'RECORDED' &&
+      sheet.siteId === draft.siteId &&
+      sheet.weekStart === draft.weekStart &&
+      paperRefKey(sheet.paperRef) === key,
+  );
 }
 
 /** Jours d'une ligne reportée dans la forme de `@gic/domain` (code inconnu ignoré). */

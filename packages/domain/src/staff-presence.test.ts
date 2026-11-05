@@ -9,6 +9,7 @@ import {
   isMondayBusinessDay,
   isPresenceAbsenceCode,
   mondayOf,
+  paperRefKey,
   personNameKey,
   presenceDayIssue,
   presenceLineIssue,
@@ -80,6 +81,20 @@ describe('nom d’une personne sur une feuille', () => {
     expect(personNameKey('  Paul ESSOMBA ')).toBe(personNameKey('paul essomba'));
     expect(personNameKey('Éric')).toBe(personNameKey('éric'));
     expect(personNameKey('Paul Essomba')).not.toBe(personNameKey('Paul Essomba II'));
+  });
+});
+
+describe('numéro d’une feuille papier (AV-514)', () => {
+  it('compare sans tenir compte de la casse ni des espaces de bord ou répétés', () => {
+    expect(paperRefKey(' pt  12 ')).toBe(paperRefKey('PT 12'));
+    expect(paperRefKey('PT 12')).not.toBe(paperRefKey('PT 13'));
+    expect(paperRefKey('PT-12')).not.toBe(paperRefKey('PT 12'));
+  });
+
+  it('ne reconnaît aucune feuille sans numéro', () => {
+    expect(paperRefKey(null)).toBeNull();
+    expect(paperRefKey(undefined)).toBeNull();
+    expect(paperRefKey('   ')).toBeNull();
   });
 });
 

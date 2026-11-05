@@ -156,6 +156,10 @@ export const WARNING_CODES = [
   // appliquée et signalée à la Finance (conflit informatif `DELIVERY_UNPAID`). En ligne, refus
   // `ORDER_NOT_PAID`, sans écriture.
   'DELIVERY_UNPAID',
+  // AV-514 (6) : feuille de présence reportée alors qu'une autre feuille non annulée du même site, de la même
+  // semaine et du même numéro papier existe déjà (fichier corrigé rechargé sans annuler l'ancienne, autre
+  // auteur) : la seconde est enregistrée et signalée, jamais refusée (BR-SYN-007).
+  'PRESENCE_SHEET_DUPLICATE',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

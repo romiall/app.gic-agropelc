@@ -5,12 +5,14 @@ import {
   emptyLine,
   emptySheet,
   filledDays,
+  findDuplicateSheet,
   isBlankLine,
   lineWorkedMinutes,
   recordPayload,
   serverLineMinutes,
   weekStartOfInput,
   type LineDraft,
+  type ServerPresenceSheet,
   type SheetDraft,
 } from './presence-form.js';
 
@@ -53,6 +55,42 @@ describe('semaine du formulaire', () => {
     }
     expect(weekStartOfInput('2026-02-30', WEEK)).toBe(WEEK);
     expect(weekStartOfInput('2026-11-04', WEEK)).toBe('2026-11-02');
+  });
+});
+
+describe('feuille en double (AV-514)', () => {
+  const recorded = (overrides: Partial<ServerPresenceSheet> = {}): ServerPresenceSheet => ({
+    id: '01900000-0000-7000-8000-0000000000a1',
+    siteId: SITE,
+    weekStart: WEEK,
+    paperRef: '000042',
+    responsibleName: null,
+    status: 'RECORDED',
+    recordedAt: '2026-11-04T08:00:00.000Z',
+    cancelledAt: null,
+    cancelComment: null,
+    lines: [],
+    ...overrides,
+  });
+
+  it('reconnaît une feuille non annulée du même site, de la même semaine et du même numéro (casse et espaces ignorés)', () => {
+    const existing = recorded({ paperRef: 'PT 12' });
+    expect(findDuplicateSheet(sheet({ paperRef: ' pt  12 ' }), [existing])).toBe(existing);
+  });
+
+  it('ignore un autre numéro, un autre site, une autre semaine, une feuille annulée et l’absence de numéro', () => {
+    const draft = sheet({ paperRef: '000042' });
+    expect(findDuplicateSheet(draft, [recorded({ paperRef: '000043' })])).toBeUndefined();
+    expect(
+      findDuplicateSheet(draft, [recorded({ siteId: '01900000-0000-7000-8000-000000000099' })]),
+    ).toBeUndefined();
+    expect(findDuplicateSheet(draft, [recorded({ weekStart: '2026-10-26' })])).toBeUndefined();
+    expect(findDuplicateSheet(draft, [recorded({ status: 'CANCELLED' })])).toBeUndefined();
+    expect(
+      findDuplicateSheet(sheet({ paperRef: '' }), [recorded({ paperRef: null })]),
+    ).toBeUndefined();
+    expect(findDuplicateSheet(sheet({ paperRef: '  ' }), [recorded()])).toBeUndefined();
+    expect(findDuplicateSheet(sheet({ siteId: '' }), [recorded()])).toBeUndefined();
   });
 });
 

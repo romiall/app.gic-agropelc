@@ -6111,9 +6111,13 @@ export const fr = {
       WAITING_online: 'Feuille en cours d’envoi…',
       DONE: 'Feuille de présence enregistrée.',
       WARNING: 'Feuille enregistrée, avec un signalement.',
+      WARNING_PRESENCE_SHEET_DUPLICATE:
+        'Feuille enregistrée, mais une autre feuille du même site, de la même semaine et du même numéro est déjà reportée : si c’est la même feuille, annulez l’ancienne.',
       CONFLICT: 'Feuille mise en attente d’examen (conflit).',
       REJECTED: 'Feuille refusée : {{reason}}',
     },
+    duplicate_notice:
+      'Une feuille n° {{ref}} est déjà reportée pour ce site et cette semaine. Pour la corriger, annulez d’abord l’ancienne ; sinon, vérifiez le numéro.',
     another: 'Reporter une autre feuille',
     fix: 'Corriger la feuille',
     recorded_title: 'Feuilles reportées',

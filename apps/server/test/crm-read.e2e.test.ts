@@ -10,6 +10,7 @@
  * et tentatives de pointage d'un jour métier.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'kysely';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Clock } from '@gic/domain';
@@ -802,6 +803,80 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
       const other = await idsOf(`site_id=${siteOther}&week_start=${WEEK}`);
       expect(other).toContain(ids[1]);
       expect(other).not.toContain(ids[0]);
+    });
+
+    it('fieldwork.presence.record : la seconde feuille du même site, de la même semaine et du même numéro est enregistrée avec un avertissement (AV-514 (6))', async () => {
+      const PAST_WEEK = '2026-09-07';
+      const record = (actor: Actor, overrides: Record<string, unknown>, id = freshUuid()) =>
+        attempt(
+          actor,
+          'fieldwork.presence.record',
+          'PRESENCE_SHEET',
+          id,
+          `${DAY}T14:00:00.000Z`,
+          sheetPayload({
+            weekStart: PAST_WEEK,
+            lines: [
+              {
+                personName: 'Alain',
+                days: [{ date: PAST_WEEK, arrival: '07:00', departure: '16:00' }],
+              },
+            ],
+            ...overrides,
+          }),
+        );
+      const cancel = (id: string) =>
+        attempt(rfe, 'fieldwork.presence.cancel', 'PRESENCE_SHEET', id, `${DAY}T15:00:00.000Z`, {
+          comment: 'Feuille en double',
+        });
+      const warningsOf = (result: Awaited<ReturnType<typeof attempt>>) =>
+        'warnings' in result ? result.warnings : [];
+      /** Feuilles non annulées du site pour la semaine d'essai, avec leur numéro tel qu'il est enregistré. */
+      const liveSheets = async () =>
+        db
+          .selectFrom('fieldwork_presence_sheets')
+          .select(['id', 'paper_ref'])
+          .where('site_id', '=', toBin(siteId))
+          .where(sql<boolean>`week_start = ${PAST_WEEK}`)
+          .where('status', '=', 'RECORDED')
+          .execute();
+
+      const firstId = freshUuid();
+      const first = await record(rfe, { paperRef: 'DUP-7' }, firstId);
+      expect(first.status, JSON.stringify(first)).toBe('APPLIED');
+
+      // Le même numéro écrit autrement (casse, espaces) sous un autre identifiant : enregistrée, et signalée.
+      const secondId = freshUuid();
+      const second = await record(rfe, { paperRef: ' dup-7 ' }, secondId);
+      expect(second.status, JSON.stringify(second)).toBe('APPLIED_WITH_WARNINGS');
+      expect(warningsOf(second)).toEqual(['PRESENCE_SHEET_DUPLICATE']);
+      expect((await liveSheets()).map((sheet) => sheet.paper_ref).sort()).toEqual([
+        'DUP-7',
+        'dup-7',
+      ]);
+
+      // Un autre numéro, aucun numéro, ou le même numéro sur un autre site : pas de signalement.
+      expect((await record(rfe, { paperRef: 'DUP-8' })).status).toBe('APPLIED');
+      expect((await record(rfe, { paperRef: null })).status).toBe('APPLIED');
+      expect((await record(rfe, { paperRef: null })).status).toBe('APPLIED');
+      const elsewhere = await record(rfeOther, { paperRef: 'DUP-7', siteId: siteOther });
+      expect(elsewhere.status, JSON.stringify(elsewhere)).toBe('APPLIED');
+
+      // Le rejeu de la seconde feuille (même identifiant, même contenu) ne double rien : le flux n'est pas signalé deux fois.
+      const before = (await liveSheets()).length;
+      const replay = await record(rfe, { paperRef: ' dup-7 ' }, secondId);
+      expect(replay.status, JSON.stringify(replay)).toBe('APPLIED');
+      expect((await liveSheets()).length).toBe(before);
+
+      // Une feuille annulée ne compte pas : les deux annulées, le numéro se reporte sans signalement.
+      expect((await cancel(firstId)).status).toBe('APPLIED');
+      expect((await cancel(secondId)).status).toBe('APPLIED');
+      const third = await record(rfe, { paperRef: 'DUP-7' });
+      expect(third.status, JSON.stringify(third)).toBe('APPLIED');
+      // La troisième est vivante : la quatrième est signalée à son tour.
+      expect(warningsOf(await record(rfe, { paperRef: 'DUP-7' }))).toEqual([
+        'PRESENCE_SHEET_DUPLICATE',
+      ]);
     });
 
     it('GET /staff-presence et /weekly-reports : une date impossible est un 400, jamais une erreur serveur', async () => {
