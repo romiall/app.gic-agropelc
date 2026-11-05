@@ -362,6 +362,13 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
     });
     const byManager = await get(rco, `/api/v1/targets?user_id=${cte1.userId}`);
     expect(idsOf(byManager.json().targets)).toEqual([target1]);
+    // S-39 (AV-522) : sans paramètre, le responsable lit aussi les objectifs des membres de l'équipe qu'il dirige.
+    const teamDefault = await get(rco, '/api/v1/targets');
+    expect(teamDefault.statusCode, teamDefault.body).toBe(200);
+    expect(idsOf(teamDefault.json().targets)).toContain(target1);
+    // Un collègue sans équipe dirigée ne lit toujours pas l'objectif d'un autre.
+    const colleagueDefault = await get(cte2, '/api/v1/targets');
+    expect(idsOf(colleagueDefault.json().targets)).not.toContain(target1);
     const byColleague = await get(cte2, `/api/v1/targets?user_id=${cte1.userId}`);
     expect(byColleague.json().targets).toEqual([]);
   });

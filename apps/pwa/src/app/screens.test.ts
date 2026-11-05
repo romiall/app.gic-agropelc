@@ -88,6 +88,12 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(new Set(codes).size).toBe(codes.length);
   });
 
+  it('S-47 (AV-522) : « Demander un réapprovisionnement » mène à l’écran ECR-DIS-03', () => {
+    expect(routeOfAction({ code: 'REPLENISH_REQUEST', route: null }, 'VENDEUR_PDV')).toBe(
+      ROUTES.replenish,
+    );
+  });
+
   it('une action sans écran livré reste sans route (affichée « Bientôt »)', () => {
     expect(routeOfAction({ code: 'KOMMO_LEADS', route: null })).toBeNull();
   });

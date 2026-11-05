@@ -1078,7 +1078,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'replenish',
     group: 'stock',
     roles: ROLE_SETS.replenishRequest,
-    actionCodes: [],
+    // S-47 (AV-522) : « Demander un réapprovisionnement » à l'accueil du vendeur de point de vente.
+    actionCodes: ['REPLENISH_REQUEST'],
     offline: true,
   },
   {

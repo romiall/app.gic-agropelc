@@ -131,6 +131,8 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
       action('CASH_OPEN', 'Ouvrir la caisse'),
       action('LOSS', 'Déclarer une perte'),
       action('RECEIVE_TRANSFER', 'Recevoir un transfert'),
+      // S-47 (AV-522) : demande de réapprovisionnement du PDV (ECR-DIS-03, `inventory.transfer.request`, VEN SITE).
+      action('REPLENISH_REQUEST', 'Demander un réapprovisionnement'),
       action('CASH_CLOSE', 'Clôturer la caisse'),
       // P8E-02 (AV-298) : petite dépense payée par la caisse du PDV (WF-15).
       action('NEW_EXPENSE', '+ DÉPENSE'),

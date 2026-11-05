@@ -529,21 +529,31 @@ export class CrmReadController {
     const now = this.clock.now();
     await this.requirePermission(request, now, { type: 'SALES_TARGET' }, TARGET_READ);
     const all = await this.hasAllScope(request, now, TARGET_READ);
-    let userId = this.userOf(request, query.user_id);
-    if (
-      !all &&
-      userId === undefined &&
-      query.team_id === undefined &&
-      query.site_id === undefined
-    ) {
-      userId = request.auth!.sub;
-    }
-    const targets = await listTargets(this.db, {
-      ...(userId !== undefined ? { userId } : {}),
-      ...(query.team_id !== undefined ? { teamId: query.team_id } : {}),
-      ...(query.site_id !== undefined ? { siteId: query.site_id } : {}),
-      ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
-    });
+    const userId = this.userOf(request, query.user_id);
+    const unanchored =
+      !all && userId === undefined && query.team_id === undefined && query.site_id === undefined;
+    // S-39 (AV-522) : sans ancrage, comme `/visits` et `/customers`, la liste porte les objectifs de soi, des membres
+    // des équipes dirigées et de ces équipes (auparavant les seuls objectifs propres).
+    const targets = unanchored
+      ? [
+          ...(await listTargets(this.db, {
+            userIds: await this.defaultUsers(request, now),
+            targetType: 'USER',
+            ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
+          })),
+          ...(
+            await listTargets(this.db, {
+              targetType: 'TEAM',
+              ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
+            })
+          ).filter((target) => target.teamManagerUserId === request.auth!.sub),
+        ]
+      : await listTargets(this.db, {
+          ...(userId !== undefined ? { userId } : {}),
+          ...(query.team_id !== undefined ? { teamId: query.team_id } : {}),
+          ...(query.site_id !== undefined ? { siteId: query.site_id } : {}),
+          ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
+        });
     const readable: TargetSummary[] = [];
     for (const target of targets) {
       if (all || (await this.targetReadable(request, now, target))) readable.push(target);

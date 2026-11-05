@@ -137,6 +137,7 @@ const ACTION_ICON: Readonly<Record<string, IconName>> = {
   CASH_CLOSE: 'cash',
   LOSS: 'alert',
   RECEIVE_TRANSFER: 'truck',
+  REPLENISH_REQUEST: 'truck',
   RECEIVE: 'truck',
   RECEIPTS: 'truck',
   TRANSFER: 'truck',

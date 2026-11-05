@@ -22,6 +22,17 @@ describe('Accueil : actions par rôle', () => {
     }
   });
 
+  it('S-47 (AV-522) : le vendeur de point de vente a « Demander un réapprovisionnement » à l’accueil, sans route serveur (l’appareil la complète)', () => {
+    const replenish = ROLE_CATALOG.VENDEUR_PDV!.actions.find(
+      (action) => action.code === 'REPLENISH_REQUEST',
+    );
+    expect(replenish).toMatchObject({ label: 'Demander un réapprovisionnement', route: null });
+    // Les rôles qui ne demandent pas de réapprovisionnement ne l'ont pas.
+    for (const role of ['DIRECTION', 'FINANCE', 'COMMERCIAL_SEDENTAIRE']) {
+      expect(codesOf(role), role).not.toContain('REPLENISH_REQUEST');
+    }
+  });
+
   it('une action au plus une fois par rôle, une seule action principale', () => {
     for (const [role, definition] of Object.entries(ROLE_CATALOG)) {
       const codes = definition.actions.map((action) => action.code);
