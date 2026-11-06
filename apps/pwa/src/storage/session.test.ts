@@ -179,6 +179,8 @@ describe('storage/session (PIN local, BR-ADM-024)', () => {
     expect(await db.syncMeta.get('device')).toMatchObject({
       device_id: 'appareil-1',
       data_user_id: null,
+      // Marqué « effacé » : un tirage en vol qui écrirait après coup ne sera pas hérité par l'utilisateur suivant.
+      data_wiped: true,
       last_sync_at: null,
     });
     // Sans appareil connu (jamais synchronisé), l'effacement ne lève pas.

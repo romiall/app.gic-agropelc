@@ -223,4 +223,36 @@ describe('synchronisation durcie (ADR-037)', () => {
     expect(await db.outbox.get(command.command_id)).toBeDefined();
     expect((await db.syncMeta.get('device'))?.data_user_id).toBe(USER_2);
   });
+
+  it('après l’effacement d’un appareil hors service, des lignes écrites par un tirage en vol ne sont pas héritées (AV-213 (c))', async () => {
+    // Appareil dont les données viennent d'être effacées : propriétaire vide, marqué « effacé » (≠ appareil d'avant le champ).
+    await db.syncMeta.update('device', { data_user_id: null, data_wiped: true });
+    // Une page de tirage reçue juste avant le blocage s'écrit après l'effacement.
+    await db.projections.put({
+      key: 'customers:CUSTOMER:c1',
+      dataset: 'customers',
+      entity_type: 'CUSTOMER',
+      entity_id: 'c1',
+      scope_type: 'USER',
+      scope_id: USER_1,
+      row_version: 1,
+      data: { display_name: 'Client de user-1' },
+      seq: 1,
+    });
+    await db.syncCursors.put({ dataset: 'customers', cursor: 10 });
+
+    // L'utilisateur suivant ne reçoit ni ces lignes ni ce curseur périmé (sans quoi ses propres lignes plus anciennes
+    // seraient sautées) ; le drapeau retombe une fois les données rattachées.
+    expect(await ensureDataOwner(db, USER_2)).toBe(true);
+    expect(await db.projections.count()).toBe(0);
+    expect(await db.syncCursors.count()).toBe(0);
+    expect(await db.syncMeta.get('device')).toMatchObject({
+      data_user_id: USER_2,
+      data_wiped: false,
+    });
+    // Un appareil effacé sans aucune ligne tardive n'a rien à effacer de plus.
+    await db.syncMeta.update('device', { data_user_id: null, data_wiped: true });
+    expect(await ensureDataOwner(db, USER_1)).toBe(false);
+    expect((await db.syncMeta.get('device'))?.data_user_id).toBe(USER_1);
+  });
 });

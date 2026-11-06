@@ -92,10 +92,13 @@ const assignMember: CommandHandler<AssignMemberPayload> = async (uow, envelope) 
   const { userId, teamId } = envelope.payload;
   const occurredAt = new Date(envelope.occurred_at);
 
+  // Verrou partagé : une fermeture simultanée de l'équipe (`close`, verrou exclusif) attend cette affectation, ou
+  // l'inverse, au lieu de laisser un membre ouvert dans une équipe fermée (revue adverse du 05/11/2026).
   const team = await uow
     .selectFrom('organization_teams')
     .select(['id', 'is_active'])
     .where('id', '=', toBin(teamId))
+    .forShare()
     .executeTakeFirst();
   if (!team) return notFound('Équipe introuvable.');
   if (!team.is_active) {
@@ -195,6 +198,9 @@ const close: CommandHandler<ClosePayload> = async (uow, envelope) => {
     .where('valid_from', '<', occurredAt)
     .where((eb) => eb.or([eb('valid_to', 'is', null), eb('valid_to', '>', occurredAt)]))
     .orderBy('id')
+    // Lecture verrouillante : une affectation validée pendant l'attente du verrou de l'équipe doit être vue (la lecture
+    // simple verrait l'instantané pris avant l'attente) et close avec les autres.
+    .forUpdate()
     .execute();
   for (const membership of open) {
     await uow

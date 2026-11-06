@@ -114,12 +114,24 @@ export interface TransferTransitVerification {
   readonly breaches: readonly TransferTransitBreach[];
 }
 
-/** Statuts d'un transfert clos : son transit doit être soldé (INV-STK-08). */
-const SETTLED_STATUSES = ['RECEIVED', 'DISCREPANCY_PENDING', 'CLOSED', 'RETURNED', 'MATCHED'];
+/**
+ * Statuts d'un transfert clos : son transit doit être soldé (INV-STK-08). `CANCELLED` en fait partie : un transfert
+ * `STANDARD` annulé n'a aucun mouvement (transit 0), et une réception sans document annulée (AV-520) a contre-passé
+ * exactement sa réception du transit de la paire : un transit non nul sur l'un d'eux est une contre-passation
+ * incomplète.
+ */
+const SETTLED_STATUSES = [
+  'RECEIVED',
+  'DISCREPANCY_PENDING',
+  'CLOSED',
+  'RETURNED',
+  'MATCHED',
+  'CANCELLED',
+];
 
 /**
- * INV-STK-08 (TX + JOB) : pour chaque transfert `STANDARD` clos (reçu, en écart, clos, retourné) et
- * chaque réception sans document rapprochée, transit net par produit = −excédent reçu au-delà de
+ * INV-STK-08 (TX + JOB) : pour chaque transfert `STANDARD` clos (reçu, en écart, clos, retourné, annulé) et
+ * chaque réception sans document rapprochée ou annulée, transit net par produit = −excédent reçu au-delà de
  * l'expédié (0 sans excédent) ; lignes d'un transfert `RETURNED` : retourné = expédié ; autres :
  * retourné = 0. `transferIds` restreint la vérification (tests sur la base partagée).
  */

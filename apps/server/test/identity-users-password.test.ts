@@ -21,6 +21,11 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { hashPassword } from '../src/modules/identity/application/auth/password.js';
+import {
+  accountScope,
+  identifierScope,
+  resetLoginScopes,
+} from '../src/modules/identity/application/auth/login-lockout.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { resolveEntityProjection } from '../src/sync/entity-projections.js';
 import {
@@ -203,12 +208,15 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
     expect((await get(admin, '/api/v1/users?status=INCONNU')).statusCode).toBe(400);
     // L'utilisateur système (empreinte vide) ne se connecte jamais : 401, pas une erreur du serveur.
     // Son numéro ne réussit jamais : ses échecs des exécutions précédentes sont levés d'abord.
-    await db
-      .updateTable('identity_login_attempts')
-      .set({ failed_count: 0, blocked_until: null })
-      .where('scope_type', '=', 'IDENTIFIER')
-      .where('scope_value', '=', '+237600000000')
-      .execute();
+    const systemUser = await db
+      .selectFrom('identity_users')
+      .select('id')
+      .where('phone', '=', '+237600000000')
+      .executeTakeFirst();
+    await resetLoginScopes(db, [
+      identifierScope('+237600000000'),
+      ...(systemUser ? [accountScope(fromBin(systemUser.id))] : []),
+    ]);
     expect((await login('+237600000000', TEST_PASSWORD)).statusCode).toBe(401);
     const system = await get(admin, '/api/v1/users?q=%2B237600000000');
     expect((system.json() as { users: unknown[] }).users).toEqual([]);

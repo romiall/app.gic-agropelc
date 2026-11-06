@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url';
 export const RULES = [
   {
     id: 'json-path-arrow',
-    re: /[\w`)\]]\s*->>?\s*['"]\$/,
+    // Avant la fleche : un identifiant, un `)`, un `]`, un guillemet inverse ou double (colonne citee), un `}` (colonne
+    // interpolee dans un gabarit Kysely : `${col}->>'$.x'`).
+    re: /[\w`)\]}"]\s*->>?\s*['"]\$/,
     why: 'operateur -> / ->> de chemin JSON : MariaDB ne le connait pas (utiliser JSON_EXTRACT / JSON_VALUE)',
     bad: "SELECT data->>'$.name' FROM t",
     good: "SELECT JSON_VALUE(data, '$.name') FROM t",
@@ -96,12 +98,38 @@ export const ALLOWED = [
   },
 ];
 
-/** Retire les commentaires : `// ...` et `/* ... *\/` (TypeScript), `-- ...` et `/* ... *\/` (SQL). Les numeros de ligne sont conserves. */
+/**
+ * Retire les commentaires : `// ...` et `/* ... *\/` (TypeScript), `-- ...` et `/* ... *\/` (SQL). Les numeros de ligne
+ * sont conserves. Un commentaire ne commence jamais DANS une chaine (`'**\/*.ts'`, `https://...`) : les chaines sont
+ * copiees telles quelles, ce qui peut seulement laisser passer un faux positif apres une chaine mal reconnue (un
+ * litteral d'expression reguliere portant une apostrophe), jamais masquer du code.
+ */
 export function stripComments(text, kind) {
-  let out = text.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
-  if (kind === 'sql') return out.replace(/--[^\n]*/g, '');
-  // TypeScript : `//` sans le faire partir d'une URL (https://...).
-  return out.replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1');
+  const blank = (s) => s.replace(/[^\n]/g, ' ');
+  const n = text.length;
+  let out = '';
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1;
+      while (j < n && text[j] !== c) j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end === -1 ? n : end + 2;
+      out += blank(text.slice(i, stop));
+      i = stop;
+    } else if (kind === 'sql' ? c === '-' && next === '-' : c === '/' && next === '/') {
+      while (i < n && text[i] !== '\n') i += 1;
+    } else {
+      out += c;
+      i += 1;
+    }
+  }
+  return out;
 }
 
 /** Partie "migrate:up" d'une migration dbmate (la partie "down" ne s'applique jamais en ligne). */
@@ -180,6 +208,31 @@ assert.deepEqual(
 assert.deepEqual(
   scanText('const a = 1;\nsql`SELECT ANY_VALUE(x)`', 'ts').map((h) => [h.rule, h.line]),
   [['any-value', 2]],
+);
+// La fleche JSON precedee d'une colonne interpolee (gabarit Kysely) ou citee est vue, comme celle d'une colonne nue.
+for (const sample of [
+  "sql`SELECT ${col}->>'$.x'`",
+  'SELECT "col"->\'$.x\' FROM t',
+  "SELECT `col` -> '$.x' FROM t",
+]) {
+  assert.ok(
+    scanText(sample, 'ts').some((hit) => hit.rule === 'json-path-arrow'),
+    `fleche JSON non vue : ${sample}`,
+  );
+}
+// Un motif glob dans une chaine ne commence pas un commentaire (il avalait le code jusqu'au prochain `*/`).
+assert.deepEqual(
+  scanText("const g = '**/*.ts';\nsql`SELECT ANY_VALUE(x)`;\n/* fin */", 'ts').map((h) => [
+    h.rule,
+    h.line,
+  ]),
+  [['any-value', 2]],
+  'un motif glob dans une chaine masquait le code qui suit',
+);
+// Une URL dans une chaine n'est pas un commentaire de ligne ; un vrai commentaire apres elle l'est.
+assert.deepEqual(
+  scanText("const u = 'https://x.cm'; // ANY_VALUE(x)\nsql`ANY_VALUE(y)`", 'ts').map((h) => h.line),
+  [2],
 );
 // CAST(${...} AS JSON) (jsonValue) et CAST(? AS JSON) (semis) sont absorbes par le kit, pas signales.
 assert.deepEqual(scanText('sql`CAST(${JSON.stringify(v)} AS JSON)`', 'ts'), []);

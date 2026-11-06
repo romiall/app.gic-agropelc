@@ -5,7 +5,7 @@
  * de chaque pièce, les coordonnées de règlement de la facture et les cases « Régime de TVA » / « Mention
  * d'exonération » : l'Admin les règle dans l'écran des paramètres (groupe « Société »). Tant qu'un paramètre n'est pas
  * arrivé sur l'appareil, la valeur de `IDENTITE` (copie de `pieces-papier/charte/identite.json`) s'applique ; un
- * paramètre présent mais vide donne la ligne pointillée du papier, à compléter à la main. Fonctions pures : le
+ * paramètre présent mais vide donne la ligne pointillée du papier. Fonctions pures : le
  * moment de lecture est un paramètre.
  */
 import {
@@ -17,6 +17,20 @@ import {
 import { settingValue } from '../sales/stock.js';
 import type { SettingData } from '../sales/types.js';
 import { IDENTITE, type Identite } from './identite.js';
+import type { DonneesFA } from './pieces-argent.js';
+
+/**
+ * Valeur d'un paramètre : celle en vigueur ; à défaut (version datée d'avance, ou horloge de l'appareil en retard), la
+ * plus récente reçue. Le serveur retire de l'appareil la version remplacée dès que la nouvelle arrive : sans ce repli,
+ * l'en-tête retomberait sur les valeurs d'origine du dossier — ni l'ancienne ni la nouvelle valeur.
+ */
+function lire(settings: readonly SettingData[], key: string, now: Date): unknown {
+  const inForce = settingValue(settings, key, null, now);
+  if (inForce !== undefined) return inForce;
+  return settings
+    .filter((setting) => setting.key === key && setting.scope_type === 'GLOBAL')
+    .sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0]?.value;
+}
 
 /** Identité imprimée : le paramètre de l'appareil, sinon la valeur de `IDENTITE`. */
 export function identiteDepuisParametres(
@@ -26,7 +40,7 @@ export function identiteDepuisParametres(
   const identite: { -readonly [K in keyof Identite]: string } = { ...IDENTITE };
   if (!settings) return identite;
   for (const champ of Object.keys(COMPANY_IDENTITY_SETTINGS) as CompanyIdentityField[]) {
-    const valeur = settingValue(settings, COMPANY_IDENTITY_SETTINGS[champ], null, now);
+    const valeur = lire(settings, COMPANY_IDENTITY_SETTINGS[champ], now);
     if (typeof valeur === 'string') identite[champ] = valeur.trim();
   }
   return identite;
@@ -51,8 +65,8 @@ export function tvaDepuisParametres(
   now: Date,
 ): TvaImprimee {
   if (!settings) return { regime: null, mention: null };
-  const regime = settingValue(settings, COMPANY_VAT_REGIME_SETTING, null, now);
-  const mention = settingValue(settings, COMPANY_VAT_MENTION_SETTING, null, now);
+  const regime = lire(settings, COMPANY_VAT_REGIME_SETTING, now);
+  const mention = lire(settings, COMPANY_VAT_MENTION_SETTING, now);
   return {
     regime:
       regime === 'VAT_APPLICABLE'
@@ -61,5 +75,28 @@ export function tvaDepuisParametres(
           ? 'opération exonérée de TVA'
           : null,
     mention: typeof mention === 'string' && mention.trim() !== '' ? mention.trim() : null,
+  };
+}
+
+/**
+ * Données d'une facture complétées des paramètres de la société : coordonnées de règlement (banque, compte, mobile
+ * money), régime de TVA et mention d'exonération. Une rubrique non renseignée reste la ligne pointillée du papier, à
+ * compléter à la main. Sans paramètres lus (`undefined`), la facture est rendue telle quelle.
+ */
+export function completerFacture(
+  donnees: DonneesFA,
+  settings: readonly SettingData[] | undefined,
+  now: Date,
+): DonneesFA {
+  if (!settings) return donnees;
+  const identite = identiteDepuisParametres(settings, now);
+  const tva = tvaDepuisParametres(settings, now);
+  return {
+    ...donnees,
+    regimeTva: tva.regime,
+    mentionExoneration: tva.mention,
+    banque: identite.banque || null,
+    compte: identite.compte_bancaire || null,
+    mobileMoney: identite.mobile_money || null,
   };
 }

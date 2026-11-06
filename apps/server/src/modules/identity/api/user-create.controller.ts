@@ -43,6 +43,7 @@ import { recordChanges } from '../../../platform/sync/change-feed.js';
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
 import { PASSWORD_PROBLEM_MESSAGES } from './auth.controller.js';
 import { hashPassword } from '../application/auth/password.js';
+import { emailTakenByOther } from '../application/commands/user-commands.js';
 import { hasPermissionAt } from '../application/public/rights-check.js';
 import { checkDeviceActive } from '../application/public/device-check.js';
 import { insertRoleAssignment } from '../application/role-assignment-writer.js';
@@ -171,6 +172,14 @@ export class UserCreateController {
         409,
         'PHONE_ALREADY_USED',
         'Ce numéro est déjà utilisé par un compte actif.',
+      );
+    }
+    // La connexion par e-mail deviendrait ambiguë si deux comptes non désactivés portaient la même adresse.
+    if (body.data.email !== undefined && (await emailTakenByOther(this.db, body.data.email))) {
+      throw new ApiError(
+        409,
+        'EMAIL_ALREADY_USED',
+        'Cette adresse e-mail est déjà utilisée par un compte actif.',
       );
     }
 

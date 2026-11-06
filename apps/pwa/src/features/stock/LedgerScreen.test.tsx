@@ -427,6 +427,22 @@ describe('Registre : export CSV (AV-519)', () => {
     expect(at(1, 'REVERSAL')).toBe('non');
   });
 
+  it('une cellule de texte qui ressemble à une formule est protégée ; les quantités négatives restent des nombres', () => {
+    const moves = [move({ direction: 'OUT', quantity: 2, lotId: '=cmd|calc' })];
+    const columns = ledgerCsvColumns(moves);
+    const rows = ledgerCsvRows(moves, columns, {
+      ...lookups,
+      product: () => '=HYPERLINK("http://exemple.invalide")',
+      counterpart: () => '@client',
+    });
+    const at = (column: (typeof columns)[number]) => rows[1]![columns.indexOf(column)];
+    expect(at('PRODUCT')).toBe('\'=HYPERLINK("http://exemple.invalide")');
+    expect(at('COUNTERPART')).toBe("'@client");
+    expect(at('LOT')).toBe("'=cmd|calc");
+    // Une sortie est une quantité négative : un nombre, jamais préfixé d'une apostrophe.
+    expect(at('QUANTITY')).toBe('-2');
+  });
+
   it('nom de fichier : emplacement, produit et période, sans accent ni espace', () => {
     expect(
       ledgerFileName({

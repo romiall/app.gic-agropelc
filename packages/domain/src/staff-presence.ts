@@ -60,12 +60,13 @@ export function personNameKey(name: string): string {
 }
 
 /**
- * Clé de comparaison du numéro d'une feuille papier (AV-514 (6)) : sans espaces aux bords ni répétés, sans distinction
- * de casse (« pt 12 » et « PT  12 » sont la même feuille). `null` pour un numéro vide : une feuille sans numéro ne
- * peut pas être reconnue comme une seconde saisie d'une autre. Une seule définition pour l'écran et le serveur.
+ * Clé de comparaison du numéro d'une feuille papier (AV-514 (6)) : sans aucun espace, sans distinction de casse
+ * (« pt 12 », « PT  12 » et « PT12 » sont la même feuille). Les autres signes comptent (« PT-12 » est un autre numéro).
+ * `null` pour un numéro vide : une feuille sans numéro ne peut pas être reconnue comme une seconde saisie d'une autre.
+ * Une seule définition pour l'écran et le serveur.
  */
 export function paperRefKey(paperRef: string | null | undefined): string | null {
-  const key = (paperRef ?? '').trim().replace(/\s+/g, ' ').toLocaleUpperCase('fr');
+  const key = (paperRef ?? '').replace(/\s+/g, '').toLocaleUpperCase('fr');
   return key === '' ? null : key;
 }
 

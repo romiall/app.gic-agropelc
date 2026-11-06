@@ -84,6 +84,7 @@ import {
   lockPhysicalStockCouples,
   recordStockMove,
   type RecordMoveDeps,
+  type StockMoveWarning,
 } from './public/record-move.js';
 import { virtualLocationId } from './commands/shared.js';
 import { milliToText, quantityToMilli } from './allocation-ledger.js';
@@ -386,6 +387,10 @@ export async function activeDocumentMoves(
  * réception sans document. Un inverse qui ne voit pas son origine (instantané périmé) ou la voit déjà
  * inversée échoue : l'erreur est **transitoire** (commande rejouée, jamais un refus définitif ni un
  * effet partiel validé).
+ *
+ * Rend les avertissements des mouvements d'inverse (sans doublon) : l'appelant qui répond à une commande en ligne
+ * les remonte (`ALLOCATION_OVERCOMMITTED` quand l'annulation d'une entrée laisse des quotas sans stock, AV-520) ;
+ * les autres les ignorent, le conflit correspondant étant déjà ouvert par `inventory`.
  */
 export async function reverseTransferMoves(
   uow: Uow,
@@ -399,7 +404,7 @@ export async function reverseTransferMoves(
     readonly commandId: string | null;
     readonly capturedOffline: boolean;
   },
-): Promise<void> {
+): Promise<readonly StockMoveWarning[]> {
   // ADR-038 N5 : soldes physiques de l'opération (l'extrémité non virtuelle de chaque mouvement), triés.
   await lockPhysicalStockCouples(
     uow,
@@ -408,9 +413,10 @@ export async function reverseTransferMoves(
       { locationId: move.toLocationId, productId: move.productId },
     ]),
   );
+  const warnings = new Set<StockMoveWarning>();
   for (const move of moves) {
     try {
-      await recordStockMove(uow, deps, {
+      const recorded = await recordStockMove(uow, deps, {
         productId: move.productId,
         lotId: move.lotId,
         quantityBase: move.quantityMilli / 1000,
@@ -428,6 +434,9 @@ export async function reverseTransferMoves(
         reversesMoveId: move.id,
         reversedUnitCostXaf: move.unitCostXaf,
       });
+      for (const piece of recorded) {
+        for (const warning of piece.warnings ?? []) warnings.add(warning);
+      }
     } catch (error) {
       if (error instanceof InventoryMoveError) {
         throw new Error(
@@ -437,6 +446,7 @@ export async function reverseTransferMoves(
       throw error;
     }
   }
+  return [...warnings];
 }
 
 // --- Paramètres ----------------------------------------------------------------------------------

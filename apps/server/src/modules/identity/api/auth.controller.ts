@@ -42,7 +42,13 @@ import {
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
 import { Public, SelfScoped } from '../../../platform/http/authorization.decorators.js';
 import { hashPassword, verifyDecoyPassword, verifyPassword } from '../application/auth/password.js';
-import { reserveLoginAttempts, resetLoginAttempts } from '../application/auth/login-lockout.js';
+import {
+  accountScope,
+  identifierScope,
+  ipScope,
+  reserveLoginAttempts,
+  resetLoginScopes,
+} from '../application/auth/login-lockout.js';
 import {
   findOrEnrollDevice,
   type DeviceLoginRefusal,
@@ -122,40 +128,25 @@ export class AuthController {
     const now = this.clock.now();
     const ip = request.ip;
 
-    // AV-297 (a) : l'essai est réservé (compté) d'avance, atomiquement, avant la vérification du mot de passe ;
-    // une connexion réussie remet les compteurs à zéro. Des essais simultanés se suivent donc : au plus cinq
-    // vérifications passent avant le blocage, les autres sont refusées sans être vérifiées.
-    const lock = await reserveLoginAttempts(
-      this.db,
-      [
-        { scopeType: 'IDENTIFIER', scopeValue: phone },
-        { scopeType: 'IP', scopeValue: ip },
-      ],
-      now,
-    );
-    if (lock.blocked) {
-      throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
-    }
-
     // MP-11 (revue adverse) : un numéro se réattribue après la désactivation de son compte (unicité sur
     // les seuls comptes non désactivés, `active_phone`) — le compte en vigueur passe d'abord ; à défaut,
     // le dernier compte désactivé du numéro, pour l'audit de l'échec. Repli sur l'adresse e-mail (RP-3).
     const user =
       (await this.db
         .selectFrom('identity_users')
-        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .select(['id', 'password_hash', 'status', 'must_change_password', 'phone', 'email'])
         .where('active_phone', '=', phone)
         .executeTakeFirst()) ??
       (await this.db
         .selectFrom('identity_users')
-        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .select(['id', 'password_hash', 'status', 'must_change_password', 'phone', 'email'])
         .where('phone', '=', phone)
         .orderBy('id', 'desc')
         .limit(1)
         .executeTakeFirst()) ??
       (await this.db
         .selectFrom('identity_users')
-        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .select(['id', 'password_hash', 'status', 'must_change_password', 'phone', 'email'])
         .where('email', '=', phone)
         .where('status', '!=', 'DEACTIVATED')
         .orderBy('id', 'desc')
@@ -163,11 +154,26 @@ export class AuthController {
         .executeTakeFirst()) ??
       (await this.db
         .selectFrom('identity_users')
-        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .select(['id', 'password_hash', 'status', 'must_change_password', 'phone', 'email'])
         .where('email', '=', phone)
         .orderBy('id', 'desc')
         .limit(1)
         .executeTakeFirst());
+
+    // AV-297 (a) : l'essai est réservé (compté) d'avance, atomiquement, avant la vérification du mot de passe ;
+    // une connexion réussie remet les compteurs à zéro. Des essais simultanés se suivent donc : au plus cinq
+    // vérifications passent avant le blocage, les autres sont refusées sans être vérifiées. Trois compteurs : l'identifiant
+    // saisi (empreinte : il peut être inconnu ou plus long que la colonne), le COMPTE (partagé par son téléphone et son
+    // adresse e-mail : sans lui, cinq essais sur chaque identifiant avant le blocage) et l'adresse IP.
+    const scopes = [
+      identifierScope(phone),
+      ipScope(ip),
+      ...(user ? [accountScope(fromBin(user.id))] : []),
+    ];
+    const lock = await reserveLoginAttempts(this.db, scopes, now);
+    if (lock.blocked) {
+      throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
+    }
 
     // `errorCode` : motif écrit dans l'audit seulement (AV-253 : un compte suspendu ou désactivé garde le
     // message générique, son motif n'est lisible qu'au journal).
@@ -210,6 +216,13 @@ export class AuthController {
     if (user.status !== 'ACTIVE') return fail(fromBin(user.id), `ACCOUNT_${user.status}`);
 
     const userId = fromBin(user.id);
+    // Les identifiants valides se connaissent : une connexion réussie (ou un mot de passe juste devant un appareil hors
+    // service) remet à zéro les compteurs des DEUX identifiants du compte, pas seulement de celui qui a été saisi.
+    const resetScopes = [
+      ...scopes,
+      identifierScope(user.phone),
+      ...(user.email ? [identifierScope(user.email)] : []),
+    ];
     // AV-296 (b) : réglage global `identity.device_bound_to_enroller` (faux par défaut).
     const boundToEnroller =
       (await currentSettingValue(this.db, {
@@ -234,8 +247,7 @@ export class AuthController {
       // (403, code distinct) pour renvoyer l'utilisateur vers son responsable ; ni compteur
       // d'échecs (les identifiants sont valides : l'essai réservé d'avance est remis à zéro) ni session.
       await this.db.transaction().execute(async (trx) => {
-        await resetLoginAttempts(trx, 'IDENTIFIER', phone);
-        await resetLoginAttempts(trx, 'IP', ip);
+        await resetLoginScopes(trx, resetScopes);
         await recordAudit(
           trx,
           { idGenerator: this.idGenerator, clock: this.clock },
@@ -259,8 +271,7 @@ export class AuthController {
 
     const { sessionId, refreshToken } = await this.db.transaction().execute(async (trx) => {
       const issued = await createSession(trx, this.idGenerator, { userId, deviceId, now, ip });
-      await resetLoginAttempts(trx, 'IDENTIFIER', phone);
-      await resetLoginAttempts(trx, 'IP', ip);
+      await resetLoginScopes(trx, resetScopes);
       await trx
         .updateTable('identity_users')
         .set({ last_login_at: now })
@@ -310,9 +321,19 @@ export class AuthController {
     const now = this.clock.now();
     const ip = request.ip;
 
-    const outcome = await this.db
-      .transaction()
-      .execute((trx) => rotateSession(trx, this.idGenerator, parsed.data.refresh_token, now, ip));
+    // AV-296 (b) : réglage global `identity.device_bound_to_enroller` (faux par défaut), appliqué aussi au rafraîchissement.
+    const boundToEnroller =
+      (await currentSettingValue(this.db, {
+        key: 'identity.device_bound_to_enroller',
+        scopeType: 'GLOBAL',
+        scopeId: null,
+        at: now,
+      })) === true;
+    const outcome = await this.db.transaction().execute((trx) =>
+      rotateSession(trx, this.idGenerator, parsed.data.refresh_token, now, ip, {
+        boundToEnroller,
+      }),
+    );
 
     if (!outcome.ok) {
       if (outcome.reason === 'TOKEN_REUSE') {
@@ -342,6 +363,15 @@ export class AuthController {
           401,
           'TOKEN_REUSE',
           'Jeton de rafraîchissement déjà utilisé : session révoquée.',
+        );
+      }
+      if (outcome.reason === 'DEVICE_BOUND_TO_OTHER_USER') {
+        // Appareil réservé au compte qui l'a connecté en premier : la session de cet autre compte s'arrête là (la
+        // PWA la ferme sans effacer ses données ; la reconnexion donne le même refus, avec son message).
+        throw new ApiError(
+          403,
+          'DEVICE_BOUND_TO_OTHER_USER',
+          DEVICE_REFUSAL_MESSAGES.DEVICE_BOUND_TO_OTHER_USER,
         );
       }
       if (outcome.reason === 'DEVICE_OUT_OF_SERVICE') {
@@ -413,7 +443,7 @@ export class AuthController {
 
     const user = await this.db
       .selectFrom('identity_users')
-      .select(['id', 'password_hash', 'phone'])
+      .select(['id', 'password_hash'])
       .where('id', '=', toBin(auth.sub))
       .executeTakeFirst();
     if (!user || user.password_hash === '') {
@@ -422,11 +452,7 @@ export class AuthController {
     // MP-08 : le mot de passe actuel se teste comme une connexion de cet utilisateur (verrouillage
     // progressif par identifiant, 02-securite §2) : un jeton d'accès volé ne permet pas de le deviner.
     // AV-297 (a) : essai réservé d'avance, comme à la connexion ; remis à zéro quand le mot de passe est changé.
-    const lock = await reserveLoginAttempts(
-      this.db,
-      [{ scopeType: 'IDENTIFIER', scopeValue: user.phone }],
-      now,
-    );
+    const lock = await reserveLoginAttempts(this.db, [accountScope(auth.sub)], now);
     if (lock.blocked) {
       throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
     }
@@ -454,7 +480,7 @@ export class AuthController {
     }
     // Mot de passe actuel juste : l'essai réservé d'avance ne compte pas (un nouveau mot de passe refusé pour sa
     // faiblesse ne mène pas au blocage).
-    await resetLoginAttempts(this.db, 'IDENTIFIER', user.phone);
+    await resetLoginScopes(this.db, [accountScope(auth.sub)]);
     const problem = newPasswordProblem({
       password: parsed.data.new_password,
       current: parsed.data.current_password,
@@ -470,7 +496,7 @@ export class AuthController {
         .set({ password_hash: newHash, must_change_password: toDbBool(false) })
         .where('id', '=', user.id)
         .execute();
-      await resetLoginAttempts(trx, 'IDENTIFIER', user.phone);
+      await resetLoginScopes(trx, [accountScope(auth.sub)]);
       // MP-11 (revue adverse) : toute autre session de l'utilisateur — ouverte avec le mot de passe
       // provisoire ou avec l'ancien, peut-être par un tiers — est close ; celle-ci reste ouverte.
       const revokedSessions = await revokeOtherUserSessions(

@@ -241,10 +241,19 @@ function SettingEditor({ row, sites, blocked, label, commands, onDone }: EditorP
         </Field>
       ) : null}
       {def?.kind === 'text' ? (
-        <Field label={label}>
+        <Field
+          label={label}
+          hint={
+            def.maxLength !== undefined
+              ? t('settings.hint.max_length', { max: def.maxLength })
+              : undefined
+          }
+          error={error}
+        >
           {(control) => (
             <Input
               {...control}
+              {...(def.maxLength !== undefined ? { maxLength: def.maxLength } : {})}
               value={draft.text}
               onChange={(event) => setDraft({ ...draft, text: event.target.value })}
             />

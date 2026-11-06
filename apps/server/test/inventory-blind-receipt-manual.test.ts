@@ -16,6 +16,9 @@ import {
   recordStockMove,
   verifyTransferTransit,
 } from '../src/modules/inventory/application/public/index.js';
+import { sweepUnmatchedTransfers } from '../src/modules/inventory/application/transfer-matching.js';
+import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
+import { toDomainEvent } from '../src/platform/events/domain-event.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid, insertTestSite, withoutActivePolicies } from './helpers.js';
 import {
@@ -88,6 +91,43 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
   const codeOf = (result: { status: string; error?: { code: string } | undefined }) =>
     result.error?.code ?? result.status;
 
+  /** Balayage du délai (BR-STK-024) : ouvre le conflit `TRANSFER_UNMATCHED` et publie l'événement qui lève l'alerte. */
+  const sweepPair = (pair: Pair, clockAt = at('12:00')) =>
+    sweepUnmatchedTransfers(
+      db,
+      { idGenerator: world.idGenerator, clock: { now: () => new Date(clockAt) } },
+      { pairs: [{ fromLocationId: pair.store, toLocationId: pair.pos }] },
+    );
+
+  /**
+   * Le consommateur d'alertes ne tourne pas dans ces essais : les événements d'une réception lui sont remis à la main,
+   * exactement comme il les reçoit (levée par `StockTransferUnmatched`, clôture par `BlindReceiptMatched` ou
+   * `BlindReceiptCancelled`).
+   */
+  async function consumeAlertEvents(receiptId: string): Promise<void> {
+    const rows = await db
+      .selectFrom('platform_domain_events')
+      .selectAll()
+      .where('aggregate_id', '=', toBin(receiptId))
+      .orderBy('seq')
+      .execute();
+    for (const row of rows) {
+      await db
+        .transaction()
+        .execute((trx) =>
+          handleAlertEvent(trx, toDomainEvent(row), { idGenerator: world.idGenerator }),
+        );
+    }
+  }
+
+  const alertOf = (receiptId: string) =>
+    db
+      .selectFrom('communication_alerts')
+      .select(['status', 'alert_type'])
+      .where('alert_type', '=', 'TRANSFER_UNMATCHED')
+      .where('subject_id', '=', toBin(receiptId))
+      .executeTakeFirst();
+
   async function pairTransitOf(pair: Pair, productId: string): Promise<number> {
     return (
       (
@@ -98,20 +138,31 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
 
   it('mode EXACT : une réception de 57 pour 58 expédiés ne se rapproche pas seule ; le rapprochement manuel la reçoit (écart validé)', async () => {
     const own = await pairOnOwnSite();
+    // Le mode se juge à la date de la réception : le réglage doit déjà être en vigueur le 06/10, jour de la réception ancienne.
     await setSiteSetting(
       world,
       'inventory.blind_receipt_match_mode',
       own.siteId,
       'EXACT',
-      at('00:00'),
+      at('00:00', '2026-10-01'),
     );
     const productId = await newProduct(world);
     await stock(world, productId, own.store, 100);
     const { transferId } = await dispatch(world, own, productId, 58);
-    const { receiptId } = await blindReceive(world, own, [{ productId, receivedQtyBase: 57 }]);
+    // Réception ancienne (plus de 48 h avant le balayage) : le délai est échu quand on la rapproche à la main.
+    const { receiptId } = await blindReceive(world, own, [{ productId, receivedQtyBase: 57 }], {
+      occurredAt: at('08:00', '2026-10-06'),
+    });
     expect((await transferOf(receiptId)).status).toBe('UNMATCHED');
     expect((await transferOf(transferId)).status).toBe('DISPATCHED');
     expect(await pairTransitOf(own, productId)).toBe(1);
+    // Le balayage (mode EXACT : 57 ≠ 58, rien à rapprocher seul) ouvre le conflit de délai, puis l'alerte se lève.
+    expect(await sweepPair(own)).toMatchObject({ matched: 0, signalled: 1 });
+    expect((await conflictsOn('TRANSFER_UNMATCHED', receiptId))[0]).toMatchObject({
+      status: 'OPEN',
+    });
+    await consumeAlertEvents(receiptId);
+    expect(await alertOf(receiptId)).toMatchObject({ status: 'OPEN' });
 
     const result = await matchManually(receiptId, transferId);
     expect(result, JSON.stringify(result)).toMatchObject({
@@ -124,6 +175,13 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
     expect(await pairTransitOf(own, productId)).toBe(0);
     expect((await balanceOf(productId, own.pos)).qty).toBe(57);
     expect((await verifyTransferTransit(db, { transferIds: [transferId] })).ok).toBe(true);
+    // Le conflit de délai ouvert est clos (MERGE, référence du transfert) et l'alerte se ferme par l'événement du
+    // rapprochement.
+    const [closed] = await conflictsOn('TRANSFER_UNMATCHED', receiptId);
+    expect(closed).toMatchObject({ status: 'RESOLVED', resolution: 'MERGE' });
+    expect(closed!.resolution_refs).toEqual([transferId]);
+    await consumeAlertEvents(receiptId);
+    expect(await alertOf(receiptId)).toMatchObject({ status: 'RESOLVED' });
     // Rejeu par une autre commande : la réception est déjà rapprochée.
     expect(codeOf(await matchManually(receiptId, transferId))).toBe('RECEIPT_STATUS_INVALID');
   });
@@ -202,10 +260,19 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
   it('annulation : la réception est contre-passée du transit, le conflit de délai est clos, la marchandise sort de la destination', async () => {
     const pair = await newPair(world);
     const productId = await newProduct(world);
-    const { receiptId } = await blindReceive(world, pair, [{ productId, receivedQtyBase: 12 }]);
+    // Réception ancienne (plus de 48 h avant le balayage) : le délai est échu, le conflit et l'alerte sont ouverts.
+    const { receiptId } = await blindReceive(world, pair, [{ productId, receivedQtyBase: 12 }], {
+      occurredAt: at('08:00', '2026-10-06'),
+    });
     expect((await transferOf(receiptId)).status).toBe('UNMATCHED');
     expect((await balanceOf(productId, pair.pos)).qty).toBe(12);
     expect(await pairTransitOf(pair, productId)).toBe(-12);
+    expect(await sweepPair(pair)).toMatchObject({ matched: 0, signalled: 1 });
+    expect((await conflictsOn('TRANSFER_UNMATCHED', receiptId))[0]).toMatchObject({
+      status: 'OPEN',
+    });
+    await consumeAlertEvents(receiptId);
+    expect(await alertOf(receiptId)).toMatchObject({ status: 'OPEN' });
 
     // Motif exigé.
     expect(codeOf(await cancelReceipt(receiptId, ''))).toMatch(/^VALIDATION_ERROR/);
@@ -218,6 +285,19 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
     expect(cancelled.status).toBe('CANCELLED');
     expect((await balanceOf(productId, pair.pos)).qty).toBe(0);
     expect(await pairTransitOf(pair, productId)).toBe(0);
+    // INV-STK-08 : le document annulé est vérifié (transit soldé par la contre-passation exacte), il ne l'était pas.
+    expect(await verifyTransferTransit(db, { transferIds: [receiptId] })).toEqual({
+      ok: true,
+      transfersChecked: 1,
+      breaches: [],
+    });
+    // Le conflit de délai ouvert est clos par l'annulation (le serveur garde son état), et l'alerte se ferme par
+    // l'événement publié sous l'identifiant de la réception.
+    const [conflict] = await conflictsOn('TRANSFER_UNMATCHED', receiptId);
+    expect(conflict).toMatchObject({ status: 'RESOLVED', resolution: 'KEEP_SERVER' });
+    expect(fromBin(conflict!.resolved_by!)).toBe(world.keeper.userId);
+    await consumeAlertEvents(receiptId);
+    expect(await alertOf(receiptId)).toMatchObject({ status: 'RESOLVED' });
     // Mouvements : l'entrée d'origine et son inverse exact (INV-STK-04).
     const moves = await movesOf(receiptId);
     expect(moves).toHaveLength(2);
@@ -250,6 +330,14 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
       occurredAt: at('09:00'),
     });
     expect((await transferOf(used.receiptId)).status).toBe('UNMATCHED');
+    // Le délai est échu douze jours plus tard : le balayage ouvre le conflit, qu'un refus d'annulation ne doit pas clore.
+    expect(await sweepPair(pair, at('12:00', '2026-10-24'))).toMatchObject({
+      matched: 0,
+      signalled: 1,
+    });
+    expect((await conflictsOn('TRANSFER_UNMATCHED', used.receiptId))[0]).toMatchObject({
+      status: 'OPEN',
+    });
     // Marchandise déjà partie de la destination (vendue) : annulation refusée, sans écriture.
     const customer = await db
       .selectFrom('organization_locations')
@@ -304,6 +392,54 @@ describe('rapprochement manuel et annulation d’une réception sans document (A
         ),
       ),
     ).toBe('NOT_FOUND');
-    expect(await conflictsOn('TRANSFER_UNMATCHED', used.receiptId)).toEqual([]);
+    // Les refus n'ont rien écrit : le conflit de délai est toujours ouvert et aucun événement d'annulation n'est publié.
+    expect((await conflictsOn('TRANSFER_UNMATCHED', used.receiptId))[0]).toMatchObject({
+      status: 'OPEN',
+    });
+    expect(
+      await db
+        .selectFrom('platform_domain_events')
+        .select('seq')
+        .where('aggregate_id', '=', toBin(used.receiptId))
+        .where('event_type', '=', 'BlindReceiptCancelled')
+        .execute(),
+    ).toEqual([]);
+  });
+
+  it('annulation avec des quotas d’appareil actifs au-delà du stock restant : appliquée avec l’avertissement ALLOCATION_OVERCOMMITTED', async () => {
+    // L'annulation retire des unités qui garantissaient un quota accordé depuis : `inventory` ouvre le conflit informatif
+    // (INV-STK-19) et la réponse le dit à l'annulant (revue adverse du 05/11/2026).
+    // PDV partagé : une réception hors ligne y est admise, et des quotas d'appareil y sont accordés.
+    const pair = await newPair(world, { mode: 'SHARED' });
+    const productId = await newProduct(world);
+    // Stock du PDV : 10 d'ouverture, plus 10 reçus sans document.
+    await stock(world, productId, pair.pos, 10);
+    const { receiptId } = await blindReceive(world, pair, [{ productId, receivedQtyBase: 10 }]);
+    expect((await balanceOf(productId, pair.pos)).qty).toBe(20);
+    // Quota de 15 accordé à la tablette du vendeur : 15 ≤ 20, rien d'excessif à ce stade.
+    const granted = await send(
+      world,
+      world.admin,
+      'inventory.allocation.grant',
+      freshUuid(),
+      {
+        holderUserId: world.seller.userId,
+        holderDeviceId: world.seller.deviceId,
+        locationId: pair.pos,
+        productId,
+        quantityBase: 15,
+      },
+      { occurredAt: at('09:30'), aggregateType: 'STOCK_ALLOCATION' },
+    );
+    expect(granted.status, JSON.stringify(granted)).toMatch(/^APPLIED/);
+    // L'annulation ramène le stock à 10 < 15 de quota : appliquée, avec l'avertissement, et le conflit informatif est ouvert.
+    const result = await cancelReceipt(receiptId);
+    expect(result, JSON.stringify(result)).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['ALLOCATION_OVERCOMMITTED'],
+    });
+    expect((await balanceOf(productId, pair.pos)).qty).toBe(10);
+    expect((await transferOf(receiptId)).status).toBe('CANCELLED');
+    expect(await conflictsOn('ALLOCATION_OVERCOMMITTED', pair.pos)).toHaveLength(1);
   });
 });

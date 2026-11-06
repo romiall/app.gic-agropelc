@@ -11,6 +11,7 @@
  *   pas encore complète.
  */
 import { businessDayEndUtc, businessDayStartUtc } from '@gic/domain';
+import { guardFormula } from '../import/csv.js';
 
 /** Mouvement renvoyé par `GET /api/v1/stock-moves` (valeurs masquées sans droit de valorisation). */
 export interface MoveView {
@@ -196,6 +197,8 @@ export function ledgerCsvRows(
   columns: readonly LedgerCsvColumn[],
   lookups: LedgerCsvLookups,
 ): string[][] {
+  // Les cellules de TEXTE (noms de produit, d'emplacement, de client, références) sont protégées contre l'injection de
+  // formule ; les quantités signées et les montants restent des nombres, jamais préfixés.
   const cell = (move: MoveView, column: LedgerCsvColumn): string => {
     switch (column) {
       case 'WHEN':
@@ -203,19 +206,19 @@ export function ledgerCsvRows(
       case 'BUSINESS_DAY':
         return move.businessDate ?? '';
       case 'MOVE':
-        return lookups.moveType(move.moveType);
+        return guardFormula(lookups.moveType(move.moveType));
       case 'PRODUCT':
-        return lookups.product(move.productId);
+        return guardFormula(lookups.product(move.productId));
       case 'DIRECTION':
         return lookups.direction(move.direction);
       case 'QUANTITY':
         return `${move.direction === 'IN' ? '' : '-'}${decimalText(move.quantity)}`;
       case 'UNIT':
-        return lookups.unit(move.productId);
+        return guardFormula(lookups.unit(move.productId));
       case 'COUNTERPART':
-        return lookups.counterpart(move);
+        return guardFormula(lookups.counterpart(move));
       case 'LOT':
-        return move.lotId ?? '';
+        return guardFormula(move.lotId ?? '');
       case 'UNIT_COST':
         return move.unitCostXaf === null ? '' : String(move.unitCostXaf);
       case 'VALUE':
@@ -225,9 +228,9 @@ export function ledgerCsvRows(
       case 'OFFLINE':
         return move.capturedOffline ? lookups.yes : lookups.no;
       case 'SOURCE_TYPE':
-        return move.sourceDocType;
+        return guardFormula(move.sourceDocType);
       case 'SOURCE_ID':
-        return move.sourceDocId;
+        return guardFormula(move.sourceDocId);
     }
   };
   return [

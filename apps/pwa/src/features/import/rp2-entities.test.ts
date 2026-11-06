@@ -216,6 +216,108 @@ describe('Stock d’ouverture (inventory.opening.post)', () => {
     expect(free.rows[0]!.status).toBe('READY');
   });
 
+  describe('emplacement libéré par un stock d’ouverture refusé ou annulé (AV-517 (4))', () => {
+    const countOf = (status: string) => ({
+      id: 'c-refus',
+      doc_number: 'INV-2',
+      location_id: IDS.pos,
+      count_type: 'OPENING' as const,
+      status,
+      occurred_at: '2026-11-01T08:00:00.000Z',
+      submitted_at: null,
+      posted_at: null,
+      version: 1,
+      lines: [],
+    });
+    /** Commande de stock d'ouverture restée dans la file de l'appareil (état « synchronisée »). */
+    const sentOpening = (aggregateId: string, status = 'SYNCED') => ({
+      command_id: `cmd-${aggregateId}`,
+      command_type: 'inventory.opening.post',
+      aggregate_id: aggregateId,
+      status,
+      payload: { locationId: IDS.pos, lines: [] },
+    });
+    const withDevice = async (counts: readonly unknown[], outbox: readonly unknown[]) => {
+      const device = (await refsOf()).slipContext!;
+      return {
+        slipContext: {
+          ...device,
+          refs: {
+            ...device.refs,
+            counts: [...device.refs.counts, ...counts],
+            outbox: [...device.refs.outbox, ...outbox],
+          },
+        },
+      } as never;
+    };
+
+    it('un document refusé ou annulé, connu de l’appareil, libère l’emplacement même si sa commande est « synchronisée »', async () => {
+      for (const status of ['REJECTED', 'CANCELLED']) {
+        const result = await plan(
+          OPENING_STOCK_ENTITY,
+          [row()],
+          await withDevice([countOf(status)], [sentOpening('c-refus')]),
+        );
+        expect(result.rows[0]!.status, `${status} : ${JSON.stringify(result.rows[0])}`).toBe(
+          'READY',
+        );
+      }
+      // Validé ou en attente : l'emplacement reste pris, la commande de l'outbox ne change rien.
+      for (const status of ['POSTED', 'PENDING_APPROVAL']) {
+        const result = await plan(
+          OPENING_STOCK_ENTITY,
+          [row()],
+          await withDevice([countOf(status)], [sentOpening('c-refus')]),
+        );
+        expect(result.rows[0]!.status, status).toBe('EXISTS');
+      }
+    });
+
+    it('une commande encore seule dans l’outbox (document inconnu) tient l’emplacement ; refusée, elle le rend', async () => {
+      const waiting = await plan(
+        OPENING_STOCK_ENTITY,
+        [row()],
+        await withDevice([], [sentOpening('inconnu', 'PENDING_SYNC')]),
+      );
+      expect(waiting.rows[0]!.status).toBe('EXISTS');
+      const refused = await plan(
+        OPENING_STOCK_ENTITY,
+        [row()],
+        await withDevice([], [sentOpening('inconnu', 'REJECTED')]),
+      );
+      expect(refused.rows[0]!.status).toBe('READY');
+    });
+
+    it('le même fichier rechargé après un refus est une nouvelle tentative : un autre identifiant', async () => {
+      const first = await plan(OPENING_STOCK_ENTITY, [row()]);
+      const retry = await plan(
+        OPENING_STOCK_ENTITY,
+        [row()],
+        await withDevice([countOf('REJECTED')], []),
+      );
+      expect(retry.rows[0]!.status).toBe('READY');
+      expect(retry.rows[0]!.commands[0]!.aggregateId).not.toBe(
+        first.rows[0]!.commands[0]!.aggregateId,
+      );
+      // Deux tentatives refusées de plus : encore un autre identifiant (la liste des documents clos entre dans l'identifiant).
+      const second = await plan(
+        OPENING_STOCK_ENTITY,
+        [row()],
+        await withDevice([countOf('REJECTED'), { ...countOf('CANCELLED'), id: 'c-annule' }], []),
+      );
+      expect(second.rows[0]!.commands[0]!.aggregateId).not.toBe(
+        retry.rows[0]!.commands[0]!.aggregateId,
+      );
+      // Rechargé avec les mêmes documents clos : le même identifiant (aucun doublon par rechargement).
+      const again = await plan(
+        OPENING_STOCK_ENTITY,
+        [row()],
+        await withDevice([countOf('REJECTED')], []),
+      );
+      expect(again.rows[0]!.commands[0]!.aggregateId).toBe(retry.rows[0]!.commands[0]!.aggregateId);
+    });
+  });
+
   it('défauts signalés avant le chargement : site, emplacement, produit, quantité, coût, doublon', async () => {
     const issuesOf = async (rows: readonly Record<string, string>[]) => {
       const result = await plan(OPENING_STOCK_ENTITY, rows);
@@ -420,7 +522,9 @@ describe('Règles de prix (pricing.rule.draft)', () => {
     expect(await issuesOf({ produit: 'ANCIEN' })).toMatch(/désactivé ou non vendable/);
     expect(await issuesOf({ prix: '0' })).toMatch(/Prix invalide/);
     expect(await issuesOf({ prix: '18,5' })).toMatch(/Prix invalide/);
-    expect(await issuesOf({ debut: '01/11/2026' })).toMatch(/ne peut pas être passé/);
+    expect(await issuesOf({ debut: '01/11/2026' })).toMatch(/au plus tôt demain/);
+    // Le jour même est refusé aussi : le début serait déjà passé à l'activation (refusée au-delà de cinq minutes).
+    expect(await issuesOf({ debut: '05/11/2026' })).toMatch(/au plus tôt demain/);
     expect(await issuesOf({ debut: 'bientôt' })).toMatch(/Début invalide/);
     expect(await issuesOf({ debut: '' })).toMatch(/Début de validité obligatoire/);
     expect(await issuesOf({ fin: '09/11/2026' })).toMatch(/doit suivre le début/);
@@ -440,6 +544,55 @@ describe('Règles de prix (pricing.rule.draft)', () => {
     const first = await plan(PRICE_RULES_ENTITY, [rule()]);
     const second = await plan(PRICE_RULES_ENTITY, [rule()]);
     expect(second.rows[0]!.commands[0]!.aggregateId).toBe(first.rows[0]!.commands[0]!.aggregateId);
+  });
+
+  it('un début de demain est chargeable : c’est le plus tôt qu’une règle puisse encore être activée', async () => {
+    const result = await plan(PRICE_RULES_ENTITY, [rule({ debut: '06/11/2026' })]);
+    expect(result.rows[0]!.status, JSON.stringify(result.rows[0])).toBe('READY');
+  });
+
+  it('un fichier corrigé n’est jamais pris pour le rejeu du premier : autre identifiant, brouillon déjà chargé signalé', async () => {
+    const first = await plan(PRICE_RULES_ENTITY, [rule()]);
+    const corrected = await plan(PRICE_RULES_ENTITY, [rule({ prix: '1 900' })]);
+    const [original] = first.rows[0]!.commands;
+    // Le contenu entre dans l'identifiant : le serveur juge le code pris (`CODE_EXISTS`) au lieu de « rejouer » le premier.
+    expect(corrected.rows[0]!.commands[0]!.aggregateId).not.toBe(original!.aggregateId);
+
+    // Le premier brouillon est parti depuis cet appareil (file d'envoi, même accepté) : …
+    const device = (await refsOf()).slipContext!;
+    const sent = (status: string) => ({
+      command_id: 'd1',
+      command_type: 'pricing.rule.draft',
+      aggregate_id: original!.aggregateId,
+      status,
+      payload: original!.payload,
+    });
+    const withDraft = (status: string) => ({
+      slipContext: {
+        ...device,
+        refs: { ...device.refs, outbox: [...device.refs.outbox, sent(status)] },
+      },
+    });
+    // … le même fichier rechargé est reconnu (rien n'est renvoyé) …
+    const same = await plan(PRICE_RULES_ENTITY, [rule()], withDraft('SYNCED') as never);
+    expect(same.rows[0]!.status).toBe('EXISTS');
+    // … le fichier corrigé est signalé, avec le conseil d'abandonner le brouillon ou de changer de code …
+    const changed = await plan(
+      PRICE_RULES_ENTITY,
+      [rule({ prix: '1 900' })],
+      withDraft('SYNCED') as never,
+    );
+    expect(changed.rows[0]!.status).toBe('ERROR');
+    expect(changed.rows[0]!.issues.join(' ')).toMatch(
+      /déjà chargé depuis cet appareil avec un autre contenu/,
+    );
+    // … sauf si le premier envoi a été refusé : plus rien ne bloque la correction.
+    const afterRefusal = await plan(
+      PRICE_RULES_ENTITY,
+      [rule({ prix: '1 900' })],
+      withDraft('REJECTED') as never,
+    );
+    expect(afterRefusal.rows[0]!.status).toBe('READY');
   });
 });
 

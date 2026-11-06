@@ -287,6 +287,11 @@ export async function listTargets(
     readonly targetType?: 'USER' | 'TEAM' | 'SITE';
     /** P9-27 : titulaires lus ; liste vide = aucun résultat (jamais tout, TB-9), lue sans requête. */
     readonly userIds?: readonly string[];
+    /**
+     * S-39 (AV-522) : objectifs des équipes que dirige cet utilisateur, filtrés dans la requête (et non après coup sur
+     * un plafond de lecture qui aurait pu couper les équipes du responsable).
+     */
+    readonly teamManagerUserId?: string;
     /** P9-27 : plafond de lecture (défaut `TARGET_LIST_LIMIT`). */
     readonly limit?: number;
   },
@@ -304,6 +309,9 @@ export async function listTargets(
       .$if(filter.siteId !== undefined, (qb) => qb.where('t.site_id', '=', toBin(filter.siteId!)))
       .$if(filter.targetType !== undefined, (qb) =>
         qb.where('t.target_type', '=', filter.targetType!),
+      )
+      .$if(filter.teamManagerUserId !== undefined, (qb) =>
+        qb.where('team.manager_user_id', '=', toBin(filter.teamManagerUserId!)),
       )
       .$if(userChunk !== null, (qb) =>
         qb.where(

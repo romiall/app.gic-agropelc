@@ -10,7 +10,7 @@ import type { CustomerData, CustomerPaymentData, SaleData } from '../sales/types
 import { formatQuantity, unitLabel } from '../sales/format.js';
 import type { DemandePiece } from './demande.js';
 import { dateHeurePiece, datePiece, jourPiece, moyenPiece, xafPiece } from './format.js';
-import { identiteDepuisParametres, tvaDepuisParametres } from './identite-parametres.js';
+import { completerFacture } from './identite-parametres.js';
 
 type Refs = Pick<
   SalesReferences,
@@ -221,18 +221,15 @@ export function demandeBonDeVente(sale: SaleView, refs: Refs): DemandePiece {
 
 /**
  * Facture d'une vente (FA, choix du porteur du 26/10/2026). Prix TTC, TVA à 0 (AV-041) : le prix
- * unitaire et le montant sont ceux de la vente, la TVA vaut 0 ; le régime de TVA et la mention
- * d'exonération restent à cocher à la main tant qu'AV-451 n'est pas tranché.
+ * unitaire et le montant sont ceux de la vente, la TVA vaut 0. Le régime de TVA, la mention d'exonération et les
+ * coordonnées de règlement viennent des paramètres de la société (AV-324, AV-451) ; sans valeur renseignée, ils restent
+ * à cocher ou à écrire à la main. L'impression les relit en direct (`PieceImprimable`, `completerFacture`).
  */
 export function demandeFacture(
   sale: SaleView,
   refs: Refs,
   maintenant: Date = new Date(),
 ): DemandePiece {
-  // Coordonnées de règlement, régime de TVA et mention d'exonération : paramètres de la société (AV-324, AV-451) ;
-  // une rubrique non renseignée reste la ligne pointillée du papier, à compléter à la main.
-  const identite = identiteDepuisParametres(refs.settings, maintenant);
-  const tva = tvaDepuisParametres(refs.settings, maintenant);
   const c = client(refs, sale.customerId);
   const projection = refs.sales.find((s) => s.id === sale.id);
   const echeance = projection?.due_date ? jourPiece(projection.due_date) : null;
@@ -240,64 +237,68 @@ export function demandeFacture(
   const total = lignes.reduce((t, l) => t + l.lineTotalXaf, 0);
   return {
     code: 'FA',
-    donnees: {
-      numero: numeroImprime(sale.docNumber, projection?.local_ref),
-      dateEmission: datePiece(sale.occurredAt),
-      echeance,
-      venteOuCommande: sale.docNumber,
-      client: c?.display_name ?? null,
-      niuClient: null,
-      adresse: c?.address_text ?? null,
-      telephone: c?.phone_primary ?? null,
-      // Pas de colonne « remise » sur la facture : quantité × prix = montant net quand c'est possible
-      // (prix net par unité entier), sinon la remise est écrite dans la désignation. Au poids, la
-      // facture compte en kg (le nombre de pièces est rappelé dans la désignation).
-      lignes: lignes.map((l) => {
-        const brut = lignePrix(refs, { ...l, brutXaf: l.lineTotalXaf + l.discountXaf });
-        const netParUnite = l.quantity > 0 ? l.lineTotalXaf / l.quantity : null;
-        const remise = l.discountXaf > 0 ? `remise ${xafPiece(l.discountXaf)} XAF` : null;
-        if (brut.poidsKg) {
-          const details = [`${brut.quantite} ${brut.unite}`, remise].filter(Boolean).join(', ');
+    donnees: completerFacture(
+      {
+        numero: numeroImprime(sale.docNumber, projection?.local_ref),
+        dateEmission: datePiece(sale.occurredAt),
+        echeance,
+        venteOuCommande: sale.docNumber,
+        client: c?.display_name ?? null,
+        niuClient: null,
+        adresse: c?.address_text ?? null,
+        telephone: c?.phone_primary ?? null,
+        // Pas de colonne « remise » sur la facture : quantité × prix = montant net quand c'est possible
+        // (prix net par unité entier), sinon la remise est écrite dans la désignation. Au poids, la
+        // facture compte en kg (le nombre de pièces est rappelé dans la désignation).
+        lignes: lignes.map((l) => {
+          const brut = lignePrix(refs, { ...l, brutXaf: l.lineTotalXaf + l.discountXaf });
+          const netParUnite = l.quantity > 0 ? l.lineTotalXaf / l.quantity : null;
+          const remise = l.discountXaf > 0 ? `remise ${xafPiece(l.discountXaf)} XAF` : null;
+          if (brut.poidsKg) {
+            const details = [`${brut.quantite} ${brut.unite}`, remise].filter(Boolean).join(', ');
+            return {
+              designation: `${l.productName} (${details})`,
+              unite: 'kg',
+              quantite: brut.poidsKg,
+              prixUnitaireHt: brut.prix,
+              tauxTva: '0 %',
+              montantHt: l.lineTotalXaf,
+            };
+          }
+          if (netParUnite !== null && Number.isInteger(netParUnite)) {
+            return {
+              designation: l.productName,
+              unite: unitLabel(l.unitCode, l.quantity, refs.units),
+              quantite: quantite(l.quantity),
+              prixUnitaireHt: netParUnite,
+              tauxTva: '0 %',
+              montantHt: l.lineTotalXaf,
+            };
+          }
           return {
-            designation: `${l.productName} (${details})`,
-            unite: 'kg',
-            quantite: brut.poidsKg,
+            designation: remise ? `${l.productName} (${remise})` : l.productName,
+            unite: brut.unite,
+            quantite: brut.quantite,
             prixUnitaireHt: brut.prix,
             tauxTva: '0 %',
             montantHt: l.lineTotalXaf,
           };
-        }
-        if (netParUnite !== null && Number.isInteger(netParUnite)) {
-          return {
-            designation: l.productName,
-            unite: unitLabel(l.unitCode, l.quantity, refs.units),
-            quantite: quantite(l.quantity),
-            prixUnitaireHt: netParUnite,
-            tauxTva: '0 %',
-            montantHt: l.lineTotalXaf,
-          };
-        }
-        return {
-          designation: remise ? `${l.productName} (${remise})` : l.productName,
-          unite: brut.unite,
-          quantite: brut.quantite,
-          prixUnitaireHt: brut.prix,
-          tauxTva: '0 %',
-          montantHt: l.lineTotalXaf,
-        };
-      }),
-      regimeTva: tva.regime,
-      mentionExoneration: tva.mention,
-      totalHt: total,
-      tva: 0,
-      totalTtc: total,
-      acompte: sale.amountPaidXaf,
-      netAPayer: sale.balanceDueXaf,
-      banque: identite.banque || null,
-      compte: identite.compte_bancaire || null,
-      mobileMoney: identite.mobile_money || null,
-      vendeur: nomUtilisateur(refs, sale.sellerUserId),
-    },
+        }),
+        regimeTva: null,
+        mentionExoneration: null,
+        totalHt: total,
+        tva: 0,
+        totalTtc: total,
+        acompte: sale.amountPaidXaf,
+        netAPayer: sale.balanceDueXaf,
+        banque: null,
+        compte: null,
+        mobileMoney: null,
+        vendeur: nomUtilisateur(refs, sale.sellerUserId),
+      },
+      refs.settings,
+      maintenant,
+    ),
   };
 }
 

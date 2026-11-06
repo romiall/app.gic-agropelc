@@ -11,10 +11,13 @@
  */
 
 import {
+  COMPANY_IDENTITY_MAX_LENGTH,
   COMPANY_IDENTITY_SETTINGS,
+  COMPANY_VAT_MENTION_MAX_LENGTH,
   COMPANY_VAT_MENTION_SETTING,
   COMPANY_VAT_REGIMES,
   COMPANY_VAT_REGIME_SETTING,
+  type CompanyIdentityField,
 } from './company-identity.js';
 
 export type SettingKind =
@@ -53,6 +56,8 @@ export interface SettingDef {
   readonly unit?: SettingUnit;
   readonly min?: number;
   readonly max?: number;
+  /** Longueur maximale d'un `text`, en caractères (place disponible sur la pièce imprimée). */
+  readonly maxLength?: number;
   /** Valeurs admises d'un `choice`. */
   readonly options?: readonly string[];
   /** Le serveur lit ce réglage « du site, à défaut global » : une version propre à un site a un effet. */
@@ -96,7 +101,11 @@ const flag = (group: SettingGroup, extra: Partial<SettingDef> = {}): SettingDef 
   group,
   ...extra,
 });
-const text = (group: SettingGroup): SettingDef => ({ kind: 'text', group });
+const text = (group: SettingGroup, maxLength?: number): SettingDef => ({
+  kind: 'text',
+  group,
+  ...(maxLength !== undefined ? { maxLength } : {}),
+});
 const choice = (
   group: SettingGroup,
   options: readonly string[],
@@ -246,11 +255,14 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'analytics.export_download_revalidate_rights': flag('technical'),
   // Société (AV-324 (a), AV-451 (c)) : identité imprimée sur les pièces papier ; texte libre, vide permis (la
   // rubrique s'imprime alors en pointillés, à compléter à la main).
+  // Chaque rubrique a une longueur maximale : la place de l'en-tête est fixe.
   ...Object.fromEntries(
-    Object.values(COMPANY_IDENTITY_SETTINGS).map((key) => [key, text('company')]),
+    (Object.entries(COMPANY_IDENTITY_SETTINGS) as [CompanyIdentityField, string][]).map(
+      ([field, key]) => [key, text('company', COMPANY_IDENTITY_MAX_LENGTH[field])],
+    ),
   ),
   [COMPANY_VAT_REGIME_SETTING]: choice('company', COMPANY_VAT_REGIMES),
-  [COMPANY_VAT_MENTION_SETTING]: text('company'),
+  [COMPANY_VAT_MENTION_SETTING]: text('company', COMPANY_VAT_MENTION_MAX_LENGTH),
 };
 
 /** Plafond de remise d'un rôle : pourcentage de 0 à 100. */
@@ -268,7 +280,15 @@ export function settingDefOf(key: string): SettingDef | undefined {
 export const WEEKDAY_VALUES: readonly string[] = ['1', '2', '3', '4', '5', '6', '7'];
 
 export type SettingProblem =
-  'TYPE' | 'NOT_INTEGER' | 'MIN' | 'MAX' | 'OPTION' | 'EMPTY_ITEM' | 'WEEKDAY' | 'JSON_OBJECT';
+  | 'TYPE'
+  | 'NOT_INTEGER'
+  | 'MIN'
+  | 'MAX'
+  | 'LENGTH'
+  | 'OPTION'
+  | 'EMPTY_ITEM'
+  | 'WEEKDAY'
+  | 'JSON_OBJECT';
 
 /**
  * Contrôle d'une valeur typée contre la définition de sa clé ; `null` : valide. La valeur est celle qui sera
@@ -287,7 +307,8 @@ export function validateSettingValue(def: SettingDef, value: unknown): SettingPr
     case 'bool':
       return typeof value === 'boolean' ? null : 'TYPE';
     case 'text':
-      return typeof value === 'string' ? null : 'TYPE';
+      if (typeof value !== 'string') return 'TYPE';
+      return def.maxLength !== undefined && value.length > def.maxLength ? 'LENGTH' : null;
     case 'choice':
       return typeof value === 'string' && (def.options ?? []).includes(value) ? null : 'OPTION';
     case 'list': {

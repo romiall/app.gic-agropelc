@@ -44,6 +44,11 @@ const RUN_OCTET = randomInt(256);
 let ipCounter = 0;
 const freshIp = () => `10.81.${RUN_OCTET}.${(++ipCounter % 254) + 1}`;
 let deviceSeq = 0;
+/**
+ * Adresse propre à l'exécution : un compte créé reste actif sur la base partagée, et l'unicité de l'adresse parmi les
+ * comptes non désactivés vaut aussi à la création et à la réactivation (revue adverse du 05/11/2026).
+ */
+const uniqueEmail = (local: string) => `${local}.${freshUuid().slice(-10)}@gic-agropelc.test`;
 
 interface UserEntry {
   readonly id: string;
@@ -202,10 +207,11 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
 
   it('crée un compte avec son premier rôle : mot de passe provisoire jamais journalisé, compte et affectation écrits, audit sans secret', async () => {
     const phone = await freshPhone();
+    const paulEmail = uniqueEmail('paul');
     const response = await create(admin, {
       full_name: 'Paul Essomba',
       phone,
-      email: 'paul@gic-agropelc.test',
+      email: paulEmail,
       password: PROVISIONAL,
       role: { role_id: sellerRole, scope_type: 'SITE', scope_site_id: s1 },
     });
@@ -218,7 +224,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     expect(row).toMatchObject({
       status: 'ACTIVE',
       must_change_password: 1,
-      email: 'paul@gic-agropelc.test',
+      email: paulEmail,
     });
     expect(row!.password_hash).not.toContain(PROVISIONAL);
     const assignment = await db
@@ -570,10 +576,13 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
 
   it('AV-515 : identity.user.update — nom, numéro, e-mail ; numéro ou e-mail déjà pris, compte désactivé ou système refusés ; audit sans valeur en clair', async () => {
     const phone = await freshPhone();
+    const marieEmail = uniqueEmail('marie.ngo');
+    const bellEmail = uniqueEmail('marie.bell');
+    const otherEmail = uniqueEmail('autre.compte');
     const created = await create(admin, {
       full_name: 'Marie Ngo',
       phone,
-      email: 'marie.ngo@gic-agropelc.test',
+      email: marieEmail,
       password: PROVISIONAL,
     });
     expect(created.statusCode, created.body).toBe(201);
@@ -582,7 +591,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     const other = await create(admin, {
       full_name: 'Autre Compte',
       phone: otherPhone,
-      email: 'autre.compte@gic-agropelc.test',
+      email: otherEmail,
       password: PROVISIONAL,
     });
     expect(other.statusCode, other.body).toBe(201);
@@ -607,17 +616,17 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     expect(renamed.status, JSON.stringify(renamed)).toBe('APPLIED');
     expect(await userByPhone(phone)).toMatchObject({
       full_name: 'Marie Ngo-Bell',
-      email: 'marie.ngo@gic-agropelc.test',
+      email: marieEmail,
     });
 
     // Numéro et adresse : l'ancien numéro ne désigne plus personne, le nouveau désigne le compte.
     const newPhone = await freshPhone();
-    const moved = await update({ phone: newPhone, email: 'marie.bell@gic-agropelc.test' });
+    const moved = await update({ phone: newPhone, email: bellEmail });
     expect(moved.status, JSON.stringify(moved)).toBe('APPLIED');
     expect(await userByPhone(phone)).toBeUndefined();
     expect(await userByPhone(newPhone)).toMatchObject({
       full_name: 'Marie Ngo-Bell',
-      email: 'marie.bell@gic-agropelc.test',
+      email: bellEmail,
     });
 
     // Le numéro et l'adresse d'un autre compte actif (casse de l'adresse comprise) : refus propres.
@@ -625,11 +634,11 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       status: 'REJECTED',
       error: { code: 'PHONE_ALREADY_USED' },
     });
-    expect(await update({ email: 'AUTRE.compte@gic-agropelc.test' })).toMatchObject({
+    expect(await update({ email: otherEmail.toUpperCase() })).toMatchObject({
       status: 'REJECTED',
       error: { code: 'EMAIL_ALREADY_USED' },
     });
-    expect(await userByPhone(newPhone)).toMatchObject({ email: 'marie.bell@gic-agropelc.test' });
+    expect(await userByPhone(newPhone)).toMatchObject({ email: bellEmail });
 
     // Mêmes valeurs : appliqué sans effet (la version du compte ne bouge pas) ; adresse retirée avec `null`.
     const before = await versionOf();
@@ -659,7 +668,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     expect(text).toContain('Marie Ngo-Bell');
     expect(text).not.toContain(phone);
     expect(text).not.toContain(newPhone);
-    expect(text).not.toContain('marie.bell@gic-agropelc.test');
+    expect(text).not.toContain(bellEmail);
 
     // Compte désactivé : refusé tant qu'il n'est pas réactivé.
     const deactivated = await command(admin, 'identity.user.deactivate', 'USER', id, {
@@ -683,6 +692,68 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
         error: { code: 'SYSTEM_ACCOUNT' },
       });
     }
+  });
+
+  it('AV-515 : une adresse e-mail déjà portée par un compte non désactivé est refusée à la création (REST et commande) et à la réactivation', async () => {
+    const shared = uniqueEmail('partage');
+    const holderPhone = await freshPhone();
+    const holder = await create(admin, {
+      full_name: 'Titulaire',
+      phone: holderPhone,
+      email: shared,
+      password: PROVISIONAL,
+    });
+    expect(holder.statusCode, holder.body).toBe(201);
+    const holderId = (holder.json() as { id: string }).id;
+
+    // `POST /users` : même adresse (casse comprise), refusée sans écriture.
+    const dupPhone = await freshPhone();
+    const duplicate = await create(admin, {
+      full_name: 'Doublon',
+      phone: dupPhone,
+      email: shared.toUpperCase(),
+      password: PROVISIONAL,
+    });
+    expect(duplicate.statusCode, duplicate.body).toBe(409);
+    expect(duplicate.json()).toMatchObject({ error: { code: 'EMAIL_ALREADY_USED' } });
+    expect(await userByPhone(dupPhone)).toBeUndefined();
+    // Sans adresse, ou avec une autre : la création passe.
+    expect(
+      (
+        await create(admin, {
+          full_name: 'Sans adresse',
+          phone: await freshPhone(),
+          password: PROVISIONAL,
+        })
+      ).statusCode,
+    ).toBe(201);
+
+    // Commande `identity.user.create` : même contrôle, refus définitif.
+    const viaCommand = await command(admin, 'identity.user.create', 'USER', freshUuid(), {
+      fullName: 'Doublon par commande',
+      phone: await freshPhone(),
+      email: shared,
+      initialPassword: PROVISIONAL,
+    });
+    expect(viaCommand).toMatchObject({ status: 'REJECTED', error: { code: 'EMAIL_ALREADY_USED' } });
+
+    // Réactivation : le titulaire désactivé libère son adresse, un autre compte la reprend, le titulaire ne revient plus.
+    expect(
+      (await command(admin, 'identity.user.deactivate', 'USER', holderId, { reason: 'Départ' }))
+        .status,
+    ).toBe('APPLIED');
+    const taker = await create(admin, {
+      full_name: 'Repreneur',
+      phone: await freshPhone(),
+      email: shared,
+      password: PROVISIONAL,
+    });
+    expect(taker.statusCode, taker.body).toBe(201);
+    expect(await command(admin, 'identity.user.reactivate', 'USER', holderId, {})).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'EMAIL_ALREADY_USED' },
+    });
+    expect((await userByPhone(holderPhone))!.status).toBe('DEACTIVATED');
   });
 
   it('octroi par commande après le refactor de l’écriture partagée : mêmes contrôles qu’avant', async () => {

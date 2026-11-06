@@ -7,6 +7,9 @@
 // Usage :
 //   node deploy/hostinger/restore-check.mjs <sauvegarde.sql.gz> --defaults-file <fichier.cnf>
 //        [--mysql-bin <dossier ou mysql.exe>] [--min-tables 100] [--expect-version <version>|auto] [--keep] [--allow-remote]
+//   --expect-version <v> : la derniere migration enregistree doit etre exactement <v>. auto : elle doit etre une version
+//   du depot ET toutes les migrations du depot jusque-la doivent etre enregistrees (la base en ligne peut etre en retard
+//   sur le depot : les migrations posterieures a la sauvegarde ne sont pas des manques).
 //
 // Le fichier .cnf est un fichier d'options du client mysql, prepare par le porteur et jamais versionne ni colle dans
 // une commande (le mot de passe n'apparait donc ni dans la ligne de commande ni dans l'historique) :
@@ -62,13 +65,33 @@ export function stripDefiner(line) {
     .replace(/\bDEFINER\s*=\s*'[^']*'@'[^']*'/g, '');
 }
 
-/** Version de migration la plus recente d'une liste de noms de fichiers (AAAAMMJJHHMMSS_nom.sql). */
-export function newestMigrationVersion(files) {
-  const versions = files
+/** Versions de migration d'une liste de noms de fichiers (AAAAMMJJHHMMSS_nom.sql), triees. */
+export function migrationVersions(files) {
+  return files
     .filter((f) => /^\d+_.+\.sql$/.test(f))
     .map((f) => f.split('_')[0])
     .sort();
+}
+
+/** Version de migration la plus recente d'une liste de noms de fichiers (AAAAMMJJHHMMSS_nom.sql). */
+export function newestMigrationVersion(files) {
+  const versions = migrationVersions(files);
   return versions.length ? versions[versions.length - 1] : null;
+}
+
+/**
+ * Mode `--expect-version auto` : la sauvegarde vient de la base EN LIGNE, dont les migrations peuvent etre en retard sur
+ * le depot courant (migrations ecrites en local, pas encore appliquees en ligne). Comparer sa derniere version a celle
+ * du depot ferait echouer par construction une sauvegarde saine. Elle est coherente si sa derniere version est une
+ * version connue du depot et si toutes les versions du depot jusqu'a celle-la sont enregistrees ; les versions du depot
+ * posterieures a la sauvegarde ne sont pas des manques.
+ */
+export function autoVersionProblems(repoVersions, appliedVersions) {
+  const applied = new Set(appliedVersions);
+  const latest = [...applied].sort().pop() ?? null;
+  const known = latest !== null && repoVersions.includes(latest);
+  const missing = known ? repoVersions.filter((v) => v <= latest && !applied.has(v)) : [];
+  return { latest, known, missing };
 }
 
 /**
@@ -198,6 +221,7 @@ async function main(argv) {
     return 2;
   }
   let expected = opts.expectVersion;
+  let repoVersions = null;
   if (expected === 'auto') {
     const migrations = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
@@ -206,10 +230,9 @@ async function main(argv) {
       'db',
       'migrations',
     );
-    expected =
-      newestMigrationVersion(fs.existsSync(migrations) ? fs.readdirSync(migrations) : []) ??
-      undefined;
-    if (!expected)
+    repoVersions = migrationVersions(fs.existsSync(migrations) ? fs.readdirSync(migrations) : []);
+    expected = undefined;
+    if (repoVersions.length === 0)
       return (
         console.error('--expect-version auto : db/migrations introuvable depuis ce script.'),
         2
@@ -244,7 +267,11 @@ async function main(argv) {
       `CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4`,
     ]);
     const input = fs.createReadStream(opts.dump).pipe(zlib.createGunzip()).pipe(definerStripper());
-    await runClient(mysql, opts.defaultsFile, [`--database=${database}`], { input });
+    // --one-database : les instructions d'un dump qui change de base (USE autre, CREATE DATABASE, DROP DATABASE : export
+    // phpMyAdmin ou --databases) sont ignorees ; seule la base jetable est ecrite.
+    await runClient(mysql, opts.defaultsFile, [`--database=${database}`, '--one-database'], {
+      input,
+    });
     restored = true;
     note(true, 'restauration sans erreur du client');
     const scalar = async (sql) =>
@@ -263,14 +290,26 @@ async function main(argv) {
     note(triggers >= 1, 'declencheurs restaures (rien ne disparait : ajout seul)', `${triggers}`);
     const users = Number(await scalar(`SELECT COUNT(*) FROM \`${database}\`.identity_users`));
     note(users >= 1, 'comptes restaures (identity_users)', `${users}`);
-    const version = await scalar(`SELECT MAX(version) FROM \`${database}\`.schema_migrations`);
-    note(
-      version !== '' && version !== 'NULL',
-      'migrations enregistrees (schema_migrations)',
-      version,
-    );
-    if (expected)
-      note(version === expected, `derniere migration = ${expected} (celle du depot)`, version);
+    const applied = (
+      await scalar(`SELECT version FROM \`${database}\`.schema_migrations ORDER BY version`)
+    )
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const version = applied.length ? applied[applied.length - 1] : '';
+    note(version !== '', 'migrations enregistrees (schema_migrations)', version);
+    if (repoVersions) {
+      // Mode auto : une version connue du depot, et aucune migration du depot manquante jusque-la.
+      const { known, missing } = autoVersionProblems(repoVersions, applied);
+      note(known, 'derniere migration connue du depot', version);
+      note(
+        missing.length === 0,
+        'toutes les migrations du depot jusqu a celle-la sont enregistrees',
+        missing.length ? 'manquantes : ' + missing.join(', ') : `${applied.length}`,
+      );
+    } else if (expected) {
+      note(version === expected, `derniere migration = ${expected}`, version);
+    }
   } catch (error) {
     note(
       false,
@@ -305,7 +344,19 @@ async function main(argv) {
   return ok ? 0 : 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+/** Lance `main` quand le fichier est le script executable : chemins compares apres resolution des liens symboliques. */
+function isEntryPoint() {
+  try {
+    return (
+      Boolean(process.argv[1]) &&
+      fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (error) => {

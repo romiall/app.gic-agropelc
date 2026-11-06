@@ -1,10 +1,15 @@
 /**
  * Verrouillage progressif de connexion (07-security-rbac/02-securite.md §2 : « 5 échecs →
- * blocage progressif (1, 5, 15 min) par identifiant et par IP »). Deux compteurs indépendants
- * (`identity.login_attempts`, P0-09) : un essai est compté sur **les deux** (identifiant et IP), un blocage sur l'un OU
- * l'autre suffit à refuser la connexion. AV-297 (a) : l'essai est réservé d'avance et atomiquement
+ * blocage progressif (1, 5, 15 min) par identifiant et par IP »). Compteurs indépendants
+ * (`identity.login_attempts`, P0-09) : un essai est compté sur **chacun** (identifiant saisi, compte, IP), un blocage sur
+ * l'un OU l'autre suffit à refuser la connexion. AV-297 (a) : l'essai est réservé d'avance et atomiquement
  * (`reserveLoginAttempts`), remis à zéro par une connexion réussie (`resetLoginAttempts`).
+ *
+ * Un même compte répond à deux identifiants, son téléphone et son adresse e-mail (RP-3) : sans compteur de compte, un
+ * attaquant aurait cinq essais sur chacun avant le blocage. Le compteur du **compte** (`accountScope`) est donc partagé
+ * par tous ses identifiants ; celui de l'identifiant saisi (`identifierScope`) protège aussi un identifiant inconnu.
  */
+import { createHash } from 'node:crypto';
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 
@@ -31,6 +36,28 @@ export interface LoginAttemptScopeRef {
 }
 
 /**
+ * Compteur d'un identifiant saisi (téléphone ou adresse e-mail). L'identifiant peut compter 200 caractères quand la
+ * colonne en tient 64 : la clé est son empreinte SHA-256 (62 caractères hexadécimaux), jamais l'identifiant lui-même. La
+ * casse compte, comme dans la recherche du compte (collation sensible à la casse).
+ */
+export function identifierScope(identifier: string): LoginAttemptScopeRef {
+  const digest = createHash('sha256').update(identifier, 'utf8').digest('hex');
+  return { scopeType: 'IDENTIFIER', scopeValue: `I:${digest.slice(0, 62)}` };
+}
+
+/** Compteur du compte : partagé par son téléphone et son adresse e-mail. */
+export function accountScope(userId: string): LoginAttemptScopeRef {
+  return { scopeType: 'IDENTIFIER', scopeValue: `U:${userId}` };
+}
+
+export function ipScope(ip: string): LoginAttemptScopeRef {
+  return { scopeType: 'IP', scopeValue: ip };
+}
+
+const byScope = (a: LoginAttemptScopeRef, b: LoginAttemptScopeRef): number =>
+  a.scopeType.localeCompare(b.scopeType) || a.scopeValue.localeCompare(b.scopeValue);
+
+/**
  * Réservation atomique d'un essai de connexion (AV-297 (a)) : l'essai est **compté d'avance**, avant la vérification
  * du mot de passe, et remis à zéro par une connexion réussie (`resetLoginAttempts`). Lire le blocage avant la
  * vérification puis compter l'échec après laissait N essais simultanés passer tous le contrôle ; ici les lignes de
@@ -40,15 +67,39 @@ export interface LoginAttemptScopeRef {
  *
  * Un essai refusé (déjà bloqué sur l'une des portées) ne compte sur aucune. Le blocage se pose dès la réservation du
  * cinquième essai (palier de `blockDurationMinutes`) ; ce cinquième essai est admis, et s'il réussit il remet tout à zéro.
+ * Un blocage déjà posé est refusé par une lecture **sans verrou** : une rafale d'essais depuis une adresse bloquée ne se
+ * met pas en file sur la ligne de cette adresse (chaque essai en attente garderait une connexion du pool).
  */
 export async function reserveLoginAttempts(
   db: Kysely<DB>,
   scopes: readonly LoginAttemptScopeRef[],
   now: Date,
 ): Promise<LoginLockStatus> {
-  const ordered = [...scopes].sort(
-    (a, b) => a.scopeType.localeCompare(b.scopeType) || a.scopeValue.localeCompare(b.scopeValue),
+  const ordered = [...scopes].sort(byScope);
+  // Lecture simple : déjà bloqué ? (refus immédiat, aucun verrou)
+  const peeked = await db
+    .selectFrom('identity_login_attempts')
+    .select('blocked_until')
+    .where((eb) =>
+      eb.or(
+        ordered.map((scope) =>
+          eb.and([
+            eb('scope_type', '=', scope.scopeType),
+            eb('scope_value', '=', scope.scopeValue),
+          ]),
+        ),
+      ),
+    )
+    .execute();
+  const alreadyBlocked = peeked.filter(
+    (row) => row.blocked_until !== null && row.blocked_until > now,
   );
+  if (alreadyBlocked.length > 0) {
+    return {
+      blocked: true,
+      retryAfter: new Date(Math.max(...alreadyBlocked.map((row) => row.blocked_until!.getTime()))),
+    };
+  }
   return db.transaction().execute(async (trx) => {
     for (const scope of ordered) {
       await trx
@@ -103,4 +154,14 @@ export async function resetLoginAttempts(
     .where('scope_type', '=', scopeType)
     .where('scope_value', '=', scopeValue)
     .execute();
+}
+
+/** Remet à zéro plusieurs compteurs, dans l'ordre fixe des réservations. */
+export async function resetLoginScopes(
+  db: Kysely<DB> | Transaction<DB>,
+  scopes: readonly LoginAttemptScopeRef[],
+): Promise<void> {
+  for (const scope of [...scopes].sort(byScope)) {
+    await resetLoginAttempts(db, scope.scopeType, scope.scopeValue);
+  }
 }

@@ -56,7 +56,9 @@ export type {
 } from './settings-catalog.js';
 // Identité de la société imprimée sur les pièces papier (AV-324 (a), AV-451 (c)).
 export {
+  COMPANY_IDENTITY_MAX_LENGTH,
   COMPANY_IDENTITY_SETTINGS,
+  COMPANY_VAT_MENTION_MAX_LENGTH,
   COMPANY_VAT_MENTION_SETTING,
   COMPANY_VAT_REGIMES,
   COMPANY_VAT_REGIME_SETTING,

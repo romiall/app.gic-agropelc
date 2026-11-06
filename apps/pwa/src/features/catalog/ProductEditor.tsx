@@ -35,6 +35,8 @@ interface ProductEditorProps {
   readonly send: (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
   readonly blocked: boolean;
   readonly userId: string;
+  /** Change à chaque réponse d'une opération du catalogue : l'historique du coût se relit alors. */
+  readonly reloadKey: string;
   readonly onClose: () => void;
 }
 
@@ -47,6 +49,7 @@ export function ProductEditor({
   send,
   blocked,
   userId,
+  reloadKey,
   onClose,
 }: ProductEditorProps) {
   const { t } = useTranslation();
@@ -134,7 +137,13 @@ export function ProductEditor({
           {t('price_rules.cancel')}
         </Button>
       </div>
-      <StandardCostPanel product={product} send={send} blocked={blocked} userId={userId} />
+      <StandardCostPanel
+        product={product}
+        send={send}
+        blocked={blocked}
+        userId={userId}
+        reloadKey={reloadKey}
+      />
     </Card>
   );
 }
@@ -144,19 +153,22 @@ interface StandardCostPanelProps {
   readonly send: ProductEditorProps['send'];
   readonly blocked: boolean;
   readonly userId: string;
+  readonly reloadKey: string;
 }
 
-function StandardCostPanel({ product, send, blocked, userId }: StandardCostPanelProps) {
+function StandardCostPanel({ product, send, blocked, userId, reloadKey }: StandardCostPanelProps) {
   const { t } = useTranslation();
   const online = useOnline();
   const [costText, setCostText] = useState('');
   const [reason, setReason] = useState('');
-  const [reload, setReload] = useState(0);
+  // L'historique se relit à la RÉPONSE de la commande (le parent change `reloadKey` à chaque changement de phase de la
+  // dernière opération), pas à son enfilage : relu trop tôt, il montrerait encore l'ancien coût « en vigueur » et
+  // l'utilisateur, croyant l'envoi perdu, ressaisirait.
   const read = useOnlineRead<{ costs: StandardCostView[] }>(
     online ? standardCostsPath(product.id) : null,
     readPath,
     online,
-    String(reload),
+    reloadKey,
   );
   const issues = checkStandardCost(costText, reason);
   const now = clock.now();
@@ -174,7 +186,6 @@ function StandardCostPanel({ product, send, blocked, userId }: StandardCostPanel
       if (ok) {
         setCostText('');
         setReason('');
-        setReload((value) => value + 1);
       }
     });
 

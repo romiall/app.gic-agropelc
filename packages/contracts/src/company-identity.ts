@@ -31,6 +31,33 @@ export const COMPANY_IDENTITY_SETTINGS = {
 
 export type CompanyIdentityField = keyof typeof COMPANY_IDENTITY_SETTINGS;
 
+/**
+ * Longueur maximale de chaque rubrique, en caractères : l'en-tête d'une pièce a des dimensions fixes (la ligne « Siège,
+ * BP, Tél » d'une pièce A5 n'offre qu'une soixantaine de millimètres), un texte plus long déborderait sur la case du
+ * numéro. Valeurs prudentes, à ajuster après un premier essai d'impression ; les valeurs semées les respectent.
+ */
+export const COMPANY_IDENTITY_MAX_LENGTH: Readonly<Record<CompanyIdentityField, number>> = {
+  raison_sociale: 40,
+  forme_juridique: 30,
+  siege: 32,
+  bp: 20,
+  ville: 30,
+  telephones: 28,
+  email: 50,
+  site_web: 50,
+  rccm: 44,
+  niu: 24,
+  regime_fiscal: 24,
+  banque: 36,
+  compte_bancaire: 36,
+  mobile_money: 24,
+  capital: 24,
+  representant_legal: 50,
+};
+
+/** Longueur maximale de la mention d'exonération de la facture (zone de texte de deux lignes). */
+export const COMPANY_VAT_MENTION_MAX_LENGTH = 160;
+
 /** Régime de TVA coché sur la facture (AV-451) : `NOT_SET` laisse les deux cases à cocher à la main. */
 export const COMPANY_VAT_REGIMES = ['NOT_SET', 'VAT_APPLICABLE', 'VAT_EXEMPT'] as const;
 export type CompanyVatRegime = (typeof COMPANY_VAT_REGIMES)[number];

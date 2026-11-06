@@ -459,15 +459,14 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado'), [
         ABSORBED,
       ]),
+      // Le serveur rattache au compte conservé les ventes des comptes qu'il a absorbés (S-22) : une seule lecture.
       [`/api/v1/receivables?customer_id=${KEPT}`]: {
         as_of: '2026-10-10',
         summary: {},
-        receivables: [line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25')],
-      },
-      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
-        as_of: '2026-10-10',
-        summary: {},
-        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+        receivables: [
+          line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25'),
+          line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01'),
+        ],
       },
     });
     renderAt(`/encaisser?client=${KEPT}&vente=${SALE_KEPT}`);
@@ -482,6 +481,31 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     expect(screen.getByText(/VTE-2026-000004/)).toBeInTheDocument();
     expect(screen.getByLabelText('Montant reçu (F CFA)')).toHaveValue('50000');
     expect(screen.queryByText('Choisissez le client qui règle.')).toBeNull();
+    // Le compte absorbé n'est jamais lu pour lui-même : ses ventes viennent de la lecture du compte conservé,
+    // sans quoi elles seraient comptées deux fois (la vente absorbée ne figure qu'une fois à l'écran).
+    expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBe(0);
+    expect(readsOf(`/api/v1/receivables?customer_id=${KEPT}`)).toBe(1);
+    expect(screen.getAllByText(/VTE-2026-000004/)).toHaveLength(1);
+  });
+
+  it('les créances rendues deux fois par le serveur ne sont comptées qu’une fois (une vente = une créance)', async () => {
+    serveOnline({
+      [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado'), [
+        ABSORBED,
+      ]),
+      [`/api/v1/receivables?customer_id=${KEPT}`]: {
+        as_of: '2026-10-10',
+        summary: {},
+        receivables: [
+          line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25'),
+          line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01'),
+          line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01'),
+        ],
+      },
+    });
+    renderAt(`/encaisser?client=${KEPT}`);
+    expect(await screen.findByText(/^Total des créances : 58\s000 F CFA$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/VTE-2026-000004/)).toHaveLength(1);
   });
 
   it('lien vers un compte fusionné : le compte conservé est encaissé, vente absorbée comprise', async () => {
@@ -492,8 +516,7 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado'), [
         ABSORBED,
       ]),
-      [`/api/v1/receivables?customer_id=${KEPT}`]: { as_of: '2026-10-10', receivables: [] },
-      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
+      [`/api/v1/receivables?customer_id=${KEPT}`]: {
         as_of: '2026-10-10',
         receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
       },
@@ -507,8 +530,9 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/ancien compte/)).toBeNull();
-    // Le compte absorbé n'est jamais lu pour lui-même avant la bascule : une seule fois, comme compte du conservé.
-    expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBe(1);
+    // Le compte absorbé n'est jamais lu pour lui-même : ses ventes viennent de la lecture du compte conservé.
+    expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBe(0);
+    expect(readsOf(`/api/v1/receivables?customer_id=${KEPT}`)).toBe(1);
     await user.click(screen.getByRole('button', { name: 'Enregistrer l’encaissement' }));
     await screen.findByText(/Encaissement/);
     const [command] = await getDb().outbox.toArray();
@@ -529,10 +553,10 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
         ABSORBED,
       ]),
       [`/api/v1/receivables?customer_id=${KEPT}`]: {
-        receivables: [line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25')],
-      },
-      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
-        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+        receivables: [
+          line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25'),
+          line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01'),
+        ],
       },
     });
     const user = userEvent.setup();
@@ -575,32 +599,31 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       row_version: 1,
     });
     serveOnline({
+      // Une seule lecture, celle du compte conservé : le serveur y joint les ventes du compte absorbé.
       [`/api/v1/receivables?customer_id=${IDS.customer}`]: {
-        receivables: [line(SALE_KEPT, 'VTE-2026-000003', IDS.customer, 50000, '2026-09-25')],
-      },
-      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
-        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+        receivables: [
+          line(SALE_KEPT, 'VTE-2026-000003', IDS.customer, 50000, '2026-09-25'),
+          line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01'),
+        ],
       },
     });
     renderAt(`/encaisser?client=${IDS.customer}`);
     expect(await screen.findByText(/^Total des créances : 58\s000 F CFA$/)).toBeInTheDocument();
     expect(screen.getByText(/VTE-2026-000004/)).toBeInTheDocument();
+    expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBe(0);
     expect(
       request.mock.calls.some(([, path]) => String(path).startsWith('/api/v1/customers')),
     ).toBe(false);
     cleanup();
 
-    // Une lecture en échec parmi les comptes : les créances ne sont pas présentées comme complètes.
+    // Lecture en échec : les créances ne sont pas présentées comme complètes (ni celles du compte conservé).
     serveOnline({
-      [`/api/v1/receivables?customer_id=${IDS.customer}`]: {
-        receivables: [line(SALE_KEPT, 'VTE-2026-000003', IDS.customer, 50000, '2026-09-25')],
-      },
-      [`/api/v1/receivables?customer_id=${ABSORBED}`]: { __status: 500 },
+      [`/api/v1/receivables?customer_id=${IDS.customer}`]: { __status: 500 },
     });
     renderAt(`/encaisser?client=${IDS.customer}`);
     expect(await screen.findByText('Boutique Mvog-Mbi')).toBeInTheDocument();
     await waitFor(() =>
-      expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBeGreaterThan(0),
+      expect(readsOf(`/api/v1/receivables?customer_id=${IDS.customer}`)).toBeGreaterThan(0),
     );
     expect(screen.queryByText('Toutes les créances du client (lues en ligne).')).toBeNull();
     expect(screen.queryByText(/VTE-2026-000003/)).toBeNull();

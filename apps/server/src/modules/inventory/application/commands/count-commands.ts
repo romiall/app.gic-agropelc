@@ -37,7 +37,14 @@ import { z } from 'zod';
 import { positiveQuantitySchema, receivedQuantitySchema } from '@gic/contracts';
 import { sql, type Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
-import { roundCmupToXaf, businessDayOf } from '@gic/domain';
+import {
+  DomainError,
+  businessDayOf,
+  lineAmountXaf,
+  quantityFromDecimal,
+  roundCmupToXaf,
+  xaf,
+} from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
@@ -89,12 +96,15 @@ const COUNT_TYPES = ['FULL', 'PARTIAL', 'SPOT'] as const;
 /** Lignes d'un stock d'ouverture au plus par document (un chargement plus gros se découpe par emplacement). */
 const OPENING_MAX_LINES = 500;
 
+/** Coût unitaire déclaré le plus haut accepté (francs par unité de base) : au-delà, c'est une faute de frappe. */
+const OPENING_MAX_UNIT_COST_XAF = 1_000_000_000;
+
 const openingLineSchema = z.object({
   productId: z.string().uuid(),
   /** Quantité en unité de base du produit, strictement positive (bornée à `numeric(14,3)`). */
   quantityBase: positiveQuantitySchema,
   /** Coût unitaire déclaré (XAF entiers par unité de base) : il valorise le stock initial (CMUP). */
-  unitCostXaf: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  unitCostXaf: z.number().int().nonnegative().max(OPENING_MAX_UNIT_COST_XAF),
 });
 const openingPostPayloadSchema = z.object({
   locationId: z.string().uuid(),
@@ -568,22 +578,36 @@ function buildCountCommands(
   const openingPost: CommandHandler<OpeningPostPayload> = async (uow, envelope) => {
     const countId = envelope.aggregate_id;
     const { locationId, lines, comment } = envelope.payload;
-    const already = await uow
-      .selectFrom('inventory_inventory_counts')
-      .select('id')
-      .where('id', '=', toBin(countId))
-      .executeTakeFirst();
-    if (already) return { status: 'APPLIED' }; // rejeu
-
     const refuse = (errorCode: string, messageFr: string): CommandHandlerOutcome => ({
       status: 'REJECTED',
       errorCode,
       messageFr,
     });
+    const already = await uow
+      .selectFrom('inventory_inventory_counts')
+      .select(['id', 'status'])
+      .where('id', '=', toBin(countId))
+      .executeTakeFirst();
+    if (already) {
+      // Le rejeu d'un document vivant ne fait rien de plus. Un document refusé par l'approbateur ou annulé n'est pas
+      // « fait » : répondre « appliqué » sans rien créer laisserait croire à un stock posé (AV-517 (4) : un refus libère
+      // l'emplacement, pour une nouvelle tentative sous un autre identifiant).
+      if (already.status === 'REJECTED' || already.status === 'CANCELLED') {
+        return refuse(
+          'OPENING_ID_TAKEN',
+          'Ce stock d’ouverture a déjà été posé puis refusé : corrigez-le (une quantité, un coût) ou reposez-le comme un nouveau document.',
+        );
+      }
+      return { status: 'APPLIED' };
+    }
+
+    // L'emplacement est verrouillé d'abord : deux stocks d'ouverture simultanés pour le même emplacement se suivent, le
+    // second voit le premier et reçoit un refus propre (et non une violation d'unicité à l'approbation).
     const location = await uow
       .selectFrom('organization_locations')
       .select(['site_id', 'is_virtual', 'status'])
       .where('id', '=', toBin(locationId))
+      .forUpdate()
       .executeTakeFirst();
     if (!location) return refuse('NOT_FOUND', 'Emplacement introuvable.');
     if (Boolean(location.is_virtual) || location.site_id === null || location.status !== 'ACTIVE') {
@@ -598,6 +622,7 @@ function buildCountCommands(
       .where('location_id', '=', toBin(locationId))
       .where('count_type', '=', 'OPENING')
       .where('status', 'in', ['PENDING_APPROVAL', 'POSTED'])
+      .forUpdate()
       .executeTakeFirst();
     if (existing) {
       return refuse(
@@ -641,6 +666,52 @@ function buildCountCommands(
       }
     }
 
+    // Le théorique d'un stock d'ouverture est nul : sur un emplacement qui a déjà des mouvements pour l'un de ces
+    // produits, les quantités comptées s'ajouteraient au stock existant (50 reçus le 03/11 + 80 comptés le 05/11 dont
+    // les 50 = 130). Un stock d'ouverture se pose avant tout mouvement ; ensuite, c'est un inventaire.
+    const alreadyMoved = await uow
+      .selectFrom('inventory_stock_moves')
+      .select('product_id')
+      .where(
+        'product_id',
+        'in',
+        productIds.map((id) => toBin(id)),
+      )
+      .where((eb) =>
+        eb.or([
+          eb('from_location_id', '=', toBin(locationId)),
+          eb('to_location_id', '=', toBin(locationId)),
+        ]),
+      )
+      .limit(1)
+      .executeTakeFirst();
+    if (alreadyMoved) {
+      return refuse(
+        'OPENING_LOCATION_NOT_EMPTY',
+        'Cet emplacement a déjà des mouvements pour l’un de ces produits : un stock d’ouverture se pose avant tout mouvement (ensuite, corrigez par un inventaire).',
+      );
+    }
+
+    // Valeur du document : somme des valeurs de ligne arrondies au franc, en arithmétique entière — la même qu'à la
+    // comptabilisation (une valeur par mouvement) ; jamais de flottant sur des montants.
+    let totalValueXaf = 0;
+    try {
+      for (const line of lines) {
+        totalValueXaf += lineAmountXaf(
+          quantityFromDecimal(line.quantityBase),
+          xaf(line.unitCostXaf),
+        );
+      }
+      if (!Number.isSafeInteger(totalValueXaf))
+        throw new DomainError('Valeur du document hors limites.', 'OUT_OF_RANGE');
+    } catch (error) {
+      if (!(error instanceof DomainError)) throw error;
+      return refuse(
+        'OPENING_VALUE_TOO_LARGE',
+        'La valeur d’une ligne ou du document dépasse la limite : vérifiez la quantité et le coût unitaire.',
+      );
+    }
+
     const occurredAt = new Date(envelope.occurred_at);
     const policy = await decidablePolicyFor(
       uow,
@@ -665,11 +736,7 @@ function buildCountCommands(
       codeSite,
       year: Number(businessDayOf(occurredAt).slice(0, 4)),
     });
-    const totalValueXaf = lines.reduce(
-      (sum, line) => sum + line.quantityBase * line.unitCostXaf,
-      0,
-    );
-    const valueXaf = Math.round(totalValueXaf);
+    const valueXaf = totalValueXaf;
     const approvalRequestId = idGenerator.newId();
 
     await uow

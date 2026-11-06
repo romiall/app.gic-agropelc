@@ -155,5 +155,19 @@ describe('Réception sans bon de commande (ECR-APP-04, BR-APP-011, AV-519)', () 
         location('Sans site', { site_id: null }),
       ]).map((candidate) => candidate.id),
     ).toEqual(['Magasin A', 'Magasin B']);
+
+    // Seuls les sites de l'utilisateur : un emplacement d'un autre site serait refusé par le serveur (FORBIDDEN_SCOPE),
+    // y compris hors ligne, et la réception serait perdue.
+    expect(
+      freeReceiptLocations(
+        [
+          location('Magasin A', { site_id: 'site' }),
+          location('Magasin A', { site_id: 'autre-site' }),
+          location('Dépôt', { site_id: 'autre-site' }),
+        ],
+        new Set(['site']),
+      ).map((candidate) => [candidate.id, candidate.site_id]),
+    ).toEqual([['Magasin A', 'site']]);
+    expect(freeReceiptLocations([location('Magasin A', {})], new Set())).toEqual([]);
   });
 });

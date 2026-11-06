@@ -59,7 +59,8 @@ export type RefreshOutcome =
     }
   | {
       readonly ok: false;
-      readonly reason: 'NOT_FOUND' | 'SESSION_EXPIRED' | 'DEVICE_OUT_OF_SERVICE';
+      readonly reason:
+        'NOT_FOUND' | 'SESSION_EXPIRED' | 'DEVICE_OUT_OF_SERVICE' | 'DEVICE_BOUND_TO_OTHER_USER';
     }
   | {
       readonly ok: false;
@@ -68,12 +69,20 @@ export type RefreshOutcome =
       readonly deviceId: string;
     };
 
+export interface RotateOptions {
+  /** AV-296 (b) : réglage `identity.device_bound_to_enroller` (faux par défaut) ; lu par la couche de transport. */
+  readonly boundToEnroller?: boolean;
+}
+
+const OUT_OF_SERVICE_STATUSES: ReadonlySet<string> = new Set(['BLOCKED', 'LOST', 'RETIRED']);
+
 export async function rotateSession(
   uow: UnitOfWork,
   idGenerator: IdGenerator,
   presentedToken: string,
   now: Date,
   ip: string | null,
+  options: RotateOptions = {},
 ): Promise<RefreshOutcome> {
   const row = await uow
     .selectFrom('identity_auth_sessions')
@@ -90,11 +99,21 @@ export async function rotateSession(
     .executeTakeFirst();
   if (!row) return { ok: false, reason: 'NOT_FOUND' };
 
-  // AV-213 (c) : session close par le blocage de l'appareil (bloqué, perdu, retiré) — ce n'est pas une réutilisation de
-  // jeton (aucune famille à re-révoquer, aucune alerte de sécurité) : l'appareil reçoit un refus qui lui dit d'effacer
-  // ses données téléchargées.
-  if (row.revoked_at !== null && row.revoked_reason === 'DEVICE_BLOCKED') {
+  // AV-213 (c) : l'appareil est hors service (bloqué, perdu, retiré) — jugé sur son ÉTAT ACTUEL, quel que soit le motif de
+  // révocation de la session : un jeton déjà tourné que la réponse perdue n'a pas remplacé sur l'appareil n'est pas une
+  // réutilisation de jeton (aucune famille à re-révoquer, aucune alerte de sécurité), et l'appareil reçoit un refus qui
+  // lui dit d'effacer ses données téléchargées. À l'inverse, un appareil remis en service depuis (débloqué) n'efface
+  // rien : la session close par son blocage ne revit pas, l'utilisateur se reconnecte.
+  const device = await uow
+    .selectFrom('identity_devices')
+    .select(['status', 'is_shared', 'enrolled_by_user_id'])
+    .where('id', '=', row.device_id)
+    .executeTakeFirst();
+  if (device && OUT_OF_SERVICE_STATUSES.has(device.status)) {
     return { ok: false, reason: 'DEVICE_OUT_OF_SERVICE' };
+  }
+  if (row.revoked_at !== null && row.revoked_reason === 'DEVICE_BLOCKED') {
+    return { ok: false, reason: 'SESSION_EXPIRED' };
   }
   if (row.revoked_at !== null) {
     await revokeSessionFamily(uow, row.token_family_id, 'TOKEN_REUSE', now);
@@ -107,6 +126,17 @@ export async function rotateSession(
   }
   if (row.expires_at <= now) {
     return { ok: false, reason: 'SESSION_EXPIRED' };
+  }
+  // AV-296 (b) : la liaison de l'appareil à son premier compte vaut aussi pour les sessions déjà ouvertes — un autre
+  // compte connecté avant l'activation du réglage ne continue pas de lire et de pousser depuis cet appareil.
+  if (
+    options.boundToEnroller === true &&
+    device &&
+    Number(device.is_shared) === 0 &&
+    device.enrolled_by_user_id !== null &&
+    !device.enrolled_by_user_id.equals(row.user_id)
+  ) {
+    return { ok: false, reason: 'DEVICE_BOUND_TO_OTHER_USER' };
   }
 
   const newSessionId = idGenerator.newId();

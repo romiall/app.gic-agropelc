@@ -8,12 +8,13 @@
  * (commandes hors ligne antérieures à la désactivation acceptées, postérieures en quarantaine).
  */
 import { z } from 'zod';
-import { sql } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
+import type { DB } from '../../../../platform/kysely/database.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
@@ -108,14 +109,23 @@ function emailAlreadyUsed(): CommandHandlerOutcome {
   };
 }
 
-/** Un autre compte non désactivé porte cette adresse (la connexion par e-mail serait ambiguë). */
-async function emailTakenByOther(uow: UnitOfWork, email: string, userId: Buffer): Promise<boolean> {
-  const other = await uow
+/**
+ * Un autre compte non désactivé porte cette adresse (la connexion par e-mail serait ambiguë). `exceptUserId` : le
+ * compte lui-même (modification, réactivation) ; absent à la création. La création (commande et `POST /users`), la
+ * modification et la réactivation d'un compte désactivé le contrôlent toutes (revue adverse du 05/11/2026) ; aucun
+ * index unique n'existe sur l'adresse (limite consignée dans AV-515 : deux demandes simultanées vers la même adresse).
+ */
+export async function emailTakenByOther(
+  executor: Pick<Kysely<DB>, 'selectFrom'>,
+  email: string,
+  exceptUserId?: Buffer,
+): Promise<boolean> {
+  const other = await executor
     .selectFrom('identity_users')
     .select('id')
     .where(sql<boolean>`LOWER(email) = ${email.toLowerCase()}`)
     .where('status', '!=', 'DEACTIVATED')
-    .where('id', '!=', userId)
+    .$if(exceptUserId !== undefined, (qb) => qb.where('id', '!=', exceptUserId!))
     .executeTakeFirst();
   return other !== undefined;
 }
@@ -173,7 +183,7 @@ const reactivate: CommandHandler<EmptyPayload> = async (uow, envelope) => {
   const userId = toBin(envelope.aggregate_id);
   const user = await uow
     .selectFrom('identity_users')
-    .select(['status', 'phone'])
+    .select(['status', 'phone', 'email'])
     .where('id', '=', userId)
     .executeTakeFirst();
   if (!user) return notFound();
@@ -185,6 +195,15 @@ const reactivate: CommandHandler<EmptyPayload> = async (uow, envelope) => {
   // plutôt que l'erreur de contrainte, que le pipeline traiterait à tort comme transitoire.
   if (user.status === 'DEACTIVATED' && (await phoneTakenByOther(uow, user.phone, userId))) {
     return phoneAlreadyUsed();
+  }
+  // Même chose pour l'adresse e-mail : un compte désactivé la libère, et la connexion par e-mail deviendrait ambiguë
+  // si deux comptes actifs la portaient.
+  if (
+    user.status === 'DEACTIVATED' &&
+    user.email !== null &&
+    (await emailTakenByOther(uow, user.email, userId))
+  ) {
+    return emailAlreadyUsed();
   }
 
   await uow
@@ -252,6 +271,12 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
     .where('status', '!=', 'DEACTIVATED')
     .executeTakeFirst();
   if (phoneTaken) return phoneAlreadyUsed();
+  if (
+    envelope.payload.email !== undefined &&
+    (await emailTakenByOther(uow, envelope.payload.email))
+  ) {
+    return emailAlreadyUsed();
+  }
 
   const passwordHash = await hashPassword(envelope.payload.initialPassword);
   await uow

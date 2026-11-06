@@ -15,7 +15,7 @@ import type { DemandePiece } from './demande.js';
 import { documentPiece, LOGO_PIECES } from './document.js';
 import { datePiece } from './format.js';
 import { DIMENSIONS } from './gabarit.js';
-import { identiteDepuisParametres } from './identite-parametres.js';
+import { completerFacture, identiteDepuisParametres } from './identite-parametres.js';
 import { rendrePiece } from './registre.js';
 import { noterImpression, premiereImpression } from './reimpression.js';
 
@@ -64,7 +64,17 @@ export function PieceImprimable({ demande, cle, annulee = false }: PieceImprimab
 
   const rendu = useMemo(() => {
     try {
-      const piece = rendrePiece(demande, {
+      // La facture porte aussi les coordonnées de règlement, le régime de TVA et la mention d'exonération de la
+      // société : relus en direct comme l'en-tête (la demande est préparée à l'ouverture, un paramètre reçu depuis ne
+      // doit pas laisser une pièce à moitié à jour).
+      const vivante: DemandePiece =
+        demande.code === 'FA' && parametres
+          ? {
+              code: 'FA',
+              donnees: completerFacture(demande.donnees, parametres, clock.now()),
+            }
+          : demande;
+      const piece = rendrePiece(vivante, {
         logo: LOGO_PIECES,
         marques: { annulee, duplicata },
         ...(identite ? { identite } : {}),
@@ -73,7 +83,7 @@ export function PieceImprimable({ demande, cle, annulee = false }: PieceImprimab
     } catch {
       return null;
     }
-  }, [demande, annulee, duplicata, identite]);
+  }, [demande, annulee, duplicata, identite, parametres]);
 
   useEffect(() => {
     const el = boite.current;

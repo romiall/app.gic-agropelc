@@ -123,7 +123,11 @@ export async function wipeDownloadedData(db: GicDatabase): Promise<void> {
       await db.syncCursors.clear();
       await db.navigation.clear();
       if (await db.syncMeta.get('device')) {
-        await db.syncMeta.update('device', { data_user_id: null, last_sync_at: null });
+        await db.syncMeta.update('device', {
+          data_user_id: null,
+          data_wiped: true,
+          last_sync_at: null,
+        });
       }
     },
   );

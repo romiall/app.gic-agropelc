@@ -406,6 +406,13 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(editUserProblem({ ...editFormOf(awa), fullName: ' ' }, awa)).toBe('NAME');
     expect(editUserProblem({ ...editFormOf(awa), phone: '12' }, awa)).toBe('PHONE');
     expect(editUserProblem({ ...editFormOf(awa), email: 'pas-une-adresse' }, awa)).toBe('EMAIL');
+    // Même forme que le serveur (zod) : ces adresses seraient refusées après la fermeture du formulaire.
+    for (const email of ['marie@gic.c', 'jean..x@gic.cm', '.jean@gic.cm', 'jean@gic']) {
+      expect(editUserProblem({ ...editFormOf(awa), email }, awa), email).toBe('EMAIL');
+    }
+    expect(
+      editUserProblem({ ...editFormOf(awa), email: 'jean.x+gic@mail.gic.cm' }, awa),
+    ).toBeNull();
     expect(editUserProblem({ ...editFormOf(awa), fullName: 'Awa Bell' }, awa)).toBeNull();
   });
 

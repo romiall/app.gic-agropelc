@@ -54,6 +54,7 @@ const PROBLEM_MESSAGES_FR: Readonly<Record<SettingProblem, string>> = {
   NOT_INTEGER: 'ce paramètre attend un nombre entier',
   MIN: 'la valeur est inférieure au minimum de ce paramètre',
   MAX: 'la valeur dépasse le maximum de ce paramètre',
+  LENGTH: 'le texte dépasse la longueur prévue pour ce paramètre',
   OPTION: 'la valeur n’est pas l’un des choix de ce paramètre',
   EMPTY_ITEM: 'un élément de la liste est vide',
   WEEKDAY: 'les jours se numérotent de 1 (lundi) à 7 (dimanche)',

@@ -45,9 +45,14 @@ describe('Catalogue des paramètres système (RP-1, ECR-ADM-07)', () => {
     const keys = Object.values(COMPANY_IDENTITY_SETTINGS);
     expect(new Set(keys).size).toBe(keys.length);
     for (const key of [...keys, COMPANY_VAT_MENTION_SETTING]) {
-      expect(settingDefOf(key), key).toEqual({ kind: 'text', group: 'company' });
+      expect(settingDefOf(key), key).toMatchObject({ kind: 'text', group: 'company' });
       // Une rubrique vidée est permise : elle s'imprime en pointillés.
       expect(validateSettingValue(settingDefOf(key)!, ''), key).toBeNull();
+      // L'en-tête a des dimensions fixes : chaque rubrique a une longueur maximale, jamais dépassée.
+      const max = settingDefOf(key)!.maxLength;
+      expect(max, key).toBeGreaterThan(0);
+      expect(validateSettingValue(settingDefOf(key)!, 'x'.repeat(max!)), key).toBeNull();
+      expect(validateSettingValue(settingDefOf(key)!, 'x'.repeat(max! + 1)), key).toBe('LENGTH');
     }
     const regime = settingDefOf(COMPANY_VAT_REGIME_SETTING)!;
     expect(regime).toMatchObject({ kind: 'choice', group: 'company' });

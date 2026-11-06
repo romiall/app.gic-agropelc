@@ -153,10 +153,14 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
     .values({ zone_id: zoneId, ancestor_id: zoneId, depth: 0 })
     .execute();
   if (parentId !== undefined) {
+    // Lecture verrouillante : après l'attente du verrou de la parente (un déplacement en cours), une lecture simple
+    // verrait l'instantané pris avant l'attente (lecture répétable) et la nouvelle zone recevrait d'anciens ancêtres
+    // avec la profondeur à jour (revue adverse du 05/11/2026).
     const parentAncestors = await uow
       .selectFrom('organization_zone_ancestors')
       .select(['ancestor_id', 'depth'])
       .where('zone_id', '=', toBin(parentId))
+      .forShare()
       .execute();
     for (const ancestor of parentAncestors) {
       await uow
@@ -256,22 +260,46 @@ const move: CommandHandler<MovePayload> = async (uow, envelope) => {
       : newParentId !== null && zone.parent_id.equals(newParentId);
   if (unchanged) return { status: 'APPLIED' };
 
-  // La zone et ses descendantes, avec leur distance à la zone déplacée.
-  const found = await uow
-    .selectFrom('organization_zone_ancestors')
-    .select(['zone_id', 'depth'])
-    .where('ancestor_id', '=', zoneId)
-    .execute();
+  // La zone et ses descendantes, avec leur distance à la zone déplacée. Lue et verrouillée jusqu'à stabilité : sous la
+  // lecture répétable, une lecture simple ne verrait pas une zone créée (ou déplacée) et validée pendant l'attente des
+  // verrous ; une lecture verrouillante voit le dernier état validé. Chaque tour verrouille les zones trouvées (ordre
+  // des identifiants), puis relit : une création sous l'une d'elles attend le verrou de sa parente, donc ce qui
+  // paraît entre deux tours est ce qui a été validé avant notre verrou. (Revue adverse du 05/11/2026.)
+  const subtreeOf = () =>
+    uow
+      .selectFrom('organization_zone_ancestors')
+      .select(['zone_id', 'depth'])
+      .where('ancestor_id', '=', zoneId)
+      .forShare()
+      .execute();
+  let found = await subtreeOf();
   // Toute zone porte sa propre ligne de fermeture (profondeur 0) depuis sa création ; garde-fou seulement.
-  const subtree = found.length > 0 ? found : [{ zone_id: zone.id, depth: 0 }];
+  let subtree = found.length > 0 ? found : [{ zone_id: zone.id, depth: 0 }];
+  for (let round = 0; ; round += 1) {
+    await uow
+      .selectFrom('organization_zones')
+      .select('id')
+      .where(
+        'id',
+        'in',
+        subtree.map((row) => row.zone_id),
+      )
+      .orderBy('id')
+      .forUpdate()
+      .execute();
+    found = await subtreeOf();
+    const reread = found.length > 0 ? found : [{ zone_id: zone.id, depth: 0 }];
+    const known = new Set(subtree.map((row) => fromBin(row.zone_id)));
+    const stable =
+      reread.length === subtree.length && reread.every((row) => known.has(fromBin(row.zone_id)));
+    subtree = reread;
+    if (stable) break;
+    // Un déplacement ou une création concurrents se suivent rarement plus de quelques fois : au-delà, l'erreur est
+    // transitoire (commande rejouée), jamais un déplacement sur une sous-arborescence incomplète.
+    if (round >= 8)
+      throw new Error(`Sous-arborescence de la zone ${envelope.aggregate_id} instable.`);
+  }
   const subtreeIds = subtree.map((row) => row.zone_id);
-  await uow
-    .selectFrom('organization_zones')
-    .select('id')
-    .where('id', 'in', subtreeIds)
-    .orderBy('id')
-    .forUpdate()
-    .execute();
 
   let parentDepth = 0;
   let parentAncestors: readonly { ancestor_id: Buffer; depth: number }[] = [];
@@ -297,6 +325,7 @@ const move: CommandHandler<MovePayload> = async (uow, envelope) => {
       .selectFrom('organization_zone_ancestors')
       .select(['ancestor_id', 'depth'])
       .where('zone_id', '=', newParentId)
+      .forShare()
       .execute();
   }
 
@@ -306,6 +335,7 @@ const move: CommandHandler<MovePayload> = async (uow, envelope) => {
     .select('ancestor_id')
     .where('zone_id', '=', zoneId)
     .where('ancestor_id', '!=', zoneId)
+    .forShare()
     .execute();
   if (oldAbove.length > 0) {
     await uow

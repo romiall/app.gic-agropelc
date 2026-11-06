@@ -155,4 +155,34 @@ describe('Compaction du flux de changements (BR-SYN-015, AV-520)', () => {
     expect(second.deleted).toBe(2);
     expect(await remaining(ds)).toEqual([seqs[4]]);
   });
+
+  it('des lots d’une ligne reprennent après le dernier numéro rendu et purgent tout ce qui est remplacé, rien de plus', async () => {
+    const ds = dataset();
+    const e1 = freshUuid();
+    const e2 = freshUuid();
+    // Deux entités entrelacées : quatre lignes remplacées, deux dernières lignes conservées, une ligne récente.
+    const a1 = await row({ dataset: ds, entityId: e1, at: OLD(1) });
+    const b1 = await row({ dataset: ds, entityId: e2, at: OLD(1) });
+    const a2 = await row({ dataset: ds, entityId: e1, at: OLD(2) });
+    const b2 = await row({ dataset: ds, entityId: e2, at: OLD(2) });
+    const a3 = await row({ dataset: ds, entityId: e1, at: OLD(3) });
+    const b3 = await row({ dataset: ds, entityId: e2, at: OLD(3) });
+    const recent = await row({ dataset: ds, entityId: freshUuid(), at: RECENT });
+    const outcome = await purge(BEFORE, { batch: 1, maxBatches: 10 });
+    expect(outcome).toEqual({ deleted: 4, truncated: false });
+    expect(await remaining(ds)).toEqual([a3, b3, recent]);
+    expect([a1, b1, a2, b2].every((seq) => seq < a3)).toBe(true);
+  });
+
+  it('aucune ligne plus ancienne que la coupure : rien à lire ni à supprimer', async () => {
+    const ds = dataset();
+    const entity = freshUuid();
+    const first = await row({ dataset: ds, entityId: entity, at: OLD(1) });
+    const second = await row({ dataset: ds, entityId: entity, at: OLD(2) });
+    expect(await purge(new Date('1990-01-01T00:00:00.000Z'))).toEqual({
+      deleted: 0,
+      truncated: false,
+    });
+    expect(await remaining(ds)).toEqual([first, second]);
+  });
 });

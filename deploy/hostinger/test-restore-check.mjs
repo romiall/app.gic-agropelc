@@ -8,10 +8,12 @@ import zlib from 'node:zlib';
 import { Readable } from 'node:stream';
 import {
   DATABASE_PREFIX,
+  autoVersionProblems,
   definerStripper,
   hostOfDefaults,
   inspectDump,
   isLocalHost,
+  migrationVersions,
   newestMigrationVersion,
   restoreDatabaseName,
   stripDefiner,
@@ -94,6 +96,36 @@ assert.equal(
   '20261203100000',
 );
 assert.equal(newestMigrationVersion([]), null);
+assert.deepEqual(
+  migrationVersions(['20261203100000_b.sql', 'LISEZMOI.md', '20261201090600_c.sql']),
+  ['20261201090600', '20261203100000'],
+  'versions triees, fichiers qui ne sont pas des migrations ignores',
+);
+
+// -- mode auto : la base en ligne peut etre en retard sur le depot ---------------------------------------------------------
+const repo = ['20261201090600', '20261202090000', '20261203090000', '20261203100000'];
+// Cas reel du premier essai de restauration : la sauvegarde s'arrete a 20261202090000, le depot est plus avance.
+assert.deepEqual(autoVersionProblems(repo, ['20261201090600', '20261202090000']), {
+  latest: '20261202090000',
+  known: true,
+  missing: [],
+});
+// Sauvegarde a jour avec le depot.
+assert.deepEqual(autoVersionProblems(repo, repo), { latest: '20261203100000', known: true, missing: [] });
+// Une migration du depot absente de la sauvegarde, anterieure a sa derniere version : manque signale.
+assert.deepEqual(autoVersionProblems(repo, ['20261201090600', '20261203090000']), {
+  latest: '20261203090000',
+  known: true,
+  missing: ['20261202090000'],
+});
+// Derniere version inconnue du depot (sauvegarde d'une autre branche ou depot en retard) : pas fiable.
+assert.deepEqual(autoVersionProblems(repo, ['20261201090600', '20270101000000']), {
+  latest: '20270101000000',
+  known: false,
+  missing: [],
+});
+// Aucune migration enregistree.
+assert.deepEqual(autoVersionProblems(repo, []), { latest: null, known: false, missing: [] });
 
 // -- lecture d'une archive : integrite, tables, declencheurs, pied -------------------------------------------------------
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gic-restore-'));

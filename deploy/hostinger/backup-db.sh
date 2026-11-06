@@ -8,16 +8,20 @@
 #   2. mysqldump --single-transaction --routines --triggers, compresse, ecrit sous un nom provisoire ;
 #   3. controle : archive gzip valide, taille minimale, pied "Dump completed", nombre de tables ; sinon le fichier
 #      provisoire est supprime et le script echoue (code non nul : cron envoie le message d'erreur) ;
-#   4. le fichier prend son nom definitif gic-daily-AAAAMMJJ-HHMMSS.sql.gz (UTC) ;
+#   4. le fichier prend son nom definitif gic-daily-AAAAMMJJ-HHMMSS.sql.gz (UTC), latest.txt et une ligne OK du journal
+#      (backup.log, 500 lignes gardees) sont ecrits : la sauvegarde existe, quoi qu'il arrive ensuite ;
 #   5. rotation (backup-rotate.mjs) : 14 jours, plus la derniere de chacun des 6 derniers mois, jamais la plus recente ;
-#   6. une ligne dans le journal (backup.log, 500 lignes gardees).
+#      son echec (code non nul, sortie inattendue) est journalise ECHEC et fait echouer le script : la derniere ligne du
+#      journal est lue par pull-backups.ps1, qui s'arrete alors au lieu de "reussir" en silence.
 # Les sauvegardes de livraison (~/backups_db/gic-<horodatage>.sql.gz) sont dans le dossier parent : jamais touchees.
+# Le dump contient toutes les donnees de GIC (comptes, mots de passe haches, ventes) : umask 077, dossier en 700.
 #
 # Variables (toutes facultatives) : APP_DIR, OPS_DIR (ou sont backup-rotate.mjs), BACKUP_DIR, BACKUP_LOG,
 # BACKUP_KEEP_DAYS, BACKUP_KEEP_MONTHS, BACKUP_MIN_BYTES, BACKUP_MIN_TABLES, BACKUP_DUMP_ARGS (options de mysqldump en plus, par exemple
 # --no-tablespaces sur un MySQL 8 dont le compte n a pas le privilege PROCESS).
 # Fichier ASCII volontairement (sortie lisible dans la console Windows).
 set -euo pipefail
+umask 077
 
 APP="${APP_DIR:-$HOME/domains/gic-agropelc.com/nodejs-app}"
 OPS="${OPS_DIR:-$HOME/gic-ops}"
@@ -49,6 +53,7 @@ fail() {
 }
 
 mkdir -p "$DEST" "$(dirname "$LOG")"
+chmod 700 "$DEST" 2>/dev/null || true
 # Verrou : un script reste parfois bloque (reseau) ; au-dela de 3 heures le verrou est considere perime.
 if ! mkdir "$LOCK" 2>/dev/null; then
   if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +180 2>/dev/null)" ]; then
@@ -93,13 +98,26 @@ TABLES="$(gzip -dc "$PARTIAL" | grep -c '^CREATE TABLE' || true)"
 
 mv "$PARTIAL" "$FINAL"
 echo "OK : $FINAL ($(du -h "$FINAL" | cut -f1), $TABLES tables)"
-
-ROTATION="rotation non faite (backup-rotate.mjs absent de $OPS)"
-if [ -f "$OPS/backup-rotate.mjs" ]; then
-  ROTATION="$(node "$OPS/backup-rotate.mjs" "$DEST" --keep-days "$KEEP_DAYS" --keep-months "$KEEP_MONTHS" | tail -n 1)"
-fi
-echo "$ROTATION"
+# La sauvegarde existe : latest.txt et la ligne OK sont ecrits AVANT la rotation, dont un echec ne les efface pas.
 printf '%s\n' "gic-daily-$STAMP.sql.gz" > "$DEST/latest.txt"
-log "OK gic-daily-$STAMP.sql.gz $SIZE octets, $TABLES tables ; $ROTATION"
+log "OK gic-daily-$STAMP.sql.gz $SIZE octets, $TABLES tables"
+
 # Le journal ne grossit pas sans fin.
-if [ "$(wc -l < "$LOG")" -gt 500 ]; then tail -n 500 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"; fi
+trim_log() { if [ "$(wc -l < "$LOG")" -gt 500 ]; then tail -n 500 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"; fi; }
+
+if [ -f "$OPS/backup-rotate.mjs" ]; then
+  # Un code non nul de la rotation (sous `set -e`, l'affectation aurait tue le script sans une ligne de journal) ou une
+  # sortie qui ne commence pas par "rotation :" (script muet) sont des echecs journalises.
+  ROTATION="$(node "$OPS/backup-rotate.mjs" "$DEST" --keep-days "$KEEP_DAYS" --keep-months "$KEEP_MONTHS" | tail -n 1)" \
+    || { trim_log; fail "rotation en echec (backup-rotate.mjs) ; la sauvegarde $FINAL existe"; }
+  case "$ROTATION" in
+    "rotation :"*) ;;
+    *) trim_log; fail "sortie inattendue de backup-rotate.mjs : '$ROTATION' ; la sauvegarde $FINAL existe" ;;
+  esac
+  echo "$ROTATION"
+  log "ROTATION $ROTATION"
+else
+  echo "rotation non faite (backup-rotate.mjs absent de $OPS)"
+  log "ROTATION non faite (backup-rotate.mjs absent de $OPS)"
+fi
+trim_log

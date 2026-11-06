@@ -357,7 +357,16 @@ function RuleEditor({
               {withCurrent(
                 campaignOptions(refs.campaigns, clock.now()),
                 form.commercialCampaignId,
-                t('price_rules.campaign_unknown'),
+                // Une campagne connue mais terminée ou inactive garde son nom (et le dit) ; seule une campagne que
+                // l'appareil ne connaît pas est « inconnue ».
+                (() => {
+                  const known = refs.campaigns.find(
+                    (campaign) => campaign.id === form.commercialCampaignId,
+                  );
+                  return known
+                    ? t('price_rules.campaign_ended', { name: campaignLabel(known) })
+                    : t('price_rules.campaign_unknown');
+                })(),
               ).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}

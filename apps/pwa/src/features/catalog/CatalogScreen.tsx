@@ -101,6 +101,8 @@ interface SectionProps {
   readonly userId: string;
   /** Codes des créations encore en attente (un doublon serait renvoyé sans fin). */
   readonly pending: ReturnType<typeof pendingCatalogCodes>;
+  /** Change à chaque réponse d'une opération du catalogue : les lectures annexes (coût standard) se relisent alors. */
+  readonly reloadKey: string;
 }
 
 function Issues({ issues, prefix }: { issues: readonly string[]; prefix: string }) {
@@ -305,7 +307,16 @@ function CategoriesSection({ refs, send, blocked, userId, pending }: SectionProp
   );
 }
 
-function ProductsSection({ refs, units, products, send, blocked, userId, pending }: SectionProps) {
+function ProductsSection({
+  refs,
+  units,
+  products,
+  send,
+  blocked,
+  userId,
+  pending,
+  reloadKey,
+}: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT);
   const [creating, setCreating] = useState(false);
@@ -378,6 +389,7 @@ function ProductsSection({ refs, units, products, send, blocked, userId, pending
           send={send}
           blocked={blocked}
           userId={userId}
+          reloadKey={reloadKey}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -1060,6 +1072,7 @@ export function CatalogScreen() {
           blocked,
           userId,
           pending,
+          reloadKey,
         }
       : null;
   const failed = units.failed || products.failed || reasons.failed;

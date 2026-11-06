@@ -799,4 +799,55 @@ describe('créances, CA et marges (P4-09)', () => {
     });
     expect(sinceConfirmation.map((l) => l.saleId)).toEqual([sale]);
   });
+
+  it('AV-513 : une commande à deux ventes — l’échéance de la seconde se compte depuis SA première livraison, pas celle de la commande', async () => {
+    const customer = await newCustomer({ credit: true });
+    const product = await sellable(1000);
+    await stock(product.id, 3, 600);
+    // Commande de 5 pièces le 01/10 alors que 3 seulement sont en stock : première vente de 3 pièces, livrée le 03/10.
+    const { id: orderId } = await placed(
+      { customerId: customer, lines: [line(product, 5)] },
+      '2026-10-01T09:00:00.000Z',
+    );
+    const [firstRow] = await ordersSales(orderId);
+    const first = fromBin(firstRow!.id);
+    await deliver(first, 3, '2026-10-03T10:00:00.000Z');
+    // Le reste arrive : seconde vente le 06/10, livrée le 09/10.
+    await stock(product.id, 2, 700);
+    const rest = await run(
+      commercial,
+      'sales.order.confirm_remaining',
+      'SALES_ORDER',
+      orderId,
+      '2026-10-06T09:00:00.000Z',
+      {},
+    );
+    expect(rest.status, JSON.stringify(rest)).toBe('APPLIED');
+    const second = fromBin((await ordersSales(orderId))[1]!.id);
+    await deliver(second, 2, '2026-10-09T10:00:00.000Z');
+
+    const dueOn = async (deliveredOnly: boolean) =>
+      Object.fromEntries(
+        (
+          await listReceivables(db, { today: '2026-11-20', customerIds: [customer], deliveredOnly })
+        ).map((l) => [l.saleId, l.dueDate]),
+      );
+    const atConfirmation = await dueOn(false);
+    const afterDelivery = await dueOn(true);
+    const days = (from: string, to: string) =>
+      Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+    const plus = (day: string, count: number) =>
+      new Date(Date.parse(day) + count * 86_400_000).toISOString().slice(0, 10);
+    // Chaque vente garde le délai accordé à SA confirmation, compté depuis SA première livraison.
+    expect(afterDelivery[first]).toBe(
+      plus('2026-10-03', days('2026-10-01', atConfirmation[first]!)),
+    );
+    expect(afterDelivery[second]).toBe(
+      plus('2026-10-09', days('2026-10-06', atConfirmation[second]!)),
+    );
+    // Avant la correction, la seconde vente prenait la livraison de la première (03/10) : échéance trop tôt.
+    expect(afterDelivery[second]).not.toBe(
+      plus('2026-10-03', days('2026-10-06', atConfirmation[second]!)),
+    );
+  });
 });

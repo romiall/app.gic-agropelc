@@ -176,6 +176,18 @@ export function normalizeHeaderName(name: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
+const FORMULA_STARTS = new Set(['=', '+', '-', '@', '\t', '\r']);
+
+/**
+ * Cellule TEXTE protégée contre l'injection de formule : un nom de produit, d'emplacement ou de client qui commence par
+ * `=`, `+`, `-`, `@` (ou une tabulation, un retour chariot) serait lu comme une formule à l'ouverture dans Excel ; il est
+ * préfixé d'une apostrophe, comme les exports du serveur (`guardFormula`). À ne pas appliquer aux nombres : une quantité
+ * négative reste un nombre.
+ */
+export function guardFormula(text: string): string {
+  return text.length > 0 && FORMULA_STARTS.has(text[0] as string) ? `'${text}` : text;
+}
+
 function escapeCell(value: string, separator: CsvSeparator): string {
   return value.includes(separator) || /["\n\r]/.test(value)
     ? `"${value.replace(/"/g, '""')}"`

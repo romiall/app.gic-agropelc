@@ -541,12 +541,11 @@ export class CrmReadController {
             targetType: 'USER',
             ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
           })),
-          ...(
-            await listTargets(this.db, {
-              targetType: 'TEAM',
-              ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
-            })
-          ).filter((target) => target.teamManagerUserId === request.auth!.sub),
+          ...(await listTargets(this.db, {
+            targetType: 'TEAM',
+            teamManagerUserId: request.auth!.sub,
+            ...(query.active_on !== undefined ? { activeOn: query.active_on } : {}),
+          })),
         ]
       : await listTargets(this.db, {
           ...(userId !== undefined ? { userId } : {}),

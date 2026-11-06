@@ -102,6 +102,18 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+/** Lance `main` quand le fichier est le script executable : chemins compares apres resolution des liens symboliques. */
+function isEntryPoint() {
+  try {
+    return (
+      Boolean(process.argv[1]) &&
+      fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   process.exit(main(process.argv.slice(2)));
 }

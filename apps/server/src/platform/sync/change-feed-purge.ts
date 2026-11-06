@@ -18,6 +18,13 @@
  * récente » de chaque candidate parcourrait le jeu entier. Deux temps (`deleteBatchByKeys`) : lecture des numéros sans
  * verrou, puis suppression par clé primaire ; `DELETE` est accordé à l'application sur cette table depuis P0-09 (et le
  * déclencheur d'immuabilité ne refuse que les `UPDATE`).
+ *
+ * Parcours borné (revue adverse du 05/11/2026) : aucun index ne porte `recorded_at`, et la dernière ligne de chaque
+ * entité n'est jamais purgée. Le parcours est donc borné par le plus grand numéro de ligne plus ancienne que la coupure
+ * (lu une fois, du plus récent au plus ancien : le flux s'écrit dans l'ordre des numéros), et chaque lot reprend après
+ * le dernier numéro qu'il a rendu au lieu de repartir du début de la table. Une exécution lit ainsi chaque ligne
+ * ancienne une seule fois ; la suivante repart du début (les lignes conservées d'hier ne sont jamais purgeables, mais
+ * une ligne devenue remplacée depuis l'est).
  */
 import { sql } from 'kysely';
 import { deleteBatchByKeys, deleteByBatches, type BatchPurgeResult } from '../purge-batches.js';
@@ -32,6 +39,16 @@ export async function purgeSupersededChangeFeed(
   uow: UnitOfWork,
   input: { readonly before: Date; readonly batch?: number; readonly maxBatches?: number },
 ): Promise<BatchPurgeResult> {
+  const newestOld = await sql<{ seq: string }>`
+    SELECT f.seq
+      FROM sync_change_feed f
+     WHERE f.recorded_at < ${input.before}
+     ORDER BY f.seq DESC
+     LIMIT 1`.execute(uow);
+  const newestOldRow = newestOld.rows[0];
+  if (newestOldRow === undefined) return { deleted: 0, truncated: false };
+  const upper = Number(newestOldRow.seq);
+  let cursor = 0;
   return deleteByBatches(
     (limit) =>
       deleteBatchByKeys(
@@ -40,7 +57,9 @@ export async function purgeSupersededChangeFeed(
           const result = await sql<{ seq: string }>`
             SELECT f.seq
               FROM sync_change_feed f
-             WHERE f.recorded_at < ${input.before}
+             WHERE f.seq > ${cursor}
+               AND f.seq <= ${upper}
+               AND f.recorded_at < ${input.before}
                AND EXISTS (
                  SELECT 1 FROM sync_change_feed n
                   WHERE n.entity_id = f.entity_id
@@ -51,7 +70,9 @@ export async function purgeSupersededChangeFeed(
                     AND n.scope_id <=> f.scope_id)
              ORDER BY f.seq
              LIMIT ${size}`.execute(uow);
-          return result.rows.map((row) => Number(row.seq));
+          const seqs = result.rows.map((row) => Number(row.seq));
+          if (seqs.length > 0) cursor = seqs[seqs.length - 1]!;
+          return seqs;
         },
         async (seqs) =>
           Number(

@@ -237,7 +237,6 @@ export async function listReceivables(
       'amount_paid_xaf',
       'balance_due_xaf',
       'sale_type',
-      'order_id',
       sql<string>`DATE_FORMAT(due_date, '%Y-%m-%d')`.as('due'),
       sql<string>`DATE_FORMAT(business_date, '%Y-%m-%d')`.as('business_day'),
     ])
@@ -319,20 +318,19 @@ export async function listReceivables(
           ),
       );
     }
-    const orderIds = rows
-      .filter((row) => row.sale_type === 'ORDER' && row.order_id !== null)
-      .map((row) => row.order_id!);
-    const notes =
-      orderIds.length === 0
-        ? []
-        : await executor
-            .selectFrom('sales_delivery_notes')
-            .select(['order_id', sql<Date | string>`MIN(occurred_at)`.as('first_at')])
-            .where('order_id', 'in', orderIds)
-            .groupBy('order_id')
-            .execute();
-    for (const note of notes) {
-      firstDelivery.set(fromBin(note.order_id), businessDayOf(new Date(note.first_at)));
+    // Première livraison de CHAQUE vente, par les lignes de bon de livraison, et non celle de la commande : une
+    // commande porte plusieurs ventes quand son reste est confirmé plus tard (ADR-028 §4), et l'échéance d'une vente
+    // tardive ne se compte pas depuis la livraison d'une vente plus ancienne.
+    const deliveries = await executor
+      .selectFrom('sales_delivery_note_lines as dl')
+      .innerJoin('sales_delivery_notes as dn', 'dn.id', 'dl.delivery_note_id')
+      .innerJoin('sales_sale_lines as sl', 'sl.id', 'dl.sale_line_id')
+      .select(['sl.sale_id as sale_id', sql<Date | string>`MIN(dn.occurred_at)`.as('first_at')])
+      .where('sl.sale_id', 'in', orderSaleIds)
+      .groupBy('sl.sale_id')
+      .execute();
+    for (const delivery of deliveries) {
+      firstDelivery.set(fromBin(delivery.sale_id), businessDayOf(new Date(delivery.first_at)));
     }
   }
 
@@ -349,8 +347,7 @@ export async function listReceivables(
       });
       // Une commande qu'on n'a pas livrée n'est pas une créance.
       if (balanceDueXaf <= 0) continue;
-      const delivered =
-        row.order_id === null ? undefined : firstDelivery.get(fromBin(row.order_id));
+      const delivered = firstDelivery.get(fromBin(row.id));
       if (row.sale_type === 'ORDER' && delivered !== undefined) {
         // L'échéance garde le délai accordé à la confirmation, compté depuis la première livraison.
         const soldOn = row.business_day ?? businessDayOf(row.occurred_at);

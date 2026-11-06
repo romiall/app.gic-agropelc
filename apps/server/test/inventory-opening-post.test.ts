@@ -10,6 +10,10 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
 import { registerCountCommands } from '../src/modules/inventory/application/commands/count-commands.js';
+import {
+  recordStockMove,
+  virtualLocationId,
+} from '../src/modules/inventory/application/public/index.js';
 import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
 import { registerRequestCommands } from '../src/modules/approvals/application/commands/request-commands.js';
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
@@ -365,6 +369,12 @@ describe('inventory.opening.post (BR-STK-046, AV-517)', () => {
     expect(rejected.status, JSON.stringify(rejected)).toBe('APPLIED');
     expect((await countRow(first)).status).toBe('REJECTED');
     expect(await balanceOf(product, locationId)).toBe(0);
+    // Le même identifiant renvoyé après le refus n'est pas « fait » : répondre « appliqué » sans rien créer laisserait
+    // croire à un stock posé (une nouvelle tentative prend un autre identifiant).
+    expect(
+      await post(locationId, [{ productId: product, quantityBase: 5, unitCostXaf: 10 }], first),
+    ).toMatchObject({ status: 'REJECTED', error: { code: 'OPENING_ID_TAKEN' } });
+    expect((await countRow(first)).status).toBe('REJECTED');
 
     const second = freshUuid();
     expect(
@@ -451,6 +461,104 @@ describe('inventory.opening.post (BR-STK-046, AV-517)', () => {
     expect((await invalid([{ productId: product, quantityBase: 1, unitCostXaf: -1 }])).status).toBe(
       'REJECTED',
     );
+  });
+
+  it('un emplacement qui a déjà des mouvements pour ces produits ne reçoit pas de stock d’ouverture (pas de double comptage)', async () => {
+    const locationId = await newStore();
+    const moved = await insertProduct(admin);
+    const untouched = await insertProduct(admin);
+    // 50 pièces reçues avant l'ouverture : le fichier d'ouverture qui les recompte s'ajouterait au stock existant.
+    await db.transaction().execute(async (trx) =>
+      recordStockMove(
+        trx,
+        { idGenerator },
+        {
+          productId: moved,
+          quantityBase: 50,
+          fromLocationId: await virtualLocationId(trx, 'V_SUPPLIER'),
+          toLocationId: locationId,
+          moveType: 'PURCHASE_RECEIPT',
+          declaredUnitCostXaf: 100,
+          occurredAt: new Date(OCCURRED_AT),
+          sourceDocType: 'GOODS_RECEIPT',
+          sourceDocId: freshUuid(),
+          createdBy: admin,
+          allowNegative: false,
+        },
+      ),
+    );
+    expect(
+      await post(locationId, [{ productId: moved, quantityBase: 80, unitCostXaf: 100 }]),
+    ).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'OPENING_LOCATION_NOT_EMPTY' },
+    });
+    // Un seul produit déjà en mouvement suffit à refuser le document entier.
+    expect(
+      await post(locationId, [
+        { productId: untouched, quantityBase: 3, unitCostXaf: 10 },
+        { productId: moved, quantityBase: 80, unitCostXaf: 100 },
+      ]),
+    ).toMatchObject({ status: 'REJECTED', error: { code: 'OPENING_LOCATION_NOT_EMPTY' } });
+    expect(await balanceOf(moved, locationId)).toBe(50);
+    // Les produits sans mouvement sur cet emplacement se chargent normalement.
+    expect(
+      (await post(locationId, [{ productId: untouched, quantityBase: 3, unitCostXaf: 10 }])).status,
+    ).toBe('APPLIED');
+  });
+
+  it('deux stocks d’ouverture simultanés pour le même emplacement : un seul passe, l’autre reçoit un refus propre', async () => {
+    const locationId = await newStore();
+    const product = await insertProduct(admin);
+    const [first, second] = await Promise.all([
+      post(locationId, [{ productId: product, quantityBase: 5, unitCostXaf: 10 }]),
+      post(locationId, [{ productId: product, quantityBase: 6, unitCostXaf: 10 }]),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses, JSON.stringify([first, second])).toEqual(['APPLIED', 'REJECTED']);
+    const refused = first.status === 'REJECTED' ? first : second;
+    expect(refused).toMatchObject({ error: { code: 'OPENING_ALREADY_EXISTS' } });
+    const rows = await db
+      .selectFrom('inventory_inventory_counts')
+      .select('id')
+      .where('location_id', '=', toBin(locationId))
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  it('valeur du document en entiers : somme des valeurs de ligne arrondies, égale à celle des mouvements ; coût démesuré refusé', async () => {
+    const locationId = await newStore();
+    const a = await insertProduct(admin);
+    const b = await insertProduct(admin);
+    const countId = freshUuid();
+    // 0,333 × 100 = 33,3 → 33 ; 0,5 × 1 = 0,5 → 1 (demi supérieur) : la valeur du document est la somme des valeurs de
+    // ligne arrondies (34), comme celle des mouvements — et non l'arrondi d'un total en flottant (33,8 → 34 par chance).
+    const lines = [
+      { productId: a, quantityBase: 0.333, unitCostXaf: 100 },
+      { productId: b, quantityBase: 0.5, unitCostXaf: 1 },
+    ];
+    expect((await post(locationId, lines, countId)).status).toBe('APPLIED');
+    // 33 (33,3 arrondi) + 1 (0,5 arrondi au franc supérieur) : la valeur du document est celle des lignes arrondies.
+    expect(Number((await countRow(countId)).variance_value_xaf)).toBe(34);
+    expect((await decide(countId, 'approve')).status).toBe('APPLIED');
+    const moved = await db
+      .selectFrom('inventory_stock_moves')
+      .select('value_xaf')
+      .where('source_doc_id', '=', toBin(countId))
+      .execute();
+    expect(moved.reduce((sum, move) => sum + Number(move.value_xaf), 0)).toBe(34);
+
+    // Un coût au-delà du plafond (faute de frappe) est refusé à la validation de la charge.
+    const other = await newStore();
+    expect(
+      (await post(other, [{ productId: a, quantityBase: 1, unitCostXaf: 1_000_000_001 }])).status,
+    ).toBe('REJECTED');
+    // Une valeur de ligne hors limites sûres reçoit un refus explicite, pas une erreur technique.
+    expect(
+      await post(other, [
+        { productId: a, quantityBase: 99_999_999_999.999, unitCostXaf: 1_000_000_000 },
+      ]),
+    ).toMatchObject({ status: 'REJECTED', error: { code: 'OPENING_VALUE_TOO_LARGE' } });
   });
 
   it('rejeu du même identifiant : appliqué sans second document', async () => {

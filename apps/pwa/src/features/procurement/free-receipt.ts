@@ -25,12 +25,23 @@ export function freeReceiptSuppliers(suppliers: ReadonlyMap<string, SupplierData
   return [...suppliers.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
 
-/** Emplacements physiques et actifs d'un site, par nom : le magasinier choisit, rien n'est proposé d'office. */
-export function freeReceiptLocations(locations: readonly LocationData[]): LocationData[] {
+/**
+ * Emplacements physiques et actifs des sites de l'utilisateur (`siteIds`, déduits de ses affectations : AV-519 (1)),
+ * par nom : le magasinier choisit, rien n'est proposé d'office. Un emplacement d'un autre site serait refusé par le
+ * serveur (`FORBIDDEN_SCOPE`), y compris pour un fait saisi hors ligne : la réception serait perdue. `siteIds`
+ * absent : aucun filtre par site (essais).
+ */
+export function freeReceiptLocations(
+  locations: readonly LocationData[],
+  siteIds?: ReadonlySet<string>,
+): LocationData[] {
   return locations
     .filter(
       (location) =>
-        !location.is_virtual && location.status === 'ACTIVE' && location.site_id !== null,
+        !location.is_virtual &&
+        location.status === 'ACTIVE' &&
+        location.site_id !== null &&
+        (siteIds === undefined || siteIds.has(location.site_id)),
     )
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }

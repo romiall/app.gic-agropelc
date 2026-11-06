@@ -21,7 +21,10 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
-import { convertOnConfirmedSale } from '../src/modules/crm/application/public/index.js';
+import {
+  convertOnConfirmedSale,
+  listTargets,
+} from '../src/modules/crm/application/public/index.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -372,6 +375,55 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
     expect(idsOf(colleagueDefault.json().targets)).not.toContain(target1);
     const byColleague = await get(cte2, `/api/v1/targets?user_id=${cte1.userId}`);
     expect(byColleague.json().targets).toEqual([]);
+  });
+
+  it('GET /targets : les objectifs de l’équipe dirigée se filtrent dans la requête, pas après un plafond de lecture (S-39)', async () => {
+    const teamTarget = freshUuid();
+    await command(rco, 'crm.target.set', 'SALES_TARGET', teamTarget, at('06:05:00'), {
+      targetType: 'TEAM',
+      teamId,
+      metric: 'VISITES',
+      periodStart: '2026-09-01',
+      periodEnd: '2026-09-30',
+      targetValue: 40,
+    });
+    // L'équipe d'un autre responsable, avec un objectif plus récent (période commencée plus tard) : trié avant celui du
+    // responsable, il le chasserait d'une lecture plafonnée si le tri sur le responsable se faisait après coup.
+    const otherTeamTarget = freshUuid();
+    await db.transaction().execute(async (trx) => {
+      const admin = await insertTestUser(trx);
+      const otherManager = await insertTestUser(trx);
+      const otherTeam = await insertTestTeam(trx, otherManager, admin);
+      await trx
+        .insertInto('crm_sales_targets')
+        .values({
+          id: toBin(otherTeamTarget),
+          target_type: 'TEAM',
+          team_id: toBin(otherTeam),
+          metric: 'VISITES',
+          period_start: new Date('2026-09-10T00:00:00.000Z'),
+          period_end: new Date('2026-09-30T00:00:00.000Z'),
+          target_value: 25,
+          created_by: toBin(admin),
+        })
+        .execute();
+    });
+
+    const response = await get(rco, '/api/v1/targets');
+    expect(response.statusCode, response.body).toBe(200);
+    expect(idsOf(response.json().targets)).toContain(teamTarget);
+    expect(idsOf(response.json().targets)).not.toContain(otherTeamTarget);
+    // Un commercial ne lit pas l'objectif de l'équipe d'un autre.
+    const colleague = await get(cte2, '/api/v1/targets');
+    expect(idsOf(colleague.json().targets)).not.toContain(teamTarget);
+
+    // Plafonnée à une ligne, la lecture rend quand même l'objectif de l'équipe dirigée : le filtre est dans la requête.
+    const capped = await listTargets(db, {
+      targetType: 'TEAM',
+      teamManagerUserId: rco.userId,
+      limit: 1,
+    });
+    expect(capped.map((target) => target.id)).toEqual([teamTarget]);
   });
 
   it('AT-015 : effort commercial — jour, semaine, plage libre égaux aux opérations sous-jacentes', async () => {

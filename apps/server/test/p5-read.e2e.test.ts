@@ -92,6 +92,8 @@ describe('P5-17 : lectures HTTP de P5 et file des conflits', { timeout: 180_000 
   let financeSelfConflict: string;
   let reevaluatedConflict: string;
   let quarantineConflict: string;
+  /** Enveloppe de la commande mise en quarantaine (renvoyée telle quelle après la sortie de quarantaine). */
+  let staleCommand: Parameters<typeof send>[1];
 
   const get = (actor: Actor, url: string) =>
     app.inject({
@@ -111,12 +113,15 @@ describe('P5-17 : lectures HTTP de P5 et file des conflits', { timeout: 180_000 
       readonly payload: unknown;
       readonly offline?: boolean;
       readonly baseVersion?: number;
+      /** Pour renvoyer exactement la même enveloppe (rejeu d'une commande mise en quarantaine). */
+      readonly commandId?: string;
+      readonly deviceSeq?: number;
     },
   ): Promise<CommandResult> =>
     pipeline.handle(
       {
-        command_id: freshUuid(),
-        device_seq: ++deviceSeq,
+        command_id: command.commandId ?? freshUuid(),
+        device_seq: command.deviceSeq ?? ++deviceSeq,
         command_version: 1,
         command_type: command.type,
         aggregate_type: command.aggregateType,
@@ -401,14 +406,17 @@ describe('P5-17 : lectures HTTP de P5 et file des conflits', { timeout: 180_000 
     );
     financeSelfConflict = await conflictIdOf(central, 'CASH_NEGATIVE', transferFinance);
     // Quarantaine du magasinier : augmentation du quota sur une version périmée.
-    const stale = await send(magA, {
+    staleCommand = {
       type: 'inventory.allocation.increase',
       aggregateType: 'STOCK_ALLOCATION',
       aggregateId: allocationId,
       occurredAt: at('09:30'),
       payload: { quantityBase: 1 },
       baseVersion: 99,
-    });
+      commandId: freshUuid(),
+      deviceSeq: ++deviceSeq,
+    };
+    const stale = await send(magA, staleCommand);
     expect(stale.status, JSON.stringify(stale)).toBe('CONFLICT');
     quarantineConflict = await conflictIdOf(allocationId, 'VERSION_CONFLICT');
     // Une vingtaine de commandes de préparation : délai relevé pour un poste chargé.
@@ -850,6 +858,20 @@ describe('P5-17 : lectures HTTP de P5 et file des conflits', { timeout: 180_000 
       status: 'REJECTED',
       error: { code: 'COMMAND_DISCARDED' },
     });
+    // Le renvoi de la même enveloppe (l'appareil la rejoue) reçoit ce refus définitif : la commande n'est ni
+    // appliquée, ni remise en quarantaine (aucun second conflit).
+    const replay = await send(magA, staleCommand);
+    expect(replay).toMatchObject({ status: 'REJECTED', error: { code: 'COMMAND_DISCARDED' } });
+    expect(
+      (
+        await db
+          .selectFrom('sync_sync_conflicts')
+          .select('id')
+          .where('conflict_type', '=', 'VERSION_CONFLICT')
+          .where('entity_id', '=', toBin(allocationId))
+          .execute()
+      ).map((r) => fromBin(r.id)),
+    ).toEqual([quarantineConflict]);
     const [event] = await db
       .selectFrom('platform_domain_events')
       .select(['event_type', 'producer_module', 'payload'])

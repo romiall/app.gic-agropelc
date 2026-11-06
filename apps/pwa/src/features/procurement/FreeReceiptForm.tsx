@@ -41,6 +41,7 @@ import {
 } from './receipt.js';
 import { purchasableProducts } from './request.js';
 import { clock } from '../../platform/composition.js';
+import { expenseSites } from '../finance/expense.js';
 import { formatMoney } from '../sales/format.js';
 
 /** Au plus autant de lignes que le serveur en accepte (`lines.max(200)`). */
@@ -70,7 +71,17 @@ export function FreeReceiptForm({
 
   const { photoThresholdXaf } = receiptSettings(refs.settings, clock.now());
   const suppliers = freeReceiptSuppliers(refs.suppliers);
-  const locations = freeReceiptLocations(refs.locations);
+  // Emplacements des seuls sites de l'utilisateur, d'après ses affectations (comme les sites d'une dépense, AV-301).
+  const mySites = new Set(
+    expenseSites({
+      assignments: refs.roleAssignments,
+      userId,
+      sites: refs.sites,
+      zones: refs.zones,
+      now: clock.now(),
+    }).map((site) => site.id),
+  );
+  const locations = freeReceiptLocations(refs.locations, mySites);
   const catalog = purchasableProducts(refs.products);
   const productById = new Map(refs.products.map((product) => [product.id, product]));
   const reasons = refs.reasonCodes.filter((reason) => reason.category === 'REJECTION');
@@ -192,11 +203,17 @@ export function FreeReceiptForm({
             onChange={(event) => setLocationId(event.target.value)}
           >
             <option value="">{t('purchase_receipt.location_placeholder')}</option>
-            {locations.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
+            {locations.map((candidate) => {
+              // Deux sites peuvent avoir un emplacement de même nom : le site est dit à côté.
+              const siteName = candidate.site_id
+                ? refs.sites.get(candidate.site_id)?.name
+                : undefined;
+              return (
+                <option key={candidate.id} value={candidate.id}>
+                  {siteName ? `${candidate.name} — ${siteName}` : candidate.name}
+                </option>
+              );
+            })}
           </Select>
         )}
       </Field>

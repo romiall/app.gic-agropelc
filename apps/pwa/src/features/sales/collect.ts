@@ -35,8 +35,10 @@ export interface ReceivableLine {
 
 /**
  * Créances d'un client lues en ligne. `accountIds` : son compte et ceux qu'il a absorbés
- * (BR-CRM-007) ; `GET /receivables?customer_id=` n'étend pas aux comptes absorbés (S-22), l'écran
- * lit donc chaque compte.
+ * (BR-CRM-007) ; `GET /receivables?customer_id=` rend les ventes du compte conservé ET celles de ses
+ * comptes absorbés (S-22), l'écran ne lit donc que le compte conservé. Une vente n'est comptée qu'une fois
+ * (`saleId`) : un serveur qui la rendrait deux fois, ou une réponse relue, ne doit jamais doubler le total
+ * ni la répartition de l'encaissement.
  */
 export function duesFromReceivables(
   lines: readonly ReceivableLine[],
@@ -44,12 +46,17 @@ export function duesFromReceivables(
   accountIds: readonly string[] = [customerId],
 ): Due[] {
   const accounts = new Set(accountIds);
+  const seen = new Set<string>();
   return sortDues(
     lines
-      .filter(
-        (line) =>
-          line.customerId !== null && accounts.has(line.customerId) && line.balanceDueXaf > 0,
-      )
+      .filter((line) => {
+        if (line.customerId === null || !accounts.has(line.customerId) || line.balanceDueXaf <= 0) {
+          return false;
+        }
+        if (seen.has(line.saleId)) return false;
+        seen.add(line.saleId);
+        return true;
+      })
       .map((line) => ({
         saleId: line.saleId,
         docNumber: line.docNumber,

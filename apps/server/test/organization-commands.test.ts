@@ -79,6 +79,39 @@ async function createRealUser(): Promise<string> {
   return db.transaction().execute((trx) => insertTestUser(trx));
 }
 
+/**
+ * Plus grand numéro du flux de changements : à prendre avant une commande pour ne compter ensuite que ce qu'elle a
+ * publiée (une ligne écrite plus tôt, par la création d'une entité, ne prouve rien — revue adverse du 05/11/2026).
+ */
+async function feedHighWater(): Promise<number> {
+  const row = await db
+    .selectFrom('sync_change_feed')
+    .select((eb) => eb.fn.max('seq').as('top'))
+    .executeTakeFirst();
+  return Number(row?.top ?? 0);
+}
+
+/** Entités d'un jeu publiées après `since`, dans l'ordre des numéros (doublons conservés). */
+async function publishedSince(
+  since: number,
+  dataset: string,
+  ids: readonly string[],
+): Promise<string[]> {
+  const rows = await db
+    .selectFrom('sync_change_feed')
+    .select('entity_id')
+    .where('seq', '>', since)
+    .where('dataset', '=', dataset)
+    .where(
+      'entity_id',
+      'in',
+      ids.map((id) => toBin(id)),
+    )
+    .orderBy('seq', 'asc')
+    .execute();
+  return rows.map((row) => fromBin(row.entity_id));
+}
+
 describe('organization.* (P0-11)', () => {
   let pipeline: CommandPipelineService;
   let clock: Clock;
@@ -371,6 +404,7 @@ describe('organization.* (P0-11)', () => {
       const e = await createZone(d);
       expect(await closureOf(c)).toEqual({ [c]: 0, [b]: 1, [a]: 2 });
 
+      const feedBefore = await feedHighWater();
       const moved = await moveZone(b, e);
       expect(moved.status, JSON.stringify(moved)).toBe('APPLIED');
       expect(await closureOf(b)).toEqual({ [b]: 0, [e]: 1, [d]: 2 });
@@ -379,14 +413,12 @@ describe('organization.* (P0-11)', () => {
       expect(fromBin((await rowOf(b)).parent_id!)).toBe(e);
       expect((await rowOf(b)).depth).toBe(3);
       expect((await rowOf(c)).depth).toBe(4);
-      // La zone déplacée et ses descendantes sont publiées (la profondeur d'une règle de prix en dépend).
-      const published = await db
-        .selectFrom('sync_change_feed')
-        .select('entity_id')
-        .where('dataset', '=', 'zone')
-        .where('entity_id', 'in', [toBin(b), toBin(c)])
-        .execute();
-      expect(published.map((row) => fromBin(row.entity_id))).toContain(c);
+      // La zone déplacée (publiée par le pipeline) et sa descendante (publiée par le déplacement lui-même : la
+      // profondeur d'une règle de prix en dépend) le sont APRÈS la commande ; les lignes écrites à leur création ne
+      // comptent pas.
+      const published = await publishedSince(feedBefore, 'zone', [b, c]);
+      expect(published).toContain(b);
+      expect(published).toContain(c);
 
       // À la racine : plus aucune ancêtre au-dessus de la zone déplacée.
       const toRoot = await moveZone(b, null);
@@ -735,6 +767,7 @@ describe('organization.* (P0-11)', () => {
       );
 
       const membership2 = freshUuid();
+      const feedBeforeMove = await feedHighWater();
       const moveResult = await pipeline.handle(
         buildEnvelope(admin, {
           command_type: 'organization.team.assign_member',
@@ -753,7 +786,12 @@ describe('organization.* (P0-11)', () => {
         .where('id', '=', toBin(membership1))
         .executeTakeFirstOrThrow();
       expect(first.valid_to).not.toBeNull(); // fermée par le déplacement
+      // Le déplacement publie l'ancienne appartenance fermée (le pipeline, lui, ne publie que la nouvelle).
+      expect(await publishedSince(feedBeforeMove, 'team_membership', [membership1])).toHaveLength(
+        1,
+      );
 
+      const feedBeforeRemove = await feedHighWater();
       const removeResult = await pipeline.handle(
         buildEnvelope(admin, {
           command_type: 'organization.team.remove_member',
@@ -772,6 +810,10 @@ describe('organization.* (P0-11)', () => {
         .where('id', '=', toBin(membership2))
         .executeTakeFirstOrThrow();
       expect(second.valid_to).not.toBeNull();
+      // Le retrait publie l'appartenance fermée : l'identifiant de sa commande est neuf, le pipeline ne l'a pas fait.
+      expect(await publishedSince(feedBeforeRemove, 'team_membership', [membership2])).toHaveLength(
+        1,
+      );
 
       // S-28 (RP-3) : les appartenances d'équipe sont publiées dans sync_change_feed.
       const feedRows = await db
@@ -836,6 +878,7 @@ describe('organization.* (P0-11)', () => {
           }),
           ctx(),
         );
+      const feedBeforeClose = await feedHighWater();
       const closed = await close('Réorganisation');
       expect(closed.status, JSON.stringify(closed)).toBe('APPLIED');
 
@@ -852,18 +895,10 @@ describe('organization.* (P0-11)', () => {
         .execute();
       expect(rows).toHaveLength(2);
       for (const row of rows) expect(row.valid_to).not.toBeNull();
-      // Chaque appartenance close est republiée (l'appareil cesse de compter ces membres).
-      const published = await db
-        .selectFrom('sync_change_feed')
-        .select('entity_id')
-        .where('dataset', '=', 'team_membership')
-        .where(
-          'entity_id',
-          'in',
-          memberships.map((id) => toBin(id)),
-        )
-        .execute();
-      expect(published.length).toBeGreaterThanOrEqual(4);
+      // Chaque appartenance close est republiée APRÈS la fermeture (l'appareil cesse de compter ces membres) : une
+      // ligne chacune, écrite par la commande — pas celles de l'affectation.
+      const published = await publishedSince(feedBeforeClose, 'team_membership', memberships);
+      expect([...published].sort()).toEqual([...memberships].sort());
 
       // Une équipe fermée ne reçoit plus de membre.
       const refused = await pipeline.handle(

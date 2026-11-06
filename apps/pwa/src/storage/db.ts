@@ -152,6 +152,12 @@ export interface SyncMeta {
   last_sync_at: string | null;
   /** Utilisateur dont l'appareil détient les jeux téléchargés (ADR-037). */
   data_user_id?: string | null;
+  /**
+   * Vrai après l'effacement des données d'un appareil hors service (AV-213 (c)) : `data_user_id` est alors vide, mais
+   * ce n'est PAS un appareil d'avant ce champ — un tirage en vol peut avoir écrit des lignes depuis, que le prochain
+   * propriétaire ne doit pas hériter (ADR-037). Remis à faux au prochain rattachement des données.
+   */
+  data_wiped?: boolean;
   /** Dernier lot refusé en bloc sans qu'une commande soit désignée ; `null` ou absent : aucun. */
   push_refusal?: PushRefusal | null;
 }

@@ -108,19 +108,38 @@ describe('identité de la société lue des paramètres (AV-324 (a))', () => {
     expect(identite.telephones).toBe(IDENTITE.telephones);
   });
 
-  it('une valeur qui n’est pas du texte est ignorée ; une version à venir n’est pas en vigueur', () => {
+  it('une valeur qui n’est pas du texte est ignorée ; la version en vigueur passe avant une version à venir', () => {
     const identite = identiteDepuisParametres(
       [
         parametre('company.niu', 12345),
-        parametre('company.city', 'Yaoundé', '2026-12-01T00:00:00.000Z'),
         parametre('company.phones', '+237 600 000 000', '2026-10-01T00:00:00.000Z'),
         parametre('company.phones', '+237 611 111 111', '2026-11-02T00:00:00.000Z'),
+        parametre('company.phones', '+237 622 222 222', '2026-12-01T00:00:00.000Z'),
       ],
       NOW,
     );
     expect(identite.niu).toBe(IDENTITE.niu);
-    expect(identite.ville).toBe(IDENTITE.ville);
     expect(identite.telephones).toBe('+237 611 111 111');
+  });
+
+  it('sans version en vigueur (datée d’avance ou horloge en retard), la plus récente reçue vaut mieux que les valeurs d’origine', () => {
+    // Le serveur retire de l'appareil la version remplacée dès que la nouvelle arrive : il ne reste que celle-là.
+    const identite = identiteDepuisParametres(
+      [parametre('company.city', 'Yaoundé', '2026-12-01T00:00:00.000Z')],
+      NOW,
+    );
+    expect(identite.ville).toBe('Yaoundé');
+    expect(identite.niu).toBe(IDENTITE.niu);
+    // Plusieurs versions toutes à venir : la plus récente.
+    expect(
+      identiteDepuisParametres(
+        [
+          parametre('company.city', 'Bafoussam', '2026-12-05T00:00:00.000Z'),
+          parametre('company.city', 'Yaoundé', '2026-12-01T00:00:00.000Z'),
+        ],
+        NOW,
+      ).ville,
+    ).toBe('Bafoussam');
   });
 
   it('l’en-tête de chaque pièce imprime l’identité des paramètres ; une rubrique vide reste la ligne pointillée', () => {

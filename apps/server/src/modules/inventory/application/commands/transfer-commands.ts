@@ -1551,12 +1551,16 @@ ${refusal}`
       needed.set(key, entry);
     }
     for (const entry of needed.values()) {
+      // Lecture verrouillante : sous l'isolation répétable, une lecture simple verrait l'instantané pris plus haut
+      // (`peekTransfer`), pas la vente qu'on vient d'attendre (`lockPhysicalStockCouples`), et la contre-passation
+      // laisserait le stock négatif (AV-520, option 5 (b) écartée).
       const balance = await uow
         .selectFrom('inventory_stock_balances')
         .select('qty_on_hand')
         .where('location_id', '=', toBin(receipt.toLocationId))
         .where('product_id', '=', toBin(entry.productId))
         .where('lot_key', '=', entry.lotId === null ? Buffer.alloc(16) : toBin(entry.lotId))
+        .forUpdate()
         .executeTakeFirst();
       if (quantityToMilli(balance?.qty_on_hand ?? 0) < entry.milli) {
         return rejected(
@@ -1566,7 +1570,7 @@ ${refusal}`
       }
     }
     const occurredAt = new Date(envelope.occurred_at);
-    await reverseTransferMoves(uow, deps, moves, {
+    const moveWarnings = await reverseTransferMoves(uow, deps, moves, {
       reverseType: 'TRANSFER_DISPATCH',
       documentId: receipt.id,
       occurredAt,
@@ -1611,11 +1615,18 @@ ${refusal}`
       },
       commandId: envelope.command_id,
     });
-    return {
-      status: 'APPLIED',
-      serverRefs: { receiptId: receipt.id },
-      audit: { after: { receiptId: receipt.id, reason: envelope.payload.reason } },
-    };
+    const serverRefs = { receiptId: receipt.id };
+    const audit = { after: { receiptId: receipt.id, reason: envelope.payload.reason } };
+    // Des quotas d'appareil actifs au-delà du stock restant : `inventory` a ouvert `ALLOCATION_OVERCOMMITTED` (informatif),
+    // et la réponse le dit à l'annulant au lieu de se taire (revue adverse du 05/11/2026).
+    return moveWarnings.includes('ALLOCATION_OVERCOMMITTED')
+      ? {
+          status: 'APPLIED_WITH_WARNINGS',
+          warnings: ['ALLOCATION_OVERCOMMITTED'],
+          serverRefs,
+          audit,
+        }
+      : { status: 'APPLIED', serverRefs, audit };
   };
 
   return {

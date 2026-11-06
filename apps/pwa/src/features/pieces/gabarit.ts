@@ -46,7 +46,7 @@ export function entete({
   return `<header class="entete">
   <img class="logo" src="${esc(logo)}" alt="GIC AGROPELC">
   <div class="identite">
-    <div class="raison">${esc(id.raison_sociale)}</div>${forme}
+    <div class="raison">${id.raison_sociale ? esc(id.raison_sociale) : '<span class="blanc l"></span>'}</div>${forme}
     <div class="coord"><b>Siège</b>${val(id.siege, 'l')}<b>BP</b>${val(id.bp, 's')}<b>Tél</b>${val(id.telephones)}</div>
     <div class="coord"><b>RCCM / Autorisation</b>${val(id.rccm, 'l')}</div>
     <div class="coord"><b>NIU</b>${val(id.niu)}${id.regime_fiscal ? `<b>Régime</b>${esc(id.regime_fiscal)}` : ''}</div>

@@ -43,7 +43,11 @@ import { recordDenied } from '../../../audit/record-denied.js';
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
 import { PASSWORD_PROBLEM_MESSAGES } from './auth.controller.js';
 import { hashPassword } from '../application/auth/password.js';
-import { resetLoginAttempts } from '../application/auth/login-lockout.js';
+import {
+  accountScope,
+  identifierScope,
+  resetLoginScopes,
+} from '../application/auth/login-lockout.js';
 import { revokeUserSessions } from '../application/commands/revoke-sessions.js';
 import { hasPermissionAt } from '../application/public/rights-check.js';
 import { checkDeviceActive } from '../application/public/device-check.js';
@@ -123,7 +127,7 @@ export class UserPasswordController {
 
     const target = await this.db
       .selectFrom('identity_users')
-      .select(['id', 'status', 'phone', 'is_system'])
+      .select(['id', 'status', 'phone', 'email', 'is_system'])
       .where('id', '=', toBin(targetId))
       .executeTakeFirst();
     if (!target || target.is_system) {
@@ -161,7 +165,13 @@ export class UserPasswordController {
         .where('id', '=', target.id)
         .execute();
       await revokeUserSessions(trx, targetId, 'ADMIN', now);
-      await resetLoginAttempts(trx, 'IDENTIFIER', target.phone);
+      // Débloque le compte quel que soit l'identifiant avec lequel il se connecte : son compteur de compte, celui de son
+      // téléphone et celui de son adresse e-mail (le compteur de l'adresse IP de l'appelant n'est pas le sien).
+      await resetLoginScopes(trx, [
+        accountScope(targetId),
+        identifierScope(target.phone),
+        ...(target.email ? [identifierScope(target.email)] : []),
+      ]);
       await recordAudit(trx, deps, {
         occurredAt: now,
         actorUserId: auth.sub,

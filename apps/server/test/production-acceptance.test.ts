@@ -404,7 +404,10 @@ describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P
         unit: 'OEUF',
         standardCost: 75,
       });
-      // Calibres en vigueur avant l'ajout par l'administrateur (AT-053).
+      // Calibres en vigueur avant l'ajout par l'administrateur (AT-053). Daté de 08 h 30 et non de 06 h : les versions
+      // d'un paramètre sont immuables, et d'autres suites (la semaine hors ligne de P7-13, qui se règle autour de la
+      // date réelle) laissent sur la base d'essai des versions de ce même paramètre à 07 h 59 de jours voisins, dont ce
+      // jour-ci certains soirs ; une version plus ancienne que la leur ne serait jamais celle en vigueur à 09 h.
       await trx
         .insertInto('organization_system_settings')
         .values({
@@ -412,7 +415,7 @@ describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P
           key: 'production.egg_grade_product_codes',
           value: JSON.stringify([GRADE_MEDIUM]),
           scope_type: 'GLOBAL',
-          valid_from: new Date(at('06:00:00')),
+          valid_from: new Date(at('08:30:00')),
           is_client_visible: 1,
           reason: 'Test P7-13 (AT-053)',
           created_by: toBin(rootId),

@@ -85,8 +85,10 @@ describe('nom d’une personne sur une feuille', () => {
 });
 
 describe('numéro d’une feuille papier (AV-514)', () => {
-  it('compare sans tenir compte de la casse ni des espaces de bord ou répétés', () => {
+  it('compare sans tenir compte de la casse ni des espaces', () => {
     expect(paperRefKey(' pt  12 ')).toBe(paperRefKey('PT 12'));
+    expect(paperRefKey('PT12')).toBe(paperRefKey('PT 12'));
+    expect(paperRefKey('p t 1 2')).toBe(paperRefKey('PT12'));
     expect(paperRefKey('PT 12')).not.toBe(paperRefKey('PT 13'));
     expect(paperRefKey('PT-12')).not.toBe(paperRefKey('PT 12'));
   });

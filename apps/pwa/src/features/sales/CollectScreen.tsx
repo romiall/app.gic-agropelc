@@ -71,9 +71,11 @@ interface ReceivablesState {
 }
 
 /**
- * Créances du client lues en ligne, compte par compte (`accountIds` : le sien et ceux qu'il a absorbés) ;
- * `undefined` tant que la lecture n'a pas abouti ou que les comptes ne sont pas connus (`null` : hors
- * ligne ou sans client).
+ * Créances du client lues en ligne, en UNE lecture : celle du compte conservé. Le serveur y rattache les
+ * ventes des comptes que ce client a absorbés (BR-CRM-007, S-22) : lire aussi chaque compte absorbé compterait
+ * deux fois leurs ventes. `accountIds` (le client et ceux qu'il a absorbés) n'est là que pour attendre que les
+ * comptes soient connus avant de présenter les créances. `undefined` tant que la lecture n'a pas abouti ou que
+ * les comptes ne sont pas connus (`null` : hors ligne, sans client, ou lecture en échec).
  */
 function useOnlineReceivables(
   customerId: string | null,
@@ -82,34 +84,23 @@ function useOnlineReceivables(
   reloadKey: string,
 ): readonly ReceivableLine[] | null | undefined {
   const [state, setState] = useState<ReceivablesState>();
-  const accounts = accountIds?.join('+') ?? '';
-  const key = `${accounts}:${reloadKey}`;
+  const accountsKnown = accountIds !== null;
+  const key = `${customerId ?? ''}:${reloadKey}`;
   useEffect(() => {
-    if (!customerId || !online || !accounts) return;
+    if (!customerId || !online || !accountsKnown) return;
     let cancelled = false;
-    void Promise.all(
-      accounts
-        .split('+')
-        .map((id) =>
-          authorizedRequest<{ receivables?: ReceivableLine[] }>(
-            getDb(),
-            `/api/v1/receivables?customer_id=${encodeURIComponent(id)}`,
-            { method: 'GET' },
-          ),
-        ),
-    ).then((results) => {
+    void authorizedRequest<{ receivables?: ReceivableLine[] }>(
+      getDb(),
+      `/api/v1/receivables?customer_id=${encodeURIComponent(customerId)}`,
+      { method: 'GET' },
+    ).then((result) => {
       if (cancelled) return;
-      setState({
-        key,
-        lines: results.every((result) => result.ok)
-          ? results.flatMap((result) => (result.ok ? (result.data.receivables ?? []) : []))
-          : null,
-      });
+      setState({ key, lines: result.ok ? (result.data.receivables ?? []) : null });
     });
     return () => {
       cancelled = true;
     };
-  }, [customerId, online, accounts, key]);
+  }, [customerId, online, accountsKnown, key]);
   if (!customerId || !online) return null;
   return state?.key === key ? state.lines : undefined;
 }

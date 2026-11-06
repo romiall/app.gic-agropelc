@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboxCommand } from '../../storage/db.js';
-import { duesFromRecentSales, pendingPaymentsOf } from './collect.js';
+import {
+  duesFromReceivables,
+  duesFromRecentSales,
+  pendingPaymentsOf,
+  type ReceivableLine,
+} from './collect.js';
 import { stillInFlight } from './pending.js';
 import type { SaleData } from './types.js';
 
@@ -29,6 +34,38 @@ describe('Encaissement d’un compte conservé après fusion (BR-CRM-007)', () =
     expect(pendingPaymentsOf([payment], 'conserve', alias)).toEqual([
       { commandId: 'p1', amountXaf: 2000, occurredAt: '2026-10-10T08:00:00.000Z', targets: null },
     ]);
+  });
+
+  it('créances lues en ligne : celles du compte absorbé reviennent au compte conservé, chaque vente une seule fois', () => {
+    const line = (saleId: string, customerId: string, balanceDueXaf: number): ReceivableLine => ({
+      saleId,
+      docNumber: saleId.toUpperCase(),
+      customerId,
+      occurredAt: '2026-10-01T08:00:00.000Z',
+      dueDate: '2026-10-31',
+      balanceDueXaf,
+    });
+    // Le serveur rend, pour le compte conservé, ses ventes et celles de ses comptes absorbés (S-22).
+    const lines = [
+      line('v1', 'conserve', 5000),
+      line('v2', 'absorbe', 3000),
+      line('autre', 'tiers', 9000),
+    ];
+    const accounts = ['conserve', 'absorbe'];
+    expect(duesFromReceivables(lines, 'conserve', accounts).map((due) => due.saleId)).toEqual([
+      'v1',
+      'v2',
+    ]);
+    // Une vente rendue deux fois (réponses additionnées, serveur qui la répète) n'est comptée qu'une fois.
+    const twice = duesFromReceivables(
+      [...lines, line('v2', 'absorbe', 3000)],
+      'conserve',
+      accounts,
+    );
+    expect(twice.map((due) => due.saleId)).toEqual(['v1', 'v2']);
+    expect(twice.reduce((sum, due) => sum + due.balanceXaf, 0)).toBe(8000);
+    // Une vente soldée n'est pas une créance.
+    expect(duesFromReceivables([line('v3', 'conserve', 0)], 'conserve', accounts)).toEqual([]);
   });
 
   it('hors ligne : un encaissement accepté compte encore tant que les ventes ne sont pas relues (MP-11)', () => {

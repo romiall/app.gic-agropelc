@@ -118,9 +118,14 @@ const locationOf = (
 const productOfCode = (refs: SalesReferences, text: string): ProductData | undefined =>
   refs.products.find((product) => product.code === entityCode(text));
 
-/** Emplacements qui ont déjà un stock d'ouverture comptabilisé, en attente de validation, ou dans l'outbox. */
+/**
+ * Emplacements qui ont déjà un stock d'ouverture comptabilisé, en attente de validation, ou dans l'outbox. Un stock
+ * d'ouverture refusé par l'approbateur ou annulé libère son emplacement (AV-517 (4)) : sa commande reste « synchronisée »
+ * dans la file de l'appareil, mais le document, une fois relu, dit ce qu'il est devenu et fait foi sur la commande.
+ */
 function openedLocations(refs: SalesReferences): Set<string> {
   const opened = new Set<string>();
+  const documents = new Set(refs.counts.map((count) => count.id));
   for (const count of refs.counts) {
     if (count.count_type === 'OPENING' && ['PENDING_APPROVAL', 'POSTED'].includes(count.status)) {
       opened.add(count.location_id);
@@ -129,10 +134,25 @@ function openedLocations(refs: SalesReferences): Set<string> {
   for (const command of refs.outbox) {
     if (command.command_type !== 'inventory.opening.post' || command.status === 'REJECTED')
       continue;
+    // Document connu de l'appareil : la boucle précédente l'a jugé d'après son état.
+    if (documents.has(command.aggregate_id)) continue;
     const locationId = (command.payload as { readonly locationId?: unknown }).locationId;
     if (typeof locationId === 'string') opened.add(locationId);
   }
   return opened;
+}
+
+/** Stocks d'ouverture déjà refusés ou annulés de cet emplacement (identifiants triés), connus de l'appareil. */
+function closedOpenings(refs: SalesReferences, locationId: string): string[] {
+  return refs.counts
+    .filter(
+      (count) =>
+        count.count_type === 'OPENING' &&
+        count.location_id === locationId &&
+        !['PENDING_APPROVAL', 'POSTED'].includes(count.status),
+    )
+    .map((count) => count.id)
+    .sort();
 }
 
 async function planOpening(
@@ -213,10 +233,12 @@ async function planOpening(
         aggregateType: 'INVENTORY_COUNT',
         // L'identifiant dérive de l'emplacement et du contenu : recharger le même fichier ne pose rien deux fois ; un
         // fichier corrigé, chargé après le premier, est refusé par le serveur (un seul stock d'ouverture par emplacement).
+        // Les stocks d'ouverture déjà refusés ou annulés de l'emplacement entrent dans l'identifiant : le même fichier
+        // rechargé après un refus est une nouvelle tentative, pas le rejeu du document refusé.
         aggregateId: await authorImportId(
           importRefs.authorUserId,
           'opening-stock',
-          JSON.stringify([location.id, lines]),
+          JSON.stringify([location.id, lines, closedOpenings(refs, location.id)]),
         ),
         payload: { locationId: location.id, lines },
       },
@@ -673,9 +695,11 @@ async function planPriceRule(
   const fromDay = fromText === undefined ? null : dayOf(fromText);
   if (fromText === undefined) issues.push('Début de validité obligatoire.');
   else if (fromDay === null) issues.push(`Début invalide : « ${fromText} » (jj/mm/aaaa attendu).`);
-  else if (startOfDay(fromDay) < startOfDay(dayOfDouala(now))) {
+  else if (new Date(startOfDay(fromDay)).getTime() <= now.getTime()) {
+    // L'activation refuse un début antérieur de plus de cinq minutes à l'instant où elle se fait (`pricing.rule.activate`) :
+    // une règle qui débute aujourd'hui à 0 h, ou plus tôt, ne serait jamais activable. Au plus tôt demain.
     issues.push(
-      'Le début de validité ne peut pas être passé : la règle ne pourrait plus être activée.',
+      'Le début de validité doit être postérieur à aujourd’hui, au plus tôt demain : une règle dont le début est passé ou du jour même ne peut plus être activée.',
     );
   }
   const toText = cell(record, 'fin');
@@ -708,23 +732,43 @@ async function planPriceRule(
     ...(toDay !== null ? { validTo: startOfDay(toDay) } : {}),
     ...(notes !== undefined ? { notes } : {}),
   };
+  // L'identifiant dérive de l'auteur, du code ET du contenu : recharger le même fichier ne crée rien deux fois, mais un
+  // fichier corrigé (autre prix, autre portée) pour un code déjà chargé n'est jamais pris pour un rejeu du premier —
+  // le serveur le refuserait par `CODE_EXISTS` au lieu de répondre « fait » sans rien changer au brouillon.
+  const aggregateId = await authorImportId(
+    importRefs.authorUserId,
+    'price-rule',
+    JSON.stringify([code, payload]),
+  );
+  const earlier = refs.outbox.filter(
+    (command) =>
+      command.command_type === 'pricing.rule.draft' &&
+      command.status !== 'REJECTED' &&
+      (command.payload as { readonly code?: unknown }).code === code,
+  );
+  if (earlier.length > 0 && !earlier.some((command) => command.aggregate_id === aggregateId)) {
+    return {
+      key: code,
+      issues: [
+        `Le code « ${code} » est déjà chargé depuis cet appareil avec un autre contenu : abandonner ce brouillon (écran des règles de prix) ou choisir un autre code.`,
+      ],
+      commands: [],
+    };
+  }
   return {
     key: code,
     issues,
+    exists: earlier.length > 0,
     commands: [
       {
         commandType: 'pricing.rule.draft',
         aggregateType: 'PRICE_RULE',
-        aggregateId: await authorImportId(importRefs.authorUserId, 'price-rule', code),
+        aggregateId,
         payload,
       },
     ],
   };
 }
-
-/** Jour métier (Douala, UTC+1) d'un instant : `AAAA-MM-JJ`. */
-const dayOfDouala = (instant: Date): string =>
-  new Date(instant.getTime() + 60 * 60 * 1000).toISOString().slice(0, 10);
 
 export const PRICE_RULES_ENTITY: ImportEntity = {
   id: 'price_rules',

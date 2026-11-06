@@ -311,7 +311,10 @@ export function phoneOf(raw: string, countryCode: string = DEFAULT_COUNTRY_CODE)
   }
 }
 
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Même forme que `z.string().email()` du serveur (zod 3) : sans cela, une adresse que l'écran accepte (« marie@gic.c »,
+// « jean..x@gic.cm ») ferait refuser la commande après la fermeture du formulaire, et la saisie serait perdue.
+const EMAIL_SHAPE =
+  /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9-]*\.)+[A-Z]{2,}$/i;
 
 export type NewUserProblem = 'NAME' | 'PHONE' | 'EMAIL' | AssignmentProblem | NewPasswordProblem;
 

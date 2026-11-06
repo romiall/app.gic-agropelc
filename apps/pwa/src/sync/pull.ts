@@ -213,8 +213,10 @@ export async function ensureDataOwner(db: GicDatabase, userId: string): Promise<
   if (!meta || meta.data_user_id === userId) return false;
   // Appareil antérieur à ce champ : ses jeux sont réputés être ceux de l'utilisateur courant, sans
   // effacement (un appareil hors ligne au premier cycle après la mise à jour garderait sinon
-  // ni catalogue ni stock jusqu'au retour du réseau).
-  if (meta.data_user_id === undefined || meta.data_user_id === null) {
+  // ni catalogue ni stock jusqu'au retour du réseau). Un appareil dont les données viennent d'être effacées
+  // (AV-213 (c), `data_wiped`) n'est pas dans ce cas : un tirage en vol a pu y écrire des lignes après l'effacement,
+  // que l'utilisateur suivant ne doit pas hériter.
+  if ((meta.data_user_id === undefined || meta.data_user_id === null) && meta.data_wiped !== true) {
     await db.syncMeta.update('device', { data_user_id: userId });
     return false;
   }
@@ -225,7 +227,7 @@ export async function ensureDataOwner(db: GicDatabase, userId: string): Promise<
       await db.syncCursors.clear();
     });
   }
-  await db.syncMeta.update('device', { data_user_id: userId });
+  await db.syncMeta.update('device', { data_user_id: userId, data_wiped: false });
   return hasData;
 }
 

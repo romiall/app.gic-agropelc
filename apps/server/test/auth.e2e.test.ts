@@ -281,6 +281,72 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
     expect((await attempt(KNOWN_PASSWORD)).statusCode).toBe(429);
   });
 
+  it('un compte répond à deux identifiants : les échecs par téléphone et par e-mail se cumulent sur le compte (cinq au total, pas cinq chacun)', async () => {
+    const phone = await freshPhone();
+    const userId = await createLoginableUser(phone);
+    const email = `double.${userId.slice(-8)}@gic-agropelc.com`;
+    await db.updateTable('identity_users').set({ email }).where('id', '=', toBin(userId)).execute();
+    // Adresses IP distinctes à chaque essai : seul le compteur du compte (et celui de l'identifiant) agit ici.
+    const attempt = (identifier: string, password: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: freshIp(),
+        payload: { phone: identifier, password, device_id: freshUuid() },
+      });
+    for (let i = 0; i < 3; i++) expect((await attempt(phone, 'faux')).statusCode).toBe(401);
+    for (let i = 0; i < 2; i++) expect((await attempt(email, 'faux')).statusCode).toBe(401);
+    // Cinq échecs en tout, sur deux identifiants : le compte est bloqué, quel que soit l'identifiant et le mot de passe.
+    const byEmail = await attempt(email, KNOWN_PASSWORD);
+    expect(byEmail.statusCode).toBe(429);
+    expect(byEmail.json().error.code).toBe('LOGIN_LOCKED');
+    expect((await attempt(phone, KNOWN_PASSWORD)).statusCode).toBe(429);
+  });
+
+  it('une connexion réussie par e-mail remet à zéro les échecs comptés par téléphone (compteur du compte)', async () => {
+    const phone = await freshPhone();
+    const userId = await createLoginableUser(phone);
+    const email = `reset.${userId.slice(-8)}@gic-agropelc.com`;
+    await db.updateTable('identity_users').set({ email }).where('id', '=', toBin(userId)).execute();
+    const attempt = (identifier: string, password: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: freshIp(),
+        payload: { phone: identifier, password, device_id: freshUuid() },
+      });
+    for (let i = 0; i < 4; i++) expect((await attempt(phone, 'faux')).statusCode).toBe(401);
+    expect((await attempt(email, KNOWN_PASSWORD)).statusCode).toBe(200);
+    // La série repart de zéro pour les deux identifiants : quatre échecs de plus ne bloquent pas.
+    for (let i = 0; i < 4; i++) expect((await attempt(phone, 'faux')).statusCode).toBe(401);
+    expect((await attempt(phone, KNOWN_PASSWORD)).statusCode).toBe(200);
+  });
+
+  it('une adresse e-mail plus longue que la colonne du compteur se connecte (clé hachée) : pas d’erreur 500', async () => {
+    const phone = await freshPhone();
+    const userId = await createLoginableUser(phone);
+    const email = `${'a'.repeat(110)}.${userId.slice(-8)}@gic-agropelc.com`;
+    expect(email.length).toBeGreaterThan(100);
+    await db.updateTable('identity_users').set({ email }).where('id', '=', toBin(userId)).execute();
+    const attempt = (password: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: freshIp(),
+        payload: { phone: email, password, device_id: freshUuid() },
+      });
+    expect((await attempt('faux')).statusCode).toBe(401);
+    expect((await attempt(KNOWN_PASSWORD)).statusCode).toBe(200);
+    // Un identifiant inconnu et démesuré : 401, jamais une erreur du serveur.
+    const unknown = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      remoteAddress: freshIp(),
+      payload: { phone: 'x'.repeat(200), password: 'peu importe', device_id: freshUuid() },
+    });
+    expect(unknown.statusCode).toBe(401);
+  });
+
   it('AV-297 : une connexion réussie remet les compteurs à zéro ; un mot de passe juste devant un appareil hors service ne laisse aucun essai compté', async () => {
     const phone = await freshPhone();
     const ip = freshIp();
@@ -360,7 +426,13 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
     expect(login.statusCode).toBe(200);
     const { refresh_token: refreshToken } = login.json();
 
-    // Blocage de l'appareil : ses sessions sont révoquées avec le motif DEVICE_BLOCKED (commande identity.device.block).
+    // Blocage de l'appareil (commande identity.device.block) : son état passe à BLOCKED et ses sessions sont révoquées
+    // avec le motif DEVICE_BLOCKED. Le refus se juge sur l'état de l'appareil, non sur le motif de la session.
+    await db
+      .updateTable('identity_devices')
+      .set({ status: 'BLOCKED', status_reason: 'Essai', status_changed_at: new Date() })
+      .where('id', '=', toBin(deviceId))
+      .execute();
     await db
       .updateTable('identity_auth_sessions')
       .set({ revoked_at: new Date(), revoked_reason: 'DEVICE_BLOCKED' })
