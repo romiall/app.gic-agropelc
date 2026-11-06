@@ -45,7 +45,7 @@ import {
 } from './output.js';
 import './production.css';
 
-const LOT_MANAGERS: readonly string[] = ['RESP_PRODUCTION'];
+const LOT_MANAGERS: readonly string[] = ['RESP_PRODUCTION', 'ADMIN'];
 
 export function OutputScreen() {
   const { t } = useTranslation();

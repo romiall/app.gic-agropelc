@@ -304,6 +304,12 @@ const WeeklyReportScreen = lazy(() =>
     default: m.WeeklyReportScreen,
   })),
 );
+const ThresholdsScreen = lazy(() =>
+  import('../features/stock/ThresholdsScreen.js').then((m) => ({ default: m.ThresholdsScreen })),
+);
+const GuideScreen = lazy(() =>
+  import('../features/help/GuideScreen.js').then((m) => ({ default: m.GuideScreen })),
+);
 // Page de référence des composants (ADR-049), réservée au développement : `import.meta.env.DEV` vaut
 // `false` à la construction, la branche et son import sont supprimés (rien de la galerie dans `dist`).
 const ComponentGallery = import.meta.env.DEV
@@ -400,6 +406,8 @@ function AppShell() {
             <Route path={ROUTES.dataImport} element={<ImportScreen />} />
             <Route path={ROUTES.presence} element={<PresenceScreen />} />
             <Route path={ROUTES.weeklyReport} element={<WeeklyReportScreen />} />
+            <Route path={ROUTES.help} element={<GuideScreen />} />
+            <Route path={ROUTES.thresholds} element={<ThresholdsScreen />} />
             {ComponentGallery ? (
               <Route path="/dev/composants" element={<ComponentGallery />} />
             ) : null}

@@ -1340,8 +1340,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // ADMIN — 31, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
-  // + finance.expense_category.manage, P8-03)
+  // ADMIN — 53, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
+  // + finance.expense_category.manage, P8-03 ; + 22 octrois de la ferme et du stock, AV-524, 06/11/2026)
   ...grants('ADMIN', [
     ['fieldwork.presence.record', 'ALL'],
     ['fieldwork.presence.read', 'ALL'],
@@ -1374,9 +1374,37 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.pipeline.configure', 'ALL'],
     ['inventory.opening.post', 'ALL'],
     ['finance.expense_category.manage', 'ALL'],
+    // Décision du porteur du 06/11/2026 (AV-524, ADR-057) : l'Administrateur exerce lui-même la gestion de la
+    // ferme et du stock, partout (portée `ALL`) — créer et suivre les lots, saisie du jour, collectes d'œufs,
+    // incubations, réceptions d'achat, transferts, pertes, inventaires, consommations, seuils, quotas — pour
+    // essayer le parcours de bout en bout avant de créer les comptes de terrain. Il ne reçoit aucune
+    // permission d'approbation (RC-03 : mortalités, pertes, inventaires et écarts restent à la Direction et aux
+    // responsables) ni de valorisation (`inventory.valuation.read`, RC-05 : coûts et valeurs restent masqués).
+    ['production.lot.read', 'ALL'],
+    ['production.lot.manage', 'ALL'],
+    ['production.daily.record', 'ALL'],
+    ['production.incubation.record', 'ALL'],
+    ['inventory.stock.read', 'ALL'],
+    ['inventory.ledger.read', 'ALL'],
+    ['inventory.transfer.request', 'ALL'],
+    ['inventory.transfer.dispatch', 'ALL'],
+    ['inventory.transfer.receive', 'ALL'],
+    ['inventory.transfer.cancel', 'ALL'],
+    ['inventory.loss.declare', 'ALL'],
+    ['inventory.loss.read', 'ALL'],
+    ['inventory.count.perform', 'ALL'],
+    ['inventory.consumption.record', 'ALL'],
+    ['inventory.threshold.manage', 'ALL'],
+    ['inventory.allocation.manage', 'ALL'],
+    ['procurement.supplier.read', 'ALL'],
+    ['procurement.request.create', 'ALL'],
+    ['procurement.order.read', 'ALL'],
+    ['procurement.receipt.record', 'ALL'],
+    ['analytics.dashboard.stock', 'ALL'],
+    ['analytics.dashboard.production', 'ALL'],
   ]),
 
-  // RESP_COMMERCIAL — 63 (+ finance.cash_transfer.record OWN, matrice §5.5, P5-15 ;
+  // RESP_COMMERCIAL — 63(+ finance.cash_transfer.record OWN, matrice §5.5, P5-15 ;
   // + finance.expense.record OWN, matrice §5.5, P8-03)
   ...grants('RESP_COMMERCIAL', [
     ['identity.user.read', 'TEAM'],

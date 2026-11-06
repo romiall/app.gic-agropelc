@@ -33,6 +33,22 @@ describe('Accueil : actions par rôle', () => {
     }
   });
 
+  it('AV-524 : l’Administrateur a les raccourcis de la ferme ; la production gagne « Nouveau lot », sans validation pour l’Admin', () => {
+    expect(codesOf('ADMIN')).toEqual(
+      expect.arrayContaining([
+        'LOTS',
+        'NEW_LOT',
+        'EGG_COLLECTION',
+        'INCUBATIONS',
+        'RECEIPTS',
+        'STOCK_ALERTS',
+      ]),
+    );
+    // L'Administrateur n'approuve aucune mortalité (RC-03).
+    expect(codesOf('ADMIN')).not.toContain('MORTALITY');
+    expect(codesOf('RESP_PRODUCTION')).toContain('NEW_LOT');
+  });
+
   it('une action au plus une fois par rôle, une seule action principale', () => {
     for (const [role, definition] of Object.entries(ROLE_CATALOG)) {
       const codes = definition.actions.map((action) => action.code);

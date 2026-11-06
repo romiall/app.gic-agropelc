@@ -21,6 +21,7 @@ import {
   Card,
   EmptyState,
   Field,
+  LinkButton,
   List,
   ListRow,
   PageHeader,
@@ -29,12 +30,16 @@ import {
   SkeletonRows,
   type BadgeTone,
 } from '../../components/ui/index.js';
+import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
+import { useAuth } from '../auth/AuthContext.js';
+import { useCorrectionFlow } from '../corrections/correction-flow.js';
 import { formatBusinessDate, formatDateTime, formatMonthPeriod } from '../home/format-home.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { formatMoney, formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
-import { rearingHeadcount } from './daily.js';
+import { laysEggs, rearingHeadcount } from './daily.js';
 import './production.css';
 
 /** Fiche renvoyée par `GET /api/v1/production/lots/{id}` (montants nuls sans droit). */
@@ -222,6 +227,16 @@ export function LotSheetScreen() {
     online,
     '',
   );
+  // Corrections du lot (AV-526) : clôture, annulation du lot, d'une entrée ou d'une pesée, en ligne ; la
+  // fiche est relue quand le serveur accepte l'opération.
+  const { state } = useAuth();
+  const userId = state.status === 'unlocked' ? state.userId : undefined;
+  const navigation = useRememberedNavigation(userId);
+  const corrections = useCorrectionFlow(userId, { onDone: sheet.retry });
+  // Rôles encore en lecture : rien n'est proposé ; rôles inconnus de l'appareil : proposé, le serveur revérifie.
+  const mayManage =
+    navigation !== undefined &&
+    holdsAnyRole(navigation ? navigation.roles : [], ROLE_SETS.lotSetup);
 
   if (!refs) {
     return (
@@ -357,6 +372,104 @@ export function LotSheetScreen() {
               {sheet.denied ? t('lot_sheet.not_found') : t('lot_sheet.unavailable')}
             </Banner>
           ) : null}
+
+          {mayManage && status ? (
+            <Section title={t('lot_sheet.actions_title')} className="prd-actions">
+              <div className="chip-row">
+                {status === 'ACTIVE' || status === 'SELLING' ? (
+                  <>
+                    <LinkButton
+                      to={ROUTES.dailyEntry(id)}
+                      variant="tonal"
+                      size="sm"
+                      icon="clipboard"
+                    >
+                      {t('lot_sheet.action.daily')}
+                    </LinkButton>
+                    {laysEggs({ lot_type: current?.lotType ?? lot?.lot_type ?? '' }) ? (
+                      <LinkButton
+                        to={ROUTES.eggCollectionFor(id)}
+                        variant="tonal"
+                        size="sm"
+                        icon="leaf"
+                      >
+                        {t('lot_sheet.action.eggs')}
+                      </LinkButton>
+                    ) : null}
+                    <LinkButton
+                      to={ROUTES.productionOutputFor(id)}
+                      variant="tonal"
+                      size="sm"
+                      icon="truck"
+                    >
+                      {t('lot_sheet.action.output')}
+                    </LinkButton>
+                    <LinkButton to={ROUTES.lotEntryFor(id)} variant="tonal" size="sm" icon="plus">
+                      {t('lot_sheet.action.entry')}
+                    </LinkButton>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!online || corrections.isPending(id)}
+                      onClick={() =>
+                        corrections.ask({
+                          commandType: 'production.lot.close',
+                          aggregateType: 'PRODUCTION_LOT',
+                          aggregateId: id,
+                          title: t('lot_sheet.close_title', {
+                            lot: current?.lotCode ?? lot?.lot_code,
+                          }),
+                          hint: t('lot_sheet.close_hint'),
+                          confirmLabel: t('lot_sheet.close_confirm'),
+                          messages: 'corrections.close_result',
+                          commentRequired: false,
+                        })
+                      }
+                    >
+                      {t('lot_sheet.action.close')}
+                    </Button>
+                  </>
+                ) : null}
+                {status === 'PLANNED' ? (
+                  <>
+                    <LinkButton to={ROUTES.lotEntryFor(id)} variant="tonal" size="sm" icon="plus">
+                      {t('lot_sheet.action.entry')}
+                    </LinkButton>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!online || corrections.isPending(id)}
+                      onClick={() =>
+                        corrections.ask({
+                          commandType: 'production.lot.cancel',
+                          aggregateType: 'PRODUCTION_LOT',
+                          aggregateId: id,
+                          title: t('lot_sheet.cancel_lot_title', {
+                            lot: current?.lotCode ?? lot?.lot_code,
+                          }),
+                          hint: t('lot_sheet.cancel_lot_hint'),
+                          confirmLabel: t('lot_sheet.cancel_lot_confirm'),
+                        })
+                      }
+                    >
+                      {t('lot_sheet.action.cancel')}
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+              <p className="prd-note">
+                {status === 'PLANNED'
+                  ? t('lot_sheet.actions_planned_hint')
+                  : status === 'CLOSED'
+                    ? t('lot_sheet.actions_closed_hint')
+                    : status === 'CANCELLED'
+                      ? t('lot_sheet.actions_cancelled_hint')
+                      : null}
+                {!online ? ` ${t('lot_sheet.actions_online_only')}` : null}
+              </p>
+            </Section>
+          ) : null}
+          {corrections.node}
 
           <div className="prd-sheet">
             <Section title={t('lot_sheet.heads_title')} className="is-wide">
@@ -552,6 +665,28 @@ export function LotSheetScreen() {
                           badge={
                             entry.status === 'CANCELLED' ? (
                               <Badge tone="muted">{t('lot_sheet.cancelled')}</Badge>
+                            ) : mayManage &&
+                              (status === 'ACTIVE' || status === 'SELLING') &&
+                              !corrections.isPending(entry.id) ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={!online}
+                                onClick={() =>
+                                  corrections.ask({
+                                    commandType: 'production.lot.cancel_entry',
+                                    aggregateType: 'LOT_ENTRY',
+                                    aggregateId: entry.id,
+                                    title: t('lot_sheet.cancel_entry_title', {
+                                      quantity: formatQuantityUnit(entry.quantity, unit),
+                                    }),
+                                    hint: t('lot_sheet.cancel_entry_hint'),
+                                    confirmLabel: t('lot_sheet.cancel_entry_confirm'),
+                                  })
+                                }
+                              >
+                                {t('lot_sheet.action.cancel_entry')}
+                              </Button>
                             ) : undefined
                           }
                         />
@@ -573,6 +708,29 @@ export function LotSheetScreen() {
                               weight: formatQuantity(weighing.avgWeightG),
                               sample: weighing.sampleSize,
                             })}
+                            badge={
+                              mayManage &&
+                              (status === 'ACTIVE' || status === 'SELLING') &&
+                              !corrections.isPending(weighing.id) ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={!online}
+                                  onClick={() =>
+                                    corrections.ask({
+                                      commandType: 'production.weighing.cancel',
+                                      aggregateType: 'LOT_WEIGHING',
+                                      aggregateId: weighing.id,
+                                      title: t('lot_sheet.cancel_weighing_title'),
+                                      hint: t('lot_sheet.cancel_weighing_hint'),
+                                      confirmLabel: t('lot_sheet.cancel_weighing_confirm'),
+                                    })
+                                  }
+                                >
+                                  {t('lot_sheet.action.cancel_weighing')}
+                                </Button>
+                              ) : undefined
+                            }
                           />
                         ))}
                     </List>

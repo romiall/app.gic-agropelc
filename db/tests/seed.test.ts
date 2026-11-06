@@ -108,8 +108,9 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // + 1 octroi identity.device.read SITE du Resp. production (AV-261, MP-06) ;
     // + 16 octrois de PP-E (AV-313, AV-314) : fieldwork.presence.record et .read (Direction, Administrateur : ALL ;
     // Resp. production, Resp. ferme : SITE) = 8 ; crm.weekly_report.read et .review (Direction : ALL, Resp. commercial :
-    // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
-    expect(ROLE_PERMISSIONS.length).toBe(520);
+    // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4 ;
+    // + 22 octrois ALL de la ferme et du stock à l'Administrateur (AV-524, 06/11/2026).
+    expect(ROLE_PERMISSIONS.length).toBe(542);
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>

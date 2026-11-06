@@ -38,6 +38,8 @@ export const ROUTES = {
   eggCollectionFor: (lotId: string) => `/production/collecte?lot=${encodeURIComponent(lotId)}`,
   productionOutput: '/production/sortie',
   lotSetup: '/production/nouveau-lot',
+  /** ECR-PRD-04 sur la rubrique « Entrée dans un lot », lot déjà choisi (AV-526). */
+  lotEntryFor: (lotId: string) => `/production/nouveau-lot?lot=${encodeURIComponent(lotId)}`,
   incubation: '/production/incubation',
   lotSheet: '/production/fiche',
   lotSheetFor: (lotId: string) => `/production/fiche?lot=${encodeURIComponent(lotId)}`,
@@ -98,6 +100,8 @@ export const ROUTES = {
   distribution: '/pdv/distribution',
   posHome: '/pdv',
   allocations: '/stock/quotas',
+  /** ECR-STK-09 (AV-526) : seuils d'alerte et cibles de réapprovisionnement par emplacement (`inventory.threshold.manage`). */
+  thresholds: '/stock/seuils',
   devices: '/administration/appareils',
   approvals: '/validations',
   users: '/administration/utilisateurs',
@@ -141,6 +145,8 @@ export const ROUTES = {
   presence: '/presence',
   /** ECR-CRM-08 (PP-E) : bilan hebdomadaire du commercial et vu du responsable (AV-314). */
   weeklyReport: '/bilan-hebdomadaire',
+  /** ECR-HLP-01 (AV-525, ADR-058) : guide de l'application ; chaque page a en plus son aide (bouton « ? »). */
+  help: '/aide',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -229,24 +235,35 @@ export const ROLE_SETS = {
   interactionRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** `crm.visit.record` (01-rbac.md) : commercial terrain et responsable commercial. */
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
-  /** `inventory.loss.declare` : détenteurs de stock. */
-  lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
-  /** ECR-PRD-01 et 02 (`production.daily.record`, jeu `production` des fermes) : production, ferme. */
-  production: ['RESP_PRODUCTION', 'RESP_FERME'],
   /**
-   * ECR-PRD-07 (`inventory.transfer.dispatch` SITE pour la ferme, ALL pour la production) : responsable
-   * de ferme ; le responsable de production y déclare en plus le lot prêt à la vente.
+   * `inventory.loss.declare` : détenteurs de stock. L'Administrateur exerce la ferme et le stock depuis
+   * le 06/11/2026 (AV-524, ADR-057) : il figure dans chaque jeu de rôles d'un écran de la ferme et du
+   * stock, comme le responsable de production pour les réceptions, les transferts et les inventaires.
    */
-  productionOutput: ['RESP_FERME', 'RESP_PRODUCTION'],
+  lossDeclare: [
+    'COMMERCIAL_TERRAIN',
+    'VENDEUR_PDV',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'ADMIN',
+  ],
+  /** ECR-PRD-01 et 02 (`production.daily.record`, jeu `production` des fermes) : production, ferme, administrateur. */
+  production: ['RESP_PRODUCTION', 'RESP_FERME', 'ADMIN'],
   /**
-   * ECR-PRD-04 (`production.lot.manage`, responsable de production seul ; l'entrée relève aussi de
+   * ECR-PRD-07 (`inventory.transfer.dispatch` SITE pour la ferme, ALL pour la production et l'Admin) :
+   * responsable de ferme ; le responsable de production et l'Admin y déclarent en plus le lot prêt à la vente.
+   */
+  productionOutput: ['RESP_FERME', 'RESP_PRODUCTION', 'ADMIN'],
+  /**
+   * ECR-PRD-04 (`production.lot.manage`, responsable de production et Admin ; l'entrée relève aussi de
    * `production.daily.record`, mais l'inventaire des écrans réserve l'écran à la production).
    */
-  lotSetup: ['RESP_PRODUCTION'],
-  /** ECR-PRD-06 (`production.incubation.record` : production ALL, ferme SITE). */
-  incubation: ['RESP_FERME', 'RESP_PRODUCTION'],
-  /** ECR-PRD-03 : responsable de production et direction (03-parcours-et-ecrans.md). */
-  lotSheet: ['RESP_PRODUCTION', 'DIRECTION'],
+  lotSetup: ['RESP_PRODUCTION', 'ADMIN'],
+  /** ECR-PRD-06 (`production.incubation.record` : production et Admin ALL, ferme SITE). */
+  incubation: ['RESP_FERME', 'RESP_PRODUCTION', 'ADMIN'],
+  /** ECR-PRD-03 : responsable de production, direction et Admin (03-parcours-et-ecrans.md, AV-524). */
+  lotSheet: ['RESP_PRODUCTION', 'DIRECTION', 'ADMIN'],
   /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
   purchaseRequest: [
     'DIRECTION',
@@ -255,9 +272,14 @@ export const ROLE_SETS = {
     'MAGASINIER',
     'RESP_ACHATS',
     'FINANCE',
+    'ADMIN',
   ],
-  /** ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme. */
-  purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
+  /**
+   * ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme ;
+   * le responsable de production et l'Admin y sont aussi (droit `ALL`) : c'est par la réception que les
+   * animaux et l'aliment d'un lot entrent à la ferme.
+   */
+  purchaseReceipt: ['MAGASINIER', 'RESP_FERME', 'RESP_PRODUCTION', 'ADMIN'],
   /** ECR-APP-01 (`procurement.supplier.manage`, 01-rbac.md) : responsable des achats. */
   suppliers: ['RESP_ACHATS'],
   /** ECR-APP-03 (`procurement.order.manage`, 01-rbac.md) : responsable des achats. */
@@ -272,12 +294,16 @@ export const ROLE_SETS = {
    * autres détenteurs de la permission, vendeur de PDV (emballages, UC-STK-10) et responsable de
    * production ; l'inventaire des écrans (03-parcours-et-ecrans.md) ne cite que les deux premiers.
    */
-  consumptionRecord: ['MAGASINIER', 'RESP_FERME', 'VENDEUR_PDV', 'RESP_PRODUCTION'],
-  /** ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme. */
-  countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME'],
+  consumptionRecord: ['MAGASINIER', 'RESP_FERME', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'ADMIN'],
+  /**
+   * ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme, et le
+   * responsable de production et l'Admin (droit `ALL`, AV-524).
+   */
+  countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME', 'RESP_PRODUCTION', 'ADMIN'],
   /**
    * ECR-STK-07 (`inventory.ledger.read`, 01-rbac.md) : « responsables, direction » de l'inventaire des
    * écrans, magasinier compris (WF-J3 étape 5), et la finance ; pas les vendeurs ni les commerciaux.
+   * L'Admin le lit depuis AV-524.
    */
   stockLedger: [
     'DIRECTION',
@@ -286,9 +312,13 @@ export const ROLE_SETS = {
     'RESP_FERME',
     'MAGASINIER',
     'FINANCE',
+    'ADMIN',
   ],
-  /** ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme. */
-  transferDispatch: ['MAGASINIER', 'RESP_FERME'],
+  /**
+   * ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme ; le responsable de
+   * production et l'Admin ont le droit en portée `ALL` (AV-524).
+   */
+  transferDispatch: ['MAGASINIER', 'RESP_FERME', 'RESP_PRODUCTION', 'ADMIN'],
   /** `inventory.transfer.receive` : destinataires de transferts. */
   transferReceive: [
     'COMMERCIAL_TERRAIN',
@@ -296,8 +326,9 @@ export const ROLE_SETS = {
     'RESP_PRODUCTION',
     'RESP_FERME',
     'MAGASINIER',
+    'ADMIN',
   ],
-  /** `inventory.stock.read` : tous les rôles sauf l'administrateur. */
+  /** `inventory.stock.read` : tous les rôles, l'administrateur compris depuis AV-524. */
   stockRead: [
     'DIRECTION',
     'RESP_COMMERCIAL',
@@ -309,6 +340,7 @@ export const ROLE_SETS = {
     'MAGASINIER',
     'RESP_ACHATS',
     'FINANCE',
+    'ADMIN',
   ],
   paymentRecord: [
     'RESP_COMMERCIAL',
@@ -402,8 +434,20 @@ export const ROLE_SETS = {
   receivables: ['FINANCE', 'DIRECTION', 'RESP_COMMERCIAL'],
   /** `finance.supplier_payment.record` (FIN) : saisir un paiement, affecter une avance (ECR-FIN-04). */
   supplierPaymentRecord: ['FINANCE'],
-  /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
-  allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
+  /**
+   * ECR-STK-09 (AV-526) : `inventory.threshold.manage` (DIR et ADM ALL, RPR ALL, RCO ZONE, RFE et MAG SITE) : le minimum
+   * d'alerte et la cible de réapprovisionnement d'un produit sur un emplacement.
+   */
+  thresholdManage: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'ADMIN',
+  ],
+  /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE, ADM ALL depuis AV-524). */
+  allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER', 'ADMIN'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
   distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
   /**
@@ -477,7 +521,7 @@ export const ROLE_SETS = {
     'COMMERCIAL_TERRAIN',
     'COMMERCIAL_SEDENTAIRE',
   ],
-  /** ECR-ANA-03 (RP-4) : `analytics.dashboard.stock` (MAG, DIR, RPR, RFE, RAC, FIN). */
+  /** ECR-ANA-03 (RP-4) : `analytics.dashboard.stock` (MAG, DIR, RPR, RFE, RAC, FIN, ADM depuis AV-524). */
   analyticsStock: [
     'MAGASINIER',
     'DIRECTION',
@@ -485,9 +529,10 @@ export const ROLE_SETS = {
     'RESP_FERME',
     'RESP_ACHATS',
     'FINANCE',
+    'ADMIN',
   ],
-  /** ECR-ANA-04 (RP-4) : `analytics.dashboard.production` (RPR, RFE, DIR, FIN). */
-  analyticsProduction: ['RESP_PRODUCTION', 'RESP_FERME', 'DIRECTION', 'FINANCE'],
+  /** ECR-ANA-04 (RP-4) : `analytics.dashboard.production` (RPR, RFE, DIR, FIN, ADM depuis AV-524). */
+  analyticsProduction: ['RESP_PRODUCTION', 'RESP_FERME', 'DIRECTION', 'FINANCE', 'ADMIN'],
   /** ECR-ANA-05 (RP-4) : `analytics.dashboard.finance` (FIN, DIR). */
   analyticsFinance: ['FINANCE', 'DIRECTION'],
   /** ECR-ANA-06 (RP-4) : `analytics.explore` (DIR, RCO, RPR, RAC, FIN). */
@@ -512,7 +557,7 @@ export const ROLE_SETS = {
    * (pièces). Ce n'est pas l'autorisation : la route reste ouverte à tout rôle qui peut charger un type (fournisseurs :
    * responsable des achats ; clients : commerciaux, vendeur de PDV, responsable de ferme), l'écran ne propose à chacun que
    * les types de ses droits (`ImportEntity.roles`) et le serveur revérifie chaque commande. Le menu ne s'allonge pas pour
-   * les autres : au-delà de 16 entrées il ne déplie plus tous les domaines (UX-01, `EXPAND_ALL_UNTIL`).
+   * les autres : au-delà de 17 entrées il ne déplie plus tous les domaines (UX-01, `EXPAND_ALL_UNTIL`).
    */
   dataImport: ['ADMIN', 'RESP_COMMERCIAL', 'FINANCE', 'DIRECTION'],
   /** ECR-TER-03 (PP-E) : `fieldwork.presence.record` et `.read` (Direction et Admin partout, responsables de site sur leur site). */
@@ -949,7 +994,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'lot_setup',
     group: 'production',
     roles: ROLE_SETS.lotSetup,
-    actionCodes: [],
+    // « Nouveau lot » du responsable de production et de l'Admin (AV-524).
+    actionCodes: ['NEW_LOT'],
     offline: true,
   },
   {
@@ -967,6 +1013,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'production_output',
     group: 'production',
     roles: ROLE_SETS.productionOutput,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-STK-09',
+    path: ROUTES.thresholds,
+    labelKey: 'thresholds',
+    group: 'stock',
+    roles: ROLE_SETS.thresholdManage,
     actionCodes: [],
     offline: true,
   },
@@ -1217,6 +1272,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'weekly_report',
     group: 'crm',
     roles: ROLE_SETS.weeklyReport,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    // AV-525 : guide complet (parcours, pages par domaine, questions) ; l'aide de chaque page s'ouvre du « ? ».
+    id: 'ECR-HLP-01',
+    path: ROUTES.help,
+    labelKey: 'help',
+    group: 'general',
+    roles: 'ALL',
     actionCodes: [],
     offline: true,
   },
