@@ -341,6 +341,21 @@ describe('identity.role_assignment.{grant,revoke} (P0-10)', () => {
       false,
     );
 
+    // La file d'événements est partagée par toute la suite et par ses lancements successifs : sur une base d'essai
+    // servie longtemps, le consommateur devrait d'abord rattraper le retard des lancements précédents (des dizaines de
+    // milliers d'événements, un par transaction), au-delà du délai du test. Le cache RBAC est propre au processus :
+    // aucun événement antérieur ne lui importe, il repart de la tête du flux (revue du 06/11/2026).
+    const head = await db
+      .selectFrom('platform_domain_events')
+      .select((eb) => eb.fn.max('seq').as('top'))
+      .executeTakeFirst();
+    const headSeq = Number(head?.top ?? 0);
+    await db
+      .insertInto('platform_event_consumer_offsets')
+      .values({ consumer_name: 'identity.rbac_cache', last_seq: headSeq, last_error: null })
+      .onDuplicateKeyUpdate({ last_seq: headSeq, last_error: null })
+      .execute();
+
     const assignmentId = freshUuid();
     await pipeline.handle(
       buildEnvelope({
