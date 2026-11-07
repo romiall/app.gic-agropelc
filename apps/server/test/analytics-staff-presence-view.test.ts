@@ -140,8 +140,22 @@ describe('analytics_f_staff_presence : présence du personnel des fiches PT', ()
         },
       ],
     });
-    // Trois jours de présence (9 h + 5 h 30 min = 870 min) et un jour d'absence.
+    // Deux jours de présence (9 h + 5 h 30 min = 870 min) et un jour d'absence.
     expect(await totals()).toEqual({ present: 2, absent: 1, minutes: 870, lines: 3 });
+
+    // Filtre de l'explorateur sur le libellé constant `day_status` (`day_status = ?`) : la vue lui donne la collation
+    // explicite des colonnes (ADR-064 §2), faute de quoi la comparaison échoue (« Illegal mix of collations »).
+    for (const [status, expected] of [
+      ['PRESENT', 2],
+      ['ABSENT', 1],
+      ['NON_RENSEIGNE', 0],
+    ] as const) {
+      const { rows: filtered } = await sql<{ n: string }>`
+        SELECT COUNT(*) AS n FROM analytics_f_staff_presence
+         WHERE sheet_id = ${toBin(sheetId)} AND day_status = ${status}
+      `.execute(db);
+      expect(Number(filtered[0]!.n), status).toBe(expected);
+    }
 
     const { rows } = await sql<{ day_status: string; role_label: string | null }>`
       SELECT day_status, role_label FROM analytics_f_staff_presence

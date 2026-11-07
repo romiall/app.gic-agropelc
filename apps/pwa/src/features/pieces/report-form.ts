@@ -600,8 +600,12 @@ function resolveLotSheet(form: SlipForm, context: SlipContext): Body {
     const observation = day.observation.trim();
 
     let mortality: SlipLotDay['mortality'];
-    if (day.deathsText.trim() !== '' || day.deathReasonId !== '') {
-      const quantity = parseHeadcount(day.deathsText);
+    // La fiche papier porte souvent « 0 » les jours sans mortalité : sans cause, c'est l'absence de mortalité (rien à
+    // enregistrer), non une valeur refusée ; avec une cause, une mortalité de 0 n'aurait pas de sens.
+    const deathsText =
+      day.deathsText.trim() === '0' && day.deathReasonId === '' ? '' : day.deathsText;
+    if (deathsText.trim() !== '' || day.deathReasonId !== '') {
+      const quantity = parseHeadcount(deathsText);
       const reason =
         day.deathReasonId === ''
           ? undefined
@@ -673,6 +677,15 @@ function resolveLotSheet(form: SlipForm, context: SlipContext): Body {
       ? farmLocations(refs.locations, lot).find((entry) => entry.id === form.feedLocationId)
       : undefined;
   if (hasFeed && !feedLocation) issues.push('FEED_LOCATION_REQUIRED');
+  // Une fiche qui ne porte aucune mesure (que des « 0 » de mortalité) n'a rien à enregistrer.
+  if (
+    issues.length === 0 &&
+    days.every(
+      (day) => !day.mortality && !day.input && !day.weighing && day.observation === undefined,
+    )
+  ) {
+    issues.push('DAYS_REQUIRED');
+  }
   if (issues.length > 0 || !lot || !building) return fail(...new Set(issues));
   return done({
     type: 'FL',

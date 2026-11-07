@@ -3,7 +3,7 @@
  *
  * Permet aux opérateurs de terrain de reporter une opération accomplie sur un carnet à souche papier
  * (panne de batterie, zone blanche, habitude de terrain) :
- * - Type de pièce (BV, RE, BD, RF, CC, BL, BR, BT, FP) et champs exigés par la commande du serveur
+ * - Type de pièce (BV, RE, BD, RF, CC, BL, BR, BT, FP, DA, BC, VC, FI, FL) et champs exigés par la commande du serveur
  *   correspondante (`report-commands.ts`) : emplacements, comptes, produits, clients… choisis dans les
  *   référentiels de l'appareil ;
  * - Numéro de la pièce papier (souche) avec contrôle dynamique de continuité (AV-312) ;
@@ -98,6 +98,9 @@ const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
   CONFLICT: 'warn',
   REJECTED: 'bad',
 };
+
+/** Types dont le registre sait préparer l'aperçu de la pièce (`preparePieceForRecord`) ; les autres n'ont pas le bouton. */
+const PREVIEWABLE_SLIP_TYPES: ReadonlySet<ReportableSlipType> = new Set(['BV', 'RE', 'BD']);
 
 /** Types dont le formulaire part d'une ligne vide (produit à choisir). */
 const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set([
@@ -229,12 +232,15 @@ export function PaperSlipReportScreen() {
     if (submitting || isPhotoBusy || !userId) return;
     setShowIssues(true);
     setSubmitError(null);
-    if (!resolution || !resolution.ok) return;
+    // L'écart d'antidatage se juge à l'heure de la mise en file (le serveur mesure `client_created_at` − `occurred_at`) :
+    // le formulaire a pu rester ouvert depuis le dernier affichage, la résolution est refaite avec l'heure de l'envoi.
+    const fresh = context ? resolveSlip(form, { ...context, now: clock.now() }) : null;
+    if (!fresh || !fresh.ok) return;
 
     setSubmitting(true);
     try {
-      await submitPaperSlipReport(resolution.slip, resolution.meta, userId, photo);
-      setLastSubmittedRef(resolution.meta.paperRef);
+      await submitPaperSlipReport(fresh.slip, fresh.meta, userId, photo);
+      setLastSubmittedRef(fresh.meta.paperRef);
       resetForm();
     } catch (err) {
       setSubmitError(t(saveErrorKey(err)));
@@ -620,6 +626,17 @@ export function PaperSlipReportScreen() {
                     </Badge>
                   </div>
 
+                  {/* Une pièce en plusieurs saisies (fiche de suivi de lot, bon de commande, inventaire) peut être refusée en partie. */}
+                  {slip.partCount > 1 && slip.refusedCount > 0 ? (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
+                      {t('piece.parts_refused', {
+                        refused: slip.refusedCount,
+                        total: slip.partCount,
+                        defaultValue: `${slip.refusedCount} saisie(s) refusée(s) sur ${slip.partCount} : les autres sont enregistrées, ne ressaisissez que les refusées.`,
+                      })}
+                    </div>
+                  ) : null}
+
                   <div className="report-slip-meta">
                     <span>
                       {t('piece.slip_date', 'Date sur pièce')} : {formatDateTime(slip.occurredAt)}
@@ -639,14 +656,16 @@ export function PaperSlipReportScreen() {
                     </div>
                   ) : null}
 
-                  {/* Possibilité de voir/imprimer la pièce remplie */}
-                  <div style={{ marginTop: 'var(--space-2)' }}>
-                    <PieceAction
-                      demande={() => preparePieceForRecord(slip)}
-                      cle={`slip-${slip.commandId}`}
-                      libelle={t('piece.show_slip', 'Aperçu de la pièce')}
-                    />
-                  </div>
+                  {/* Possibilité de voir/imprimer la pièce remplie, pour les types dont l'aperçu est préparé */}
+                  {PREVIEWABLE_SLIP_TYPES.has(slip.slipType) ? (
+                    <div style={{ marginTop: 'var(--space-2)' }}>
+                      <PieceAction
+                        demande={() => preparePieceForRecord(slip)}
+                        cle={`slip-${slip.commandId}`}
+                        libelle={t('piece.show_slip', 'Aperçu de la pièce')}
+                      />
+                    </div>
+                  ) : null}
                 </Card>
               ))}
             </div>

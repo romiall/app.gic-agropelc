@@ -200,7 +200,11 @@ export interface StockBalanceAtLine {
  * `count-commands.ts`). Calculé sur le registre (pas d'instantané quotidien en P2 : la table
  * optionnelle `stock_balance_snapshots` n'est pas alimentée). `recordedBefore` (S-33) : ne compte que les mouvements
  * **enregistrés** au plus tard à cet instant (`recorded_at`), c'est-à-dire l'état tel que le serveur le connaissait alors —
- * un fait saisi hors ligne et arrivé tard n'y figure pas encore (explication d'un écart de l'époque).
+ * un fait saisi hors ligne et arrivé tard n'y figure pas encore (explication d'un écart de l'époque). Approximation
+ * connue (AV-533) : `recorded_at` est l'heure de l'insertion du mouvement (défaut `CURRENT_TIMESTAMP(6)`), non celle de la
+ * validation de sa transaction ; un mouvement inséré un peu avant `read_at` et validé après était invisible à la lecture
+ * d'origine mais est compté ici, l'écart durant le temps des transactions en vol (quelques secondes, au plus l'attente
+ * d'un verrou).
  */
 export async function stockBalanceAt(
   executor: Executor,

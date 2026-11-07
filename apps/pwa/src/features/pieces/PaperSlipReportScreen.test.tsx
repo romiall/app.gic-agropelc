@@ -419,9 +419,9 @@ describe('PaperSlipReportScreen (PP-B)', () => {
     });
     expect(rows[1]!.aggregate_id).toBe(rows[0]!.aggregate_id);
     expect(rows[1]!.depends_on).toEqual([rows[0]!.command_id]);
-    // Seule la première commande porte les indices du registre des carnets.
+    // Seule la première commande porte les indices du registre des carnets ; toutes portent le groupe de la pièce.
     expect(rows[0]!.local_flags).toContain('PAPER_SLIP');
-    expect(rows[1]!.local_flags ?? []).toEqual([]);
+    expect(rows[1]!.local_flags ?? []).toEqual([`SLIP_GROUP:${rows[0]!.aggregate_id}`]);
   });
 
   it('FI : la fiche d’inventaire est mise en file en trois commandes, chacune dépendant de la précédente', async () => {
@@ -497,7 +497,7 @@ describe('PaperSlipReportScreen (PP-B)', () => {
     expect(new Set(rows.map((row) => row.aggregate_id)).size).toBe(2);
     expect(rows.every((row) => (row.depends_on ?? []).length === 0)).toBe(true);
     expect(rows[0]!.local_flags).toContain('SLIP_TYPE:FL');
-    expect(rows[1]!.local_flags ?? []).toEqual([]);
+    expect(rows[1]!.local_flags ?? []).toEqual([`SLIP_GROUP:${rows[0]!.aggregate_id}`]);
   });
 
   it('FL : une ligne se retire, un jour se rajoute (sept au plus), le jour proposé suit le précédent', async () => {

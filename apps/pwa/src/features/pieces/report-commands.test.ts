@@ -432,8 +432,11 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       'SLIP_TYPE:BC',
       'PAPER_REF:BC-000031',
       'SLIP_AMOUNT:360000',
+      `SLIP_GROUP:${id(99)}`,
     ]);
-    expect(commands[1]!.localFlags).toEqual([]);
+    // Toutes les commandes portent le groupe de la pièce (le registre juge la pièce sur l'ensemble) ; la seconde, rien d'autre.
+    expect(commands[0]!.localFlags).toContain(`SLIP_GROUP:${id(99)}`);
+    expect(commands[1]!.localFlags).toEqual([`SLIP_GROUP:${id(99)}`]);
     expect(commands.every((c) => c.occurredAt === '2026-11-03T09:00:00.000Z')).toBe(true);
   });
 
@@ -470,9 +473,22 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       ],
     });
     expect(commands[2]!.payload).toEqual({ countId: id(99) });
-    expect(commands.slice(1).every((c) => c.localFlags.length === 0 && c.photo === null)).toBe(
-      true,
-    );
+    expect(
+      commands
+        .slice(1)
+        .every((c) => c.localFlags.join() === `SLIP_GROUP:${id(99)}` && c.photo === null),
+    ).toBe(true);
+  });
+
+  it('FL : les agrégats des saisies sont distincts quel que soit l’octet final de celui de la pièce (aucune saisie prise pour un rejeu)', () => {
+    // Un agrégat repris par deux saisies ferait prendre la seconde pour un rejeu de la première : elle ne serait jamais
+    // enregistrée, sans le moindre signalement. L'octet final de l'identifiant d'une pièce est tiré au hasard.
+    for (let last = 0; last < 256; last += 1) {
+      const aggregateId = `${id(99).slice(0, -2)}${last.toString(16).padStart(2, '0')}`;
+      const commands = buildReportCommands(SLIPS.FL, meta({ aggregateId }));
+      expect(new Set(commands.map((c) => c.aggregateId)).size, aggregateId).toBe(commands.length);
+      expect(commands[0]!.aggregateId).toBe(aggregateId);
+    }
   });
 
   it('FL : une saisie du jour par mesure renseignée, indépendantes, chacune avec son agrégat et l’heure de son jour', () => {
@@ -508,10 +524,17 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       '2026-11-03T11:00:00.000Z',
     ]);
     expect(commands.every((c) => !c.dependsOnPrevious && c.capturedOffline)).toBe(true);
-    expect(commands[0]!.localFlags).toEqual(['PAPER_SLIP', 'SLIP_TYPE:FL', 'PAPER_REF:FL-000012']);
-    expect(commands.slice(1).every((c) => c.localFlags.length === 0 && c.photo === null)).toBe(
-      true,
-    );
+    expect(commands[0]!.localFlags).toEqual([
+      'PAPER_SLIP',
+      'SLIP_TYPE:FL',
+      'PAPER_REF:FL-000012',
+      `SLIP_GROUP:${id(99)}`,
+    ]);
+    expect(
+      commands
+        .slice(1)
+        .every((c) => c.localFlags.join() === `SLIP_GROUP:${id(99)}` && c.photo === null),
+    ).toBe(true);
     // Charges : celles des écrans de saisie du jour (`production/daily.ts`), plus la mention de la pièce.
     expect(commands[0]!.payload).toEqual({
       ...mortalityPayload({

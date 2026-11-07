@@ -10,6 +10,9 @@
 -- (non modifiable), portée dérivée dans la vue (le site de la feuille). Les feuilles annulées n'y figurent pas (règle 4 : la
 -- feuille annulée reste en base, elle ne compte plus). Le jour est le jour métier de la ligne (`presence_date`).
 --
+-- Le libellé constant `day_status` porte la collation explicite des colonnes (ADR-064 §2) : sans elle, un filtre
+-- `day_status = ?` de l'explorateur échoue (« Illegal mix of collations ») quand la connexion qui crée la vue et celle qui
+-- l'interroge n'ont pas la même collation par défaut.
 -- Une durée n'existe que pour un jour relevé en heures, départ non antérieur à l'arrivée (calcul en secondes, portable).
 -- Expand seulement : une vue nouvelle, que la version précédente du code ignore.
 --
@@ -24,9 +27,9 @@ SELECT
   p.person_role AS role_label,
   p.absence_code,
   CASE
-    WHEN p.absence_code IS NOT NULL THEN 'ABSENT'
-    WHEN p.arrival_time IS NOT NULL THEN 'PRESENT'
-    ELSE 'NON_RENSEIGNE'
+    WHEN p.absence_code IS NOT NULL THEN _utf8mb4'ABSENT' COLLATE utf8mb4_0900_as_cs
+    WHEN p.arrival_time IS NOT NULL THEN _utf8mb4'PRESENT' COLLATE utf8mb4_0900_as_cs
+    ELSE _utf8mb4'NON_RENSEIGNE' COLLATE utf8mb4_0900_as_cs
   END AS day_status,
   CASE WHEN p.arrival_time IS NOT NULL THEN 1 ELSE 0 END AS present_count,
   CASE WHEN p.absence_code IS NOT NULL THEN 1 ELSE 0 END AS absent_count,

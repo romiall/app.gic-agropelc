@@ -97,8 +97,9 @@ describe('quarantaine d’un utilisateur réactivé (AV-229, BR-ADM-002, AT-034)
     userId: string,
     type: 'suspend' | 'reactivate' | 'deactivate',
     occurredAt: string,
+    using: CommandPipelineService = pipeline,
   ) {
-    const result = await pipeline.handle(
+    const result = await using.handle(
       {
         command_id: freshUuid(),
         device_seq: 1,
@@ -126,12 +127,16 @@ describe('quarantaine d’un utilisateur réactivé (AV-229, BR-ADM-002, AT-034)
   }
 
   /** Un fait de l'utilisateur (ouverture d'un inventaire), daté de `occurredAt`, poussé maintenant. */
-  async function fact(worker: { userId: string; deviceId: string }, occurredAt: string) {
+  async function fact(
+    worker: { userId: string; deviceId: string },
+    occurredAt: string,
+    using: CommandPipelineService = pipeline,
+  ) {
     const locationId = await db
       .transaction()
       .execute((trx) => insertTestLocation(trx, admin, siteId, { locationType: 'STORE' }));
     const commandId = freshUuid();
-    const result = await pipeline.handle(
+    const result = await using.handle(
       {
         command_id: commandId,
         device_seq: 1,
@@ -192,6 +197,39 @@ describe('quarantaine d’un utilisateur réactivé (AV-229, BR-ADM-002, AT-034)
     expect(periods[0]).toMatchObject({ status: 'SUSPENDED', reason: 'Essai' });
     expect(periods[0]!.valid_from.toISOString()).toBe(at('10:00'));
     expect(periods[0]!.valid_to.toISOString()).toBe(at('11:00'));
+  });
+
+  it('une réactivation datée par une horloge d’administration en avance ne prolonge pas la quarantaine (AV-229)', async () => {
+    // Le serveur de cet essai est trois heures en avance sur la base : une réactivation datée deux heures plus tard que la
+    // réception passe le contrôle de l'horodatage futur, mais la période hors service se ferme à la réception.
+    const farClock = new FixedClock(new Date(Date.now() + 3 * 3_600_000));
+    const registry = new CommandHandlerRegistry();
+    registerUserCommands(registry);
+    registerCountCommands(
+      registry,
+      new ApprovalDecisionHandlerRegistry(),
+      idGenerator,
+      new DocumentSequenceService(),
+    );
+    const ahead = new CommandPipelineService(db, registry, farClock, idGenerator);
+    const iso = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString();
+
+    const worker = await newWorker();
+    await transition(worker.userId, 'suspend', at('10:00'), ahead);
+    await transition(worker.userId, 'reactivate', iso(2 * 3_600_000), ahead);
+
+    const [period] = await periodsOf(worker.userId);
+    expect(period!.valid_from.toISOString()).toBe(at('10:00'));
+    expect(period!.valid_to.getTime()).toBeLessThanOrEqual(Date.now());
+    // Le fait réel de l'utilisateur, une heure après la réception, n'est pas pris pour un fait de la suspension.
+    expect(codeOf((await fact(worker, iso(3_600_000), ahead)).result)).toBe('APPLIED');
+    // La ligne vivante porte la date d'effet bornée, non celle de l'appareil en avance.
+    const live = await db
+      .selectFrom('identity_users')
+      .select('status_changed_at')
+      .where('id', '=', toBin(worker.userId))
+      .executeTakeFirstOrThrow();
+    expect(live.status_changed_at!.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
   it('bornes de la période : l’ouverture est comprise, la fermeture ne l’est pas', async () => {

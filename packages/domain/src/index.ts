@@ -126,8 +126,10 @@ export type {
   CountAdjustmentPart,
   CountLineScope,
   CountLotBalance,
+  LateMoveFootprint,
 } from './inventory-count-reconciliation.js';
 export {
+  distributeLateMoveCompensation,
   distributeLotLessVariance,
   reconciliationDelta,
   resolveCountLineScope,

@@ -10,8 +10,10 @@
  * - **Contrat du port** (NT-4) : `send` ne lève pas ; 404 et 410 → `GONE` (l'abonnement est révoqué), tout autre
  *   échec → `FAILED` avec un motif sans point de terminaison ; la requête est abandonnée quand le signal est annulé.
  * - **Point de terminaison fourni par le navigateur** : il n'est appelé qu'en `https`, sans identifiants, sur le
- *   port 443, et jamais vers `localhost` ni une adresse privée (aucune requête sortante vers le réseau interne).
- *   Limite connue : une résolution DNS qui bascule après coup (rebinding) n'est pas contrôlée.
+ *   port 443, jamais vers `localhost` ni une adresse privée **écrite en clair** dans l'URL, et aucune redirection
+ *   n'est suivie. Limite connue (AV-536) : la résolution DNS n'est pas contrôlée, un nom public qui résout vers une
+ *   adresse privée passe la garde ; la validation du certificat TLS empêche d'y envoyer le message, pas d'y ouvrir la
+ *   connexion. Une défense complète fixerait l'adresse résolue (`lookup` d'un agent HTTPS).
  */
 import {
   createCipheriv,
@@ -34,8 +36,13 @@ import { DisabledWebPushSender } from './web-push.js';
 const RECORD_SIZE = 4096;
 /** Étiquette de fin d'enregistrement (RFC 8188 §2) : seul enregistrement du message, donc le dernier. */
 const LAST_RECORD_DELIMITER = 0x02;
-/** Plus grande charge utile d'un seul enregistrement : taille − étiquette GCM (16) − délimiteur (1). */
-export const MAX_PUSH_PAYLOAD_BYTES = RECORD_SIZE - 16 - 1;
+/** En-tête du corps `aes128gcm` : sel (16), taille d'enregistrement (4), longueur d'identifiant (1), clé du serveur (65). */
+const BODY_HEADER_BYTES = 16 + 4 + 1 + 65;
+/**
+ * Plus grande charge utile (RFC 8291 §4, RFC 8030 §7.2) : un service de push accepte au moins 4096 octets de **corps**,
+ * en-tête et étiquette GCM compris, soit 4096 − 86 − 16 − 1 = 3993 octets de texte clair. Au-delà, FCM répond 413.
+ */
+export const MAX_PUSH_PAYLOAD_BYTES = RECORD_SIZE - BODY_HEADER_BYTES - 16 - 1;
 /** Validité du jeton VAPID : 12 h (au plus 24 h, RFC 8292 §2). */
 const VAPID_TOKEN_SECONDS = 12 * 60 * 60;
 /** Durée de conservation du message par le service de push quand l'appareil est éteint. */
@@ -176,7 +183,8 @@ export function isSafePushEndpoint(endpoint: string): boolean {
   }
   if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return false;
   if (url.port !== '' && url.port !== '443') return false;
-  const host = url.hostname.toLowerCase();
+  // Un nom de domaine absolu (point final) désigne le même hôte : « localhost. » ne doit pas passer la garde.
+  const host = url.hostname.toLowerCase().replace(/\.+$/, '');
   if (
     host === '' ||
     host === 'localhost' ||
@@ -203,6 +211,19 @@ export function isSafePushEndpoint(endpoint: string): boolean {
   return true;
 }
 
+/**
+ * Clés d'un abonnement de navigateur (RFC 8291 §2.1) : clé publique P-256 non compressée (65 octets) et secret
+ * d'authentification (16 octets), en base64url. Contrôlées à l'abonnement (`communication.push.subscribe`, AV-536) comme à
+ * l'envoi : des clés d'une autre forme ne serviront jamais.
+ */
+export function isWellFormedPushKeys(keys: {
+  readonly p256dh: string;
+  readonly auth: string;
+}): boolean {
+  const uaPublic = fromB64u(keys.p256dh);
+  return uaPublic.length === 65 && uaPublic[0] === 0x04 && fromB64u(keys.auth).length === 16;
+}
+
 /** Coupes d'affichage (unités UTF-16) : un téléphone n'affiche que quelques lignes, et trois octets UTF-8 au plus par unité tiennent dans un enregistrement. */
 const TITLE_MAX = 120;
 const BODY_MAX = 600;
@@ -217,20 +238,34 @@ function clip(text: string, max: number): string {
   return `${text.slice(0, end)}…`;
 }
 
-/** Charge utile JSON lue par le service worker de la PWA (`title`, `body`, `link`, `alertId`, `alertType`, `tag`). */
+/**
+ * Charge utile JSON lue par le service worker de la PWA (`title`, `body`, `link`, `alertId`, `alertType`, `tag`).
+ * Les textes sont coupés d'abord à des longueurs d'affichage, puis, si l'échappement JSON (un caractère de contrôle prend
+ * six octets) fait encore dépasser `MAX_PUSH_PAYLOAD_BYTES`, réduits de moitié jusqu'à tenir : le message part toujours.
+ */
 export function pushPayload(message: PushMessage): Buffer {
-  return Buffer.from(
-    JSON.stringify({
-      title: clip(message.title, TITLE_MAX),
-      body: clip(message.body, BODY_MAX),
-      // Un lien coupé ouvrirait une mauvaise page : trop long, il est omis (l'application s'ouvre à l'accueil).
-      link: message.link !== null && message.link.length <= LINK_MAX ? message.link : null,
-      alertId: message.alertId,
-      alertType: message.alertType,
-      tag: message.tag,
-    }),
-    'utf8',
-  );
+  let title = clip(message.title, TITLE_MAX);
+  let body = clip(message.body, BODY_MAX);
+  const build = (): Buffer =>
+    Buffer.from(
+      JSON.stringify({
+        title,
+        body,
+        // Un lien coupé ouvrirait une mauvaise page : trop long, il est omis (l'application s'ouvre à l'accueil).
+        link: message.link !== null && message.link.length <= LINK_MAX ? message.link : null,
+        alertId: message.alertId,
+        alertType: message.alertType,
+        tag: message.tag,
+      }),
+      'utf8',
+    );
+  let payload = build();
+  while (payload.length > MAX_PUSH_PAYLOAD_BYTES && (body.length > 1 || title.length > 1)) {
+    if (body.length > 1) body = clip(body, Math.floor(body.length / 2));
+    else title = clip(title, Math.floor(title.length / 2));
+    payload = build();
+  }
+  return payload;
 }
 
 type FetchLike = (
@@ -239,9 +274,16 @@ type FetchLike = (
     readonly method: 'POST';
     readonly headers: Record<string, string>;
     readonly body: Buffer;
+    /** Jamais de redirection suivie : le point de terminaison est vérifié, pas l'adresse vers laquelle il renverrait. */
+    readonly redirect: 'manual';
     readonly signal?: AbortSignal;
   },
-) => Promise<{ readonly status: number; readonly ok: boolean }>;
+) => Promise<{
+  readonly status: number;
+  readonly ok: boolean;
+  /** Corps de la réponse, annulé sans être lu (il ne nous sert à rien et retiendrait la connexion). */
+  readonly body?: { cancel(): Promise<void> } | null;
+}>;
 
 export class VapidWebPushSender implements WebPushSender {
   readonly enabled = true;
@@ -258,12 +300,12 @@ export class VapidWebPushSender implements WebPushSender {
   ): Promise<PushSendResult> {
     if (!isSafePushEndpoint(target.endpoint))
       return { status: 'FAILED', reason: 'ENDPOINT_REFUSED' };
-    const uaPublic = fromB64u(target.p256dh);
-    const authSecret = fromB64u(target.auth);
-    if (uaPublic.length !== 65 || uaPublic[0] !== 0x04 || authSecret.length !== 16) {
+    if (!isWellFormedPushKeys(target)) {
       // Un abonnement dont les clés ne sont pas celles d'un navigateur ne sera jamais valide : motif distinct.
       return { status: 'FAILED', reason: 'INVALID_SUBSCRIPTION_KEYS' };
     }
+    const uaPublic = fromB64u(target.p256dh);
+    const authSecret = fromB64u(target.auth);
     let body: Buffer;
     try {
       body = encryptWebPushPayload({ uaPublic, authSecret, plaintext: pushPayload(message) });
@@ -281,11 +323,16 @@ export class VapidWebPushSender implements WebPushSender {
           'Content-Encoding': 'aes128gcm',
           'Content-Type': 'application/octet-stream',
           TTL: String(PUSH_TTL_SECONDS),
-          Urgency: 'normal',
+          // RFC 8030 §5.3 : seules les alertes critiques et leurs escalades sont poussées (BR-NOT-004, « push
+          // immédiat ») ; en priorité normale, un téléphone en veille peut retarder leur remise.
+          Urgency: 'high',
         },
         body,
+        redirect: 'manual',
         ...(options !== undefined ? { signal: options.signal } : {}),
       });
+      await response.body?.cancel().catch(() => undefined);
+      // Une redirection (3xx) n'est pas suivie : elle sortirait de la garde du point de terminaison (SSRF).
       if (response.status === 404 || response.status === 410) return { status: 'GONE' };
       if (response.ok) return { status: 'SENT' };
       return { status: 'FAILED', reason: `HTTP_${response.status}` };
@@ -320,7 +367,13 @@ export function vapidConfigFromEnv(
     onInvalid?.(issues);
     return null;
   }
-  return config;
+  // Le décodage de Node accepte aussi l'alphabet standard (« + », « / », « = ») : les clés sont rendues sous leur forme
+  // canonique base64url, la seule qu'attendent l'en-tête `k=` et `applicationServerKey` de la PWA.
+  return {
+    publicKey: b64u(fromB64u(publicKey)),
+    privateKey: b64u(fromB64u(privateKey)),
+    subject,
+  };
 }
 
 /** L'adaptateur réel quand les clés du porteur sont posées et valides, sinon l'adaptateur désactivé. */

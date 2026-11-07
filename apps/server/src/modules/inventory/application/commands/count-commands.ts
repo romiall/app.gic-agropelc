@@ -7,14 +7,15 @@
  * Inventaire d'ouverture (`count_type = 'OPENING'`, `inventory.opening.post`, BR-STK-046, AV-517) : une seule
  * commande pose le document avec ses lignes (théorique nul, coût unitaire déclaré par ligne) et demande sa
  * validation (toujours : le stock initial valorise le bilan) ; la décision l'approuve en comptabilisant un mouvement
- * `OPENING_BALANCE` (`V_OPENING` vers l'emplacement) par ligne, ou le rejette sans mouvement. Hors périmètre,
- * documenté et non simulé : BR-STK-044
- * (rapprochement tardif d'un mouvement dont `occurred_at <= counted_at` arrive après la
- * comptabilisation — `net_variance_after_reconciliation_xaf`/`reconciled_adjustment_qty_base`
- * restent NULL/0, jamais mis à jour ici) ; BR-STK-045 (répartition FIFO inverse de l'écart
- * d'un produit compté sans lot désigné — chaque ligne comptée porte au plus un `lot_id`,
- * l'écart est donc toujours imputé à CE lot, ou à « sans lot » si aucun n'est désigné, jamais
- * réparti automatiquement sur plusieurs lots).
+ * `OPENING_BALANCE` (`V_OPENING` vers l'emplacement) par ligne, ou le rejette sans mouvement.
+ *
+ * Rapprochement tardif et répartition (AV-527, ADR-059) : BR-STK-044 — un mouvement dont `occurred_at <= counted_at`
+ * arrive après la comptabilisation est rapproché par un ajustement compensatoire daté du comptage (motif
+ * `RAPPROCHEMENT_INVENTAIRE`, `reconcileCountLine` de `record-move.ts`), qui rétablit le solde de la ligne à son instant ;
+ * `reconciled_adjustment_qty_base` et `net_variance_after_reconciliation_xaf` suivent. BR-STK-045 — une ligne sans lot d'un
+ * produit à lots, seule de son produit dans l'inventaire, porte sur tous les lots (colonne `all_lots`) : le théorique est
+ * le total des soldes et l'écart se répartit en FIFO inverse (`distributeLotLessVariance`). L'heure de comptage d'une ligne
+ * est bornée à la réception de la commande par le serveur (`recordLines`).
  *
  * `variance_reason_code_id` "Requis si écart ≠ 0 à la comptabilisation" (dictionnaire) n'est
  * **pas** un CK SQL (contrairement à `comment` sur `inventory_loss_declarations`) : ce fichier
@@ -81,6 +82,7 @@ import {
   bucketsHaveLots,
   ledgerBucketsAt,
   lotBalancesOf,
+  lotLessBalanceOf,
   type PostedCountLine,
 } from '../count-ledger.js';
 import { inventoryCountChange } from '../sync-changes.js';
@@ -190,6 +192,8 @@ async function theoreticalOfLine(
   readonly theoretical: number;
   readonly allLots: boolean;
   readonly lotBalances: readonly CountLotBalance[];
+  /** Solde du seul sans-lot (dernière réserve d'une perte répartie, BR-STK-045). */
+  readonly lotLessBalance: number;
 }> {
   const lotId = fromBinOrNull(params.line.lot_id);
   const buckets = await ledgerBucketsAt(uow, {
@@ -213,6 +217,7 @@ async function theoreticalOfLine(
     theoretical: bucketBalance(buckets, scope, lotId),
     allLots,
     lotBalances: allLots ? await lotBalancesOf(uow, buckets) : [],
+    lotLessBalance: lotLessBalanceOf(buckets),
   };
 }
 
@@ -258,13 +263,15 @@ async function applyLineAdjustment(
      * se répartit alors en FIFO inverse, un mouvement par lot. Absent : un seul mouvement, sur le lot de la ligne.
      */
     readonly lotBalances?: readonly CountLotBalance[];
+    /** Solde du sans-lot à `counted_at`, avec `lotBalances` : une perte l'entame après les lots (BR-STK-045). */
+    readonly lotLessBalance?: number;
   },
 ): Promise<void> {
   if (params.variance === 0) return;
   const adjustmentLocationId = await virtualLocationId(uow, 'V_ADJUSTMENT');
   const parts =
     params.lotBalances !== undefined
-      ? distributeLotLessVariance(params.variance, params.lotBalances)
+      ? distributeLotLessVariance(params.variance, params.lotBalances, params.lotLessBalance ?? 0)
       : [
           {
             lotId: fromBinOrNull(params.line.lot_id),
@@ -449,11 +456,15 @@ function buildCountCommands(
     if (!row) return notFound();
     if (row.status !== 'IN_PROGRESS') return badStatus('IN_PROGRESS');
 
+    // BR-STK-044 : l'heure de comptage est celle de l'appareil ; elle ne peut pas dépasser l'heure de réception de la
+    // commande par le serveur. Une horloge en avance sinon repousserait le comptage dans le futur : les faits réels,
+    // d'autres appareils, qui le suivent seraient traités comme antérieurs à lui, donc « tardifs », et compensés à tort.
+    const receivedAt = (await loadCommandOrigin(uow, envelope.command_id)).receivedAt;
     for (const line of envelope.payload.lines) {
       const values = {
         product_id: toBin(line.productId),
         lot_id: toBinOrNull(line.lotId ?? null),
-        counted_at: new Date(line.countedAt),
+        counted_at: new Date(Math.min(new Date(line.countedAt).getTime(), receivedAt.getTime())),
         counted_qty_base: String(line.countedQtyBase),
         variance_reason_code_id: toBinOrNull(line.varianceReasonCodeId ?? null),
         comment: line.comment ?? null,
@@ -504,6 +515,7 @@ function buildCountCommands(
       readonly unitCostXaf: number;
       /** Lots à répartir (BR-STK-045), seulement pour une ligne qui porte sur tous les lots. */
       readonly lotBalances: readonly CountLotBalance[] | undefined;
+      readonly lotLessBalance: number;
     }> = [];
 
     // ADR-038 N5 : soldes de tous les produits comptés, triés, avant le premier mouvement.
@@ -512,7 +524,7 @@ function buildCountCommands(
       lines.map((line) => ({ locationId, productId: fromBin(line.product_id) })),
     );
     for (const line of lines) {
-      const { theoretical, allLots, lotBalances } = await theoreticalOfLine(uow, {
+      const { theoretical, allLots, lotBalances, lotLessBalance } = await theoreticalOfLine(uow, {
         locationId,
         line,
         siblings: lines,
@@ -526,6 +538,7 @@ function buildCountCommands(
         variance,
         unitCostXaf,
         lotBalances: allLots ? lotBalances : undefined,
+        lotLessBalance,
       });
 
       await uow
@@ -568,7 +581,9 @@ function buildCountCommands(
           unitCostXaf: entry.unitCostXaf,
           decidedBy: envelope.author_user_id,
           postedAt: occurredAt,
-          ...(entry.lotBalances !== undefined ? { lotBalances: entry.lotBalances } : {}),
+          ...(entry.lotBalances !== undefined
+            ? { lotBalances: entry.lotBalances, lotLessBalance: entry.lotLessBalance }
+            : {}),
         });
       }
       await uow
@@ -1011,16 +1026,13 @@ function registerInventoryAdjustmentDecisionHandler(
           const variance = line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0;
           // BR-STK-045 : l'écart figé d'une ligne sur tous les lots se répartit sur les soldes par lot d'aujourd'hui à
           // `counted_at` (un fait tardif a pu s'enregistrer entre la soumission et la décision).
-          const lotBalances = Boolean(line.all_lots)
-            ? await lotBalancesOf(
-                uow,
-                await ledgerBucketsAt(uow, {
-                  locationId,
-                  productId: fromBin(line.product_id),
-                  at: line.counted_at,
-                  lock: true,
-                }),
-              )
+          const buckets = line.all_lots
+            ? await ledgerBucketsAt(uow, {
+                locationId,
+                productId: fromBin(line.product_id),
+                at: line.counted_at,
+                lock: true,
+              })
             : undefined;
           await applyLineAdjustment(uow, deps, {
             countId: ctx.subjectId,
@@ -1030,7 +1042,12 @@ function registerInventoryAdjustmentDecisionHandler(
             unitCostXaf: line.unit_cost_xaf !== null ? Number(line.unit_cost_xaf) : 0,
             decidedBy: ctx.decidedBy,
             postedAt: ctx.decidedAt,
-            ...(lotBalances !== undefined ? { lotBalances } : {}),
+            ...(buckets !== undefined
+              ? {
+                  lotBalances: await lotBalancesOf(uow, buckets),
+                  lotLessBalance: lotLessBalanceOf(buckets),
+                }
+              : {}),
           });
         }
         await uow

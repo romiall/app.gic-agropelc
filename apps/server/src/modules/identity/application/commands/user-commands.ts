@@ -3,9 +3,9 @@
  * 06-transverses.md ; BR-ADM-001, BR-ADM-002).
  *
  * Une transition absente de la table SM-USER est interdite (`INVALID_TRANSITION`), sauf déjà
- * dans l'état cible (rejeu sans effet, BR-SYN-007). `status_changed_at` = `occurred_at` :
- * exactement ce que compare `identity/application/public/user-check.ts` pour BR-ADM-002
- * (commandes hors ligne antérieures à la désactivation acceptées, postérieures en quarantaine).
+ * dans l'état cible (rejeu sans effet, BR-SYN-007). `status_changed_at` = `occurred_at`, borné à l'heure de réception
+ * de la commande par le serveur (`effectiveAt`) : exactement ce que compare `identity/application/public/user-check.ts`
+ * pour BR-ADM-002 (commandes hors ligne antérieures à la désactivation acceptées, postérieures en quarantaine).
  *
  * AV-229 : `reactivate` (depuis `SUSPENDED` ou `DEACTIVATED`) et `deactivate` (depuis `SUSPENDED`) réécrivent
  * `status_changed_at` ; la période hors service qu'elles ferment est consignée d'abord (`identity_user_status_periods`,
@@ -21,6 +21,7 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { DB } from '../../../../platform/kysely/database.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
+import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { hasOtherActiveAdmin } from './admin-guard.js';
@@ -155,6 +156,20 @@ function lastAdmin(): CommandHandlerOutcome {
   };
 }
 
+/**
+ * Date d'effet d'un changement d'état de compte : celle du fait, jamais postérieure à la réception de la commande par le
+ * serveur. Une horloge d'administration en avance décalerait sinon la période hors service (la réactivation la prolongerait
+ * de l'avance, et les faits réels de l'utilisateur dans cet intervalle seraient mis en quarantaine à tort, AV-229).
+ */
+async function effectiveAt(
+  uow: UnitOfWork,
+  envelope: { readonly occurred_at: string; readonly command_id: string },
+): Promise<Date> {
+  const occurredAt = new Date(envelope.occurred_at);
+  const { receivedAt } = await loadCommandOrigin(uow, envelope.command_id);
+  return occurredAt.getTime() <= receivedAt.getTime() ? occurredAt : receivedAt;
+}
+
 const suspend: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => {
   const userId = toBin(envelope.aggregate_id);
   const user = await uow
@@ -168,7 +183,7 @@ const suspend: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => 
   if (user.status !== 'ACTIVE') return invalidTransition(user.status);
   if (isOwnAccount(envelope)) return ownAccount();
 
-  const occurredAt = new Date(envelope.occurred_at);
+  const occurredAt = await effectiveAt(uow, envelope);
   if (!(await hasOtherActiveAdmin(uow, envelope.aggregate_id, occurredAt))) return lastAdmin();
 
   await uow
@@ -214,7 +229,7 @@ const reactivate: CommandHandler<EmptyPayload> = async (uow, envelope) => {
     return emailAlreadyUsed();
   }
 
-  const occurredAt = new Date(envelope.occurred_at);
+  const occurredAt = await effectiveAt(uow, envelope);
   // AV-229 : la période hors service que la réactivation ferme, avant de réécrire la ligne vivante.
   if (isUserOutOfServiceStatus(user.status)) {
     await closeUserOutOfServicePeriod(uow, {
@@ -255,7 +270,7 @@ const deactivate: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) 
     return invalidTransition(user.status);
   if (isOwnAccount(envelope)) return ownAccount();
 
-  const occurredAt = new Date(envelope.occurred_at);
+  const occurredAt = await effectiveAt(uow, envelope);
   if (!(await hasOtherActiveAdmin(uow, envelope.aggregate_id, occurredAt))) return lastAdmin();
 
   // AV-229 : la suspension que la désactivation ferme (les faits datés entre les deux restent en quarantaine).

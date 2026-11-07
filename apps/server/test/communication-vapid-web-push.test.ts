@@ -337,6 +337,20 @@ describe('configuration VAPID', () => {
         VAPID_SUBJECT: config.subject,
       }),
     ).toEqual(config);
+
+    // Paire collée en base64 standard (« + », « / », « = ») : rendue sous la forme canonique base64url, celle que
+    // l’en-tête `k=` et la PWA attendent.
+    const standard = (text: string): string => {
+      const swapped = text.replace(/-/g, '+').replace(/_/g, '/');
+      return swapped + '='.repeat((4 - (swapped.length % 4)) % 4);
+    };
+    expect(
+      vapidConfigFromEnv({
+        VAPID_PUBLIC_KEY: standard(config.publicKey),
+        VAPID_PRIVATE_KEY: standard(config.privateKey),
+        VAPID_SUBJECT: config.subject,
+      }),
+    ).toEqual(config);
   });
 });
 
@@ -358,6 +372,9 @@ describe('garde du point de terminaison', () => {
       'https://user:secret@fcm.googleapis.com/x',
       'https://fcm.googleapis.com:8443/x',
       'https://localhost/x',
+      'https://LOCALHOST/x',
+      'https://localhost./x',
+      'https://printer.local./x',
       'https://app.localhost/x',
       'https://printer.local/x',
       'https://intranet.internal/x',
@@ -411,6 +428,28 @@ describe('charge utile du message', () => {
     const short = JSON.parse(pushPayload(message).toString('utf8')) as PushMessage;
     expect(short).toEqual(message);
   });
+
+  it('la borne est celle de la RFC 8291 (3993 octets) et un texte pathologique tient encore : l’échappement JSON d’un caractère de contrôle prend six octets', () => {
+    expect(MAX_PUSH_PAYLOAD_BYTES).toBe(3993);
+    const pathological = pushPayload({
+      ...message,
+      title: '\u0001'.repeat(500),
+      body: '\u0001'.repeat(5000),
+    });
+    expect(pathological.length).toBeLessThanOrEqual(MAX_PUSH_PAYLOAD_BYTES);
+    const parsed = JSON.parse(pathological.toString('utf8')) as PushMessage;
+    expect(parsed.alertId).toBe(message.alertId);
+    expect(parsed.tag).toBe(message.tag);
+    expect(parsed.body.length).toBeGreaterThan(0);
+    // Le corps complet (en-tête de 86 octets, étiquette GCM, délimiteur) tient dans les 4096 octets garantis.
+    const ua = newUserAgent();
+    const body = encryptWebPushPayload({
+      uaPublic: ua.publicKey,
+      authSecret: ua.authSecret,
+      plaintext: pathological,
+    });
+    expect(body.length).toBeLessThanOrEqual(4096);
+  });
 });
 
 function recordingFetch(outcome: number | Error) {
@@ -418,17 +457,38 @@ function recordingFetch(outcome: number | Error) {
     url: string;
     headers: Record<string, string>;
     body: Buffer;
+    redirect: string;
     signal: AbortSignal | undefined;
   }[] = [];
+  const state = { cancelled: 0 };
   const fn = async (
     url: string,
-    init: { headers: Record<string, string>; body: Buffer; signal?: AbortSignal },
+    init: {
+      headers: Record<string, string>;
+      body: Buffer;
+      redirect: string;
+      signal?: AbortSignal;
+    },
   ) => {
-    calls.push({ url, headers: init.headers, body: init.body, signal: init.signal });
+    calls.push({
+      url,
+      headers: init.headers,
+      body: init.body,
+      redirect: init.redirect,
+      signal: init.signal,
+    });
     if (outcome instanceof Error) throw outcome;
-    return { status: outcome, ok: outcome >= 200 && outcome < 300 };
+    return {
+      status: outcome,
+      ok: outcome >= 200 && outcome < 300,
+      body: {
+        cancel: async () => {
+          state.cancelled += 1;
+        },
+      },
+    };
   };
-  return { calls, fn };
+  return { calls, fn, state };
 }
 
 describe('VapidWebPushSender', () => {
@@ -447,11 +507,14 @@ describe('VapidWebPushSender', () => {
       const [call] = http.calls;
       expect(call!.url).toBe('https://push.example.org/send/abc');
       expect(call!.signal).toBe(signal);
+      // Aucune redirection suivie (SSRF) ; le corps de la réponse est annulé sans être lu.
+      expect(call!.redirect).toBe('manual');
+      expect(http.state.cancelled).toBe(1);
       expect(call!.headers).toMatchObject({
         'Content-Encoding': 'aes128gcm',
         'Content-Type': 'application/octet-stream',
         TTL: '86400',
-        Urgency: 'normal',
+        Urgency: 'high',
       });
       expect(verifyVapidHeader(call!.headers.Authorization!, config).aud).toBe(
         'https://push.example.org',
@@ -566,7 +629,7 @@ describe('VapidWebPushSender', () => {
       expect(request!.headers['content-encoding']).toBe('aes128gcm');
       expect(request!.headers['content-type']).toBe('application/octet-stream');
       expect(request!.headers.ttl).toBe('86400');
-      expect(request!.headers.urgency).toBe('normal');
+      expect(request!.headers.urgency).toBe('high');
       const claims = verifyVapidHeader(request!.headers.authorization!, config);
       expect(claims.aud).toBe('https://push.example.org');
       const nowSeconds = Math.floor(Date.now() / 1000);
@@ -574,6 +637,40 @@ describe('VapidWebPushSender', () => {
       expect(claims.exp).toBeLessThanOrEqual(nowSeconds + 12 * 3600);
       expect(request!.body.length).toBe(Number(request!.headers['content-length']));
       expect(JSON.parse(openWebPushBody(request!.body, ua).toString('utf8'))).toEqual(message);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('une redirection du service de push n’est jamais suivie : échec HTTP_302 et aucune seconde requête (SSRF)', async () => {
+    const ua = newUserAgent();
+    const paths: string[] = [];
+    const server = createServer((request, response) => {
+      paths.push(request.url ?? '');
+      request.resume();
+      request.on('end', () => {
+        if (request.url === '/wpush/v2/redirect') {
+          const { port: serverPort } = server.address() as AddressInfo;
+          response.writeHead(302, { Location: `http://127.0.0.1:${serverPort}/internal` }).end();
+        } else {
+          response.writeHead(201).end();
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const sender = new VapidWebPushSender(newConfig(), (url, init) =>
+        fetch(`http://127.0.0.1:${port}${new URL(url).pathname}`, init),
+      );
+      expect(
+        await sender.send(
+          targetOf(ua, 'https://push.example.org/wpush/v2/redirect'),
+          message,
+          options(),
+        ),
+      ).toEqual({ status: 'FAILED', reason: 'HTTP_302' });
+      expect(paths).toEqual(['/wpush/v2/redirect']);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

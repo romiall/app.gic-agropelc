@@ -22,7 +22,7 @@
  * | BC    | `procurement.order.create`, puis `.submit` | `PURCHASE_ORDER` | `localRef`      |
  * | VC    | `crm.visit.record`            | `VISIT`            | mention dans `notes`      |
  * | FI    | `inventory.count.open`, `.record_lines`, `.submit` | `INVENTORY_COUNT` | `localRef` |
-| FL    | `production.mortality.record`, `.input.record`, `.weighing.record`, `.observation.record` (une par mesure et par jour) | `STOCK_LOSS`, `CONSUMPTION`, `LOT_WEIGHING`, `LOT_OBSERVATION` | mention dans `comment` et `text` |
+ * | FL    | `production.mortality.record`, `.input.record`, `.weighing.record`, `.observation.record` (une par mesure et par jour) | `STOCK_LOSS`, `CONSUMPTION`, `LOT_WEIGHING`, `LOT_OBSERVATION` | mention dans `comment` et `text` |
  *
  * Un bon de commande (BC) et une fiche d'inventaire (FI) sont plusieurs commandes de même agrégat, chacune dépendant de la
  * précédente : `buildReportCommands`. Seule la première porte les indices du registre des carnets et la photo. Une fiche de
@@ -30,10 +30,12 @@
  * son agrégat et l'heure de son jour : l'échec d'une mesure ne retient pas les autres.
  *
  * Le numéro de la pièce papier n'a pas de champ dédié sur le serveur (AV-308 (b) n'est pas construit) : en
- * attendant, `localRef` (20 caractères au plus, unique par appareil) pour les sept commandes qui
- * l'acceptent — en « saisie hors ligne », un numéro déjà pris est appliqué sans lui, avec l'avertissement
- * `LOCAL_REF_DUPLICATE`, jamais refusé —, une mention dans le texte libre pour l'expédition d'un transfert
- * et la déclaration d'une perte, qui n'ont pas de `localRef` (AV-501). Une pièce reportée est un fait
+ * attendant, `localRef` (20 caractères au plus, unique par appareil) pour les dix commandes qui l'acceptent (vente,
+ * commande client, livraison, encaissement, dépense, remise de fonds, réception, demande d'achat, bon de commande,
+ * inventaire ; le bon de commande n'a pas de clé d'unicité) — en « saisie hors ligne », un numéro déjà pris est appliqué
+ * sans lui, avec l'avertissement `LOCAL_REF_DUPLICATE`, jamais refusé —, une mention dans le texte libre pour
+ * l'expédition d'un transfert, la déclaration d'une perte, la visite et la fiche de suivi de lot, qui n'ont pas de
+ * `localRef` (AV-501) et dont le numéro n'est pas contrôlé en doublon côté serveur. Une pièce reportée est un fait
  * accompli saisi hors du système (BR-SYN-007) : la commande part « saisie hors ligne » même appareil
  * connecté (AV-502).
  */
@@ -377,6 +379,11 @@ export const FLAG_PAPER_SLIP = 'PAPER_SLIP';
 export const FLAG_SLIP_TYPE = 'SLIP_TYPE:';
 export const FLAG_PAPER_REF = 'PAPER_REF:';
 export const FLAG_AMOUNT = 'SLIP_AMOUNT:';
+/**
+ * Groupe d'une pièce en plusieurs commandes (BC, FI, FL) : posé sur toutes, il permet au registre des carnets de juger la
+ * pièce sur l'ensemble de ses commandes (la pire des issues, le nombre de saisies refusées), non sur la seule première.
+ */
+export const FLAG_SLIP_GROUP = 'SLIP_GROUP:';
 
 /** Retire les valeurs `undefined` (une charge utile n'envoie que ce qui est renseigné). */
 function compact(value: Record<string, unknown>): Record<string, unknown> {
@@ -441,15 +448,22 @@ function localRefOf(type: ReportableSlipType, paperRef: string): string | undefi
   return localRef;
 }
 
+/** Nombre de commandes qu'une pièce en commandes indépendantes peut porter : l'octet final de l'identifiant les distingue. */
+const MAX_INDEPENDENT_COMMANDS = 256;
+
 /**
  * Identifiant de la n-ième commande d'une pièce en commandes indépendantes (FL) : celui de la pièce pour la première, puis le
- * même dont l'octet final varie (la version UUIDv7 est conservée). Chaque mesure écrit sa propre ligne (déclaration de
- * mortalité, consommation, pesée, observation), dont l'identifiant est celui de l'agrégat de la commande : ils doivent
- * être distincts.
+ * même dont l'octet final est décalé de `index` modulo 256 (la version UUIDv7 est conservée). Chaque mesure écrit sa propre
+ * ligne (déclaration de mortalité, consommation, pesée, observation), dont l'identifiant est celui de l'agrégat de la
+ * commande : ils doivent être distincts, sans quoi le serveur prend la seconde pour un rejeu de la première et ne
+ * l'enregistre pas. Décaler (et non remplacer par `index`) garantit la distinction quel que soit l'octet tiré au sort
+ * (jusqu'à 256 commandes).
  */
 function nthAggregateId(base: string, index: number): string {
   if (index === 0) return base;
-  return `${base.slice(0, -2)}${(index % 256).toString(16).padStart(2, '0')}`;
+  const last = Number.parseInt(base.slice(-2), 16);
+  const shifted = ((Number.isNaN(last) ? 0 : last) + index) % MAX_INDEPENDENT_COMMANDS;
+  return `${base.slice(0, -2)}${shifted.toString(16).padStart(2, '0')}`;
 }
 
 /**
@@ -466,6 +480,11 @@ function lotSheetParts(
     day: SlipLotDay,
     part: Pick<CommandPart, 'commandType' | 'aggregateType' | 'payload'>,
   ) => {
+    if (parts.length >= MAX_INDEPENDENT_COMMANDS) {
+      throw new RangeError(
+        `Fiche de suivi de lot trop longue (plus de ${MAX_INDEPENDENT_COMMANDS} saisies).`,
+      );
+    }
     parts.push({
       ...part,
       aggregateId: nthAggregateId(aggregateId, parts.length),
@@ -806,7 +825,7 @@ export function slipAmountXaf(slip: ResolvedSlip): number | null {
  * Les commandes du serveur pour une pièce papier résolue (voir le tableau en tête de fichier), dans l'ordre d'envoi : une
  * seule pour la plupart des pièces, une chaîne pour le bon de commande (BC) et la fiche d'inventaire (FI), des commandes
  * indépendantes pour la fiche de suivi de lot (FL). Seule la première porte les indices du registre des carnets et la
- * photo ; dans une chaîne, les suivantes attendent la précédente.
+ * photo (toutes portent le groupe de la pièce, `FLAG_SLIP_GROUP`) ; dans une chaîne, les suivantes attendent la précédente.
  */
 export function buildReportCommands(
   slip: ResolvedSlip,
@@ -825,15 +844,18 @@ export function buildReportCommands(
     occurredAt: part.occurredAt ?? meta.occurredAt,
     backdatedReason: reason ? reason.slice(0, MAX_BACKDATED_REASON) : null,
     capturedOffline: true as const,
-    localFlags:
-      index === 0
+    localFlags: [
+      // Seule la première commande porte les indices du registre ; toutes portent le groupe d'une pièce en plusieurs commandes.
+      ...(index === 0
         ? [
             FLAG_PAPER_SLIP,
             `${FLAG_SLIP_TYPE}${slip.type}`,
             `${FLAG_PAPER_REF}${meta.paperRef}`,
             ...(amount !== null ? [`${FLAG_AMOUNT}${amount}`] : []),
           ]
-        : [],
+        : []),
+      ...(parts.length > 1 ? [`${FLAG_SLIP_GROUP}${meta.aggregateId}`] : []),
+    ],
     photo: index === 0 ? slipPhotoTarget(slip.type) : null,
   }));
 }

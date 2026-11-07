@@ -34,9 +34,10 @@
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import type { Clock, IdGenerator } from '@gic/domain';
+import type { Clock, IdGenerator, LateMoveFootprint } from '@gic/domain';
 import {
   costPerHeadXaf,
+  distributeLateMoveCompensation,
   distributeLotLessVariance,
   lineAmountXaf,
   quantityFromDecimal,
@@ -70,6 +71,7 @@ import {
   ledgerBucketsAt,
   lineCoversLot,
   lotBalancesOf,
+  lotLessBalanceOf,
   scopeOfLine,
   systemUserId,
   type PostedCountLine,
@@ -1158,9 +1160,17 @@ export async function recordStockMove(
   return results;
 }
 
-/** Ce qui déclenche un rapprochement : un mouvement tardif (son lot) ou la comptabilisation de l'inventaire. */
+/**
+ * Ce qui déclenche un rapprochement : un mouvement tardif (ce qu'il a fait à chaque lot de la ligne, et la commande qui l'a
+ * apporté, gardée sur les ajustements pour relier chacun au fait qui l'a causé) ou la comptabilisation de l'inventaire.
+ */
 type ReconcileTrigger =
-  | { readonly kind: 'MOVE'; readonly lotId: string | null; readonly createdBy: string }
+  | {
+      readonly kind: 'MOVE';
+      readonly footprint: readonly LateMoveFootprint[];
+      readonly createdBy: string;
+      readonly commandId?: string;
+    }
   | { readonly kind: 'POSTING'; readonly createdBy: string };
 
 /** Un rapprochement tardif fait : quantité signée (positive = gain) et valeur signée au coût du mouvement. */
@@ -1195,8 +1205,10 @@ async function adjustmentUnitCost(
  * rattaché à la ligne) qui le ramène au compté. Cumule l'écart dans la ligne (`reconciled_adjustment_qty_base`) et dans
  * l'inventaire (`net_variance_after_reconciliation_xaf`), et publie l'inventaire aux appareils. `null` : rien à faire.
  *
- * Le lot de l'ajustement est celui du mouvement tardif (le solde de ce lot revient à ce qu'il était) ; à la
- * comptabilisation, une ligne sur tous les lots répartit l'écart résiduel en FIFO inverse (BR-STK-045).
+ * Le lot de l'ajustement est celui du mouvement tardif (le solde de ce lot revient à ce qu'il était) ; pour une ligne sur
+ * tous les lots, la compensation rend à chaque lot ce que le fait lui a fait (une vente de 7 prise 4 sur A et 3 sur B est
+ * compensée de 4 et 3), de sorte que les soldes par lot de tout comptage postérieur restent justes. À la comptabilisation,
+ * une ligne sur tous les lots répartit l'écart résiduel en FIFO inverse (BR-STK-045).
  *
  * Pas d'entrée d'audit ici : l'écriture d'audit prend la tête de chaîne et ne peut pas se faire au milieu d'un
  * gestionnaire (ordre de verrouillage, ADR-038). La trace est le registre, immuable : acteur système, ligne et inventaire
@@ -1219,16 +1231,17 @@ export async function reconcileCountLine(
   if (delta === 0) return null;
 
   const parts =
-    scope === 'ALL_LOTS' && trigger.kind === 'POSTING'
-      ? distributeLotLessVariance(delta, await lotBalancesOf(uow, buckets))
+    scope === 'ALL_LOTS'
+      ? trigger.kind === 'POSTING'
+        ? distributeLotLessVariance(
+            delta,
+            await lotBalancesOf(uow, buckets),
+            lotLessBalanceOf(buckets),
+          )
+        : distributeLateMoveCompensation(delta, trigger.footprint)
       : [
           {
-            lotId:
-              scope === 'LOT'
-                ? line.lotId
-                : scope === 'NO_LOT' || trigger.kind === 'POSTING'
-                  ? null
-                  : trigger.lotId,
+            lotId: scope === 'LOT' ? line.lotId : null,
             quantity: Math.abs(delta),
             direction: delta > 0 ? ('GAIN' as const) : ('LOSS' as const),
           },
@@ -1260,6 +1273,10 @@ export async function reconcileCountLine(
       sourceDocId: line.countId,
       sourceLineId: line.lineId,
       createdBy,
+      // La commande du fait tardif relie chaque ajustement à ce qui l'a causé (plusieurs faits peuvent toucher une ligne).
+      ...(trigger.kind === 'MOVE' && trigger.commandId !== undefined
+        ? { commandId: trigger.commandId }
+        : {}),
       capturedOffline: false,
       allowNegative: true,
       skipLateReconciliation: true,
@@ -1293,10 +1310,13 @@ export async function reconcileCountLine(
 
 /**
  * Rapproche d'un mouvement qui vient d'être enregistré les inventaires déjà comptabilisés dont le comptage est
- * postérieur à son `occurred_at` (BR-STK-044) : un fait saisi hors ligne puis synchronisé après le comptage. Seule la
- * ligne comptée la plus ancienne qui couvre le lot du mouvement compense : son ajustement, daté de son comptage, rétablit
- * aussi les soldes de tous les comptages postérieurs. Sans ligne postérieure (tout mouvement du jour), une seule lecture
- * d'index, vide, par extrémité physique.
+ * postérieur à son `occurred_at` (BR-STK-044) : un fait saisi hors ligne puis synchronisé après le comptage. Chaque lot
+ * que le mouvement a touché est rapproché par la ligne comptée la plus ancienne qui le couvre : son ajustement, daté de son
+ * comptage, rétablit aussi les soldes de tous les comptages postérieurs. Les lots sont regroupés par ligne, et les lignes
+ * traitées du comptage le plus ancien au plus récent : une ligne plus récente lit alors, au moment de son tour, le solde
+ * que les compensations plus anciennes ont déjà rétabli, et ne compense pas une seconde fois (deux comptages de portées
+ * différentes, un lot par ligne, un total sans lot et un lot désigné). Sans ligne postérieure (tout mouvement du jour), une
+ * seule lecture d'index, vide, par extrémité physique.
  */
 async function reconcileLateMoves(
   uow: Transaction<DB>,
@@ -1306,25 +1326,41 @@ async function reconcileLateMoves(
 ): Promise<void> {
   if (input.skipLateReconciliation === true || results.length === 0) return;
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
-  const locationIds: string[] = [];
-  if (isPhysicalSide(endpoints.from)) locationIds.push(input.fromLocationId);
-  if (isPhysicalSide(endpoints.to)) locationIds.push(input.toLocationId);
-  if (locationIds.length === 0) return;
-  const lotIds = [...new Set(results.map((move) => move.lotId))];
-  for (const locationId of locationIds) {
+  // Le signe de l'effet du mouvement sur l'emplacement : une sortie le vide, une entrée le remplit.
+  const sides: { readonly locationId: string; readonly sign: 1 | -1 }[] = [];
+  if (isPhysicalSide(endpoints.from)) sides.push({ locationId: input.fromLocationId, sign: -1 });
+  if (isPhysicalSide(endpoints.to)) sides.push({ locationId: input.toLocationId, sign: 1 });
+  for (const side of sides) {
     const candidates = await findPostedLinesNotBefore(uow, {
-      locationId,
+      locationId: side.locationId,
       productId: input.productId,
       notBefore: input.occurredAt,
     });
     if (candidates.length === 0) continue;
-    for (const lotId of lotIds) {
+    // Ce que le fait a fait à chaque lot de l'emplacement, en millièmes (un mouvement par lot traversé par le FIFO).
+    const effects = new Map<string | null, number>();
+    for (const move of results) {
+      effects.set(
+        move.lotId,
+        (effects.get(move.lotId) ?? 0) + side.sign * quantityToMilli(move.quantity),
+      );
+    }
+    const footprints = new Map<string, LateMoveFootprint[]>();
+    for (const [lotId, effectMilli] of effects) {
       const line = candidates.find((candidate) => lineCoversLot(candidate, lotId));
       if (line === undefined) continue;
+      const footprint = footprints.get(line.lineId) ?? [];
+      footprint.push({ lotId, effect: effectMilli / 1000 });
+      footprints.set(line.lineId, footprint);
+    }
+    for (const line of candidates) {
+      const footprint = footprints.get(line.lineId);
+      if (footprint === undefined) continue;
       await reconcileCountLine(uow, deps, line, {
         kind: 'MOVE',
-        lotId,
+        footprint,
         createdBy: input.createdBy,
+        ...(input.commandId !== undefined ? { commandId: input.commandId } : {}),
       });
     }
   }

@@ -206,15 +206,16 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
+  // Ligne en portée GLOBAL (repli du pipeline, création d'un compte) : tous les appareils reçoivent toutes les affectations.
+  // Le code du rôle (ADMIN, DIRECTION, FINANCE…) n'y est donc **pas** servi (S-41 (a), AV-533) : il désignerait à chaque
+  // appareil les comptes qui détiennent ces rôles ; l'appareil lit le code de ses propres rôles dans `me` / `GET /auth/me`.
   ROLE_ASSIGNMENT: async (executor, entityId) => {
     const row = await executor
       .selectFrom('identity_user_role_assignments as a')
-      .leftJoin('identity_roles as r', 'r.id', 'a.role_id')
       .select([
         'a.id as id',
         'a.user_id as user_id',
         'a.role_id as role_id',
-        'r.code as role_code',
         'a.scope_type as scope_type',
         'a.scope_site_id as scope_site_id',
         'a.scope_zone_id as scope_zone_id',
@@ -230,8 +231,6 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       id: fromBin(row.id),
       user_id: fromBin(row.user_id),
       role_id: fromBin(row.role_id),
-      // S-41 (a) : le code du rôle (ADMIN, DIRECTION…) évite à l'appareil de le déduire d'un identifiant.
-      role_code: row.role_code,
       scope_type: row.scope_type,
       scope_site_id: fromBinOrNull(row.scope_site_id),
       scope_zone_id: fromBinOrNull(row.scope_zone_id),
@@ -933,7 +932,9 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       ])
       .where('b.location_id', '=', toBin(locationId))
       .where('b.product_id', '=', toBin(entityId))
-      // S-42 : dans l'ordre de sortie du registre (FIFO sur le rang d'entrée du lot), la ligne sans lot d'abord.
+      // S-42 : dans l'ordre de sortie du registre (BR-STK-050) — les lots du plus ancien au plus récent (rang d'entrée), puis
+      // la ligne sans lot, que le registre n'entame que faute de lot en stock.
+      .orderBy(sql`lot.fifo_rank_at IS NULL`)
       .orderBy('lot.fifo_rank_at', 'asc')
       .orderBy('b.lot_key', 'asc')
       .execute();

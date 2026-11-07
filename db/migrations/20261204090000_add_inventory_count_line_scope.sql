@@ -17,7 +17,16 @@ ALTER TABLE inventory_inventory_count_lines
   ADD KEY ix_inventory_inventory_count_lines_product_counted (product_id, counted_at);
 
 -- migrate:down transaction:false
+-- La clé étrangère `product_id` n'avait que son index implicite : à l'ajout de l'index ci-dessus, MySQL l'a retiré et
+-- s'appuie désormais sur celui-ci, qu'il refuse donc de laisser tomber (erreur 1553). La clé étrangère est retirée puis
+-- recréée : MySQL lui rend ainsi son index implicite d'origine, et l'index peut alors partir.
+
+ALTER TABLE inventory_inventory_count_lines
+  DROP FOREIGN KEY fk_inventory_inventory_count_lines_product;
 
 ALTER TABLE inventory_inventory_count_lines
   DROP KEY ix_inventory_inventory_count_lines_product_counted,
   DROP COLUMN all_lots;
+
+ALTER TABLE inventory_inventory_count_lines
+  ADD CONSTRAINT fk_inventory_inventory_count_lines_product FOREIGN KEY (product_id) REFERENCES catalog_products (id) ON DELETE RESTRICT;

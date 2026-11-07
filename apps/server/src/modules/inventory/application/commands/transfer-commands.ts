@@ -304,6 +304,15 @@ async function recordTransferChanges(
   );
 }
 
+async function docNumberOfTransfer(uow: UnitOfWork, transferId: string): Promise<string | null> {
+  const row = await uow
+    .selectFrom('inventory_stock_transfers')
+    .select('doc_number')
+    .where('id', '=', toBin(transferId))
+    .executeTakeFirst();
+  return row?.doc_number ?? null;
+}
+
 async function transferExists(uow: UnitOfWork, transferId: string): Promise<boolean> {
   const row = await uow
     .selectFrom('inventory_stock_transfers')
@@ -539,7 +548,7 @@ function buildTransferCommands(
 
     // La note du demandeur est gardée ; le motif du refus la suit (aucune colonne dédiée).
     const refusal = `Refus : ${envelope.payload.comment}`;
-    await uow
+    const declined = await uow
       .updateTable('inventory_stock_transfers')
       .set({
         status: 'DECLINED',
@@ -551,7 +560,12 @@ ${refusal}`
         version: sql`version + 1`,
       })
       .where('id', '=', row.id)
-      .execute();
+      // L'expédition verrouille la demande puis la passe à DISPATCHED : lue avant elle, la demande ne doit pas être
+      // refusée après coup (marchandise en transit sur un transfert soldé, INV-STK-08). La condition porte sur l'état
+      // courant de la ligne, pas sur la lecture ci-dessus.
+      .where('status', '=', 'REQUESTED')
+      .executeTakeFirst();
+    if (Number(declined.numUpdatedRows) === 0) return badStatus('REQUESTED');
     await recordTransferChanges(uow, row);
     return { status: 'APPLIED' };
   };
@@ -581,7 +595,7 @@ ${refusal}`
       );
     }
 
-    await uow
+    const cancelled = await uow
       .updateTable('inventory_stock_transfers')
       .set({
         status: 'CANCELLED',
@@ -589,7 +603,10 @@ ${refusal}`
         version: sql`version + 1`,
       })
       .where('id', '=', row.id)
-      .execute();
+      // Même garde que le refus : une expédition concurrente a pu passer la demande à DISPATCHED entre la lecture et ici.
+      .where('status', '=', 'REQUESTED')
+      .executeTakeFirst();
+    if (Number(cancelled.numUpdatedRows) === 0) return badStatus('REQUESTED');
     await recordTransferChanges(uow, row);
     return { status: 'APPLIED' };
   };
@@ -674,15 +691,22 @@ ${refusal}`
       const unknownReference = await unknownLineReference(uow, lines);
       if (unknownReference) return unknownReference;
       if (closedRequest === undefined && (await transferExists(uow, envelope.aggregate_id))) {
-        return (await isDispatchReplay(
-          uow,
-          envelope.aggregate_id,
-          pair,
-          envelope.author_user_id,
-          lines,
-        ))
+        if (
+          !(await isDispatchReplay(
+            uow,
+            envelope.aggregate_id,
+            pair,
+            envelope.author_user_id,
+            lines,
+          ))
+        ) {
+          return TRANSFER_ID_TAKEN;
+        }
+        // S-34 : l'appareil qui rejoue l'expédition sous un autre identifiant de commande reçoit le même numéro.
+        const replayed = await docNumberOfTransfer(uow, envelope.aggregate_id);
+        return replayed === null
           ? { status: 'APPLIED' }
-          : TRANSFER_ID_TAKEN;
+          : { status: 'APPLIED', serverRefs: { docNumber: replayed } };
       }
       receipts = await pendingBlindReceipts(uow, pair);
       // L'agrégat d'une expédition de demande est la demande : l'expédition directe qui la remplace a son

@@ -446,7 +446,8 @@ describe('P9-25 : bornes des blocs de tableau de bord', { timeout: 120_000 }, ()
         expect(await periodRevenue(trx, { ...window, siteIds: [] })).toEqual(ZEROS);
         expect(await periodRevenue(trx, { ...window, customerIds: [] })).toEqual(ZEROS);
         // La variante sans le coût des ventes ne lit rien non plus pour un périmètre vide.
-        const { costOfSalesXaf: _cost, grossMarginXaf: _margin, ...netZeros } = ZEROS;
+        const { grossRevenueXaf, cancelledXaf, netRevenueXaf, saleCount } = ZEROS;
+        const netZeros = { grossRevenueXaf, cancelledXaf, netRevenueXaf, saleCount };
         expect(await periodNetRevenue(trx, { ...window, siteIds: [] })).toEqual(netZeros);
         expect(await periodNetRevenue(trx, { ...window, customerIds: [] })).toEqual(netZeros);
         expect(

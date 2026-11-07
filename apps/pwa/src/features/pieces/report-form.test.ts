@@ -886,7 +886,13 @@ describe('FL : fiche de suivi de lot (saisies du jour du lot)', () => {
     const measure = (overrides: Partial<LotDayForm>) =>
       issuesOf({ ...base, lotDays: [day({ deathsText: '', ...overrides })] });
     expect(measure({ deathsText: 'abc' })).toContain('MEASURE_INVALID');
-    expect(measure({ deathsText: '0' })).toContain('MEASURE_INVALID');
+    // « 0 » sans cause : un jour sans mortalité, comme la fiche papier l'écrit — rien à enregistrer, donc ni mesure invalide
+    // ni mortalité de 0 ; une fiche qui ne porte que des « 0 » n'a rien à reporter. Avec une cause, 0 n'a pas de sens.
+    expect(measure({ deathsText: '0' })).toContain('DAYS_REQUIRED');
+    expect(measure({ deathsText: '0' })).not.toContain('MEASURE_INVALID');
+    expect(measure({ deathsText: '0', deathReasonId: CAUSE, observation: 'x' })).toContain(
+      'MEASURE_INVALID',
+    );
     expect(measure({ deathsText: '2,5' })).toContain('MEASURE_INVALID');
     // Une cause sans nombre de morts, ou une cause inconnue.
     expect(measure({ deathReasonId: CAUSE, observation: 'x' })).toContain('MEASURE_INVALID');

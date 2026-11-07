@@ -98,6 +98,8 @@ describe('AV-514 (7) : rattachement d’une personne de la feuille à son compte
         accounts[key] = id;
       };
       await named('rose', name('Rose', 'Atangana'));
+      // Compte au nom accentué : la fiche papier peut l'écrire sans accents.
+      await named('elise', name('Élise', 'Ngô'));
       // Deux homonymes : aucun n'est désigné.
       await named('paul1', name('Paul', 'Mbarga'));
       await named('paul2', name('Paul', 'Mbarga'));
@@ -127,6 +129,7 @@ describe('AV-514 (7) : rattachement d’une personne de la feuille à son compte
     const lines = [
       // La casse et les accents ne comptent pas (`personNameKey`).
       { personName: name('ROSE', 'atangana') },
+      { personName: name('elise', 'ngo') },
       { personName: name('Paul', 'Mbarga') },
       { personName: name('Alice', 'Nkoa') },
       { personName: name('Marie', 'Eyenga'), userId: null },
@@ -143,6 +146,7 @@ describe('AV-514 (7) : rattachement d’une personne de la feuille à son compte
       .execute();
     expect(rows.map((row) => (row.user_id ? fromBin(row.user_id) : null))).toEqual([
       accounts['rose']!,
+      accounts['elise']!,
       null,
       null,
       null,

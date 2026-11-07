@@ -9,11 +9,13 @@
  * Attendu :
  * - le lot est valide (`pushRequestSchema`, enveloppes UUIDv7) et chaque commande est appliquée, jamais
  *   rejetée ni mise en quarantaine : une pièce reportée est un fait accompli (BR-SYN-007, AV-502) ;
- * - le numéro de la pièce papier est enregistré en `local_ref` pour les sept commandes qui l'acceptent, dans
- *   le texte libre pour l'expédition d'un transfert et la déclaration d'une perte ;
+ * - le numéro de la pièce papier est enregistré en `local_ref` pour les dix commandes qui l'acceptent (vente,
+ *   commande client, livraison, encaissement, dépense, remise de fonds, réception, demande d'achat, bon de
+ *   commande, inventaire), dans le texte libre pour l'expédition d'un transfert, la déclaration d'une perte, la
+ *   visite et la fiche de suivi de lot ;
  * - un numéro déjà reporté est signalé (`LOCAL_REF_DUPLICATE`), jamais rejeté ni rejoué sans fin, pour la
- *   vente, la commande, la livraison, l'encaissement et la réception — alors qu'une commande « en ligne »
- *   serait refusée (raison d'être de `captured_offline`, AV-312, AV-501, AV-502) ;
+ *   vente, la commande, la livraison, l'encaissement, la réception, la demande d'achat et l'inventaire — alors
+ *   qu'une commande « en ligne » serait refusée (raison d'être de `captured_offline`, AV-312, AV-501, AV-502) ;
  * - la photo de la souche vise un propriétaire de pièce jointe que le serveur lit (ADR-046, AV-504).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

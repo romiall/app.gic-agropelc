@@ -299,10 +299,14 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       },
     ]);
 
-    // S-41 (a) : la projection de l'affectation porte le code du rôle (l'appareil ne le déduit pas d'un identifiant).
-    expect(
-      await resolveEntityProjection('ROLE_ASSIGNMENT')!(db, body.role_assignment_id),
-    ).toMatchObject({ id: body.role_assignment_id, role_code: 'VENDEUR_PDV' });
+    // S-41 (a) : la ligne de l'affectation est servie en portée GLOBAL, à tous les appareils : sa projection ne porte pas le
+    // code du rôle (il désignerait les comptes Admin, Direction, Finance à chaque téléphone), seulement l'identifiant.
+    const projected = await resolveEntityProjection('ROLE_ASSIGNMENT')!(
+      db,
+      body.role_assignment_id,
+    );
+    expect(projected).toMatchObject({ id: body.role_assignment_id });
+    expect(projected).not.toHaveProperty('role_code');
 
     // Le provisoire ouvre une session avec le changement imposé (AV-251).
     const session = await login(phone, PROVISIONAL);

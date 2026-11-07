@@ -318,6 +318,32 @@ describe('rapprochement tardif d’inventaire (BR-STK-044, BR-STK-045, AT-021, I
     );
   }
 
+  /** Une vente tardive sans lot désigné : le FIFO du serveur la découpe sur les lots en stock (un mouvement par lot). */
+  async function lateSaleFifo(
+    productId: string,
+    locationId: string,
+    quantityBase: number,
+    occurredAt: Date,
+    commandId?: string,
+  ): Promise<void> {
+    await db.transaction().execute((trx) =>
+      recordStockMove(trx, moveDeps, {
+        productId,
+        quantityBase,
+        fromLocationId: locationId,
+        toLocationId: customerLocationId,
+        moveType: 'SALE',
+        occurredAt,
+        sourceDocType: 'SALE',
+        sourceDocId: freshUuid(),
+        createdBy: admin,
+        ...(commandId !== undefined ? { commandId } : {}),
+        capturedOffline: true,
+        allowNegative: true,
+      }),
+    );
+  }
+
   async function openCount(locationId: string): Promise<string> {
     const countId = freshUuid();
     const result = await pipeline.handle(
@@ -779,6 +805,162 @@ describe('rapprochement tardif d’inventaire (BR-STK-044, BR-STK-045, AT-021, I
     expect(Number(line!.theoretical_qty_base)).toBe(99); // la vente concurrente est comptée
     expect(await balanceAt(locationId, productId, at('12:00'))).toBe(97);
     expect(await reconciliationMoves(countId)).toHaveLength(0); // aucune dérive à rapprocher
+  });
+
+  it('BR-STK-044 : une vente tardive répartie sur deux lots est compensée sur chacun de ce qu’elle lui a pris (ligne sur tous les lots)', async () => {
+    const locationId = await newStore();
+    const productId = await insertProduct('OPTIONAL');
+    const lotA = await insertLot(productId, '2026-09-01');
+    const lotB = await insertLot(productId, '2026-09-15');
+    await opening(productId, locationId, 4, 500, lotA);
+    await opening(productId, locationId, 6, 500, lotB);
+    const countId = await openCount(locationId);
+    await recordLines(countId, [{ productId, countedQtyBase: 10 }]); // total sans détail, aucun écart
+    await submitPosted(countId);
+    const [line] = await linesOf(countId);
+    expect(Boolean(line!.all_lots)).toBe(true);
+    expect(await reconciliationMoves(countId)).toHaveLength(0);
+
+    // Vente de 7 datée d'avant le comptage, sans lot désigné : le FIFO prend 4 sur A (le plus ancien) puis 3 sur B.
+    const commandId = freshUuid();
+    await lateSaleFifo(productId, locationId, 7, at('10:00'), commandId);
+
+    const moves = await reconciliationMoves(countId);
+    expect(moves.map((move) => [move.moveType, move.quantity, move.lotId])).toEqual([
+      ['INVENTORY_GAIN', 4, lotA],
+      ['INVENTORY_GAIN', 3, lotB],
+    ]);
+    // Chaque lot revient à ce qu'il était, non tout à un seul : les soldes par lot d'un comptage postérieur restent justes.
+    expect(await balanceAt(locationId, productId, at('12:00'), 'LOT', lotA)).toBe(4);
+    expect(await balanceAt(locationId, productId, at('12:00'), 'LOT', lotB)).toBe(6);
+    expect(await balanceAt(locationId, productId, at('12:00'))).toBe(10);
+    const [updated] = await linesOf(countId);
+    expect(Number(updated!.reconciled_adjustment_qty_base)).toBe(7);
+    // L'ajustement garde la commande du fait tardif qui l'a causé (S'il y en a plusieurs, chacun se relie au sien).
+    const traced = await db
+      .selectFrom('inventory_stock_moves')
+      .select('command_id')
+      .where('source_doc_id', '=', toBin(countId))
+      .where('move_type', '=', 'INVENTORY_GAIN')
+      .execute();
+    expect(traced).toHaveLength(2);
+    for (const row of traced) expect(fromBinOrNull(row.command_id)).toBe(commandId);
+  });
+
+  it('deux comptages de portées différentes : le plus ancien compense son lot, le plus récent le reste — jamais deux fois', async () => {
+    const locationId = await newStore();
+    const productId = await insertProduct('OPTIONAL');
+    const lotA = await insertLot(productId, '2026-09-01');
+    const lotB = await insertLot(productId, '2026-09-15');
+    await opening(productId, locationId, 4, 500, lotA);
+    await opening(productId, locationId, 6, 500, lotB);
+    // 11:00 : le seul lot B est compté (6). 12:00 : un total sans détail (10).
+    const first = await openCount(locationId);
+    await recordLines(first, [{ productId, lotId: lotB, countedQtyBase: 6 }], at('11:00'));
+    await submitPosted(first);
+    const second = await openCount(locationId);
+    await recordLines(second, [{ productId, countedQtyBase: 10 }], at('12:00'));
+    await submitPosted(second);
+    expect(Boolean((await linesOf(second))[0]!.all_lots)).toBe(true);
+
+    // Vente tardive de 7 (A : 4, B : 3) datée d'avant les deux comptages : B relève du premier, A du second.
+    await lateSaleFifo(productId, locationId, 7, at('10:00'));
+
+    const firstMoves = await reconciliationMoves(first);
+    expect(firstMoves.map((move) => [move.moveType, move.quantity, move.lotId])).toEqual([
+      ['INVENTORY_GAIN', 3, lotB],
+    ]);
+    const secondMoves = await reconciliationMoves(second);
+    expect(secondMoves.map((move) => [move.moveType, move.quantity, move.lotId])).toEqual([
+      ['INVENTORY_GAIN', 4, lotA],
+    ]);
+    expect(await balanceAt(locationId, productId, at('11:00'), 'LOT', lotB)).toBe(6);
+    expect(await balanceAt(locationId, productId, at('12:00'))).toBe(10);
+    expect(await balanceAt(locationId, productId, at('12:00'), 'LOT', lotA)).toBe(4);
+    expect(await balanceAt(locationId, productId, at('12:00'), 'LOT', lotB)).toBe(6);
+  });
+
+  it('BR-STK-045 : lots épuisés, la perte d’un total sans détail entame le sans-lot et ne met aucun lot en négatif', async () => {
+    const locationId = await newStore();
+    const productId = await insertProduct('OPTIONAL');
+    const lotX = await insertLot(productId, '2026-09-01');
+    await opening(productId, locationId, 5, 500, lotX);
+    await lateSale(productId, locationId, 5, at('09:30'), lotX); // le lot est épuisé
+    await opening(productId, locationId, 50, 500); // 50 en stock sans lot
+    const countId = await openCount(locationId);
+    await recordLines(countId, [{ productId, countedQtyBase: 45 }]);
+    await submitPosted(countId);
+
+    const [line] = await linesOf(countId);
+    expect(Boolean(line!.all_lots)).toBe(true);
+    expect(Number(line!.variance_qty_base)).toBe(-5);
+    const moves = await reconciliationMoves(countId);
+    expect(moves).toHaveLength(0); // le mouvement de comptabilisation n'est pas un rapprochement
+    const adjustments = await db
+      .selectFrom('inventory_stock_moves')
+      .select(['move_type', 'quantity', 'lot_id'])
+      .where('source_doc_id', '=', toBin(countId))
+      .execute();
+    expect(
+      adjustments.map((move) => [
+        move.move_type,
+        Number(move.quantity),
+        fromBinOrNull(move.lot_id),
+      ]),
+    ).toEqual([['INVENTORY_LOSS', 5, null]]);
+    expect(await balanceAt(locationId, productId, at('12:00'), 'LOT', lotX)).toBe(0);
+    expect(await balanceAt(locationId, productId, at('12:00'), 'NO_LOT')).toBe(45);
+  });
+
+  it('BR-STK-045 : le gain d’un total sans détail ne va pas à un lot clos, que le serveur ne consommerait jamais', async () => {
+    const locationId = await newStore();
+    const productId = await insertProduct('OPTIONAL');
+    const lotA = await insertLot(productId, '2026-09-01');
+    await opening(productId, locationId, 4, 500, lotA);
+    await db
+      .updateTable('inventory_stock_lots')
+      .set({ status: 'CLOSED' })
+      .where('id', '=', toBin(lotA))
+      .execute();
+    const countId = await openCount(locationId);
+    await recordLines(countId, [{ productId, countedQtyBase: 6 }]);
+    await submitPosted(countId);
+
+    const adjustments = await db
+      .selectFrom('inventory_stock_moves')
+      .select(['move_type', 'quantity', 'lot_id'])
+      .where('source_doc_id', '=', toBin(countId))
+      .execute();
+    expect(
+      adjustments.map((move) => [
+        move.move_type,
+        Number(move.quantity),
+        fromBinOrNull(move.lot_id),
+      ]),
+    ).toEqual([['INVENTORY_GAIN', 2, null]]);
+    expect(await balanceAt(locationId, productId, at('12:00'), 'LOT', lotA)).toBe(4);
+    expect(await balanceAt(locationId, productId, at('12:00'))).toBe(6);
+  });
+
+  it('l’heure de comptage d’une ligne ne dépasse pas la réception de la commande par le serveur (horloge d’appareil en avance)', async () => {
+    const locationId = await newStore();
+    const productId = await insertProduct('NONE');
+    await opening(productId, locationId, 100, 500);
+    const countId = await openCount(locationId);
+    // L'appareil se croit deux heures plus tard que le serveur (l'heure de réception est celle de la base) : le comptage
+    // ne peut pas être daté du futur.
+    const claimed = new Date(Date.now() + 2 * 3_600_000);
+    await recordLines(countId, [{ productId, countedQtyBase: 97 }], claimed);
+    const [line] = await linesOf(countId);
+    expect(line!.counted_at.getTime()).toBeLessThan(claimed.getTime() - 3_600_000);
+    expect(line!.counted_at.getTime()).toBeLessThanOrEqual(Date.now());
+    await submitPosted(countId);
+
+    // Un fait réel d'un autre appareil, une heure après la réception (donc après le comptage réel), n'est pas pris pour
+    // antérieur au comptage : sans la borne, il le serait (comptage daté de +2 h) et serait compensé à tort.
+    await lateSale(productId, locationId, 2, new Date(Date.now() + 3_600_000));
+    expect(await reconciliationMoves(countId)).toHaveLength(0);
+    expect(await balanceOf(productId, locationId)).toBe(95);
   });
 
   it('INV-STK-09 : le solde de chaque ligne de chaque inventaire comptabilisé ici est la quantité comptée', async () => {

@@ -80,7 +80,10 @@ export function bucketsHaveLots(buckets: LotBuckets): boolean {
   return false;
 }
 
-/** Les lots des soldes avec leur rang FIFO (`fifo_rank_at`), pour la répartition d'un écart sans lot. */
+/**
+ * Les lots des soldes avec leur rang FIFO (`fifo_rank_at`) et leur état (ouvert ou non), pour la répartition d'un écart sans
+ * lot : seul un lot ouvert reçoit un gain (BR-STK-050, le serveur ne sort jamais d'un lot clos).
+ */
 export async function lotBalancesOf(
   uow: Transaction<DB>,
   buckets: LotBuckets,
@@ -89,21 +92,27 @@ export async function lotBalancesOf(
   if (lotIds.length === 0) return [];
   const rows = await uow
     .selectFrom('inventory_stock_lots')
-    .select(['id', 'fifo_rank_at'])
+    .select(['id', 'fifo_rank_at', 'status'])
     .where(
       'id',
       'in',
       lotIds.map((lotId) => toBin(lotId)),
     )
     .execute();
-  const rank = new Map(rows.map((row) => [fromBin(row.id), row.fifo_rank_at] as const));
+  const known = new Map(rows.map((row) => [fromBin(row.id), row] as const));
   return lotIds
-    .filter((lotId) => rank.has(lotId))
+    .filter((lotId) => known.has(lotId))
     .map((lotId) => ({
       lotId,
       balance: (buckets.get(lotId) ?? 0) / 1000,
-      rankAt: rank.get(lotId)!,
+      rankAt: known.get(lotId)!.fifo_rank_at,
+      open: known.get(lotId)!.status === 'OPEN',
     }));
+}
+
+/** Solde (unités) du seul sans-lot dans les soldes : la dernière réserve d'une perte répartie (BR-STK-045). */
+export function lotLessBalanceOf(buckets: LotBuckets): number {
+  return (buckets.get(null) ?? 0) / 1000;
 }
 
 /** Une ligne comptée d'un inventaire comptabilisé, candidate au rapprochement d'un mouvement tardif. */
