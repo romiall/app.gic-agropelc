@@ -144,7 +144,7 @@ Les alertes et notes de l'utilisateur sont téléchargées (jeu `comms`, P9-12, 
 | Déduplication | Colonne générée `open_dedup_key` sous index unique (INV-NOT-01) ; événement marqué consommé à la première instruction |
 | Résolution | Alerte d'état : marqueur de fin de passe ou événement de résolution ; alerte d'événement : manuelle avec commentaire |
 | Destinataires | Explicites, écrits à la levée ; supervision par la portée de `comm.alert.read` ; repli sur la Direction ([ADR-062](../../decisions/ADR-062-destinataires-notifications-push-et-escalade.md)) |
-| Push | Port `WebPushSender`, adaptateur journal tant que le porteur n'a pas fourni bibliothèque ni clés (AV-365) |
+| Push | Port `WebPushSender` ; adaptateur désactivé par défaut, adaptateur réel (RFC 8291 et 8292, `node:crypto`) activé par les clés VAPID du porteur ; abonnement de la PWA à faire avec lui (AV-365, AV-536) |
 | Notes | Immuables après publication, audience évaluée à la lecture, accusés hors ligne ([ADR-063](../../decisions/ADR-063-notes-de-direction.md)) |
 | Placement des détecteurs | Dans le module qui porte la donnée, selon le graphe : `INACTIVE_COMMERCIAL`, `HIGH_LOSS` (part « % des ventes ») et `OVERDUE_RECEIVABLE` dans `sales` ; les passes d'état portent une identité (ADR-061 §2 et §3) |
 | Valeurs au coût | Jamais dans le message d'une alerte : champ protégé, rendu selon le droit `inventory.valuation.read` du lecteur (AV-390) |

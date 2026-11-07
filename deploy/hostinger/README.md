@@ -55,7 +55,7 @@ touch tmp/restart.txt
 | Base | MariaDB 11.8 de l'hébergement, **un seul utilisateur** de base ; la chaîne de connexion est dans le `.env` du serveur |
 | Dépendances d'exécution | `package.json` du serveur (celles de `apps/server/package.json`, sans les paquets `@gic/*`, installés dans `node_modules/@gic/`) ; `npm install` n'est relancé que si elles changent |
 
-Variables du `.env` du serveur (valeurs jamais versionnées) : `NODE_ENV`, `PORT`, `HOST`, `TRUST_PROXY`, `TOKIO_WORKER_THREADS`, `UV_THREADPOOL_SIZE`, `ATTACHMENTS_STORAGE_DIR`, `DATABASE_URL`, `SERVER_DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`.
+Variables du `.env` du serveur (valeurs jamais versionnées) : `NODE_ENV`, `PORT`, `HOST`, `TRUST_PROXY`, `TOKIO_WORKER_THREADS`, `UV_THREADPOOL_SIZE`, `ATTACHMENTS_STORAGE_DIR`, `DATABASE_URL`, `SERVER_DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, et, facultatives (Web Push, AV-536 : les trois ensemble ou aucune), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
 
 ## Adaptations à MariaDB et à l'hébergement
 

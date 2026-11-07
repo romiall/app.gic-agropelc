@@ -105,6 +105,17 @@ export const notificationListResponseSchema = z.object({
 export type NotificationListResponse = z.infer<typeof notificationListResponseSchema>;
 
 /**
+ * `GET /notifications/push-key` : clé publique VAPID du serveur, que la PWA passe à `pushManager.subscribe`
+ * (AV-536). `enabled` est faux et la clé nulle tant que le porteur n'a pas posé ses clés VAPID : la PWA ne
+ * propose alors pas l'abonnement au Web Push.
+ */
+export const pushKeyResponseSchema = z.object({
+  enabled: z.boolean(),
+  publicKey: z.string().min(1).max(100).nullable(),
+});
+export type PushKeyResponse = z.infer<typeof pushKeyResponseSchema>;
+
+/**
  * `GET /alert-rules` : règles d'alerte (réservé à `comm.alert_rule.manage`). Les gravités et modes de
  * résolution admis viennent du catalogue du domaine : l'écran ne propose que ce que `alert_rule.set`
  * acceptera. Les seuils ne sont pas ici : ce sont des paramètres système (AV-350).

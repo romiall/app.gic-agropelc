@@ -1,16 +1,18 @@
 /**
- * Port d'envoi Web Push (P9-05 ; ADR-062 §5 ; D13 §14 ; AV-365). Aucune bibliothèque Web Push ni clé VAPID
- * n'est installée : l'adaptateur par défaut est **désactivé** et le dit (`enabled = false`). Les
- * notifications restent alors `IN_APP`, comme D13 §14 le prévoit « sans clé ou sans abonnement valide » ;
- * jamais une notification n'est marquée « envoyée » sans l'avoir été.
+ * Port d'envoi Web Push (P9-05 ; ADR-062 §5 ; D13 §14 ; AV-365). Deux adaptateurs : `VapidWebPushSender`
+ * (`vapid-web-push.ts`, RFC 8291 et 8292, sans bibliothèque tierce), choisi quand le porteur a posé ses clés
+ * VAPID (AV-536), et l'adaptateur par défaut, **désactivé** et qui le dit (`enabled = false`). Sans clé, les
+ * notifications restent `IN_APP`, comme D13 §14 le prévoit « sans clé ou sans abonnement valide » ; jamais une
+ * notification n'est marquée « envoyée » sans l'avoir été.
  *
  * **Contrat d'un adaptateur réel (NT-4, AV-365)** : `send` ne lève pas (404 et 410 → `GONE`, tout autre
  * échec → `FAILED` avec un motif sans point de terminaison) et abandonne sa requête quand
  * `options.signal` est annulé. Le répartiteur ne s'y fie pas : il enveloppe chaque envoi (exception,
- * silence au-delà du délai) ; un disjoncteur par hôte de service de push relève de l'adaptateur.
+ * silence au-delà du délai) ; un disjoncteur par hôte de service de push relève de l'adaptateur (limite
+ * connue, AV-536).
  */
 
-/** Jeton d'injection ; remplacé par un adaptateur réel quand le porteur a tranché AV-365. */
+/** Jeton d'injection ; fourni par `CommunicationJobsModule` selon l'environnement (clés VAPID présentes ou non). */
 export const WEB_PUSH_SENDER = Symbol('WEB_PUSH_SENDER');
 
 export interface PushTarget {

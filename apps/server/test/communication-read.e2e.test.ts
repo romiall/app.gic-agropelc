@@ -19,6 +19,7 @@ import {
   alertRuleListResponseSchema,
   alertSummarySchema,
   notificationListResponseSchema,
+  pushKeyResponseSchema,
   type AlertItem,
 } from '@gic/contracts';
 import { AppModule } from '../src/app.module.js';
@@ -650,6 +651,20 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
         .parse((await get(finance, '/api/v1/notifications?channel=WEB_PUSH')).json())
         .items.find((item) => item.id === pushForFinance)!.body,
     ).toMatch(/Valeur perdue : 120\s000 XAF/);
+  });
+
+  it('clé publique VAPID (AV-536) : désactivée tant que le porteur n’a pas posé ses clés ; réservée à un appareil authentifié', async () => {
+    // L’environnement d’essai ne pose aucune clé VAPID : le Web Push est désactivé et l’appareil ne s’abonne pas.
+    for (const actor of [sellerA, finance]) {
+      const response = await get(actor, '/api/v1/notifications/push-key');
+      expect(response.statusCode, response.body).toBe(200);
+      expect(pushKeyResponseSchema.parse(response.json())).toEqual({
+        enabled: false,
+        publicKey: null,
+      });
+    }
+    const anonymous = await app.inject({ method: 'GET', url: '/api/v1/notifications/push-key' });
+    expect(anonymous.statusCode).toBe(401);
   });
 
   it('règles d’alerte : réservées à comm.alert_rule.manage (Direction, Administrateur)', async () => {

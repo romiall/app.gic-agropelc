@@ -14,6 +14,7 @@
     "start:worker": "node dist/worker.js",
     "demo:data": "tsx --env-file=.env scripts/demo-data.ts",
     "approve-device": "tsx scripts/approve-device.ts",
+    "vapid:generate": "tsx scripts/generate-vapid-keys.ts",
     "purge-alerts": "tsx scripts/purge-alerts.ts",
     "start:purge-alerts": "node dist/purge-alerts.js",
     "test": "vitest run",

@@ -269,6 +269,7 @@ export {
   noteListResponseSchema,
   notificationItemSchema,
   notificationListResponseSchema,
+  pushKeyResponseSchema,
 } from './communication-reads.js';
 export type {
   AlertItem,
@@ -281,6 +282,7 @@ export type {
   NoteListResponse,
   NotificationItem,
   NotificationListResponse,
+  PushKeyResponse,
 } from './communication-reads.js';
 export {
   ANALYTICS_COMMAND_TYPES,
