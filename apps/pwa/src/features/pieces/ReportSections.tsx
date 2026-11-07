@@ -15,6 +15,7 @@ import {
   Textarea,
 } from '../../components/ui/index.js';
 import { ownAccounts, sourceAccounts, targetsFor, transferPairs } from '../cash/transfers.js';
+import { visitOutcomes } from '../crm/visit.js';
 import { receivableOrders, receiptLocations } from '../procurement/receipt.js';
 import { CustomerPicker } from '../sales/CustomerPicker.js';
 import { formatMoney, formatQuantity, unitLabel } from '../sales/format.js';
@@ -957,6 +958,251 @@ function LossFields({ form, patch, context }: SectionProps) {
   );
 }
 
+// --- DA, BC, VC, FI -------------------------------------------------------------------------------
+
+/** Date facultative (`AAAA-MM-JJ`) d'une pièce : un champ date, vide si la pièce n'en porte pas. */
+function DateField(props: {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}) {
+  return (
+    <Field label={props.label} optional>
+      {(ctrl) => (
+        <Input
+          {...ctrl}
+          type="date"
+          value={props.value}
+          onChange={(e) => props.onChange(e.target.value)}
+        />
+      )}
+    </Field>
+  );
+}
+
+function RequestFields({ form, patch, context }: SectionProps) {
+  const { t } = useTranslation();
+  const { refs } = context;
+  return (
+    <Section title={t('piece.section_da', 'Détails de la demande d’achat (DA)')}>
+      <div className="report-fields">
+        <Banner tone="info">
+          {t(
+            'piece.da_validation',
+            'La demande est soumise à la validation d’un approbateur, comme une demande saisie dans l’application.',
+          )}
+        </Banner>
+        <div className="report-grid-2">
+          <SiteField
+            label={t('piece.f_beneficiary_site', 'Site bénéficiaire')}
+            refs={refs}
+            value={form.siteId}
+            onChange={(siteId) => patch({ siteId })}
+          />
+          <DateField
+            label={t('piece.f_needed_by', 'Besoin au plus tard le')}
+            value={form.requestedDeliveryDate}
+            onChange={(requestedDeliveryDate) => patch({ requestedDeliveryDate })}
+          />
+        </div>
+        <Field label={t('piece.f_justification', 'Justification de la demande')}>
+          {(ctrl) => (
+            <Textarea
+              {...ctrl}
+              rows={2}
+              maxLength={4000}
+              value={form.description}
+              onChange={(e) => patch({ description: e.target.value })}
+            />
+          )}
+        </Field>
+        <LinesEditor
+          lines={form.lines}
+          onChange={(lines) => patch({ lines })}
+          refs={refs}
+          products={purchasable(refs)}
+          units="base"
+          priceLabel={t('piece.estimated_price', 'Prix estimé unitaire (XAF)')}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function PurchaseOrderFields({ form, patch, context }: SectionProps) {
+  const { t } = useTranslation();
+  const { refs, userId } = context;
+  const locations = slipLocations(refs, userId).filter((location) => location.site_id !== null);
+  return (
+    <Section title={t('piece.section_bc', 'Détails du bon de commande fournisseur (BC)')}>
+      <div className="report-fields">
+        <Banner tone="info">
+          {t(
+            'piece.bc_submit',
+            'Le bon est créé puis soumis : au-delà du seuil d’approbation, la Direction le valide. Le marquer « envoyé » reste un geste du bureau des achats.',
+          )}
+        </Banner>
+        <Field label={t('piece.supplier', 'Fournisseur')}>
+          {(ctrl) => (
+            <Select
+              {...ctrl}
+              value={form.supplierId}
+              onChange={(e) => patch({ supplierId: e.target.value })}
+            >
+              <option value="">{t('piece.choose_supplier', 'Choisir un fournisseur…')}</option>
+              {[...refs.suppliers.values()]
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
+        <div className="report-grid-2">
+          <LocationField
+            label={t('piece.f_delivery_location', 'Emplacement de livraison')}
+            value={form.locationId}
+            options={locations}
+            onChange={(locationId) => patch({ locationId })}
+          />
+          <DateField
+            label={t('piece.f_expected_delivery', 'Livraison prévue le')}
+            value={form.requestedDeliveryDate}
+            onChange={(requestedDeliveryDate) => patch({ requestedDeliveryDate })}
+          />
+        </div>
+        <LinesEditor
+          lines={form.lines}
+          onChange={(lines) => patch({ lines })}
+          refs={refs}
+          products={purchasable(refs)}
+          units="base"
+          priceLabel={t('piece.order_unit_price', 'Prix unitaire du bon (XAF)')}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function VisitFields({ form, patch, context }: SectionProps) {
+  const { t } = useTranslation();
+  const { refs } = context;
+  const outcomes = visitOutcomes(refs.reasonCodes);
+  return (
+    <Section title={t('piece.section_vc', 'Détails de la fiche de visite (VC)')}>
+      <div className="report-fields">
+        <Banner tone="info">
+          {t(
+            'piece.vc_no_position',
+            'Une visite reportée n’a pas de position GPS : le serveur la signale, il ne la refuse pas. La veille marché et le profil du client se saisissent dans la visite elle-même.',
+          )}
+        </Banner>
+        <CustomerPicker
+          customers={refs.customers}
+          value={form.customerId}
+          onChange={(customerId) => patch({ customerId })}
+          allowAnonymous={false}
+        />
+        <Field label={t('piece.f_visit_outcome', 'Résultat de la visite')}>
+          {(ctrl) => (
+            <Select
+              {...ctrl}
+              value={form.visitOutcomeId}
+              onChange={(e) => patch({ visitOutcomeId: e.target.value })}
+            >
+              <option value="">{t('piece.choose_outcome', 'Choisir un résultat…')}</option>
+              {outcomes.map((outcome) => (
+                <option key={outcome.id} value={outcome.id}>
+                  {outcome.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label={t('piece.f_visit_notes', 'Compte rendu de la visite')} optional>
+          {(ctrl) => (
+            <Textarea
+              {...ctrl}
+              rows={3}
+              maxLength={1900}
+              value={form.notes}
+              onChange={(e) => patch({ notes: e.target.value })}
+            />
+          )}
+        </Field>
+        <div className="report-grid-2">
+          <DateField
+            label={t('piece.f_next_action_date', 'Prochaine action le')}
+            value={form.nextActionDate}
+            onChange={(nextActionDate) => patch({ nextActionDate })}
+          />
+          <Field label={t('piece.f_next_action_note', 'Prochaine action')} optional>
+            {(ctrl) => (
+              <Input
+                {...ctrl}
+                maxLength={2000}
+                value={form.nextActionNote}
+                onChange={(e) => patch({ nextActionNote: e.target.value })}
+              />
+            )}
+          </Field>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+const COUNT_TYPE_OPTIONS = ['PARTIAL', 'FULL', 'SPOT'] as const;
+
+function CountFields({ form, patch, context }: SectionProps) {
+  const { t } = useTranslation();
+  const { refs, userId } = context;
+  return (
+    <Section title={t('piece.section_fi', 'Détails de la fiche d’inventaire (FI)')}>
+      <div className="report-fields">
+        <Banner tone="info">
+          {t(
+            'piece.fi_submit',
+            'La fiche est ouverte, remplie à l’heure inscrite sur la pièce puis soumise : le serveur calcule le théorique à cette heure et comptabilise l’écart ou demande sa validation.',
+          )}
+        </Banner>
+        <div className="report-grid-2">
+          <LocationField
+            label={t('piece.f_count_location', 'Emplacement compté')}
+            value={form.locationId}
+            options={slipLocations(refs, userId)}
+            onChange={(locationId) => patch({ locationId })}
+          />
+          <Field label={t('piece.f_count_type', 'Nature de l’inventaire')}>
+            {(ctrl) => (
+              <Select
+                {...ctrl}
+                value={form.countType}
+                onChange={(e) => patch({ countType: e.target.value as SlipForm['countType'] })}
+              >
+                {COUNT_TYPE_OPTIONS.map((type) => (
+                  <option key={type} value={type}>
+                    {t(`count.type.${type}`, { defaultValue: type })}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+        <LinesEditor
+          lines={form.lines}
+          onChange={(lines) => patch({ lines })}
+          refs={refs}
+          products={physical(refs)}
+          units="base"
+        />
+      </div>
+    </Section>
+  );
+}
+
 /** Champs du type de pièce choisi. */
 export function SlipFields(props: SectionProps) {
   switch (props.form.slipType) {
@@ -978,5 +1224,13 @@ export function SlipFields(props: SectionProps) {
       return <StockTransferFields {...props} />;
     case 'FP':
       return <LossFields {...props} />;
+    case 'DA':
+      return <RequestFields {...props} />;
+    case 'BC':
+      return <PurchaseOrderFields {...props} />;
+    case 'VC':
+      return <VisitFields {...props} />;
+    case 'FI':
+      return <CountFields {...props} />;
   }
 }

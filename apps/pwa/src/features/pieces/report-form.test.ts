@@ -39,6 +39,7 @@ const MORNING = toLocalInput(new Date('2026-11-04T08:00:00.000Z'));
 
 const STORE = '01900000-0000-7000-8000-000000000032';
 const SUPPLIER = '01900000-0000-7000-8000-000000000120';
+const VISIT_OUTCOME = '01900000-0000-7000-8000-000000000130';
 const PURCHASE_ORDER = '01900000-0000-7000-8000-000000000121';
 const PO_LINE = '01900000-0000-7000-8000-000000000122';
 const LOSS_REASON = '01900000-0000-7000-8000-000000000123';
@@ -506,6 +507,203 @@ describe('BR : bon de réception (procurement.receipt.record)', () => {
     expect(issuesOf({ ...free, lines: [line({ quantityText: '3', priceText: '85' })] })).toContain(
       'LINE_INVALID',
     );
+  });
+});
+
+describe('DA : demande d’achat (procurement.request.submit)', () => {
+  const base = {
+    slipType: 'DA' as const,
+    paperRef: 'DA-000009',
+    siteId: IDS.site,
+    description: ' Renouveler le stock d’œufs ',
+    requestedDeliveryDate: '2026-11-12',
+    lines: [line({ productId: IDS.eggs, quantityText: '300', priceText: '85' })],
+  };
+
+  it('site, justification, besoin et lignes en unité de base ; le prix estimé est facultatif', () => {
+    expect(slipOf(base).slip).toEqual({
+      type: 'DA',
+      siteId: IDS.site,
+      neededByDate: '2026-11-12',
+      justification: 'Renouveler le stock d’œufs',
+      lines: [
+        {
+          productId: IDS.eggs,
+          unitCode: 'U',
+          quantity: 300,
+          quantityBase: 300,
+          estimatedUnitPriceXaf: 85,
+        },
+      ],
+    });
+    const bare = slipOf({
+      ...base,
+      requestedDeliveryDate: '',
+      lines: [line({ productId: IDS.eggs, quantityText: '300' })],
+    }).slip;
+    expect(bare).toEqual({
+      type: 'DA',
+      siteId: IDS.site,
+      justification: 'Renouveler le stock d’œufs',
+      lines: [{ productId: IDS.eggs, unitCode: 'U', quantity: 300, quantityBase: 300 }],
+    });
+  });
+
+  it('défauts : site, justification, date, lignes, produit non achetable, prix invalide', () => {
+    expect(issuesOf({ ...base, siteId: '' })).toContain('SITE_REQUIRED');
+    expect(issuesOf({ ...base, description: '  ' })).toContain('DESCRIPTION_REQUIRED');
+    expect(issuesOf({ ...base, requestedDeliveryDate: '12/11/2026' })).toContain(
+      'DELIVERY_DATE_INVALID',
+    );
+    expect(issuesOf({ ...base, lines: [] })).toContain('LINES_REQUIRED');
+    expect(
+      issuesOf({ ...base, lines: [line({ productId: IDS.eggs, quantityText: '0' })] }),
+    ).toContain('LINE_INVALID');
+    // Le poulet du jeu d'essai n'est pas achetable : le serveur le refuserait (BR-APP-001).
+    expect(issuesOf({ ...base, lines: [line({ quantityText: '3' })] })).toContain('LINE_INVALID');
+    expect(
+      issuesOf({
+        ...base,
+        lines: [line({ productId: IDS.eggs, quantityText: '3', priceText: 'abc' })],
+      }),
+    ).toContain('LINE_INVALID');
+  });
+});
+
+describe('BC : bon de commande fournisseur (procurement.order.create puis .submit)', () => {
+  const base = {
+    slipType: 'BC' as const,
+    paperRef: 'BC-000031',
+    supplierId: SUPPLIER,
+    locationId: IDS.pos,
+    requestedDeliveryDate: '2026-11-10',
+    lines: [line({ productId: IDS.eggs, quantityText: '300', priceText: '85' })],
+  };
+
+  it('fournisseur, emplacement de livraison, prix de chaque ligne ; total pour le registre', () => {
+    expect(slipOf(base).slip).toEqual({
+      type: 'BC',
+      supplierId: SUPPLIER,
+      deliveryLocationId: IDS.pos,
+      expectedDeliveryDate: '2026-11-10',
+      lines: [{ productId: IDS.eggs, unitCode: 'U', orderedQtyBase: 300, unitPriceXaf: 85 }],
+      totalXaf: 25_500,
+    });
+    expect(slipOf({ ...base, requestedDeliveryDate: '' }).slip).not.toHaveProperty(
+      'expectedDeliveryDate',
+    );
+  });
+
+  it('défauts : fournisseur, emplacement, date, lignes, prix de chaque ligne, produit non achetable', () => {
+    expect(issuesOf({ ...base, supplierId: '' })).toContain('SUPPLIER_REQUIRED');
+    expect(issuesOf({ ...base, locationId: '' })).toContain('LOCATION_REQUIRED');
+    expect(issuesOf({ ...base, requestedDeliveryDate: 'demain' })).toContain(
+      'DELIVERY_DATE_INVALID',
+    );
+    expect(issuesOf({ ...base, lines: [] })).toContain('LINES_REQUIRED');
+    expect(
+      issuesOf({ ...base, lines: [line({ productId: IDS.eggs, quantityText: '300' })] }),
+    ).toContain('COST_REQUIRED');
+    expect(issuesOf({ ...base, lines: [line({ quantityText: '3', priceText: '85' })] })).toContain(
+      'LINE_INVALID',
+    );
+  });
+});
+
+describe('VC : fiche de visite (crm.visit.record)', () => {
+  const base = {
+    slipType: 'VC' as const,
+    paperRef: 'VC-000018',
+    customerId: IDS.customer,
+    visitOutcomeId: VISIT_OUTCOME,
+    notes: ' Intéressé par 30 plateaux par semaine ',
+    nextActionDate: '2026-11-17',
+    nextActionNote: ' Apporter un échantillon ',
+  };
+
+  async function withOutcome(active = true): Promise<void> {
+    await getDb().projections.put(
+      put('reason_code', 'REASON_CODE', VISIT_OUTCOME, {
+        id: VISIT_OUTCOME,
+        category: 'VISIT_OUTCOME',
+        code: 'INTERESSE',
+        label: 'Intéressé',
+        loss_category: null,
+        requires_comment: false,
+        is_active: active,
+      }),
+    );
+    refs = await loadSalesReferences(getDb());
+  }
+
+  it('client, résultat, compte rendu et prochaine action ; sans position', async () => {
+    await withOutcome();
+    expect(slipOf(base).slip).toEqual({
+      type: 'VC',
+      customerId: IDS.customer,
+      outcomeReasonCodeId: VISIT_OUTCOME,
+      notes: 'Intéressé par 30 plateaux par semaine',
+      nextActionAt: '2026-11-17',
+      nextActionNote: 'Apporter un échantillon',
+    });
+    const bare = slipOf({ ...base, notes: '', nextActionDate: '', nextActionNote: '' }).slip;
+    expect(bare).toEqual({
+      type: 'VC',
+      customerId: IDS.customer,
+      outcomeReasonCodeId: VISIT_OUTCOME,
+    });
+  });
+
+  it('défauts : client, résultat (actif seulement), date de la prochaine action', async () => {
+    await withOutcome();
+    expect(issuesOf({ ...base, customerId: null })).toContain('CUSTOMER_REQUIRED');
+    expect(issuesOf({ ...base, customerId: 'inconnu' })).toContain('CUSTOMER_UNKNOWN');
+    expect(issuesOf({ ...base, visitOutcomeId: '' })).toContain('OUTCOME_REQUIRED');
+    expect(issuesOf({ ...base, nextActionDate: '17/11' })).toContain('NEXT_ACTION_INVALID');
+    await withOutcome(false);
+    expect(issuesOf(base)).toContain('OUTCOME_REQUIRED');
+  });
+});
+
+describe('FI : fiche d’inventaire (inventory.count.open, .record_lines puis .submit)', () => {
+  const base = {
+    slipType: 'FI' as const,
+    paperRef: 'FI-000004',
+    locationId: STORE,
+    countType: 'FULL' as const,
+    lines: [
+      line({ key: 'k1', productId: IDS.eggs, quantityText: '118' }),
+      line({ key: 'k2', quantityText: '0' }),
+    ],
+  };
+
+  it('emplacement, nature et quantités comptées en unité de base, zéro compris', () => {
+    expect(slipOf(base).slip).toEqual({
+      type: 'FI',
+      locationId: STORE,
+      countType: 'FULL',
+      lines: [
+        { productId: IDS.eggs, countedQtyBase: 118 },
+        { productId: IDS.chicken, countedQtyBase: 0 },
+      ],
+    });
+  });
+
+  it('défauts : emplacement, lignes, quantité obligatoire, produit en double', () => {
+    expect(issuesOf({ ...base, locationId: '' })).toContain('LOCATION_REQUIRED');
+    expect(issuesOf({ ...base, lines: [] })).toContain('LINES_REQUIRED');
+    expect(
+      issuesOf({ ...base, lines: [line({ productId: IDS.eggs, quantityText: '' })] }),
+    ).toContain('LINE_INVALID');
+    expect(
+      issuesOf({
+        ...base,
+        lines: [
+          line({ key: 'k1', productId: IDS.eggs, quantityText: '10' }),
+          line({ key: 'k2', productId: IDS.eggs, quantityText: '12' }),
+        ],
+      }),
+    ).toContain('LINE_INVALID');
   });
 });
 

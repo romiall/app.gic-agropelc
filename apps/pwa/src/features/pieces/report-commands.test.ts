@@ -11,7 +11,9 @@ import { cashTransferSendPayloadSchema, expenseRecordPayloadSchema } from '@gic/
 import {
   MAX_SLIP_REF_LENGTH,
   REPORTABLE_SLIP_TYPES,
+  NON_REPORTABLE_SLIP_CODES,
   buildReportCommand,
+  buildReportCommands,
   carriesLocalRef,
   paperRefPlace,
   slipPhotoTarget,
@@ -111,6 +113,47 @@ const SLIPS: Readonly<Record<ReportableSlipType, ResolvedSlip>> = {
     category: 'CASSE',
     comment: 'Cageots tombés',
   },
+  DA: {
+    type: 'DA',
+    siteId: id(70),
+    neededByDate: '2026-11-12',
+    justification: 'Aliment démarrage à renouveler',
+    lines: [
+      {
+        productId: id(1),
+        unitCode: 'SAC',
+        quantity: 20,
+        quantityBase: 20,
+        estimatedUnitPriceXaf: 18500,
+      },
+      { productId: id(3), unitCode: 'U', quantity: 5, quantityBase: 5 },
+    ],
+  },
+  BC: {
+    type: 'BC',
+    supplierId: id(71),
+    deliveryLocationId: id(60),
+    expectedDeliveryDate: '2026-11-10',
+    lines: [{ productId: id(1), unitCode: 'SAC', orderedQtyBase: 20, unitPriceXaf: 18000 }],
+    totalXaf: 360000,
+  },
+  VC: {
+    type: 'VC',
+    customerId: id(11),
+    outcomeReasonCodeId: id(72),
+    notes: 'Intéressé par 30 plateaux par semaine',
+    nextActionAt: '2026-11-17',
+    nextActionNote: 'Apporter un échantillon',
+  },
+  FI: {
+    type: 'FI',
+    locationId: id(60),
+    countType: 'PARTIAL',
+    lines: [
+      { productId: id(1), countedQtyBase: 118 },
+      { productId: id(3), countedQtyBase: 0 },
+    ],
+  },
 };
 
 /** Commandes enregistrées par le serveur pour chaque pièce (voir le tableau de `report-commands.ts`). */
@@ -124,6 +167,10 @@ const EXPECTED: Readonly<Record<ReportableSlipType, readonly [string, string]>> 
   BR: ['procurement.receipt.record', 'GOODS_RECEIPT'],
   BT: ['inventory.transfer.dispatch', 'STOCK_TRANSFER'],
   FP: ['inventory.loss.declare', 'STOCK_LOSS'],
+  DA: ['procurement.request.submit', 'PURCHASE_REQUEST'],
+  BC: ['procurement.order.create', 'PURCHASE_ORDER'],
+  VC: ['crm.visit.record', 'VISIT'],
+  FI: ['inventory.count.open', 'INVENTORY_COUNT'],
 };
 
 /** Clés que l'ancienne correspondance inventait : le serveur ne les connaît dans aucune charge. */
@@ -194,7 +241,9 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
         else if (value !== null && typeof value === 'object') {
           for (const [key, entry] of Object.entries(value)) {
             expect(entry, `${type}.${key}`).not.toBeUndefined();
-            expect(entry, `${type}.${key}`).not.toBeNull();
+            // Seule exception : `position` d'une visite, clé obligatoire du schéma du serveur, nulle sans GPS.
+            if (!(type === 'VC' && key === 'position'))
+              expect(entry, `${type}.${key}`).not.toBeNull();
             walk(entry);
           }
         }
@@ -217,6 +266,10 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       RE: 'LOCAL_REF',
       BT: 'FREE_TEXT',
       FP: 'FREE_TEXT',
+      DA: 'LOCAL_REF',
+      BC: 'LOCAL_REF',
+      VC: 'FREE_TEXT',
+      FI: 'LOCAL_REF',
     });
     for (const type of REPORTABLE_SLIP_TYPES) {
       const { payload } = buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` }));
@@ -228,6 +281,9 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` })).payload[key];
     expect(mention('BT', 'notes')).toBe('Pièce papier BT-000042 — Réapprovisionnement');
     expect(mention('FP', 'comment')).toBe('Pièce papier FP-000042 — Cageots tombés');
+    expect(mention('VC', 'notes')).toBe(
+      'Pièce papier VC-000042 — Intéressé par 30 plateaux par semaine',
+    );
     // Le texte libre des autres commandes reste celui de l'utilisateur, sans mention.
     expect(mention('BL', 'notes')).toBeUndefined();
     expect(mention('BR', 'observations')).toBeUndefined();
@@ -283,8 +339,125 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       cited: true,
     });
     expect(slipPhotoTarget('FP')).toEqual({ kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: false });
-    for (const type of ['BV', 'CC', 'BL', 'RE', 'RF', 'BT'] as const) {
+    for (const type of ['BV', 'CC', 'BL', 'RE', 'RF', 'BT', 'DA', 'BC', 'VC', 'FI'] as const) {
       expect(slipPhotoTarget(type), type).toBeNull();
+    }
+  });
+
+  it('DA : charge de procurement.request.submit (site, besoin, justification, lignes en unité de base)', () => {
+    const { payload } = buildReportCommand(SLIPS.DA, meta({ paperRef: 'DA-000009' }));
+    expect(payload).toEqual({
+      siteId: id(70),
+      neededByDate: '2026-11-12',
+      justification: 'Aliment démarrage à renouveler',
+      lines: [
+        {
+          productId: id(1),
+          quantityBase: 20,
+          unitCode: 'SAC',
+          quantity: 20,
+          estimatedUnitPriceXaf: 18500,
+        },
+        { productId: id(3), quantityBase: 5, unitCode: 'U', quantity: 5 },
+      ],
+      localRef: 'DA-000009',
+    });
+  });
+
+  it('BC : create puis submit du même bon, le second attend le premier ; les indices ne sont que sur le premier', () => {
+    const commands = buildReportCommands(
+      SLIPS.BC,
+      meta({ paperRef: 'BC-000031', dependsOn: [id(77)] }),
+    );
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'procurement.order.create',
+      'procurement.order.submit',
+    ]);
+    expect(commands.map((c) => c.aggregateType)).toEqual(['PURCHASE_ORDER', 'PURCHASE_ORDER']);
+    expect(commands.map((c) => c.aggregateId)).toEqual([id(99), id(99)]);
+    expect(commands.map((c) => c.dependsOnPrevious)).toEqual([false, true]);
+    expect(commands[0]!.dependsOn).toEqual([id(77)]);
+    expect(commands[1]!.dependsOn).toEqual([]);
+    expect(commands[0]!.payload).toEqual({
+      supplierId: id(71),
+      deliveryLocationId: id(60),
+      expectedDeliveryDate: '2026-11-10',
+      lines: [{ productId: id(1), unitCode: 'SAC', orderedQtyBase: 20, unitPriceXaf: 18000 }],
+      localRef: 'BC-000031',
+    });
+    expect(commands[1]!.payload).toEqual({});
+    expect(commands[0]!.localFlags).toEqual([
+      'PAPER_SLIP',
+      'SLIP_TYPE:BC',
+      'PAPER_REF:BC-000031',
+      'SLIP_AMOUNT:360000',
+    ]);
+    expect(commands[1]!.localFlags).toEqual([]);
+    expect(commands.every((c) => c.occurredAt === '2026-11-03T09:00:00.000Z')).toBe(true);
+  });
+
+  it('VC : visite sans position, numéro dans les notes, prochaine action', () => {
+    const { payload } = buildReportCommand(SLIPS.VC, meta({ paperRef: 'VC-000018' }));
+    expect(payload).toEqual({
+      customerId: id(11),
+      position: null,
+      outcomeReasonCodeId: id(72),
+      notes: 'Pièce papier VC-000018 — Intéressé par 30 plateaux par semaine',
+      nextActionAt: '2026-11-17',
+      nextActionNote: 'Apporter un échantillon',
+    });
+  });
+
+  it('FI : open, record_lines puis submit du même inventaire, lignes datées de l’heure de la pièce', () => {
+    const commands = buildReportCommands(SLIPS.FI, meta({ paperRef: 'FI-000004' }));
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'inventory.count.open',
+      'inventory.count.record_lines',
+      'inventory.count.submit',
+    ]);
+    expect(commands.map((c) => c.dependsOnPrevious)).toEqual([false, true, true]);
+    expect(commands[0]!.payload).toEqual({
+      locationId: id(60),
+      countType: 'PARTIAL',
+      localRef: 'FI-000004',
+    });
+    expect(commands[1]!.payload).toEqual({
+      countId: id(99),
+      lines: [
+        { productId: id(1), countedAt: '2026-11-03T09:00:00.000Z', countedQtyBase: 118 },
+        { productId: id(3), countedAt: '2026-11-03T09:00:00.000Z', countedQtyBase: 0 },
+      ],
+    });
+    expect(commands[2]!.payload).toEqual({ countId: id(99) });
+    expect(commands.slice(1).every((c) => c.localFlags.length === 0 && c.photo === null)).toBe(
+      true,
+    );
+  });
+
+  it('les types à une seule commande n’en produisent qu’une, sans dépendance sur la précédente', () => {
+    for (const type of [
+      'BV',
+      'CC',
+      'BL',
+      'RE',
+      'BD',
+      'RF',
+      'BR',
+      'BT',
+      'FP',
+      'DA',
+      'VC',
+    ] as const) {
+      const commands = buildReportCommands(SLIPS[type], meta({ paperRef: `${type}-1` }));
+      expect(commands, type).toHaveLength(1);
+      expect(commands[0]!.dependsOnPrevious, type).toBe(false);
+    }
+  });
+
+  it('FA, FJC et JE ne se reportent pas : documents imprimés d’après des faits déjà enregistrés', () => {
+    expect([...NON_REPORTABLE_SLIP_CODES].sort()).toEqual(['FA', 'FJC', 'JE']);
+    for (const code of NON_REPORTABLE_SLIP_CODES) {
+      expect(REPORTABLE_SLIP_TYPES as readonly string[]).not.toContain(code);
     }
   });
 

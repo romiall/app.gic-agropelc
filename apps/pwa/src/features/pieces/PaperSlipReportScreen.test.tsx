@@ -8,7 +8,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getDb } from '../../storage/db.js';
+import { getDb, type Projection } from '../../storage/db.js';
 import {
   DEVICE_ID,
   EXPENSE_IDS,
@@ -54,6 +54,47 @@ const meta = (paperRef: string, occurredAt: string) => ({
   backdatedReason: null,
   dependsOn: [],
 });
+
+const SUPPLIER = '01900000-0000-7000-8000-000000000120';
+
+/** Une ligne de référentiel telle que le serveur la sert. */
+const projection = (
+  dataset: string,
+  entityType: string,
+  entityId: string,
+  data: Record<string, unknown>,
+): Projection => ({
+  key: `${dataset}:${entityType}:${entityId}`,
+  dataset,
+  entity_type: entityType,
+  entity_id: entityId,
+  scope_type: 'GLOBAL',
+  scope_id: null,
+  seq: 1,
+  row_version: 1,
+  data,
+});
+
+/** Œufs achetables et un fournisseur : de quoi reporter un bon de commande. */
+const purchasingRows = (): Projection[] => [
+  projection('procurement', 'SUPPLIER', SUPPLIER, {
+    id: SUPPLIER,
+    code: 'F-LIT',
+    name: 'Provenderie',
+  }),
+  projection('product', 'PRODUCT', IDS.eggs, {
+    id: IDS.eggs,
+    code: 'OEUF',
+    name: 'Œufs de table',
+    category_id: IDS.zone,
+    base_unit_code: 'U',
+    stock_family: 'MARCHANDISE',
+    is_sellable: true,
+    is_purchasable: true,
+    pricing_mode: 'PER_UNIT',
+    status: 'ACTIVE',
+  }),
+];
 
 const renderScreen = () =>
   render(
@@ -274,6 +315,95 @@ describe('PaperSlipReportScreen (PP-B)', () => {
         paidNow: true,
         paidFromAccountId: POS_CASH_ACCOUNT,
         localRef: 'BD-000055',
+      },
+    });
+  });
+
+  it('les treize types sont proposés, FA, FJC et JE ne le sont pas (documents dérivés)', async () => {
+    renderScreen();
+    const select = await screen.findByLabelText('Type de pièce');
+    const labels = Array.from(select.querySelectorAll('option')).map(
+      (option) => option.textContent,
+    );
+    expect(labels).toHaveLength(13);
+    for (const code of ['DA', 'BC', 'VC', 'FI']) {
+      expect(
+        labels.some((label) => label?.startsWith(`${code} —`)),
+        code,
+      ).toBe(true);
+    }
+    for (const code of ['FA', 'FJC', 'JE']) {
+      expect(
+        labels.some((label) => label?.startsWith(`${code} —`)),
+        code,
+      ).toBe(false);
+    }
+  });
+
+  it('BC : le bon de commande est mis en file en deux commandes, création puis soumission, la seconde attend la première', async () => {
+    await getDb().projections.bulkPut(purchasingRows());
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Type de pièce'), 'BC');
+    await user.type(screen.getByLabelText(/Numéro de la pièce/i), 'BC-000031');
+    await user.selectOptions(screen.getByLabelText('Fournisseur'), SUPPLIER);
+    await user.selectOptions(screen.getByLabelText('Emplacement de livraison'), IDS.pos);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText(/^Quantité/), '300');
+    await user.type(screen.getByLabelText('Prix unitaire du bon (XAF)'), '85');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le report' }));
+
+    expect(await screen.findByText(/BC-000031 enregistrée/)).toBeInTheDocument();
+    const rows = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(rows.map((row) => row.command_type)).toEqual([
+      'procurement.order.create',
+      'procurement.order.submit',
+    ]);
+    expect(rows[0]).toMatchObject({
+      aggregate_type: 'PURCHASE_ORDER',
+      captured_offline: true,
+      payload: {
+        supplierId: SUPPLIER,
+        deliveryLocationId: IDS.pos,
+        lines: [{ productId: IDS.eggs, unitCode: 'U', orderedQtyBase: 300, unitPriceXaf: 85 }],
+        localRef: 'BC-000031',
+      },
+    });
+    expect(rows[1]!.aggregate_id).toBe(rows[0]!.aggregate_id);
+    expect(rows[1]!.depends_on).toEqual([rows[0]!.command_id]);
+    // Seule la première commande porte les indices du registre des carnets.
+    expect(rows[0]!.local_flags).toContain('PAPER_SLIP');
+    expect(rows[1]!.local_flags ?? []).toEqual([]);
+  });
+
+  it('FI : la fiche d’inventaire est mise en file en trois commandes, chacune dépendant de la précédente', async () => {
+    await getDb().projections.bulkPut(purchasingRows());
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Type de pièce'), 'FI');
+    await user.type(screen.getByLabelText(/Numéro de la pièce/i), 'FI-000004');
+    await user.selectOptions(screen.getByLabelText('Emplacement compté'), IDS.pos);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText(/^Quantité/), '118');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le report' }));
+
+    expect(await screen.findByText(/FI-000004 enregistrée/)).toBeInTheDocument();
+    const rows = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(rows.map((row) => row.command_type)).toEqual([
+      'inventory.count.open',
+      'inventory.count.record_lines',
+      'inventory.count.submit',
+    ]);
+    expect(rows[0]).toMatchObject({
+      aggregate_type: 'INVENTORY_COUNT',
+      payload: { locationId: IDS.pos, countType: 'PARTIAL', localRef: 'FI-000004' },
+    });
+    expect(rows[1]!.depends_on).toEqual([rows[0]!.command_id]);
+    expect(rows[2]!.depends_on).toEqual([rows[1]!.command_id]);
+    expect(rows[1]).toMatchObject({
+      payload: {
+        countId: rows[0]!.aggregate_id,
+        lines: [{ productId: IDS.eggs, countedQtyBase: 118 }],
       },
     });
   });

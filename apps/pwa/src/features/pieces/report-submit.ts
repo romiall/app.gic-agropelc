@@ -20,7 +20,7 @@ import {
   FLAG_PAPER_SLIP,
   FLAG_SLIP_TYPE,
   REPORTABLE_SLIP_TYPES,
-  buildReportCommand,
+  buildReportCommands,
   type ReportCommand,
   type ReportableSlipType,
   type ResolvedSlip,
@@ -58,21 +58,34 @@ export function toOutboxInput(
   };
 }
 
-/** Enregistre le report de pièce papier dans l'outbox locale (la commande est celle du serveur). */
+/**
+ * Enregistre le report de pièce papier dans l'outbox locale (les commandes sont celles du serveur). Une pièce en plusieurs
+ * commandes (bon de commande, fiche d'inventaire) les met en file dans l'ordre, chacune dépendant de la précédente ; la
+ * commande rendue est la dernière, celle dont le résultat dit si la pièce est entièrement enregistrée.
+ */
 export async function submitPaperSlipReport(
   slip: ResolvedSlip,
   meta: SlipMeta,
   authorUserId: string,
   photo: PreparedPhoto | null = null,
 ): Promise<OutboxCommand> {
-  const command = buildReportCommand(slip, {
+  const commands = buildReportCommands(slip, {
     paperRef: meta.paperRef,
     occurredAt: meta.occurredAt,
     backdatedReason: meta.backdatedReason,
     aggregateId: idGenerator.newId(),
     dependsOn: meta.dependsOn,
   });
-  return submitCommand(toOutboxInput(command, authorUserId, photo));
+  let previous: OutboxCommand | undefined;
+  for (const command of commands) {
+    const input = toOutboxInput(command, authorUserId, photo);
+    previous = await submitCommand(
+      command.dependsOnPrevious && previous
+        ? { ...input, dependsOn: [...(input.dependsOn ?? []), previous.command_id] }
+        : input,
+    );
+  }
+  return previous!;
 }
 
 export interface ReportedSlipRecord {
@@ -139,6 +152,17 @@ export function describeReportedPayload(
       return `Transfert : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
     case 'FP':
       return `Perte (${lossLabel(String(p['category'] ?? ''))})`;
+    case 'DA':
+      return `Demande d'achat : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'BC':
+      return `Bon de commande fournisseur : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'VC':
+      return 'Visite commerciale';
+    case 'FI':
+      // La première commande de la chaîne (l'ouverture) porte les indices : elle n'a pas encore les lignes.
+      return `Fiche d'inventaire (${
+        p['countType'] === 'FULL' ? 'complet' : p['countType'] === 'SPOT' ? 'ponctuel' : 'partiel'
+      })`;
   }
 }
 

@@ -127,6 +127,8 @@ type OpeningPostPayload = z.infer<typeof openingPostPayloadSchema>;
 const openPayloadSchema = z.object({
   locationId: z.string().uuid(),
   countType: z.enum(COUNT_TYPES),
+  /** Numéro de la fiche d'inventaire papier reportée (PP-B, AV-308). */
+  localRef: z.string().trim().min(1).max(20).optional(),
 });
 type OpenPayload = z.infer<typeof openPayloadSchema>;
 
@@ -379,6 +381,30 @@ function buildCountCommands(
     const occurredAt = new Date(envelope.occurred_at);
     const { siteId, codeSite } = await loadLocationSite(uow, locationId);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
+    // La référence locale est unique par appareil : déjà prise, l'ouverture est refusée en ligne ; hors ligne (une fiche
+    // papier reportée est un fait accompli, BR-SYN-007) elle est appliquée sans la référence, avec l'avertissement
+    // `LOCAL_REF_DUPLICATE` (sans ce contrôle, la clé unique ferait rejouer la commande sans fin).
+    let localRef = envelope.payload.localRef ?? null;
+    let localRefReused = false;
+    if (localRef !== null && origin.deviceId !== null) {
+      const sameRef = await uow
+        .selectFrom('inventory_inventory_counts')
+        .select('id')
+        .where('created_device_id', '=', toBin(origin.deviceId))
+        .where('local_ref', '=', localRef)
+        .executeTakeFirst();
+      if (sameRef) {
+        if (!envelope.captured_offline) {
+          return {
+            status: 'REJECTED',
+            errorCode: 'LOCAL_REF_DUPLICATE',
+            messageFr: 'Référence locale déjà utilisée par cet appareil.',
+          };
+        }
+        localRef = null;
+        localRefReused = true;
+      }
+    }
     const docNumber = await documentSequences.next(uow, {
       docType: 'INV',
       siteId,
@@ -392,6 +418,7 @@ function buildCountCommands(
       .values({
         id: toBin(countId),
         doc_number: docNumber,
+        local_ref: localRef,
         site_id: toBin(siteId),
         location_id: toBin(locationId),
         count_type: countType,
@@ -408,7 +435,9 @@ function buildCountCommands(
       .execute();
 
     await recordChanges(uow, [inventoryCountChange(countId, locationId)]);
-    return { status: 'APPLIED' };
+    return localRefReused
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: ['LOCAL_REF_DUPLICATE'] }
+      : { status: 'APPLIED' };
   };
 
   const recordLines: CommandHandler<RecordLinesPayload> = async (uow, envelope) => {

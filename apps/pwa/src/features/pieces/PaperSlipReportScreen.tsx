@@ -82,6 +82,10 @@ const SLIP_TYPE_LABELS: Readonly<Record<ReportableSlipType, string>> = {
   BR: 'BR — Bon de réception',
   BT: 'BT — Bon de transfert',
   FP: 'FP — Fiche de perte',
+  DA: 'DA — Demande d’achat',
+  BC: 'BC — Bon de commande fournisseur',
+  VC: 'VC — Fiche de visite client',
+  FI: 'FI — Fiche d’inventaire',
 };
 
 /** Ton du badge d'une pièce reportée selon l'état de son envoi (les autres états restent neutres). */
@@ -93,7 +97,16 @@ const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
 };
 
 /** Types dont le formulaire part d'une ligne vide (produit à choisir). */
-const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set(['BV', 'CC', 'BR', 'BT', 'FP']);
+const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set([
+  'BV',
+  'CC',
+  'BR',
+  'BT',
+  'FP',
+  'DA',
+  'BC',
+  'FI',
+]);
 
 const initialForm = (type: ReportableSlipType): SlipForm => ({
   ...emptySlipForm(clock.now(), type),

@@ -26,6 +26,7 @@ import {
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   buildReportCommand,
+  buildReportCommands,
   slipPhotoTarget,
   REPORTABLE_SLIP_TYPES,
   type ReportCommand,
@@ -51,8 +52,12 @@ const DAY = recentBusinessDay(3);
 const at = (hhmm: string) => `${DAY}T${hhmm}:00.000Z`;
 const NOW = at('18:00');
 
-/** Droits qu'exigent les neuf commandes (portée `ALL` : l'essai ne porte pas sur le RBAC). */
+/** Droits qu'exigent les commandes des treize pièces (portée `ALL` : l'essai ne porte pas sur le RBAC). */
 const PERMISSIONS = [
+  'procurement.request.create',
+  'procurement.order.manage',
+  'crm.visit.record',
+  'inventory.count.perform',
   'sales.sale.record',
   'sales.credit_sale.record',
   'sales.order.create',
@@ -161,6 +166,72 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     const result = device.resultOf(envelope.command_id);
     expect(result, `aucune réponse pour ${command.commandType}`).toBeDefined();
     return { command, result: result! };
+  }
+
+  /**
+   * Pièce en plusieurs commandes (BC, FI) : toutes mises dans la file de l'appareil, chacune dépendant de la précédente
+   * comme dans l'outbox de la PWA, puis un seul envoi.
+   */
+  async function reportChain(
+    slip: ResolvedSlip,
+    paperRef: string,
+    occurredAt: string,
+  ): Promise<{ commands: readonly ReportCommand[]; results: readonly CommandResult[] }> {
+    const commands = buildReportCommands(slip, {
+      paperRef,
+      occurredAt,
+      backdatedReason: 'Report de la pièce papier (essai)',
+      aggregateId: freshUuid(),
+    });
+    const ids: string[] = [];
+    for (const command of commands) {
+      const previous = ids.at(-1);
+      const envelope = device.enqueue(reporter.userId, {
+        type: command.commandType,
+        aggregateType: command.aggregateType,
+        aggregateId: command.aggregateId,
+        occurredAt: command.occurredAt,
+        payload: command.payload,
+        dependsOn: [
+          ...command.dependsOn,
+          ...(command.dependsOnPrevious && previous ? [previous] : []),
+        ],
+        capturedOffline: command.capturedOffline,
+        backdatedReason: command.backdatedReason,
+      });
+      expect(rawCommandEnvelopeSchema.safeParse(envelope).success).toBe(true);
+      ids.push(envelope.command_id);
+    }
+    await device.syncUntilSettled(reporter.userId);
+    return { commands, results: ids.map((id) => device.resultOf(id)!) };
+  }
+
+  /** Une politique active pour l'opération (celles du semis manquent sur une base d'essai neuve). */
+  async function ensurePolicy(operationType: string, approverPermission: string): Promise<void> {
+    const existing = await db
+      .selectFrom('approvals_control_policies')
+      .select('id')
+      .where('operation_type', '=', operationType)
+      .where('status', '=', 'ACTIVE')
+      .executeTakeFirst();
+    if (existing) return;
+    const id = freshUuid();
+    await db
+      .insertInto('approvals_control_policies')
+      .values({
+        id: toBin(id),
+        code: `${operationType}_PP_${id.slice(-8)}`,
+        version: 1,
+        operation_type: operationType,
+        condition: JSON.stringify({}),
+        requires_approval: 1,
+        approver_permission: approverPermission,
+        approver_scope: 'ALL',
+        valid_from: new Date('2000-01-01T00:00:00.000Z'),
+        status: 'ACTIVE',
+        created_by: toBin(world.root),
+      })
+      .execute();
   }
 
   const applied = (result: CommandResult) =>
@@ -409,6 +480,180 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     expect(row.comment).toContain('FP-000004');
   });
 
+  it('DA : procurement.request.submit — demande d’achat du magasin, validation demandée, numéro en local_ref', async () => {
+    await ensurePolicy('PURCHASE_REQUEST', 'procurement.request.approve');
+    const { command, result } = await report(
+      {
+        type: 'DA',
+        siteId: world.siteS,
+        neededByDate: DAY,
+        justification: 'Renouveler le stock de poulets du magasin',
+        lines: [
+          {
+            productId: product.id,
+            unitCode: 'PIECE',
+            quantity: 50,
+            quantityBase: 50,
+            estimatedUnitPriceXaf: 2500,
+          },
+        ],
+      },
+      'DA-000009',
+      at('07:30'),
+    );
+    expect(command.commandType).toBe('procurement.request.submit');
+    applied(result);
+    expect(await localRefOf('procurement_purchase_requests', command.aggregateId)).toBe(
+      'DA-000009',
+    );
+    const request = await db
+      .selectFrom('procurement_purchase_requests')
+      .select(['status', 'estimated_total_xaf', 'captured_offline'])
+      .where('id', '=', toBin(command.aggregateId))
+      .executeTakeFirstOrThrow();
+    expect(request.status).toBe('SUBMITTED');
+    expect(Number(request.estimated_total_xaf)).toBe(125_000);
+    expect(Boolean(request.captured_offline)).toBe(true);
+  });
+
+  it('DA : un numéro de pièce déjà reporté est signalé, jamais rejeté ni rejoué sans fin — sauf commande « en ligne »', async () => {
+    const slip = {
+      type: 'DA' as const,
+      siteId: world.siteS,
+      justification: 'Même pièce',
+      lines: [{ productId: product.id, unitCode: 'PIECE', quantity: 1, quantityBase: 1 }],
+    };
+    const duplicate = await report(slip, 'DA-000009', at('07:40'));
+    applied(duplicate.result);
+    expect(warningsOf(duplicate.result)).toContain('LOCAL_REF_DUPLICATE');
+    expect(
+      await localRefOf('procurement_purchase_requests', duplicate.command.aggregateId),
+    ).toBeNull();
+    const online = await report(slip, 'DA-000009', at('07:41'), { capturedOffline: false });
+    expect(codeOf(online.result)).toBe('LOCAL_REF_DUPLICATE');
+  });
+
+  it('BC : procurement.order.create puis .submit — bon de commande fournisseur soumis, numéro en local_ref', async () => {
+    const { commands, results } = await reportChain(
+      {
+        type: 'BC',
+        supplierId,
+        deliveryLocationId: world.store,
+        expectedDeliveryDate: DAY,
+        lines: [
+          { productId: product.id, unitCode: 'PIECE', orderedQtyBase: 20, unitPriceXaf: 300 },
+        ],
+        totalXaf: 6000,
+      },
+      'BC-000031',
+      at('08:00'),
+    );
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'procurement.order.create',
+      'procurement.order.submit',
+    ]);
+    for (const result of results) applied(result);
+    const order = await db
+      .selectFrom('procurement_purchase_orders')
+      .select(['local_ref', 'status', 'total_xaf'])
+      .where('id', '=', toBin(commands[0]!.aggregateId))
+      .executeTakeFirstOrThrow();
+    expect(order.local_ref).toBe('BC-000031');
+    expect(Number(order.total_xaf)).toBe(6000);
+    // En deçà du seuil d'approbation, le bon est approuvé d'office à la soumission (BR-APP-005).
+    expect(order.status).toBe('APPROVED');
+  });
+
+  it('VC : crm.visit.record — visite d’un client sans position, numéro dans les notes', async () => {
+    const outcomeId = freshUuid();
+    await db
+      .insertInto('catalog_reason_codes')
+      .values({
+        id: toBin(outcomeId),
+        category: 'VISIT_OUTCOME',
+        code: `PP_VC_${outcomeId.slice(-8)}`,
+        label: 'Intéressé (essai)',
+        created_by: toBin(world.root),
+      })
+      .execute();
+    const { command, result } = await report(
+      {
+        type: 'VC',
+        customerId,
+        outcomeReasonCodeId: outcomeId,
+        notes: 'Intéressé par 30 poulets par semaine',
+        nextActionAt: DAY,
+        nextActionNote: 'Apporter un échantillon',
+      },
+      'VC-000018',
+      at('10:00'),
+    );
+    expect(command.commandType).toBe('crm.visit.record');
+    applied(result);
+    const visit = await db
+      .selectFrom('crm_visits')
+      .select(['notes', 'next_action_note', 'captured_offline'])
+      .where('id', '=', toBin(command.aggregateId))
+      .executeTakeFirstOrThrow();
+    expect(visit.notes).toContain('VC-000018');
+    expect(visit.notes).toContain('30 poulets');
+    expect(visit.next_action_note).toBe('Apporter un échantillon');
+    expect(Boolean(visit.captured_offline)).toBe(true);
+  });
+
+  it('FI : inventory.count.open, .record_lines puis .submit — fiche d’inventaire comptée à l’heure de la pièce', async () => {
+    const { commands, results } = await reportChain(
+      {
+        type: 'FI',
+        locationId: world.counter,
+        countType: 'PARTIAL',
+        lines: [{ productId: product.id, countedQtyBase: 200 }],
+      },
+      'FI-000004',
+      at('11:00'),
+    );
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'inventory.count.open',
+      'inventory.count.record_lines',
+      'inventory.count.submit',
+    ]);
+    for (const result of results) applied(result);
+    const count = await db
+      .selectFrom('inventory_inventory_counts')
+      .select(['local_ref', 'status', 'count_type', 'captured_offline'])
+      .where('id', '=', toBin(commands[0]!.aggregateId))
+      .executeTakeFirstOrThrow();
+    expect(count.local_ref).toBe('FI-000004');
+    expect(count.count_type).toBe('PARTIAL');
+    expect(['POSTED', 'PENDING_APPROVAL']).toContain(count.status);
+    const lines = await db
+      .selectFrom('inventory_inventory_count_lines')
+      .select(['counted_at', 'counted_qty_base'])
+      .where('count_id', '=', toBin(commands[0]!.aggregateId))
+      .execute();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.counted_at.toISOString()).toBe(at('11:00').replace(':00Z', ':00.000Z'));
+    expect(Number(lines[0]!.counted_qty_base)).toBe(200);
+  });
+
+  it('FI : un numéro de fiche déjà reporté est signalé, jamais rejeté ni rejoué sans fin — sauf commande « en ligne »', async () => {
+    const slip = {
+      type: 'FI' as const,
+      locationId: world.store,
+      countType: 'SPOT' as const,
+      lines: [{ productId: product.id, countedQtyBase: 100 }],
+    };
+    const first = await report(slip, 'FI-000004', at('11:20'));
+    applied(first.result);
+    expect(warningsOf(first.result)).toContain('LOCAL_REF_DUPLICATE');
+    expect(await localRefOf('inventory_inventory_counts', first.command.aggregateId)).toBeNull();
+    // En ligne, l'ouverture serait refusée : on la rejoue sur un autre emplacement libre.
+    const online = await report({ ...slip, locationId: world.counter }, 'FI-000004', at('11:21'), {
+      capturedOffline: false,
+    });
+    expect(codeOf(online.result)).toBe('LOCAL_REF_DUPLICATE');
+  });
+
   it('un numéro de pièce déjà reporté est signalé sur la commande, la livraison, l’encaissement et la réception', async () => {
     const signalled = async (
       slip: ResolvedSlip,
@@ -492,18 +737,25 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     );
     expect([...seen].sort()).toEqual(
       [
+        'crm.visit.record',
         'finance.cash_transfer.send',
         'finance.expense.record',
+        'inventory.count.open',
+        'inventory.count.record_lines',
+        'inventory.count.submit',
         'inventory.loss.declare',
         'inventory.transfer.dispatch',
+        'procurement.order.create',
+        'procurement.order.submit',
         'procurement.receipt.record',
+        'procurement.request.submit',
         'sales.order.fulfil',
         'sales.order.place',
         'sales.payment.record',
         'sales.sale.record',
       ].sort(),
     );
-    expect(REPORTABLE_SLIP_TYPES).toHaveLength(9);
+    expect(REPORTABLE_SLIP_TYPES).toHaveLength(13);
     for (const entry of device.outbox()) {
       const code = codeOf(entry.result);
       // Seuls les doublons volontaires « en ligne » des essais de numéro répété sont refusés.
@@ -522,137 +774,141 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
     }
   });
 
-  it('rechargement (PP-C) : la même pièce, sous le même identifiant et un autre command_id, n’est reportée qu’une fois', async () => {
-    // Le chargement par fichier dérive l'identifiant d'une pièce de son auteur, de son type, de son numéro et de son
-    // contenu (`authorImportId`) : recharger le fichier renvoie la même commande sous un autre `command_id`. Le serveur doit la reconnaître,
-    // sans doublon ni exception (une écriture qui échouerait serait rejouée sans fin par l'appareil).
-    const cases: readonly {
-      readonly type: string;
-      readonly table: string;
-      readonly hhmm: string;
-      readonly slip: ResolvedSlip;
-    }[] = [
-      {
-        type: 'BV',
-        table: 'sales_sales',
-        hhmm: '14:00',
-        slip: { type: 'BV', fromLocationId: world.counter, customerId, lines: [line(1)] },
-      },
-      {
-        type: 'CC',
-        table: 'sales_sales_orders',
-        hhmm: '14:05',
-        slip: {
-          type: 'CC',
-          customerId,
-          fulfilmentLocationId: world.store,
-          lines: [line(1)],
-          totalXaf: product.price,
+  it(
+    'rechargement (PP-C) : la même pièce, sous le même identifiant et un autre command_id, n’est reportée qu’une fois',
+    { timeout: 90_000 },
+    async () => {
+      // Le chargement par fichier dérive l'identifiant d'une pièce de son auteur, de son type, de son numéro et de son
+      // contenu (`authorImportId`) : recharger le fichier renvoie la même commande sous un autre `command_id`. Le serveur doit la reconnaître,
+      // sans doublon ni exception (une écriture qui échouerait serait rejouée sans fin par l'appareil).
+      const cases: readonly {
+        readonly type: string;
+        readonly table: string;
+        readonly hhmm: string;
+        readonly slip: ResolvedSlip;
+      }[] = [
+        {
+          type: 'BV',
+          table: 'sales_sales',
+          hhmm: '14:00',
+          slip: { type: 'BV', fromLocationId: world.counter, customerId, lines: [line(1)] },
         },
-      },
-      {
-        type: 'RE',
-        table: 'sales_customer_payments',
-        hhmm: '14:10',
-        slip: {
-          type: 'RE',
-          customerId,
-          siteId: world.siteP,
-          payment: {
-            methodCode: 'MOBILE_MONEY_ORANGE',
-            amountXaf: 1_000,
-            reference: 'OM-IDEM-1',
-            cashAccountId: world.mobileAcc,
+        {
+          type: 'CC',
+          table: 'sales_sales_orders',
+          hhmm: '14:05',
+          slip: {
+            type: 'CC',
+            customerId,
+            fulfilmentLocationId: world.store,
+            lines: [line(1)],
+            totalXaf: product.price,
           },
         },
-      },
-      {
-        type: 'BD',
-        table: 'finance_expenses',
-        hhmm: '14:15',
-        slip: {
+        {
+          type: 'RE',
+          table: 'sales_customer_payments',
+          hhmm: '14:10',
+          slip: {
+            type: 'RE',
+            customerId,
+            siteId: world.siteP,
+            payment: {
+              methodCode: 'MOBILE_MONEY_ORANGE',
+              amountXaf: 1_000,
+              reference: 'OM-IDEM-1',
+              cashAccountId: world.mobileAcc,
+            },
+          },
+        },
+        {
           type: 'BD',
-          categoryId: expenseCategoryId,
-          siteId: world.siteP,
-          amountXaf: 1_500,
-          description: 'Sacs de rechange',
-          paidFromAccountId: world.posAcc,
+          table: 'finance_expenses',
+          hhmm: '14:15',
+          slip: {
+            type: 'BD',
+            categoryId: expenseCategoryId,
+            siteId: world.siteP,
+            amountXaf: 1_500,
+            description: 'Sacs de rechange',
+            paidFromAccountId: world.posAcc,
+          },
         },
-      },
-      {
-        type: 'RF',
-        table: 'finance_cash_transfers',
-        hhmm: '14:20',
-        slip: {
+        {
           type: 'RF',
-          fromAccountId: world.posAcc,
-          toAccountId: world.central,
-          amountXaf: 2_000,
+          table: 'finance_cash_transfers',
+          hhmm: '14:20',
+          slip: {
+            type: 'RF',
+            fromAccountId: world.posAcc,
+            toAccountId: world.central,
+            amountXaf: 2_000,
+          },
         },
-      },
-      {
-        type: 'BR',
-        table: 'procurement_goods_receipts',
-        hhmm: '14:25',
-        slip: {
+        {
           type: 'BR',
-          supplierId,
-          locationId: world.store,
-          lines: [
-            { productId: product.id, unitCode: 'PIECE', qtyDeliveredBase: 2, unitCostXaf: 300 },
-          ],
+          table: 'procurement_goods_receipts',
+          hhmm: '14:25',
+          slip: {
+            type: 'BR',
+            supplierId,
+            locationId: world.store,
+            lines: [
+              { productId: product.id, unitCode: 'PIECE', qtyDeliveredBase: 2, unitCostXaf: 300 },
+            ],
+          },
         },
-      },
-      {
-        type: 'BT',
-        table: 'inventory_stock_transfers',
-        hhmm: '14:30',
-        slip: {
+        {
           type: 'BT',
-          fromLocationId: world.store,
-          toLocationId: world.counter,
-          lines: [{ productId: product.id, unitCode: 'PIECE', quantityBase: 1 }],
+          table: 'inventory_stock_transfers',
+          hhmm: '14:30',
+          slip: {
+            type: 'BT',
+            fromLocationId: world.store,
+            toLocationId: world.counter,
+            lines: [{ productId: product.id, unitCode: 'PIECE', quantityBase: 1 }],
+          },
         },
-      },
-      {
-        type: 'FP',
-        table: 'inventory_loss_declarations',
-        hhmm: '14:35',
-        slip: {
+        {
           type: 'FP',
-          locationId: world.store,
-          productId: product.id,
-          unitCode: 'PIECE',
-          quantity: 1,
-          quantityBase: 1,
-          category: 'CASSE',
+          table: 'inventory_loss_declarations',
+          hhmm: '14:35',
+          slip: {
+            type: 'FP',
+            locationId: world.store,
+            productId: product.id,
+            unitCode: 'PIECE',
+            quantity: 1,
+            quantityBase: 1,
+            category: 'CASSE',
+          },
         },
-      },
-    ];
-    for (const entry of cases) {
-      const id = freshUuid();
-      const ref = `IDEM-${entry.type}`;
-      const first = await report(entry.slip, ref, at(entry.hhmm), { aggregateId: id });
-      applied(first.result);
-      // Une file qui ne se règle pas (renvoi sans fin d'une écriture qui échoue) est nommée par son type de pièce.
-      const again = await report(entry.slip, ref, at(entry.hhmm), { aggregateId: id }).catch(
-        (error: unknown) => {
-          throw new Error(
-            `${entry.type} : ${error instanceof Error ? error.message : String(error)}`,
-          );
-        },
-      );
-      expect(codeOf(again.result), `${entry.type} : ${JSON.stringify(again.result)}`).toMatch(
-        /^APPLIED/,
-      );
-      const rows = await db
-        .selectFrom(entry.table as 'sales_sales')
-        .select('id')
-        .where('id', '=', toBin(id))
-        .execute();
-      expect(rows, entry.type).toHaveLength(1);
-    }
-  });
+      ];
+      for (const entry of cases) {
+        const id = freshUuid();
+        const ref = `IDEM-${entry.type}`;
+        const first = await report(entry.slip, ref, at(entry.hhmm), { aggregateId: id });
+        applied(first.result);
+        // Une file qui ne se règle pas (renvoi sans fin d'une écriture qui échoue) est nommée par son type de pièce.
+        const again = await report(entry.slip, ref, at(entry.hhmm), { aggregateId: id }).catch(
+          (error: unknown) => {
+            throw new Error(
+              `${entry.type} : ${error instanceof Error ? error.message : String(error)}`,
+            );
+          },
+        );
+        expect(codeOf(again.result), `${entry.type} : ${JSON.stringify(again.result)}`).toMatch(
+          /^APPLIED/,
+        );
+        const rows = await db
+          .selectFrom(entry.table as 'sales_sales')
+          .select('id')
+          .where('id', '=', toBin(id))
+          .execute();
+        expect(rows, entry.type).toHaveLength(1);
+      }
+    },
+  );
 
   it('un autre contenu sous le même identifiant n’est jamais pris pour un rejeu (transfert direct, perte)', async () => {
     // Le rejeu est reconnu à l'identité de la pièce, pas au seul identifiant : une autre quantité, un autre

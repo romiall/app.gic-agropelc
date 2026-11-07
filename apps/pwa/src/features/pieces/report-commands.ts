@@ -18,6 +18,13 @@
  * | BR    | `procurement.receipt.record`  | `GOODS_RECEIPT`    | `localRef`                |
  * | BT    | `inventory.transfer.dispatch` | `STOCK_TRANSFER`   | mention dans `notes`      |
  * | FP    | `inventory.loss.declare`      | `STOCK_LOSS`       | mention dans `comment`    |
+ * | DA    | `procurement.request.submit`  | `PURCHASE_REQUEST` | `localRef`                |
+ * | BC    | `procurement.order.create`, puis `.submit` | `PURCHASE_ORDER` | `localRef`      |
+ * | VC    | `crm.visit.record`            | `VISIT`            | mention dans `notes`      |
+ * | FI    | `inventory.count.open`, `.record_lines`, `.submit` | `INVENTORY_COUNT` | `localRef` |
+ *
+ * Un bon de commande (BC) et une fiche d'inventaire (FI) sont plusieurs commandes de même agrégat, chacune dépendant de la
+ * précédente : `buildReportCommands`. Seule la première porte les indices du registre des carnets et la photo.
  *
  * Le numéro de la pièce papier n'a pas de champ dédié sur le serveur (AV-308 (b) n'est pas construit) : en
  * attendant, `localRef` (20 caractères au plus, unique par appareil) pour les sept commandes qui
@@ -28,7 +35,8 @@
  * connecté (AV-502).
  */
 
-export type ReportableSlipType = 'BV' | 'RE' | 'BD' | 'RF' | 'CC' | 'BL' | 'BR' | 'BT' | 'FP';
+export type ReportableSlipType =
+  'BV' | 'RE' | 'BD' | 'RF' | 'CC' | 'BL' | 'BR' | 'BT' | 'FP' | 'DA' | 'BC' | 'VC' | 'FI';
 
 export const REPORTABLE_SLIP_TYPES: readonly ReportableSlipType[] = [
   'BV',
@@ -40,7 +48,19 @@ export const REPORTABLE_SLIP_TYPES: readonly ReportableSlipType[] = [
   'BR',
   'BT',
   'FP',
+  'DA',
+  'BC',
+  'VC',
+  'FI',
 ];
+
+/**
+ * Pièces qui ne se reportent pas : elles sont imprimées d'après des faits déjà enregistrés, elles n'ont pas de commande
+ * propre. `FA` est la facture d'une vente (la vente se reporte par `BV` ou `CC`), `FJC` la feuille journalière de caisse et
+ * `JE` le journal des encaissements (les mouvements de trésorerie se reportent par `RE`, `BD` et `RF`). `PT` et `BH` ont
+ * leurs écrans (présence du personnel, bilan hebdomadaire).
+ */
+export const NON_REPORTABLE_SLIP_CODES: readonly string[] = ['FA', 'FJC', 'JE'];
 
 /** `localRef varchar(20)` : borne des schémas de commande du serveur qui acceptent le champ. */
 export const MAX_SLIP_REF_LENGTH = 20;
@@ -53,8 +73,8 @@ export const MAX_BACKDATED_REASON = 500;
 export type PaperRefPlace = 'LOCAL_REF' | 'FREE_TEXT';
 
 export function paperRefPlace(type: ReportableSlipType): PaperRefPlace {
-  // L'expédition d'un transfert et la déclaration d'une perte n'acceptent pas `localRef`.
-  return type === 'BT' || type === 'FP' ? 'FREE_TEXT' : 'LOCAL_REF';
+  // L'expédition d'un transfert, la déclaration d'une perte et une visite n'acceptent pas `localRef`.
+  return type === 'BT' || type === 'FP' || type === 'VC' ? 'FREE_TEXT' : 'LOCAL_REF';
 }
 
 /** La commande de ce type de pièce reçoit-elle le numéro en `localRef` ? */
@@ -104,6 +124,31 @@ export interface SlipTransferLine {
   readonly unitCode: string;
   readonly quantityBase: number;
 }
+
+/** Ligne d'une demande d'achat (DA) : quantité en unité de base, prix estimé facultatif. */
+export interface SlipRequestLine {
+  readonly productId: string;
+  readonly unitCode: string;
+  readonly quantity: number;
+  readonly quantityBase: number;
+  readonly estimatedUnitPriceXaf?: number | undefined;
+}
+
+/** Ligne d'un bon de commande fournisseur (BC) : quantité commandée en unité de base, prix unitaire inscrit. */
+export interface SlipOrderLine {
+  readonly productId: string;
+  readonly unitCode: string;
+  readonly orderedQtyBase: number;
+  readonly unitPriceXaf: number;
+}
+
+/** Ligne d'une fiche d'inventaire (FI) : quantité comptée en unité de base. */
+export interface SlipCountLine {
+  readonly productId: string;
+  readonly countedQtyBase: number;
+}
+
+export type SlipCountType = 'FULL' | 'PARTIAL' | 'SPOT';
 
 export type ResolvedSlip =
   | {
@@ -186,6 +231,39 @@ export type ResolvedSlip =
       readonly reasonCodeId?: string | undefined;
       readonly lotId?: string | undefined;
       readonly comment?: string | undefined;
+    }
+  | {
+      readonly type: 'DA';
+      readonly siteId: string;
+      /** Date de besoin, `AAAA-MM-JJ`. */
+      readonly neededByDate?: string | undefined;
+      readonly justification: string;
+      readonly lines: readonly SlipRequestLine[];
+    }
+  | {
+      readonly type: 'BC';
+      readonly supplierId: string;
+      readonly deliveryLocationId: string;
+      /** Date de livraison prévue, `AAAA-MM-JJ`. */
+      readonly expectedDeliveryDate?: string | undefined;
+      readonly lines: readonly SlipOrderLine[];
+      /** Total des lignes (montants de ligne du domaine), pour le registre des carnets. */
+      readonly totalXaf: number;
+    }
+  | {
+      readonly type: 'VC';
+      readonly customerId: string;
+      readonly outcomeReasonCodeId: string;
+      readonly notes?: string | undefined;
+      /** Prochaine action, `AAAA-MM-JJ`. */
+      readonly nextActionAt?: string | undefined;
+      readonly nextActionNote?: string | undefined;
+    }
+  | {
+      readonly type: 'FI';
+      readonly locationId: string;
+      readonly countType: SlipCountType;
+      readonly lines: readonly SlipCountLine[];
     };
 
 // --- Photo de la souche ---------------------------------------------------------------------------
@@ -237,6 +315,8 @@ export interface ReportCommand {
   readonly aggregateType: string;
   readonly aggregateId: string;
   readonly dependsOn: readonly string[];
+  /** Vrai pour la 2e commande et les suivantes d'une pièce en plusieurs commandes : elle attend la précédente. */
+  readonly dependsOnPrevious: boolean;
   readonly payload: Record<string, unknown>;
   readonly occurredAt: string;
   readonly backdatedReason: string | null;
@@ -293,17 +373,131 @@ function payment(entry: SlipPayment): Record<string, unknown> {
   });
 }
 
-/** Type, agrégat et charge utile du serveur pour une pièce résolue. */
-function commandOf(
-  slip: ResolvedSlip,
-  paperRef: string,
-): { commandType: string; aggregateType: string; payload: Record<string, unknown> } {
-  const localRef = carriesLocalRef(slip.type) ? paperRef : undefined;
+/** Une commande du serveur d'un report : type, agrégat (celui de la pièce) et charge utile. */
+interface CommandPart {
+  readonly commandType: string;
+  readonly aggregateType: string;
+  readonly payload: Record<string, unknown>;
+}
+
+/** Numéro de la pièce en `localRef` pour les types dont la commande l'accepte ; contrôle de sa longueur. */
+function localRefOf(type: ReportableSlipType, paperRef: string): string | undefined {
+  const localRef = carriesLocalRef(type) ? paperRef : undefined;
   if (localRef !== undefined && localRef.length > MAX_SLIP_REF_LENGTH) {
     throw new RangeError(
       `Numéro de pièce papier trop long (${localRef.length} > ${MAX_SLIP_REF_LENGTH}) : ${localRef}.`,
     );
   }
+  return localRef;
+}
+
+/** Pièces dont le report est une seule commande, historiques de PP-B. */
+type SingleCommandSlip = Exclude<ResolvedSlip, { readonly type: 'DA' | 'BC' | 'VC' | 'FI' }>;
+
+/** Commandes du serveur pour une pièce résolue : une, ou une chaîne de même agrégat (BC, FI). */
+function commandPartsOf(
+  slip: ResolvedSlip,
+  paperRef: string,
+  aggregateId: string,
+  occurredAt: string,
+): readonly CommandPart[] {
+  const localRef = localRefOf(slip.type, paperRef);
+  switch (slip.type) {
+    case 'DA':
+      return [
+        {
+          commandType: 'procurement.request.submit',
+          aggregateType: 'PURCHASE_REQUEST',
+          payload: compact({
+            siteId: slip.siteId,
+            neededByDate: slip.neededByDate,
+            justification: slip.justification.trim(),
+            lines: slip.lines.map((line) =>
+              compact({
+                productId: line.productId,
+                quantityBase: line.quantityBase,
+                unitCode: line.unitCode,
+                quantity: line.quantity,
+                estimatedUnitPriceXaf: line.estimatedUnitPriceXaf,
+              }),
+            ),
+            localRef,
+          }),
+        },
+      ];
+    case 'BC':
+      // Le bon de commande papier a été remis au fournisseur : il est créé puis soumis (au-delà du seuil, la Direction
+      // le valide ; en deçà il est approuvé d'office). Le marquer « envoyé » reste un geste du bureau des achats.
+      return [
+        {
+          commandType: 'procurement.order.create',
+          aggregateType: 'PURCHASE_ORDER',
+          payload: compact({
+            supplierId: slip.supplierId,
+            deliveryLocationId: slip.deliveryLocationId,
+            expectedDeliveryDate: slip.expectedDeliveryDate,
+            lines: slip.lines.map((line) => ({
+              productId: line.productId,
+              unitCode: line.unitCode,
+              orderedQtyBase: line.orderedQtyBase,
+              unitPriceXaf: line.unitPriceXaf,
+            })),
+            localRef,
+          }),
+        },
+        { commandType: 'procurement.order.submit', aggregateType: 'PURCHASE_ORDER', payload: {} },
+      ];
+    case 'VC':
+      // Une visite papier n'a pas de position GPS : le serveur la signale (indicateurs), il ne la refuse pas.
+      return [
+        {
+          commandType: 'crm.visit.record',
+          aggregateType: 'VISIT',
+          payload: compact({
+            customerId: slip.customerId,
+            position: null,
+            outcomeReasonCodeId: slip.outcomeReasonCodeId,
+            notes: withPaperRef(paperRef, slip.notes),
+            nextActionAt: slip.nextActionAt,
+            nextActionNote: nonEmpty(slip.nextActionNote),
+          }),
+        },
+      ];
+    case 'FI':
+      // La fiche est ouverte, remplie à l'heure du comptage écrite sur la pièce, puis soumise : le serveur calcule le
+      // théorique à cet instant et comptabilise ou demande la validation (BR-STK-042, BR-STK-043).
+      return [
+        {
+          commandType: 'inventory.count.open',
+          aggregateType: 'INVENTORY_COUNT',
+          payload: compact({ locationId: slip.locationId, countType: slip.countType, localRef }),
+        },
+        {
+          commandType: 'inventory.count.record_lines',
+          aggregateType: 'INVENTORY_COUNT',
+          payload: {
+            countId: aggregateId,
+            lines: slip.lines.map((line) => ({
+              productId: line.productId,
+              countedAt: occurredAt,
+              countedQtyBase: line.countedQtyBase,
+            })),
+          },
+        },
+        {
+          commandType: 'inventory.count.submit',
+          aggregateType: 'INVENTORY_COUNT',
+          payload: { countId: aggregateId },
+        },
+      ];
+    default:
+      return [legacyCommandOf(slip, paperRef)];
+  }
+}
+
+/** Type, agrégat et charge utile du serveur pour une pièce d'une seule commande. */
+function legacyCommandOf(slip: SingleCommandSlip, paperRef: string): CommandPart {
+  const localRef = localRefOf(slip.type, paperRef);
   switch (slip.type) {
     case 'BV':
       return {
@@ -459,31 +653,49 @@ export function slipAmountXaf(slip: ResolvedSlip): number | null {
     case 'BD':
     case 'RF':
       return slip.amountXaf;
+    case 'BC':
+      return slip.totalXaf;
     default:
       return null;
   }
 }
 
-/** Commande du serveur pour une pièce papier résolue (voir le tableau en tête de fichier). */
-export function buildReportCommand(slip: ResolvedSlip, meta: ReportMeta): ReportCommand {
-  const { commandType, aggregateType, payload } = commandOf(slip, meta.paperRef);
+/**
+ * Les commandes du serveur pour une pièce papier résolue (voir le tableau en tête de fichier), dans l'ordre d'envoi : une
+ * seule pour la plupart des pièces, une chaîne pour le bon de commande (BC) et la fiche d'inventaire (FI). Seule la
+ * première porte les indices du registre des carnets et la photo ; les suivantes attendent la précédente.
+ */
+export function buildReportCommands(
+  slip: ResolvedSlip,
+  meta: ReportMeta,
+): readonly ReportCommand[] {
+  const parts = commandPartsOf(slip, meta.paperRef, meta.aggregateId, meta.occurredAt);
   const amount = slipAmountXaf(slip);
   const reason = nonEmpty(meta.backdatedReason ?? undefined);
-  return {
-    commandType,
-    aggregateType,
+  return parts.map((part, index) => ({
+    commandType: part.commandType,
+    aggregateType: part.aggregateType,
     aggregateId: meta.aggregateId,
-    dependsOn: [...(meta.dependsOn ?? [])],
-    payload,
+    dependsOn: index === 0 ? [...(meta.dependsOn ?? [])] : [],
+    dependsOnPrevious: index > 0,
+    payload: part.payload,
     occurredAt: meta.occurredAt,
     backdatedReason: reason ? reason.slice(0, MAX_BACKDATED_REASON) : null,
-    capturedOffline: true,
-    localFlags: [
-      FLAG_PAPER_SLIP,
-      `${FLAG_SLIP_TYPE}${slip.type}`,
-      `${FLAG_PAPER_REF}${meta.paperRef}`,
-      ...(amount !== null ? [`${FLAG_AMOUNT}${amount}`] : []),
-    ],
-    photo: slipPhotoTarget(slip.type),
-  };
+    capturedOffline: true as const,
+    localFlags:
+      index === 0
+        ? [
+            FLAG_PAPER_SLIP,
+            `${FLAG_SLIP_TYPE}${slip.type}`,
+            `${FLAG_PAPER_REF}${meta.paperRef}`,
+            ...(amount !== null ? [`${FLAG_AMOUNT}${amount}`] : []),
+          ]
+        : [],
+    photo: index === 0 ? slipPhotoTarget(slip.type) : null,
+  }));
+}
+
+/** La commande d'une pièce en une seule commande ; pour BC et FI, la première de la chaîne (`buildReportCommands`). */
+export function buildReportCommand(slip: ResolvedSlip, meta: ReportMeta): ReportCommand {
+  return buildReportCommands(slip, meta)[0]!;
 }
