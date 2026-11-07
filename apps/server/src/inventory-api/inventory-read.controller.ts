@@ -92,6 +92,8 @@ const stockQuerySchema = z.object({ location_id: uuid, product_id: uuid.optional
 const stockAtQuerySchema = z.object({
   location_id: uuid,
   at: z.string().datetime({ offset: true }),
+  /** S-33 : l'état tel que le serveur le connaissait à cet instant (mouvements enregistrés au plus tard alors). */
+  recorded_before: z.string().datetime({ offset: true }).optional(),
   product_id: uuid.optional(),
 });
 const availabilityQuerySchema = z.object({
@@ -104,6 +106,8 @@ const stockMovesQuerySchema = z.object({
   product_id: uuid.optional(),
   from: businessDate.optional(),
   to: businessDate.optional(),
+  /** S-33 : mouvements enregistrés au plus tard à cet instant. */
+  recorded_before: z.string().datetime({ offset: true }).optional(),
   cursor: z.string().min(1).max(200).optional(),
   limit,
 });
@@ -322,11 +326,16 @@ export class InventoryReadController {
     const balances = await stockBalanceAt(this.db, {
       locationId: location.id,
       at,
+      ...(query.recorded_before !== undefined
+        ? { recordedBefore: new Date(query.recorded_before) }
+        : {}),
       ...(query.product_id !== undefined ? { productId: query.product_id } : {}),
     });
     return {
       location_id: location.id,
       at,
+      // S-33 : l'instant de la lecture, pour qu'une relecture ultérieure sache jusqu'où le registre était connu.
+      read_at: now,
       balances: balances.map((b) => mask(b, ['ledgerValueXaf'], financial)),
     };
   }
@@ -396,11 +405,15 @@ export class InventoryReadController {
       ...(query.product_id !== undefined ? { productId: query.product_id } : {}),
       ...(query.from !== undefined ? { fromBusinessDate: query.from } : {}),
       ...(query.to !== undefined ? { toBusinessDate: query.to } : {}),
+      ...(query.recorded_before !== undefined
+        ? { recordedBefore: new Date(query.recorded_before) }
+        : {}),
       ...(after !== undefined ? { after } : {}),
       limit: pageLimit(query.limit),
     });
     return {
       location_id: location.id,
+      read_at: now,
       moves: page.moves.map((m) => mask(m, ['unitCostXaf', 'valueXaf'], financial)),
       next_cursor: page.nextCursor,
     };

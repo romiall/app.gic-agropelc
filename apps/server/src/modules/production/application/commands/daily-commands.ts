@@ -48,11 +48,23 @@ import {
 import { emitProductionRecordChange } from '../sync-changes.js';
 import { signalHighMortality } from '../production-alert-events.js';
 
+/**
+ * Plafond d'un nombre de têtes (S-20) : au-delà, la conversion en quantité `numeric(14,3)` déborderait à l'écriture
+ * (erreur SQL, commande rejouée sans fin) au lieu d'un refus de validation.
+ */
+const MAX_HEADS = 1_000_000_000;
+
+/**
+ * Borne haute d'une quantité de stock (S-20) : `numeric(14,3)`. Seule la borne est posée au schéma ; le nombre de décimales
+ * reste contrôlé par le gestionnaire (code `TOO_MANY_DECIMALS`), comme avant.
+ */
+const MAX_QUANTITY = 99_999_999_999.999;
+
 const mortalityPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
   /** Emplacement de la ferme où les animaux sont morts ; à défaut, l'emplacement principal. */
   locationId: z.string().uuid().optional(),
-  quantity: z.number().int().positive(),
+  quantity: z.number().int().positive().max(MAX_HEADS),
   /** Cause (motif de catégorie `LOSS`), facultative (BR-PRD-005). */
   reasonCodeId: z.string().uuid().optional(),
   comment: z.string().trim().max(2000).optional(),
@@ -67,9 +79,9 @@ const inputPayloadSchema = z.object({
   locationId: z.string().uuid(),
   productId: z.string().uuid(),
   lotId: z.string().uuid().optional(),
-  quantityBase: z.number().positive(),
+  quantityBase: z.number().positive().max(MAX_QUANTITY),
   unitCode: z.string().min(1).max(20),
-  quantity: z.number().positive(),
+  quantity: z.number().positive().max(MAX_QUANTITY),
   costType: z.enum(INPUT_COST_TYPES),
 });
 

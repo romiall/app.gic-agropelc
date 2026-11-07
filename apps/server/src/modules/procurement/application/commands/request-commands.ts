@@ -43,11 +43,17 @@ import {
 } from './shared.js';
 import { emitPurchaseRequestChange } from '../sync-changes.js';
 
+/**
+ * Borne haute d'une quantité de stock (S-20) : `numeric(14,3)`. Seule la borne est posée au schéma ; le nombre de décimales
+ * reste contrôlé par le gestionnaire (code `TOO_MANY_DECIMALS`), comme avant.
+ */
+const MAX_QUANTITY = 99_999_999_999.999;
+
 const lineSchema = z.object({
   productId: z.string().uuid(),
-  quantityBase: z.number().positive(),
+  quantityBase: z.number().positive().max(MAX_QUANTITY),
   unitCode: z.string().min(1).max(20),
-  quantity: z.number().positive(),
+  quantity: z.number().positive().max(MAX_QUANTITY),
   estimatedUnitPriceXaf: z.number().int().nonnegative().optional(),
   notes: z.string().trim().max(2000).optional(),
 });

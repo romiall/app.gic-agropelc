@@ -8,6 +8,7 @@
  */
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { publishDeviceEnrollmentRequested } from '../device-events.js';
 
 const SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_SHORT_CODE_ATTEMPTS = 5;
@@ -104,6 +105,13 @@ export async function findOrEnrollDevice(
           created_by: toBin(input.enrolledByUserId),
         })
         .execute();
+      // AV-432 : les approbateurs sont prévenus dans la transaction de la connexion (un appareil n'est enrôlé qu'une fois).
+      await publishDeviceEnrollmentRequested(uow, {
+        deviceId: input.deviceId,
+        shortCode,
+        enrolledByUserId: input.enrolledByUserId,
+        occurredAt: input.now,
+      });
       return { ok: true, status: 'PENDING', shortCode };
     } catch (error) {
       const isDuplicateShortCode =

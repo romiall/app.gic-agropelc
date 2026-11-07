@@ -36,7 +36,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `UserReactivated` | identity | STK | `user_id` | Lève le signal `revocation_pending` des quotas de l'utilisateur si l'appareil est en service (P5-08) |
 | `RoleAssigned`, `RoleAssignmentRevoked` | identity | SYN (périmètres), NOT | `user_id`, `role_code`, `scope` | Recalcul des périmètres de synchronisation (`SCOPE_EXIT` éventuels) |
 | `RolePermissionsChanged` | identity | SYN | `role_id` | Invalidation du cache des droits |
-| `DeviceEnrollmentRequested` | identity | NOT | `device_id`, `user_id` | Notification aux approbateurs. **Non publié** (AV-432) : la file des appareils (ECR-ADM-05) reste le canal |
+| `DeviceEnrollmentRequested` | identity | NOT | `device_id`, `short_code`, `enrolled_by_user_id`, `occurred_at` | Notification « Appareil à approuver » aux titulaires de `identity.device.approve` (le compte qui a connecté l'appareil exclu, la Direction à défaut). **Publié depuis le 07/11/2026** (AV-432), dans la transaction de la première connexion ; la file des appareils (ECR-ADM-05) reste le canal complet |
 | `DeviceApproved` | identity | NOT | `device_id` | L'utilisateur peut synchroniser |
 | `DeviceBlocked`, `DeviceDeclaredLost` | identity | STK, SYN, NOT | `device_id`, `effective_at` | Quotas actifs de l'appareil en `revocation_pending` (consommateur `inventory.allocation_revocation`, P5-08) ; quarantaine des commandes postérieures |
 | `DeviceUnblocked` | identity | STK | `device_id` | Lève le signal `revocation_pending` des quotas de l'appareil si l'utilisateur est en service (P5-08) |

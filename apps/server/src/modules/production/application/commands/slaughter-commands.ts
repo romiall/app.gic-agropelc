@@ -81,7 +81,7 @@ const recordPayloadSchema = z.object({
   sourceLocationId: z.string().uuid(),
   /** Abattoir de la ferme (AV-101). */
   slaughterhouseLocationId: z.string().uuid(),
-  heads: z.number().int().positive(),
+  heads: z.number().int().positive().max(1_000_000_000),
   condemnedHeads: z.number().int().nonnegative().default(0),
   liveWeightG: z.number().int().positive(),
   outputs: z
@@ -91,7 +91,7 @@ const recordPayloadSchema = z.object({
         /** Emplacement de stockage (chambre froide, magasin de la ferme). */
         toLocationId: z.string().uuid(),
         /** Quantité en unité de base du produit (pièces pour l'entier, kg pour les découpes). */
-        quantityBase: z.number().positive(),
+        quantityBase: z.number().positive().max(99_999_999_999.999),
         weightG: z.number().int().positive(),
       }),
     )

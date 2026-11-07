@@ -18,6 +18,7 @@ import { CLOCK } from '../src/platform/clock.provider.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { resolveEntityProjection } from '../src/sync/entity-projections.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { appLogger } from '../src/platform/observability/logger.js';
@@ -297,6 +298,11 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
         change_type: 'UPSERT',
       },
     ]);
+
+    // S-41 (a) : la projection de l'affectation porte le code du rôle (l'appareil ne le déduit pas d'un identifiant).
+    expect(
+      await resolveEntityProjection('ROLE_ASSIGNMENT')!(db, body.role_assignment_id),
+    ).toMatchObject({ id: body.role_assignment_id, role_code: 'VENDEUR_PDV' });
 
     // Le provisoire ouvre une session avec le changement imposé (AV-251).
     const session = await login(phone, PROVISIONAL);

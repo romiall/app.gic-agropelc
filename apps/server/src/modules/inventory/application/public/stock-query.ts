@@ -198,11 +198,18 @@ export interface StockBalanceAtLine {
  * `GET /stock/at` — stratégie stock §3.2 : `balance_at(loc, produit, lot, t)` = Σ des
  * mouvements de `occurred_at` ≤ t (même définition que le théorique d'un inventaire,
  * `count-commands.ts`). Calculé sur le registre (pas d'instantané quotidien en P2 : la table
- * optionnelle `stock_balance_snapshots` n'est pas alimentée).
+ * optionnelle `stock_balance_snapshots` n'est pas alimentée). `recordedBefore` (S-33) : ne compte que les mouvements
+ * **enregistrés** au plus tard à cet instant (`recorded_at`), c'est-à-dire l'état tel que le serveur le connaissait alors —
+ * un fait saisi hors ligne et arrivé tard n'y figure pas encore (explication d'un écart de l'époque).
  */
 export async function stockBalanceAt(
   executor: Executor,
-  params: { readonly locationId: string; readonly at: Date; readonly productId?: string },
+  params: {
+    readonly locationId: string;
+    readonly at: Date;
+    readonly productId?: string;
+    readonly recordedBefore?: Date;
+  },
 ): Promise<readonly StockBalanceAtLine[]> {
   const location = toBin(params.locationId);
   const rows = await executor
@@ -221,6 +228,9 @@ export async function stockBalanceAt(
       eb.or([eb('to_location_id', '=', location), eb('from_location_id', '=', location)]),
     )
     .where('occurred_at', '<=', params.at)
+    .$if(params.recordedBefore !== undefined, (qb) =>
+      qb.where('recorded_at', '<=', params.recordedBefore!),
+    )
     .$if(params.productId !== undefined, (qb) =>
       qb.where('product_id', '=', toBin(params.productId!)),
     )
@@ -391,6 +401,8 @@ export async function listStockMoves(
     readonly productId?: string;
     readonly fromBusinessDate?: string;
     readonly toBusinessDate?: string;
+    /** S-33 : mouvements enregistrés au plus tard à cet instant (`recorded_at`). */
+    readonly recordedBefore?: Date;
     readonly after?: StockMovesCursor;
     readonly limit: number;
   },
@@ -410,6 +422,9 @@ export async function listStockMoves(
     )
     .$if(params.toBusinessDate !== undefined, (qb) =>
       qb.where(sql<boolean>`business_date <= ${params.toBusinessDate!}`),
+    )
+    .$if(params.recordedBefore !== undefined, (qb) =>
+      qb.where('recorded_at', '<=', params.recordedBefore!),
     )
     .$if(params.after !== undefined, (qb) =>
       qb.where((eb) =>

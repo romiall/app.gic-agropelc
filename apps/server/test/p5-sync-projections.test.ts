@@ -522,6 +522,9 @@ describe('P5-18 : jeux hors ligne de P5', { timeout: 180_000 }, () => {
         id: sent,
         from_account_id: posA,
         to_account_id: central,
+        // S-52 : le libellé des deux comptes accompagne la remise (l'appareil n'a pas les comptes des autres).
+        from_account_name: expect.any(String),
+        to_account_name: expect.any(String),
         amount_sent_xaf: 1_000,
         amount_received_xaf: null,
         status: 'SENT',

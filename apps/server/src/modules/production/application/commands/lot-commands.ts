@@ -132,7 +132,7 @@ const entryPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
   sourceKind: z.enum(SOURCE_KINDS),
   /** Têtes (unité de base des produits biologiques, comptée). */
-  quantity: z.number().int().positive(),
+  quantity: z.number().int().positive().max(1_000_000_000),
   /** Emplacement d'élevage de destination ; à défaut, l'emplacement principal du lot. */
   toLocationId: z.string().uuid().optional(),
   /** Stock, transfert, sevrage : emplacement où se trouvent les animaux d'origine. */

@@ -8,6 +8,7 @@ import { findOrEnrollDevice } from '../src/modules/identity/application/auth/dev
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { closeTestDb, freshUuid, insertTestUser, withTestUow } from './helpers.js';
+import { fromBin } from '../src/platform/kysely/uuid-columns.js';
 
 afterAll(async () => {
   await closeTestDb();
@@ -90,6 +91,41 @@ describe('Appareil lié au compte qui l’a connecté (AV-296, choix (b))', () =
           reason,
         });
       }
+    });
+  });
+});
+
+describe('Appareil en attente : les approbateurs sont prévenus (AV-432)', () => {
+  const eventsOf = (uow: UnitOfWork, deviceId: string) =>
+    uow
+      .selectFrom('platform_domain_events')
+      .select(['event_type', 'producer_module', 'aggregate_type', 'payload'])
+      .where('event_type', '=', 'DeviceEnrollmentRequested')
+      .where('aggregate_id', '=', toBin(deviceId))
+      .execute();
+
+  it('la première connexion publie DeviceEnrollmentRequested, une seule fois par appareil', async () => {
+    await withTestUow(async (uow) => {
+      const [first, second] = [await insertTestUser(uow), await insertTestUser(uow)];
+      const deviceId = freshUuid();
+      const check = await connect(uow, deviceId, first);
+      expect(check).toMatchObject({ ok: true, status: 'PENDING' });
+      const events = await eventsOf(uow, deviceId);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ producer_module: 'identity', aggregate_type: 'DEVICE' });
+      const payload = (
+        typeof events[0]!.payload === 'string' ? JSON.parse(events[0]!.payload) : events[0]!.payload
+      ) as Record<string, string>;
+      expect(payload).toMatchObject({
+        device_id: deviceId,
+        short_code: check.ok ? check.shortCode : '',
+        enrolled_by_user_id: first,
+      });
+      // Les connexions suivantes (même compte ou un autre) retrouvent l'appareil : rien de plus n'est publié.
+      await connect(uow, deviceId, first);
+      await connect(uow, deviceId, second);
+      expect(await eventsOf(uow, deviceId)).toHaveLength(1);
+      expect(fromBin(toBin(deviceId))).toBe(deviceId);
     });
   });
 });

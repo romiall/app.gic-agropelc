@@ -208,26 +208,30 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
 
   ROLE_ASSIGNMENT: async (executor, entityId) => {
     const row = await executor
-      .selectFrom('identity_user_role_assignments')
+      .selectFrom('identity_user_role_assignments as a')
+      .leftJoin('identity_roles as r', 'r.id', 'a.role_id')
       .select([
-        'id',
-        'user_id',
-        'role_id',
-        'scope_type',
-        'scope_site_id',
-        'scope_zone_id',
-        'scope_team_id',
-        'valid_from',
-        'valid_to',
-        'revoked_at',
+        'a.id as id',
+        'a.user_id as user_id',
+        'a.role_id as role_id',
+        'r.code as role_code',
+        'a.scope_type as scope_type',
+        'a.scope_site_id as scope_site_id',
+        'a.scope_zone_id as scope_zone_id',
+        'a.scope_team_id as scope_team_id',
+        'a.valid_from as valid_from',
+        'a.valid_to as valid_to',
+        'a.revoked_at as revoked_at',
       ])
-      .where('id', '=', toBin(entityId))
+      .where('a.id', '=', toBin(entityId))
       .executeTakeFirst();
     if (!row) return undefined;
     return {
       id: fromBin(row.id),
       user_id: fromBin(row.user_id),
       role_id: fromBin(row.role_id),
+      // S-41 (a) : le code du rôle (ADMIN, DIRECTION…) évite à l'appareil de le déduire d'un identifiant.
+      role_code: row.role_code,
       scope_type: row.scope_type,
       scope_site_id: fromBinOrNull(row.scope_site_id),
       scope_zone_id: fromBinOrNull(row.scope_zone_id),
@@ -919,6 +923,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'lot.id as lot_id',
         'lot.lot_code as lot_code',
         'lot.expiry_date as expiry_date',
+        'lot.fifo_rank_at as fifo_rank_at',
+        'lot.status as lot_status',
         'b.qty_on_hand as qty_on_hand',
         'b.qty_reserved as qty_reserved',
         'b.qty_allocated as qty_allocated',
@@ -927,6 +933,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       ])
       .where('b.location_id', '=', toBin(locationId))
       .where('b.product_id', '=', toBin(entityId))
+      // S-42 : dans l'ordre de sortie du registre (FIFO sur le rang d'entrée du lot), la ligne sans lot d'abord.
+      .orderBy('lot.fifo_rank_at', 'asc')
       .orderBy('b.lot_key', 'asc')
       .execute();
     if (rows.length === 0) return undefined;
@@ -934,6 +942,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       lot_id: fromBinOrNull(row.lot_id),
       lot_code: row.lot_code,
       expiry_date: row.expiry_date,
+      fifo_rank_at: row.fifo_rank_at,
+      lot_status: row.lot_status,
       qty_on_hand: row.qty_on_hand,
       qty_reserved: row.qty_reserved,
       qty_allocated: row.qty_allocated,
@@ -2542,9 +2552,11 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     if (!row || (row.status !== 'SENT' && row.status !== 'DISCREPANCY_PENDING')) return undefined;
     const accounts = await executor
       .selectFrom('finance_cash_accounts')
-      .select(['holder_user_id', 'responsible_user_id', 'site_id'])
+      .select(['id', 'name', 'holder_user_id', 'responsible_user_id', 'site_id'])
       .where('id', 'in', [row.from_account_id, row.to_account_id])
       .execute();
+    const accountName = (accountId: Buffer): string | null =>
+      accounts.find((account) => account.id.equals(accountId))?.name ?? null;
     const inScope = accounts.some((account) =>
       scope.type === 'USER'
         ? fromBin(account.holder_user_id ?? account.responsible_user_id) === scope.id
@@ -2557,6 +2569,9 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       local_ref: row.local_ref,
       from_account_id: fromBin(row.from_account_id),
       to_account_id: fromBin(row.to_account_id),
+      // S-52 : le libellé des comptes (la remise n'est déjà servie qu'aux parties, ce nom n'élargit rien).
+      from_account_name: accountName(row.from_account_id),
+      to_account_name: accountName(row.to_account_id),
       amount_sent_xaf: Number(row.amount_sent_xaf),
       amount_received_xaf:
         row.amount_received_xaf === null ? null : Number(row.amount_received_xaf),

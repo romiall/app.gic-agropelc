@@ -12,6 +12,7 @@ import { registerReferenceCommands } from '../src/modules/catalog/application/co
 import { registerProductCommands } from '../src/modules/catalog/application/commands/product-commands.js';
 import { registerPricingCommands } from '../src/modules/pricing/application/commands/pricing-commands.js';
 import { resolvePriceForContext } from '../src/modules/pricing/application/public/index.js';
+import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -365,6 +366,14 @@ describe('pricing.* (P1-04)', () => {
       ctx(),
     );
     expect(supersedeResult.status).toBe('APPLIED');
+    const feedSeqBeforeActivation = Number(
+      (
+        await db
+          .selectFrom('sync_change_feed')
+          .select((eb) => eb.fn.max('seq').as('seq'))
+          .executeTakeFirst()
+      )?.seq ?? 0,
+    );
     const activateV2 = await pipeline.handle(
       buildEnvelope(admin, {
         command_type: 'pricing.rule.activate',
@@ -376,6 +385,21 @@ describe('pricing.* (P1-04)', () => {
       ctx(),
     );
     expect(activateV2.status).toBe('APPLIED');
+    // S-08 : la règle remplacée change de fin ; l'appareil en est informé par une ligne de flux sous son identifiant.
+    const supersededFeed = await db
+      .selectFrom('sync_change_feed')
+      .select(['dataset', 'entity_type', 'scope_type', 'change_type'])
+      .where('entity_id', '=', toBin(ruleV1))
+      .where('seq', '>', feedSeqBeforeActivation)
+      .execute();
+    expect(supersededFeed).toEqual([
+      {
+        dataset: 'price_rule',
+        entity_type: 'PRICE_RULE',
+        scope_type: 'GLOBAL',
+        change_type: 'UPSERT',
+      },
+    ]);
 
     // AT-007 : le prix résolu au passé (entre T0 et T1, avant le remplacement) reste 4500, jamais réécrit.
     const pastResolutionAfter = await resolvePriceForContext(db, {

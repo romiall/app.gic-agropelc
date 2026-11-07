@@ -17,8 +17,8 @@
 | 4b | Report de la fiche de suivi de lot FL (mortalité, aliment, pesée, observation ; les œufs par l'écran de collecte) — AV-531 | fait, commité | voir `git log` |
 | 4 | Report des pièces papier DA, BC, VC, FI, FL (FA, FJC et JE sont des documents dérivés : non reportables) + registre des carnets par site (AV-312) | en cours | — |
 | 5 | Restes d'AV-514 : jeux hors ligne `presence` et `weekly_reports`, vue d'analyse de la présence, rattachement à un compte, chiffres du bilan allégés — AV-532, migration `20261204110000` | fait, commité | voir `git log` |
-| 6 | Besoins serveur des écrans (S-xx ouverts : voir `docs/10-development-plan/16-besoins-serveur-des-ecrans.md`), tirage groupé des jeux (AV-319 b) | à faire | — |
-| 7 | Restes de P9 : `DeviceEnrollmentRequested` (AV-432), disponible par zone et détail par canal des tableaux, `PushSendOptions` | à faire | — |
+| 6 | Besoins serveur des écrans : revue des 52 besoins par trois relecteurs, S-08, S-20, S-21, S-33, S-34, S-36, S-41 (a), S-42, S-50 et S-52 codés, le reste consigné — AV-533, AV-534 | fait, commité | voir `git log` |
+| 7 | Restes de P9 : `DeviceEnrollmentRequested` (AV-432) fait ; `PushSendOptions` déjà exporté ; disponible par zone (KPI-STK-01) et détail par canal des tableaux : voir la suite | en cours | — |
 | 8 | S-12 (clients du siège hors ligne), S-39 seconde partie (objectifs de site), tablette partagée multi-vendeurs : défauts paramétrables + AV | à faire | — |
 | 9 | Web Push sans clés (AV-365) | à faire | — |
 | 10 | Vérification complète (`scratchpad\full-check.ps1`) | à faire | — |
