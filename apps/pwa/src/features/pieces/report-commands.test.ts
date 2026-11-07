@@ -9,6 +9,12 @@
 import { describe, expect, it } from 'vitest';
 import { cashTransferSendPayloadSchema, expenseRecordPayloadSchema } from '@gic/contracts';
 import {
+  inputPayload,
+  mortalityPayload,
+  observationPayload,
+  weighingPayload,
+} from '../production/daily.js';
+import {
   MAX_SLIP_REF_LENGTH,
   REPORTABLE_SLIP_TYPES,
   NON_REPORTABLE_SLIP_CODES,
@@ -154,6 +160,27 @@ const SLIPS: Readonly<Record<ReportableSlipType, ResolvedSlip>> = {
       { productId: id(3), countedQtyBase: 0 },
     ],
   },
+  FL: {
+    type: 'FL',
+    lotId: id(80),
+    locationId: id(81),
+    feedLocationId: id(60),
+    days: [
+      {
+        date: '2026-11-02',
+        occurredAt: '2026-11-02T11:00:00.000Z',
+        mortality: { quantity: 3, reasonCodeId: id(82) },
+        input: { productId: id(83), unitCode: 'KG', quantity: 45, quantityBase: 45 },
+        weighing: { sampleSize: 20, avgWeightG: 1250 },
+        observation: 'Vaccin Newcastle',
+      },
+      {
+        date: '2026-11-03',
+        occurredAt: '2026-11-03T11:00:00.000Z',
+        input: { productId: id(83), unitCode: 'KG', quantity: 46, quantityBase: 46 },
+      },
+    ],
+  },
 };
 
 /** Commandes enregistrées par le serveur pour chaque pièce (voir le tableau de `report-commands.ts`). */
@@ -171,6 +198,7 @@ const EXPECTED: Readonly<Record<ReportableSlipType, readonly [string, string]>> 
   BC: ['procurement.order.create', 'PURCHASE_ORDER'],
   VC: ['crm.visit.record', 'VISIT'],
   FI: ['inventory.count.open', 'INVENTORY_COUNT'],
+  FL: ['production.mortality.record', 'STOCK_LOSS'],
 };
 
 /** Clés que l'ancienne correspondance inventait : le serveur ne les connaît dans aucune charge. */
@@ -270,6 +298,7 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       BC: 'LOCAL_REF',
       VC: 'FREE_TEXT',
       FI: 'LOCAL_REF',
+      FL: 'FREE_TEXT',
     });
     for (const type of REPORTABLE_SLIP_TYPES) {
       const { payload } = buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` }));
@@ -339,7 +368,19 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       cited: true,
     });
     expect(slipPhotoTarget('FP')).toEqual({ kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: false });
-    for (const type of ['BV', 'CC', 'BL', 'RE', 'RF', 'BT', 'DA', 'BC', 'VC', 'FI'] as const) {
+    for (const type of [
+      'BV',
+      'CC',
+      'BL',
+      'RE',
+      'RF',
+      'BT',
+      'DA',
+      'BC',
+      'VC',
+      'FI',
+      'FL',
+    ] as const) {
       expect(slipPhotoTarget(type), type).toBeNull();
     }
   });
@@ -431,6 +472,86 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
     expect(commands[2]!.payload).toEqual({ countId: id(99) });
     expect(commands.slice(1).every((c) => c.localFlags.length === 0 && c.photo === null)).toBe(
       true,
+    );
+  });
+
+  it('FL : une saisie du jour par mesure renseignée, indépendantes, chacune avec son agrégat et l’heure de son jour', () => {
+    const commands = buildReportCommands(SLIPS.FL, meta({ paperRef: 'FL-000012' }));
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'production.mortality.record',
+      'production.input.record',
+      'production.weighing.record',
+      'production.observation.record',
+      'production.input.record',
+    ]);
+    expect(commands.map((c) => c.aggregateType)).toEqual([
+      'STOCK_LOSS',
+      'CONSUMPTION',
+      'LOT_WEIGHING',
+      'LOT_OBSERVATION',
+      'CONSUMPTION',
+    ]);
+    // Chaque mesure écrit sa propre ligne : un agrégat par commande, le premier est celui de la pièce.
+    const aggregates = commands.map((c) => c.aggregateId);
+    expect(aggregates[0]).toBe(id(99));
+    expect(new Set(aggregates).size).toBe(commands.length);
+    for (const aggregate of aggregates) expect(aggregate).toMatch(/^[0-9a-f-]{36}$/);
+    expect(aggregates.slice(1).map((value) => value.slice(0, -2))).toEqual(
+      Array(commands.length - 1).fill(id(99).slice(0, -2)),
+    );
+    // Heure de la ligne, indépendance, indices du registre sur la seule première commande.
+    expect(commands.map((c) => c.occurredAt)).toEqual([
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-03T11:00:00.000Z',
+    ]);
+    expect(commands.every((c) => !c.dependsOnPrevious && c.capturedOffline)).toBe(true);
+    expect(commands[0]!.localFlags).toEqual(['PAPER_SLIP', 'SLIP_TYPE:FL', 'PAPER_REF:FL-000012']);
+    expect(commands.slice(1).every((c) => c.localFlags.length === 0 && c.photo === null)).toBe(
+      true,
+    );
+    // Charges : celles des écrans de saisie du jour (`production/daily.ts`), plus la mention de la pièce.
+    expect(commands[0]!.payload).toEqual({
+      ...mortalityPayload({
+        lotId: id(80),
+        locationId: id(81),
+        quantity: 3,
+        reasonCodeId: id(82),
+        comment: '',
+      }),
+      comment: 'Pièce papier FL-000012',
+    });
+    expect(commands[1]!.payload).toEqual(
+      inputPayload({
+        lotId: id(80),
+        locationId: id(60),
+        line: {
+          draft: { key: 'k', productId: id(83), unitCode: 'KG', quantityText: '45' },
+          quantity: 45,
+          quantityBase: 45,
+          issue: null,
+        },
+        costType: 'ALIMENT',
+      }),
+    );
+    expect(commands[2]!.payload).toEqual(
+      weighingPayload({
+        lotId: id(80),
+        locationId: id(81),
+        sampleSize: 20,
+        avgWeightG: 1250,
+        totalWeightKg: null,
+      }),
+    );
+    expect(commands[3]!.payload).toEqual(
+      observationPayload({
+        lotId: id(80),
+        type: 'AUTRE',
+        severity: 'INFO',
+        text: 'Pièce papier FL-000012 — Vaccin Newcastle',
+      }),
     );
   });
 

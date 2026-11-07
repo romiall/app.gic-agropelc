@@ -158,6 +158,9 @@ export function describeReportedPayload(
       return `Bon de commande fournisseur : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
     case 'VC':
       return 'Visite commerciale';
+    case 'FL':
+      // La première commande porte les indices : la fiche entière tient en plusieurs saisies du jour.
+      return 'Suivi de lot de production';
     case 'FI':
       // La première commande de la chaîne (l'ouverture) porte les indices : elle n'a pas encore les lignes.
       return `Fiche d'inventaire (${

@@ -755,7 +755,10 @@ describe('pièces papier reportées (PP-B) : le serveur accepte chaque type de p
         'sales.sale.record',
       ].sort(),
     );
-    expect(REPORTABLE_SLIP_TYPES).toHaveLength(13);
+    // Treize types sont rejoués ici ; la fiche de suivi de lot (FL) l'est dans le monde de la production
+    // (`pwa-paper-slip-lot-sheet.test.ts`), dont les saisies du jour ont besoin d'un lot, d'un bâtiment et d'un magasin.
+    expect(REPORTABLE_SLIP_TYPES.filter((type) => type !== 'FL')).toHaveLength(13);
+    expect(REPORTABLE_SLIP_TYPES).toHaveLength(14);
     for (const entry of device.outbox()) {
       const code = codeOf(entry.result);
       // Seuls les doublons volontaires « en ligne » des essais de numéro répété sont refusés.

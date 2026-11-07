@@ -22,9 +22,12 @@
  * | BC    | `procurement.order.create`, puis `.submit` | `PURCHASE_ORDER` | `localRef`      |
  * | VC    | `crm.visit.record`            | `VISIT`            | mention dans `notes`      |
  * | FI    | `inventory.count.open`, `.record_lines`, `.submit` | `INVENTORY_COUNT` | `localRef` |
+| FL    | `production.mortality.record`, `.input.record`, `.weighing.record`, `.observation.record` (une par mesure et par jour) | `STOCK_LOSS`, `CONSUMPTION`, `LOT_WEIGHING`, `LOT_OBSERVATION` | mention dans `comment` et `text` |
  *
  * Un bon de commande (BC) et une fiche d'inventaire (FI) sont plusieurs commandes de même agrégat, chacune dépendant de la
- * précédente : `buildReportCommands`. Seule la première porte les indices du registre des carnets et la photo.
+ * précédente : `buildReportCommands`. Seule la première porte les indices du registre des carnets et la photo. Une fiche de
+ * suivi de lot (FL) est une suite de saisies du jour indépendantes (une par mesure renseignée de chaque jour), chacune avec
+ * son agrégat et l'heure de son jour : l'échec d'une mesure ne retient pas les autres.
  *
  * Le numéro de la pièce papier n'a pas de champ dédié sur le serveur (AV-308 (b) n'est pas construit) : en
  * attendant, `localRef` (20 caractères au plus, unique par appareil) pour les sept commandes qui
@@ -36,7 +39,7 @@
  */
 
 export type ReportableSlipType =
-  'BV' | 'RE' | 'BD' | 'RF' | 'CC' | 'BL' | 'BR' | 'BT' | 'FP' | 'DA' | 'BC' | 'VC' | 'FI';
+  'BV' | 'RE' | 'BD' | 'RF' | 'CC' | 'BL' | 'BR' | 'BT' | 'FP' | 'DA' | 'BC' | 'VC' | 'FI' | 'FL';
 
 export const REPORTABLE_SLIP_TYPES: readonly ReportableSlipType[] = [
   'BV',
@@ -52,6 +55,7 @@ export const REPORTABLE_SLIP_TYPES: readonly ReportableSlipType[] = [
   'BC',
   'VC',
   'FI',
+  'FL',
 ];
 
 /**
@@ -73,8 +77,10 @@ export const MAX_BACKDATED_REASON = 500;
 export type PaperRefPlace = 'LOCAL_REF' | 'FREE_TEXT';
 
 export function paperRefPlace(type: ReportableSlipType): PaperRefPlace {
-  // L'expédition d'un transfert, la déclaration d'une perte et une visite n'acceptent pas `localRef`.
-  return type === 'BT' || type === 'FP' || type === 'VC' ? 'FREE_TEXT' : 'LOCAL_REF';
+  // L'expédition d'un transfert, la déclaration d'une perte, une visite et les saisies du jour d'un lot n'acceptent pas `localRef`.
+  return type === 'BT' || type === 'FP' || type === 'VC' || type === 'FL'
+    ? 'FREE_TEXT'
+    : 'LOCAL_REF';
 }
 
 /** La commande de ce type de pièce reçoit-elle le numéro en `localRef` ? */
@@ -149,6 +155,36 @@ export interface SlipCountLine {
 }
 
 export type SlipCountType = 'FULL' | 'PARTIAL' | 'SPOT';
+
+/**
+ * Une ligne (un jour) de la fiche de suivi de lot (FL) : seules les mesures renseignées sont présentes. Les œufs ne s'y
+ * trouvent pas : le serveur exige leur répartition par calibre, que la fiche ne porte pas (écran de collecte d'œufs).
+ */
+export interface SlipLotDay {
+  /** Jour de la ligne, `AAAA-MM-JJ`. */
+  readonly date: string;
+  /** Heure de la saisie du jour, ISO 8601 UTC : midi du jour, ou l'instant du contrôle si midi n'est pas encore venu. */
+  readonly occurredAt: string;
+  readonly mortality?:
+    | {
+        readonly quantity: number;
+        readonly reasonCodeId?: string | undefined;
+        /** Commentaire de la déclaration (exigé par certaines causes) ; la mention de la pièce y est ajoutée. */
+        readonly comment?: string | undefined;
+      }
+    | undefined;
+  readonly input?:
+    | {
+        readonly productId: string;
+        readonly unitCode: string;
+        readonly quantity: number;
+        readonly quantityBase: number;
+      }
+    | undefined;
+  readonly weighing?: { readonly sampleSize: number; readonly avgWeightG: number } | undefined;
+  /** Observation libre (santé, vaccin, incident) ; la mention de la pièce y est ajoutée. */
+  readonly observation?: string | undefined;
+}
 
 export type ResolvedSlip =
   | {
@@ -264,6 +300,15 @@ export type ResolvedSlip =
       readonly locationId: string;
       readonly countType: SlipCountType;
       readonly lines: readonly SlipCountLine[];
+    }
+  | {
+      readonly type: 'FL';
+      readonly lotId: string;
+      /** Bâtiment ou case où les animaux sont morts et ont été pesés. */
+      readonly locationId: string;
+      /** Magasin d'où l'aliment est pris (exigé dès qu'une ligne porte de l'aliment). */
+      readonly feedLocationId?: string | undefined;
+      readonly days: readonly SlipLotDay[];
     };
 
 // --- Photo de la souche ---------------------------------------------------------------------------
@@ -378,6 +423,11 @@ interface CommandPart {
   readonly commandType: string;
   readonly aggregateType: string;
   readonly payload: Record<string, unknown>;
+  /** Pièce en commandes indépendantes (FL) : agrégat et heure propres à la commande. */
+  readonly aggregateId?: string | undefined;
+  readonly occurredAt?: string | undefined;
+  /** Vrai : la commande n'attend pas la précédente (par défaut, la 2e et les suivantes l'attendent). */
+  readonly independent?: boolean | undefined;
 }
 
 /** Numéro de la pièce en `localRef` pour les types dont la commande l'accepte ; contrôle de sa longueur. */
@@ -391,8 +441,98 @@ function localRefOf(type: ReportableSlipType, paperRef: string): string | undefi
   return localRef;
 }
 
+/**
+ * Identifiant de la n-ième commande d'une pièce en commandes indépendantes (FL) : celui de la pièce pour la première, puis le
+ * même dont l'octet final varie (la version UUIDv7 est conservée). Chaque mesure écrit sa propre ligne (déclaration de
+ * mortalité, consommation, pesée, observation), dont l'identifiant est celui de l'agrégat de la commande : ils doivent
+ * être distincts.
+ */
+function nthAggregateId(base: string, index: number): string {
+  if (index === 0) return base;
+  return `${base.slice(0, -2)}${(index % 256).toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Fiche de suivi de lot (FL) : une saisie du jour du lot par mesure renseignée, jour après jour (mortalité, aliment, pesée,
+ * observation). Les charges sont celles des écrans de saisie du jour (`production/daily.ts`, confrontées par un essai).
+ */
+function lotSheetParts(
+  slip: Extract<ResolvedSlip, { readonly type: 'FL' }>,
+  paperRef: string,
+  aggregateId: string,
+): readonly CommandPart[] {
+  const parts: CommandPart[] = [];
+  const add = (
+    day: SlipLotDay,
+    part: Pick<CommandPart, 'commandType' | 'aggregateType' | 'payload'>,
+  ) => {
+    parts.push({
+      ...part,
+      aggregateId: nthAggregateId(aggregateId, parts.length),
+      occurredAt: day.occurredAt,
+      independent: true,
+    });
+  };
+  for (const day of slip.days) {
+    if (day.mortality) {
+      add(day, {
+        commandType: 'production.mortality.record',
+        aggregateType: 'STOCK_LOSS',
+        payload: compact({
+          productionLotId: slip.lotId,
+          locationId: slip.locationId,
+          quantity: day.mortality.quantity,
+          reasonCodeId: day.mortality.reasonCodeId,
+          comment: withPaperRef(paperRef, day.mortality.comment),
+        }),
+      });
+    }
+    if (day.input) {
+      add(day, {
+        commandType: 'production.input.record',
+        aggregateType: 'CONSUMPTION',
+        payload: compact({
+          productionLotId: slip.lotId,
+          locationId: slip.feedLocationId,
+          productId: day.input.productId,
+          quantityBase: day.input.quantityBase,
+          unitCode: day.input.unitCode,
+          quantity: day.input.quantity,
+          costType: 'ALIMENT',
+        }),
+      });
+    }
+    if (day.weighing) {
+      add(day, {
+        commandType: 'production.weighing.record',
+        aggregateType: 'LOT_WEIGHING',
+        payload: {
+          productionLotId: slip.lotId,
+          locationId: slip.locationId,
+          sampleSize: day.weighing.sampleSize,
+          avgWeightG: day.weighing.avgWeightG,
+          source: 'MANUAL',
+        },
+      });
+    }
+    if (day.observation !== undefined) {
+      add(day, {
+        commandType: 'production.observation.record',
+        aggregateType: 'LOT_OBSERVATION',
+        payload: {
+          productionLotId: slip.lotId,
+          observationType: 'AUTRE',
+          text: withPaperRef(paperRef, day.observation),
+          severity: 'INFO',
+        },
+      });
+    }
+  }
+  return parts;
+}
+
 /** Pièces dont le report est une seule commande, historiques de PP-B. */
-type SingleCommandSlip = Exclude<ResolvedSlip, { readonly type: 'DA' | 'BC' | 'VC' | 'FI' }>;
+type SingleCommandSlip = Exclude<ResolvedSlip, { readonly type: 'DA' | 'BC' | 'VC' | 'FI' | 'FL' }>;
 
 /** Commandes du serveur pour une pièce résolue : une, ou une chaîne de même agrégat (BC, FI). */
 function commandPartsOf(
@@ -490,6 +630,8 @@ function commandPartsOf(
           payload: { countId: aggregateId },
         },
       ];
+    case 'FL':
+      return lotSheetParts(slip, paperRef, aggregateId);
     default:
       return [legacyCommandOf(slip, paperRef)];
   }
@@ -662,8 +804,9 @@ export function slipAmountXaf(slip: ResolvedSlip): number | null {
 
 /**
  * Les commandes du serveur pour une pièce papier résolue (voir le tableau en tête de fichier), dans l'ordre d'envoi : une
- * seule pour la plupart des pièces, une chaîne pour le bon de commande (BC) et la fiche d'inventaire (FI). Seule la
- * première porte les indices du registre des carnets et la photo ; les suivantes attendent la précédente.
+ * seule pour la plupart des pièces, une chaîne pour le bon de commande (BC) et la fiche d'inventaire (FI), des commandes
+ * indépendantes pour la fiche de suivi de lot (FL). Seule la première porte les indices du registre des carnets et la
+ * photo ; dans une chaîne, les suivantes attendent la précédente.
  */
 export function buildReportCommands(
   slip: ResolvedSlip,
@@ -675,11 +818,11 @@ export function buildReportCommands(
   return parts.map((part, index) => ({
     commandType: part.commandType,
     aggregateType: part.aggregateType,
-    aggregateId: meta.aggregateId,
+    aggregateId: part.aggregateId ?? meta.aggregateId,
     dependsOn: index === 0 ? [...(meta.dependsOn ?? [])] : [],
-    dependsOnPrevious: index > 0,
+    dependsOnPrevious: index > 0 && part.independent !== true,
     payload: part.payload,
-    occurredAt: meta.occurredAt,
+    occurredAt: part.occurredAt ?? meta.occurredAt,
     backdatedReason: reason ? reason.slice(0, MAX_BACKDATED_REASON) : null,
     capturedOffline: true as const,
     localFlags:

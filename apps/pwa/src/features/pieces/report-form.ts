@@ -17,11 +17,19 @@ import {
   type ResolvedSlip,
   type SlipCountLine,
   type SlipCountType,
+  type SlipLotDay,
   type SlipOrderLine,
   type SlipReceiptLine,
   type SlipRequestLine,
 } from './report-commands.js';
 import { visitOutcomes } from '../crm/visit.js';
+import {
+  consumableProducts,
+  farmLocations,
+  parseCount as parseHeadcount,
+  parsePositive,
+  rearingLocations,
+} from '../production/daily.js';
 import { ownAccounts, sourceAccounts, targetsFor, transferPairs } from '../cash/transfers.js';
 import {
   paymentIssues,
@@ -63,6 +71,22 @@ import { checkTransferLine, destinations } from '../stock/transfer.js';
 import { receivableOrders } from '../procurement/receipt.js';
 
 // --- État du formulaire ---------------------------------------------------------------------------
+
+/** FL : une ligne (un jour) de la fiche de suivi de lot en cours de saisie. */
+export interface LotDayForm {
+  readonly key: string;
+  /** Jour de la ligne, `AAAA-MM-JJ`. */
+  readonly date: string;
+  readonly deathsText: string;
+  readonly deathReasonId: string;
+  readonly feedProductId: string;
+  /** Aliment distribué, en kg. */
+  readonly feedKgText: string;
+  /** Pesée : effectif de l'échantillon et poids moyen (g). */
+  readonly sampleText: string;
+  readonly avgWeightText: string;
+  readonly observation: string;
+}
 
 export interface SlipForm {
   readonly slipType: ReportableSlipType;
@@ -117,6 +141,10 @@ export interface SlipForm {
   readonly nextActionNote: string;
   /** FI : nature de l'inventaire. */
   readonly countType: SlipCountType;
+  /** FL : lot de production (`locationId` : son bâtiment ou sa case), magasin d'aliment et lignes de la fiche. */
+  readonly lotId: string;
+  readonly feedLocationId: string;
+  readonly lotDays: readonly LotDayForm[];
 }
 
 /** Heure locale d'un instant, au format de `<input type="datetime-local">`. */
@@ -158,6 +186,9 @@ export function emptySlipForm(now: Date, slipType: ReportableSlipType = 'BV'): S
     nextActionDate: '',
     nextActionNote: '',
     countType: 'PARTIAL',
+    lotId: '',
+    feedLocationId: '',
+    lotDays: [],
   };
 }
 
@@ -193,7 +224,12 @@ export type SlipIssue =
   | 'LOSS_CATEGORY_REQUIRED'
   | 'COMMENT_REQUIRED'
   | 'OUTCOME_REQUIRED'
-  | 'NEXT_ACTION_INVALID';
+  | 'NEXT_ACTION_INVALID'
+  | 'LOT_REQUIRED'
+  | 'DAYS_REQUIRED'
+  | 'DAY_INVALID'
+  | 'MEASURE_INVALID'
+  | 'FEED_LOCATION_REQUIRED';
 
 export const SLIP_ISSUE_MESSAGES: Readonly<Record<SlipIssue, string>> = {
   REF_REQUIRED: 'Saisissez le numéro de la pièce.',
@@ -228,6 +264,13 @@ export const SLIP_ISSUE_MESSAGES: Readonly<Record<SlipIssue, string>> = {
   COMMENT_REQUIRED: 'Un commentaire est requis pour cette catégorie ou ce motif.',
   OUTCOME_REQUIRED: 'Choisissez le résultat de la visite.',
   NEXT_ACTION_INVALID: 'La date de la prochaine action est invalide.',
+  LOT_REQUIRED: 'Choisissez le lot de production.',
+  DAYS_REQUIRED:
+    'Renseignez au moins une ligne de la fiche : mortalité, aliment, pesée ou observation.',
+  DAY_INVALID: 'Le jour d’une ligne est invalide, dans le futur ou répété.',
+  MEASURE_INVALID:
+    'Une mesure est incomplète ou invalide : nombre de morts, aliment en kg, effectif de l’échantillon ou poids moyen.',
+  FEED_LOCATION_REQUIRED: 'Choisissez le magasin d’où l’aliment est pris.',
 };
 
 // --- Contexte et choix proposés -------------------------------------------------------------------
@@ -331,6 +374,43 @@ export function backdatingWindowOf(settings: readonly SettingData[], now: Date):
   );
 }
 
+/** Une ligne dont aucune mesure n'est entamée n'est pas une ligne : le jour seul ne compte pas (FL). */
+export const isBlankLotDay = (day: LotDayForm): boolean =>
+  day.deathsText.trim() === '' &&
+  day.feedProductId === '' &&
+  day.feedKgText.trim() === '' &&
+  day.sampleText.trim() === '' &&
+  day.avgWeightText.trim() === '' &&
+  day.observation.trim() === '';
+
+/** Jour réel du calendrier (`2026-02-31` n'en est pas un), au format `AAAA-MM-JJ`. */
+function isCalendarDay(date: string): boolean {
+  if (!DATE_ONLY.test(date)) return false;
+  const noon = new Date(`${date}T12:00`);
+  return !Number.isNaN(noon.getTime()) && toLocalInput(noon).slice(0, 10) === date;
+}
+
+/** Heure de la saisie du jour d'une ligne de fiche de lot : midi du jour, ou l'instant du contrôle si midi n'est pas venu. */
+export function lotDayInstant(date: string, now: Date): string {
+  const noon = new Date(`${date}T12:00`);
+  return (noon.getTime() > now.getTime() ? now : noon).toISOString();
+}
+
+/**
+ * Date de référence de l'antidatage (AV-078) : l'heure de la pièce, ou, pour une fiche de suivi de lot, celle de sa ligne la plus
+ * ancienne (chaque mesure part avec l'heure de son jour, et le serveur juge l'écart de chacune).
+ */
+export function backdatingBasis(form: SlipForm, now: Date): string {
+  if (form.slipType !== 'FL') return form.occurredAt;
+  const oldest = form.lotDays
+    .filter((day) => !isBlankLotDay(day) && isCalendarDay(day.date))
+    .map((day) => day.date)
+    .sort()[0];
+  return oldest === undefined
+    ? form.occurredAt
+    : toLocalInput(new Date(lotDayInstant(oldest, now)));
+}
+
 /** Défauts communs : numéro de la pièce, date et motif d'antidatage (AV-078, AV-312). */
 function commonIssues(
   form: SlipForm,
@@ -414,7 +494,7 @@ export function resolveSlip(entered: SlipForm, context: SlipContext): SlipResolu
   // Une ligne laissée vide n'est pas une ligne : seules les lignes entamées comptent.
   const form: SlipForm = { ...entered, lines: entered.lines.filter((line) => !isBlankLine(line)) };
   const common = commonIssues(
-    form,
+    { ...form, occurredAt: backdatingBasis(form, context.now) },
     context.now,
     backdatingWindowOf(context.refs.settings, context.now),
   );
@@ -474,7 +554,133 @@ function resolveBody(form: SlipForm, context: SlipContext): Body {
       return resolveVisit(form, context);
     case 'FI':
       return resolveCount(form, context);
+    case 'FL':
+      return resolveLotSheet(form, context);
   }
+}
+
+/** Causes de mortalité que propose l'écran de saisie du jour (motifs de perte, sans catégorie ou de mortalité). */
+export function mortalityReasons(refs: Pick<SalesReferences, 'reasonCodes'>) {
+  return refs.reasonCodes.filter(
+    (reason) =>
+      reason.category === 'LOSS' &&
+      (reason.loss_category === null || reason.loss_category === 'MORTALITE'),
+  );
+}
+
+/**
+ * FL : lot, bâtiment, et une saisie du jour par mesure renseignée de chaque ligne (mortalité, aliment en kg, pesée,
+ * observation), contrôlées comme les écrans de saisie du jour (`production/daily.ts`). Les œufs ne se reportent pas ici : le
+ * serveur exige leur répartition par calibre, que la fiche ne porte pas.
+ */
+function resolveLotSheet(form: SlipForm, context: SlipContext): Body {
+  const { refs, now } = context;
+  const issues: SlipIssue[] = [];
+  const lot = refs.productionLots.find((entry) => entry.id === form.lotId);
+  if (!lot) issues.push('LOT_REQUIRED');
+  const building = lot
+    ? rearingLocations(refs.locations, lot).find((entry) => entry.id === form.locationId)
+    : undefined;
+  if (lot && !building) issues.push('LOCATION_REQUIRED');
+
+  const filled = form.lotDays.filter((day) => !isBlankLotDay(day));
+  if (filled.length === 0) issues.push('DAYS_REQUIRED');
+  const today = toLocalInput(now).slice(0, 10);
+  const reasons = mortalityReasons(refs);
+  const feedProducts = consumableProducts(refs.products);
+  const days: SlipLotDay[] = [];
+  const seen = new Set<string>();
+  let hasFeed = false;
+  for (const day of filled) {
+    if (!isCalendarDay(day.date) || day.date > today || seen.has(day.date)) {
+      issues.push('DAY_INVALID');
+      continue;
+    }
+    seen.add(day.date);
+    const observation = day.observation.trim();
+
+    let mortality: SlipLotDay['mortality'];
+    if (day.deathsText.trim() !== '' || day.deathReasonId !== '') {
+      const quantity = parseHeadcount(day.deathsText);
+      const reason =
+        day.deathReasonId === ''
+          ? undefined
+          : reasons.find((entry) => entry.id === day.deathReasonId);
+      if (quantity === null || (day.deathReasonId !== '' && !reason)) {
+        issues.push('MEASURE_INVALID');
+      } else if (reason?.requires_comment === true && observation === '') {
+        issues.push('COMMENT_REQUIRED');
+      } else {
+        mortality = {
+          quantity,
+          ...(reason ? { reasonCodeId: reason.id } : {}),
+          ...(reason?.requires_comment === true ? { comment: observation } : {}),
+        };
+      }
+    }
+
+    let input: SlipLotDay['input'];
+    if (day.feedProductId !== '' || day.feedKgText.trim() !== '') {
+      const product = feedProducts.find((entry) => entry.id === day.feedProductId);
+      const kilogram = product
+        ? saleUnitsOf(product, refs).find((unit) => unit.unitCode === 'KG')
+        : undefined;
+      const check = product
+        ? checkTransferLine(
+            { key: day.key, productId: product.id, unitCode: 'KG', quantityText: day.feedKgText },
+            kilogram,
+          )
+        : undefined;
+      if (
+        !product ||
+        !check ||
+        check.issue !== null ||
+        check.quantity === null ||
+        check.quantityBase === null
+      ) {
+        issues.push('MEASURE_INVALID');
+      } else {
+        hasFeed = true;
+        input = {
+          productId: product.id,
+          unitCode: 'KG',
+          quantity: check.quantity,
+          quantityBase: check.quantityBase,
+        };
+      }
+    }
+
+    let weighing: SlipLotDay['weighing'];
+    if (day.sampleText.trim() !== '' || day.avgWeightText.trim() !== '') {
+      const sampleSize = parseHeadcount(day.sampleText);
+      const avgWeightG = parsePositive(day.avgWeightText, 1_000_000, 1);
+      if (sampleSize === null || avgWeightG === null) issues.push('MEASURE_INVALID');
+      else weighing = { sampleSize, avgWeightG };
+    }
+
+    days.push({
+      date: day.date,
+      occurredAt: lotDayInstant(day.date, now),
+      ...(mortality ? { mortality } : {}),
+      ...(input ? { input } : {}),
+      ...(weighing ? { weighing } : {}),
+      ...(observation !== '' ? { observation } : {}),
+    });
+  }
+
+  const feedLocation =
+    hasFeed && lot
+      ? farmLocations(refs.locations, lot).find((entry) => entry.id === form.feedLocationId)
+      : undefined;
+  if (hasFeed && !feedLocation) issues.push('FEED_LOCATION_REQUIRED');
+  if (issues.length > 0 || !lot || !building) return fail(...new Set(issues));
+  return done({
+    type: 'FL',
+    lotId: lot.id,
+    locationId: building.id,
+    ...(feedLocation ? { feedLocationId: feedLocation.id } : {}),
+    days: [...days].sort((a, b) => a.date.localeCompare(b.date)),
+  });
 }
 
 type SaleBase =

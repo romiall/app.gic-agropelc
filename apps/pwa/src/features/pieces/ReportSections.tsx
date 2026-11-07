@@ -25,13 +25,17 @@ import { saleUnitsOf, type DraftLine } from '../sales/sale-form.js';
 import type { LocationData, ProductData } from '../sales/types.js';
 import { DEVICE_LOSS_CATEGORIES, lossReasons, type LossCategory } from '../stock/loss.js';
 import { destinations } from '../stock/transfer.js';
-import { blankLine } from './report-lines.js';
+import { consumableProducts, farmLocations, rearingLocations } from '../production/daily.js';
+import { blankLine, blankLotDay, nextLotDay } from './report-lines.js';
 import {
   deliverableOrders,
   locationChoices,
+  mortalityReasons,
   previewTotal,
   slipLocations,
   slipPaymentMethod,
+  toLocalInput,
+  type LotDayForm,
   type SlipContext,
   type SlipForm,
 } from './report-form.js';
@@ -1203,6 +1207,206 @@ function CountFields({ form, patch, context }: SectionProps) {
   );
 }
 
+/** Une fiche de suivi de lot couvre une semaine : une ligne par jour, sept au plus. */
+const MAX_LOT_DAYS = 7;
+
+function LotSheetFields({ form, patch, context }: SectionProps) {
+  const { t } = useTranslation();
+  const { refs, now } = context;
+  const today = toLocalInput(now).slice(0, 10);
+  const lots = refs.productionLots
+    .filter((entry) => entry.status !== 'PLANNED' && entry.status !== 'CANCELLED')
+    .sort((a, b) => a.lot_code.localeCompare(b.lot_code, 'fr'));
+  const lot = lots.find((entry) => entry.id === form.lotId);
+  const buildings = lot ? rearingLocations(refs.locations, lot) : [];
+  const stores = lot ? farmLocations(refs.locations, lot) : [];
+  const feeds = consumableProducts(refs.products);
+  const causes = mortalityReasons(refs);
+  const update = (key: string, change: Partial<LotDayForm>) =>
+    patch({
+      lotDays: form.lotDays.map((day) => (day.key === key ? { ...day, ...change } : day)),
+    });
+  const chooseLot = (lotId: string) => {
+    const next = lots.find((entry) => entry.id === lotId);
+    const nextBuildings = next ? rearingLocations(refs.locations, next) : [];
+    const main = nextBuildings.find((entry) => entry.id === next?.main_location_id);
+    const nextStores = next ? farmLocations(refs.locations, next) : [];
+    patch({
+      lotId,
+      locationId: (main ?? (nextBuildings.length === 1 ? nextBuildings[0] : undefined))?.id ?? '',
+      feedLocationId: nextStores.find((entry) => entry.location_type === 'STORE')?.id ?? '',
+    });
+  };
+  return (
+    <Section title={t('piece.section_fl', 'Détails de la fiche de suivi de lot (FL)')}>
+      <div className="report-fields">
+        <Banner tone="info">
+          {t(
+            'piece.fl_commands',
+            'Chaque ligne est reportée comme une saisie du jour du lot : mortalité, aliment, pesée, observation. Les œufs se saisissent par l’écran « Collecte d’œufs », qui exige leur répartition par calibre ; la fiche ne la porte pas.',
+          )}
+        </Banner>
+        <div className="report-grid-2">
+          <Field label={t('piece.f_lot', 'Lot de production')}>
+            {(ctrl) => (
+              <Select {...ctrl} value={form.lotId} onChange={(e) => chooseLot(e.target.value)}>
+                <option value="">{t('piece.choose_lot', 'Choisir un lot…')}</option>
+                {lots.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.lot_code}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <LocationField
+            label={t('piece.f_building', 'Bâtiment / case')}
+            value={form.locationId}
+            options={buildings}
+            onChange={(locationId) => patch({ locationId })}
+          />
+        </div>
+        <LocationField
+          label={t('piece.f_feed_store', 'Magasin d’aliment (si de l’aliment est reporté)')}
+          value={form.feedLocationId}
+          options={stores}
+          onChange={(feedLocationId) => patch({ feedLocationId })}
+        />
+        <ul className="report-lines">
+          {form.lotDays.map((day) => (
+            <li key={day.key} className="report-line">
+              <div className="report-line-grid">
+                <Field label={t('piece.f_day', 'Jour')}>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      type="date"
+                      max={today}
+                      value={day.date}
+                      onChange={(e) => update(day.key, { date: e.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field label={t('piece.f_deaths', 'Mortalité : nombre')} optional>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      inputMode="numeric"
+                      value={day.deathsText}
+                      onChange={(e) => update(day.key, { deathsText: e.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field label={t('piece.f_death_cause', 'Mortalité : cause')} optional>
+                  {(ctrl) => (
+                    <Select
+                      {...ctrl}
+                      value={day.deathReasonId}
+                      onChange={(e) => update(day.key, { deathReasonId: e.target.value })}
+                    >
+                      <option value="">{t('piece.choose_cause', 'Cause non précisée')}</option>
+                      {causes.map((cause) => (
+                        <option key={cause.id} value={cause.id}>
+                          {cause.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+                <Field label={t('piece.f_feed_product', 'Aliment : produit')} optional>
+                  {(ctrl) => (
+                    <Select
+                      {...ctrl}
+                      value={day.feedProductId}
+                      onChange={(e) => update(day.key, { feedProductId: e.target.value })}
+                    >
+                      <option value="">{t('piece.choose_product', 'Choisir un produit…')}</option>
+                      {feeds.map((feed) => (
+                        <option key={feed.id} value={feed.id}>
+                          {feed.name}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+                <Field label={t('piece.f_feed_kg', 'Aliment : quantité')} unit="kg" optional>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      inputMode="decimal"
+                      value={day.feedKgText}
+                      onChange={(e) => update(day.key, { feedKgText: e.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field label={t('piece.f_sample', 'Pesée : échantillon')} optional>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      inputMode="numeric"
+                      value={day.sampleText}
+                      onChange={(e) => update(day.key, { sampleText: e.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field label={t('piece.f_avg_weight', 'Pesée : poids moyen')} unit="g" optional>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      inputMode="decimal"
+                      value={day.avgWeightText}
+                      onChange={(e) => update(day.key, { avgWeightText: e.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field
+                  label={t('piece.f_day_observation', 'Observations (santé, vaccin, incident)')}
+                  optional
+                >
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      maxLength={1900}
+                      value={day.observation}
+                      onChange={(e) => update(day.key, { observation: e.target.value })}
+                    />
+                  )}
+                </Field>
+              </div>
+              {form.lotDays.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    patch({ lotDays: form.lotDays.filter((entry) => entry.key !== day.key) })
+                  }
+                >
+                  {t('piece.remove_day', 'Retirer la ligne')}
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        {form.lotDays.length < MAX_LOT_DAYS ? (
+          <Button
+            type="button"
+            variant="tonal"
+            size="sm"
+            onClick={() =>
+              patch({
+                lotDays: [...form.lotDays, blankLotDay(nextLotDay(form.lotDays, today))],
+              })
+            }
+          >
+            {t('piece.add_day', 'Ajouter un jour')}
+          </Button>
+        ) : null}
+      </div>
+    </Section>
+  );
+}
+
 /** Champs du type de pièce choisi. */
 export function SlipFields(props: SectionProps) {
   switch (props.form.slipType) {
@@ -1232,5 +1436,7 @@ export function SlipFields(props: SectionProps) {
       return <VisitFields {...props} />;
     case 'FI':
       return <CountFields {...props} />;
+    case 'FL':
+      return <LotSheetFields {...props} />;
   }
 }

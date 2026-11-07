@@ -55,9 +55,11 @@ import {
 } from './report-commands.js';
 import {
   SLIP_ISSUE_MESSAGES,
+  backdatingBasis,
   backdatingWindowOf,
   emptySlipForm,
   resolveSlip,
+  toLocalInput,
   type SlipContext,
   type SlipForm,
 } from './report-form.js';
@@ -67,7 +69,7 @@ import {
   type PayloadLabels,
   type ReportedSlipRecord,
 } from './report-submit.js';
-import { blankLine } from './report-lines.js';
+import { blankLine, blankLotDay } from './report-lines.js';
 import { SlipFields } from './ReportSections.js';
 import type { DemandePiece } from './demande.js';
 import './pieces-report.css';
@@ -86,6 +88,7 @@ const SLIP_TYPE_LABELS: Readonly<Record<ReportableSlipType, string>> = {
   BC: 'BC — Bon de commande fournisseur',
   VC: 'VC — Fiche de visite client',
   FI: 'FI — Fiche d’inventaire',
+  FL: 'FL — Suivi de lot de production',
 };
 
 /** Ton du badge d'une pièce reportée selon l'état de son envoi (les autres états restent neutres). */
@@ -108,10 +111,15 @@ const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set([
   'FI',
 ]);
 
-const initialForm = (type: ReportableSlipType): SlipForm => ({
-  ...emptySlipForm(clock.now(), type),
-  lines: LINE_TYPES.has(type) ? [blankLine()] : [],
-});
+const initialForm = (type: ReportableSlipType): SlipForm => {
+  const now = clock.now();
+  return {
+    ...emptySlipForm(now, type),
+    lines: LINE_TYPES.has(type) ? [blankLine()] : [],
+    // Une fiche de lot commence par la ligne du jour.
+    lotDays: type === 'FL' ? [blankLotDay(toLocalInput(now).slice(0, 10))] : [],
+  };
+};
 
 type TabMode = 'entry' | 'register';
 
@@ -159,7 +167,8 @@ export function PaperSlipReportScreen() {
   const continuityCheck = checkInputContinuity(form.paperRef, existingRefsForType);
 
   // Évaluation de l'antidatage en direct
-  const occurredDate = new Date(form.occurredAt);
+  // Une fiche de suivi de lot est jugée sur sa ligne la plus ancienne : chaque mesure part avec l'heure de son jour.
+  const occurredDate = new Date(backdatingBasis(form, clock.now()));
   // Fenêtre des paramètres `sync.justification_after_hours` et `sync.backdate_max_hours` (AV-078), comme le serveur.
   const backdatingWindow = backdatingWindowOf(refs?.settings ?? [], clock.now());
   const backdatingEval = evaluateBackdating(
@@ -208,6 +217,8 @@ export function PaperSlipReportScreen() {
       siteId: current.siteId,
       accountId: current.accountId,
       toAccountId: current.toAccountId,
+      lotId: current.lotId,
+      feedLocationId: current.feedLocationId,
     }));
     setPhoto(null);
     setShowIssues(false);
@@ -413,17 +424,20 @@ export function PaperSlipReportScreen() {
                 </div>
               ) : null}
 
-              <Field label={t('piece.occurred_at', 'Date et heure manuscrite de la pièce')}>
-                {(ctrl) => (
-                  <Input
-                    {...ctrl}
-                    type="datetime-local"
-                    value={form.occurredAt}
-                    onChange={(e) => patch({ occurredAt: e.target.value })}
-                    required
-                  />
-                )}
-              </Field>
+              {/* Une fiche de lot n'a pas d'heure propre : chaque ligne porte son jour. */}
+              {form.slipType !== 'FL' ? (
+                <Field label={t('piece.occurred_at', 'Date et heure manuscrite de la pièce')}>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      type="datetime-local"
+                      value={form.occurredAt}
+                      onChange={(e) => patch({ occurredAt: e.target.value })}
+                      required
+                    />
+                  )}
+                </Field>
+              ) : null}
 
               {/* Évaluation de la fenêtre d'antidatage (AV-078) */}
               {backdatingEval.isCriticalDelay ? (

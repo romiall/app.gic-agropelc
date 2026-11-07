@@ -14,6 +14,7 @@
 | 2 | Fenêtre de saisie rétroactive appliquée à toute commande (BR-SYN-012, AV-078) — AV-528, droit `sync.backdate.exceed` (130 droits, 523 octrois) | fait, commité | `32c6f240` |
 | 3 | Quarantaine d'un compte suspendu puis réactivé (AV-229) — migration `20261204100000` | fait, commité | `6d04b78d` |
 | 4a | Report des pièces papier DA, BC, VC, FI (FA, FJC et JE sont des documents dérivés : non reportables) — AV-530 | fait, commité | voir `git log` |
+| 4b | Report de la fiche de suivi de lot FL (mortalité, aliment, pesée, observation ; les œufs par l'écran de collecte) — AV-531 | fait, commité | voir `git log` |
 | 4 | Report des pièces papier DA, BC, VC, FI, FL (FA, FJC et JE sont des documents dérivés : non reportables) + registre des carnets par site (AV-312) | en cours | — |
 | 5 | Restes d'AV-514 (jeux hors ligne des feuilles de présence et des bilans, vue d'analyse, rattachement à un compte) | à faire | — |
 | 6 | Besoins serveur des écrans (S-xx ouverts : voir `docs/10-development-plan/16-besoins-serveur-des-ecrans.md`), tirage groupé des jeux (AV-319 b) | à faire | — |
