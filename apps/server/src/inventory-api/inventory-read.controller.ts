@@ -573,7 +573,11 @@ export class InventoryReadController {
     });
     return {
       inventory_counts: page.items.map((c) =>
-        mask(c, ['varianceValueXaf', 'absVarianceValueXaf'], financial),
+        mask(
+          c,
+          ['varianceValueXaf', 'absVarianceValueXaf', 'netVarianceAfterReconciliationXaf'],
+          financial,
+        ),
       ),
       next_cursor: page.nextCursor,
     };
@@ -604,7 +608,11 @@ export class InventoryReadController {
     const { lines, ...header } = count;
     return {
       inventory_count: {
-        ...mask(header, ['varianceValueXaf', 'absVarianceValueXaf'], financial),
+        ...mask(
+          header,
+          ['varianceValueXaf', 'absVarianceValueXaf', 'netVarianceAfterReconciliationXaf'],
+          financial,
+        ),
         lines: lines.map((line) => mask(line, ['unitCostXaf', 'declaredUnitCostXaf'], financial)),
       },
     };

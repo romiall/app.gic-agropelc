@@ -359,6 +359,11 @@ export interface InventoryCountSummary {
   readonly varianceValueXaf: number | null;
   /** Mesure financière (RC-05). */
   readonly absVarianceValueXaf: number | null;
+  /**
+   * Écart net après les rapprochements tardifs (BR-STK-044) : l'écart constaté, corrigé de ce que les faits arrivés
+   * après la comptabilisation expliquent. `null` tant qu'aucun rapprochement n'a eu lieu. Mesure financière (RC-05).
+   */
+  readonly netVarianceAfterReconciliationXaf: number | null;
   readonly approvalRequestId: string | null;
   readonly capturedOffline: boolean;
   readonly version: number;
@@ -372,6 +377,10 @@ export interface InventoryCountLine {
   readonly countedAt: Date;
   readonly theoreticalQtyBase: number | null;
   readonly varianceQtyBase: number | null;
+  /** Cumul des rapprochements tardifs de la ligne (BR-STK-044), signé : positif = gain. */
+  readonly reconciledAdjustmentQtyBase: number;
+  /** La ligne, sans lot, porte sur tous les lots du produit (BR-STK-045). */
+  readonly allLots: boolean;
   readonly varianceReasonCodeId: string | null;
   /** Mesure financière (RC-05). */
   readonly unitCostXaf: number | null;
@@ -399,6 +408,7 @@ function countSummaryOf(row: Selectable<DB['inventory_inventory_counts']>): Inve
     postedAt: row.posted_at,
     varianceValueXaf: row.variance_value_xaf,
     absVarianceValueXaf: row.abs_variance_value_xaf,
+    netVarianceAfterReconciliationXaf: row.net_variance_after_reconciliation_xaf,
     approvalRequestId: fromBinOrNull(row.approval_request_id),
     capturedOffline: Boolean(row.captured_offline),
     version: Number(row.version),
@@ -450,6 +460,8 @@ export async function getInventoryCount(
       countedAt: line.counted_at,
       theoreticalQtyBase: numOrNull(line.theoretical_qty_base),
       varianceQtyBase: numOrNull(line.variance_qty_base),
+      reconciledAdjustmentQtyBase: Number(line.reconciled_adjustment_qty_base),
+      allLots: Boolean(line.all_lots),
       varianceReasonCodeId: fromBinOrNull(line.variance_reason_code_id),
       unitCostXaf: line.unit_cost_xaf,
       declaredUnitCostXaf: line.declared_unit_cost_xaf,

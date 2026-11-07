@@ -1101,6 +1101,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'counted_qty_base',
         'theoretical_qty_base',
         'variance_qty_base',
+        'reconciled_adjustment_qty_base',
+        'all_lots',
         'variance_reason_code_id',
         'comment',
       ])
@@ -1128,6 +1130,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         counted_qty_base: line.counted_qty_base,
         theoretical_qty_base: line.theoretical_qty_base,
         variance_qty_base: line.variance_qty_base,
+        reconciled_adjustment_qty_base: line.reconciled_adjustment_qty_base,
+        all_lots: Boolean(line.all_lots),
         variance_reason_code_id: fromBinOrNull(line.variance_reason_code_id),
         comment: line.comment,
       })),

@@ -236,7 +236,7 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-039 | `inventory-transfer-commands.test.ts`, `inventory-invariants.test.ts` (AT-016, INV-STK-08) | Partiel : natures `STANDARD` et `INTERNAL` ; réception sans document (AT-017, BR-STK-024) et retour à la source non construits |
 | REQ-041 | `inventory-loss-commands.test.ts` | Vérifié |
 | REQ-042 | `inventory-loss-commands.test.ts`, `approval-commands.test.ts` (P0) | Partiel : validation selon la politique active et ses deux issues de rejet (AT-020) ; photo exigée avant approbation (AT-019) et seuils par catégorie et montant (AV-037) non construits |
-| REQ-043 | `inventory-count-commands.test.ts` | Partiel : théorique à `counted_at`, écart valorisé, seuil paramétrable, validation ; rapprochement tardif (BR-STK-044, AT-021, INV-STK-09) non construit |
+| REQ-043 | `inventory-count-commands.test.ts`, `inventory-late-reconciliation.test.ts` (AT-021, INV-STK-09) | Vérifié : théorique à `counted_at`, écart valorisé, seuil paramétrable, validation ; rapprochement tardif (BR-STK-044) et répartition d'une ligne sans lot (BR-STK-045) livrés le 07/11/2026, § 17.15 |
 | REQ-052 (part P2) | `inventory-record-move.test.ts` (CMUP), `inventory-consumption-commands.test.ts` (écritures de coût), `inventory-read.e2e.test.ts` (`/costs`, masquage RC-05), `packages/domain` (`stockValueXaf`) | Vérifié pour le socle ; coût de lot biologique et marges en P7/P8 |
 | REQ-057 (simple) | `inventory-read.e2e.test.ts` (`/thresholds`, BR-STK-051), `packages/domain` (`evaluateStockThreshold`) | Partiel : état des seuils calculé ; alerte `STOCK_LOW` unique et résolue automatiquement (AT-047) et tableau ECR-ANA-03 non construits (module `communication`) |
 | REQ-077 | — | Non commencé (module `communication`, P9 ; la part P2 se limite à l'état des seuils ci-dessus) |
@@ -484,4 +484,10 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-065, REQ-067 (part RP-4) | PWA : `analytics.test.tsx`, `RoleDashboardScreen.tsx` (`ECR-ANA-01` à `05`, 5 tableaux de bord : Direction, Commercial, Stock, Production, Finance, repli hors ligne `kpi:KPI_SNAPSHOT` pour 01-04 et en ligne strict pour Finance), `AnalyticsExplorerScreen.tsx` (`ECR-ANA-06`, explorateur multidimensionnel, vues sauvegardées `analytics.view.save`, exports asynchrones `analytics.export.request` en CSV/XLSX), `pull.ts` (`kpi` synchronisé) | Vérifié |
 
 
+
+### 17.15 Lots de reprise du 07/11/2026, suite du chantier « reste à coder » — [ADR-059](../decisions/ADR-059-rapprochement-tardif-d-inventaire.md)
+
+| REQ | Vérifié par | État |
+|---|---|---|
+| REQ-043 (part rapprochement tardif, BR-STK-044, BR-STK-045, AT-021, INV-STK-09, S-23) | `inventory-late-reconciliation.test.ts` (WF-08 chiffré : vente d'avant le comptage entrée après la comptabilisation, solde à `counted_at` = compté, écart net −2 ; fait postérieur au comptage ignoré ; fait connu avant la soumission compté au théorique ; entrée tardive en perte de rapprochement ; plusieurs faits ; ligne par lot ; total sans détail réparti en FIFO inverse, gain au lot le plus récent ; ligne sans lot qui accompagne des lignes de lots ; inventaire à valider avec dérive entre soumission et décision ; deux inventaires comptabilisés ; transaction concurrente validée pendant l'attente des soldes ; balayage final d'INV-STK-09), `packages/domain/src/inventory-count-reconciliation.test.ts` (portée d'une ligne, répartition, delta), `CountScreen.test.tsx` (rapprochement lu du jeu `counts`, motif du système jamais proposé) | Vérifié |
 

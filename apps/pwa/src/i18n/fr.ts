@@ -2331,6 +2331,9 @@ export const fr = {
     history_title: 'Inventaires de l’emplacement',
     lines_count_one: '{{count}} ligne',
     lines_count_other: '{{count}} lignes',
+    // BR-STK-044 : des faits datés d'avant le comptage sont arrivés après sa comptabilisation.
+    reconciled_one: 'Rapproché de faits tardifs : {{count}} ligne',
+    reconciled_other: 'Rapproché de faits tardifs : {{count}} lignes',
     status: {
       IN_PROGRESS: 'En cours',
       SUBMITTING: 'Fin envoyée, en attente',

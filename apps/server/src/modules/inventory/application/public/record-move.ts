@@ -37,9 +37,11 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import type { Clock, IdGenerator } from '@gic/domain';
 import {
   costPerHeadXaf,
+  distributeLotLessVariance,
   lineAmountXaf,
   quantityFromDecimal,
   quantityMilliUnits,
+  reconciliationDelta,
   recalculateCmup,
   roundCmupToXaf,
   selectLotsFifo,
@@ -53,11 +55,25 @@ import {
   fromBin,
   fromBinOrNull,
 } from '../../../../platform/kysely/uuid-columns.js';
-import { findProductLotTracking } from '../../../catalog/application/public/index.js';
+import {
+  findProductLotTracking,
+  findReasonCodeByCode,
+} from '../../../catalog/application/public/index.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
-import { stockBalanceChange } from '../sync-changes.js';
+import { inventoryCountChange, stockBalanceChange } from '../sync-changes.js';
+import {
+  adjustmentLocationId,
+  bucketBalance,
+  findPostedLinesNotBefore,
+  ledgerBucketsAt,
+  lineCoversLot,
+  lotBalancesOf,
+  scopeOfLine,
+  systemUserId,
+  type PostedCountLine,
+} from '../count-ledger.js';
 import { lotHeadcount } from './lot-headcount.js';
 import {
   consumeFromAllocation,
@@ -251,6 +267,12 @@ export interface RecordMoveInput {
    * lui-même (vente directe : un conflit par ligne de vente, P4-04).
    */
   readonly stockNegativeConflict?: 'RECORD' | 'CALLER';
+  /**
+   * Rapprochement tardif (BR-STK-044, INV-STK-09) : par défaut, un mouvement daté d'avant le comptage d'un inventaire
+   * déjà comptabilisé est rapproché de cet inventaire (un ajustement compensatoire, daté du comptage, rétablit le solde
+   * compté). `true` pour l'ajustement qui est lui-même ce rapprochement : il ne se rapproche pas à son tour.
+   */
+  readonly skipLateReconciliation?: boolean;
 }
 
 /** Avertissements consignés par `inventory` sur un mouvement (conflits informatifs déjà ouverts). */
@@ -1132,7 +1154,180 @@ export async function recordStockMove(
 ): Promise<readonly RecordedMove[]> {
   const results = await writeStockMove(uow, deps, input);
   await publishMoveAlerts(uow, deps, input, results);
+  await reconcileLateMoves(uow, deps, input, results);
   return results;
+}
+
+/** Ce qui déclenche un rapprochement : un mouvement tardif (son lot) ou la comptabilisation de l'inventaire. */
+type ReconcileTrigger =
+  | { readonly kind: 'MOVE'; readonly lotId: string | null; readonly createdBy: string }
+  | { readonly kind: 'POSTING'; readonly createdBy: string };
+
+/** Un rapprochement tardif fait : quantité signée (positive = gain) et valeur signée au coût du mouvement. */
+export interface LateReconciliation {
+  readonly countId: string;
+  readonly lineId: string;
+  readonly deltaQtyBase: number;
+  readonly valueXaf: number;
+}
+
+/**
+ * Coût unitaire d'un ajustement d'inventaire : coût par tête d'un lot d'animaux (ADR-027), sinon CMUP courant arrondi
+ * au franc. `biological` : le coût vient du lot, il ne se déclare pas (P7-03).
+ */
+async function adjustmentUnitCost(
+  uow: Transaction<DB>,
+  productId: string,
+  lotId: string | null,
+): Promise<{ readonly unitCostXaf: number; readonly biological: boolean }> {
+  if (lotId !== null) {
+    const perHead = await biologicalLotUnitCostXaf(uow, lotId);
+    if (perHead !== null) return { unitCostXaf: perHead, biological: true };
+  }
+  const cmup = await currentCmup(uow, productId);
+  return { unitCostXaf: roundCmupToXaf(cmup.avgUnitCostXaf), biological: false };
+}
+
+/**
+ * BR-STK-044, INV-STK-09 : rétablit le solde d'une ligne comptée à son instant de comptage. Lit le solde de la portée
+ * de la ligne (un lot, le sans-lot ou tous les lots) à `counted_at`, mouvements tardifs compris, et enregistre
+ * l'ajustement compensatoire (`INVENTORY_GAIN` / `INVENTORY_LOSS`, motif `RAPPROCHEMENT_INVENTAIRE`, daté du comptage,
+ * rattaché à la ligne) qui le ramène au compté. Cumule l'écart dans la ligne (`reconciled_adjustment_qty_base`) et dans
+ * l'inventaire (`net_variance_after_reconciliation_xaf`), et publie l'inventaire aux appareils. `null` : rien à faire.
+ *
+ * Le lot de l'ajustement est celui du mouvement tardif (le solde de ce lot revient à ce qu'il était) ; à la
+ * comptabilisation, une ligne sur tous les lots répartit l'écart résiduel en FIFO inverse (BR-STK-045).
+ *
+ * Pas d'entrée d'audit ici : l'écriture d'audit prend la tête de chaîne et ne peut pas se faire au milieu d'un
+ * gestionnaire (ordre de verrouillage, ADR-038). La trace est le registre, immuable : acteur système, ligne et inventaire
+ * d'origine, motif.
+ */
+export async function reconcileCountLine(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  line: PostedCountLine,
+  trigger: ReconcileTrigger,
+): Promise<LateReconciliation | null> {
+  const buckets = await ledgerBucketsAt(uow, {
+    locationId: line.locationId,
+    productId: line.productId,
+    at: line.countedAt,
+    lock: true,
+  });
+  const scope = scopeOfLine(line);
+  const delta = reconciliationDelta(line.countedQtyBase, bucketBalance(buckets, scope, line.lotId));
+  if (delta === 0) return null;
+
+  const parts =
+    scope === 'ALL_LOTS' && trigger.kind === 'POSTING'
+      ? distributeLotLessVariance(delta, await lotBalancesOf(uow, buckets))
+      : [
+          {
+            lotId:
+              scope === 'LOT'
+                ? line.lotId
+                : scope === 'NO_LOT' || trigger.kind === 'POSTING'
+                  ? null
+                  : trigger.lotId,
+            quantity: Math.abs(delta),
+            direction: delta > 0 ? ('GAIN' as const) : ('LOSS' as const),
+          },
+        ];
+  const adjustment = await adjustmentLocationId(uow);
+  const reason = await findReasonCodeByCode(
+    uow,
+    'INVENTORY_ADJUSTMENT',
+    'RAPPROCHEMENT_INVENTAIRE',
+  );
+  const createdBy = (await systemUserId(uow)) ?? trigger.createdBy;
+
+  let signedValueXaf = 0;
+  for (const part of parts) {
+    const isGain = part.direction === 'GAIN';
+    const { unitCostXaf, biological } = await adjustmentUnitCost(uow, line.productId, part.lotId);
+    const moves = await recordStockMove(uow, deps, {
+      productId: line.productId,
+      // Toujours explicite : un `null` est « sans lot », jamais une sortie résolue par le FIFO.
+      lotId: part.lotId,
+      quantityBase: part.quantity,
+      fromLocationId: isGain ? adjustment : line.locationId,
+      toLocationId: isGain ? line.locationId : adjustment,
+      moveType: isGain ? 'INVENTORY_GAIN' : 'INVENTORY_LOSS',
+      ...(reason !== undefined ? { reasonCodeId: reason.id } : {}),
+      ...(isGain && !biological ? { declaredUnitCostXaf: unitCostXaf } : {}),
+      occurredAt: line.countedAt,
+      sourceDocType: 'INVENTORY_COUNT',
+      sourceDocId: line.countId,
+      sourceLineId: line.lineId,
+      createdBy,
+      capturedOffline: false,
+      allowNegative: true,
+      skipLateReconciliation: true,
+    });
+    for (const move of moves) signedValueXaf += (isGain ? 1 : -1) * move.valueXaf;
+  }
+
+  await uow
+    .updateTable('inventory_inventory_count_lines')
+    .set({
+      reconciled_adjustment_qty_base: sql`ROUND(reconciled_adjustment_qty_base + ${delta}, 3)`,
+    })
+    .where('id', '=', toBin(line.lineId))
+    .execute();
+  await uow
+    .updateTable('inventory_inventory_counts')
+    .set({
+      net_variance_after_reconciliation_xaf: sql`COALESCE(net_variance_after_reconciliation_xaf, variance_value_xaf, 0) + ${signedValueXaf}`,
+      version: sql`version + 1`,
+    })
+    .where('id', '=', toBin(line.countId))
+    .execute();
+  await recordChanges(uow, [inventoryCountChange(line.countId, line.locationId)]);
+  return {
+    countId: line.countId,
+    lineId: line.lineId,
+    deltaQtyBase: delta,
+    valueXaf: signedValueXaf,
+  };
+}
+
+/**
+ * Rapproche d'un mouvement qui vient d'être enregistré les inventaires déjà comptabilisés dont le comptage est
+ * postérieur à son `occurred_at` (BR-STK-044) : un fait saisi hors ligne puis synchronisé après le comptage. Seule la
+ * ligne comptée la plus ancienne qui couvre le lot du mouvement compense : son ajustement, daté de son comptage, rétablit
+ * aussi les soldes de tous les comptages postérieurs. Sans ligne postérieure (tout mouvement du jour), une seule lecture
+ * d'index, vide, par extrémité physique.
+ */
+async function reconcileLateMoves(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  input: RecordMoveInput,
+  results: readonly RecordedMove[],
+): Promise<void> {
+  if (input.skipLateReconciliation === true || results.length === 0) return;
+  const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
+  const locationIds: string[] = [];
+  if (isPhysicalSide(endpoints.from)) locationIds.push(input.fromLocationId);
+  if (isPhysicalSide(endpoints.to)) locationIds.push(input.toLocationId);
+  if (locationIds.length === 0) return;
+  const lotIds = [...new Set(results.map((move) => move.lotId))];
+  for (const locationId of locationIds) {
+    const candidates = await findPostedLinesNotBefore(uow, {
+      locationId,
+      productId: input.productId,
+      notBefore: input.occurredAt,
+    });
+    if (candidates.length === 0) continue;
+    for (const lotId of lotIds) {
+      const line = candidates.find((candidate) => lineCoversLot(candidate, lotId));
+      if (line === undefined) continue;
+      await reconcileCountLine(uow, deps, line, {
+        kind: 'MOVE',
+        lotId,
+        createdBy: input.createdBy,
+      });
+    }
+  }
 }
 
 /**

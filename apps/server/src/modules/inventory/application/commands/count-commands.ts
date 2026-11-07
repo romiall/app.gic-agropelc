@@ -36,12 +36,15 @@
 import { z } from 'zod';
 import { positiveQuantitySchema, receivedQuantitySchema } from '@gic/contracts';
 import { sql, type Transaction } from 'kysely';
-import type { IdGenerator } from '@gic/domain';
+import type { CountLotBalance, IdGenerator } from '@gic/domain';
 import {
   DomainError,
   businessDayOf,
+  distributeLotLessVariance,
   lineAmountXaf,
   quantityFromDecimal,
+  reconciliationDelta,
+  resolveCountLineScope,
   roundCmupToXaf,
   xaf,
 } from '@gic/domain';
@@ -69,9 +72,17 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import {
   biologicalLotUnitCostXaf,
   lockPhysicalStockCouples,
+  reconcileCountLine,
   recordStockMove,
   type RecordMoveDeps,
 } from '../public/record-move.js';
+import {
+  bucketBalance,
+  bucketsHaveLots,
+  ledgerBucketsAt,
+  lotBalancesOf,
+  type PostedCountLine,
+} from '../count-ledger.js';
 import { inventoryCountChange } from '../sync-changes.js';
 import { closeStockNegativeConflicts } from '../stock-negative-conflicts.js';
 import {
@@ -151,36 +162,56 @@ function badStatus(expected: string): CommandHandlerOutcome {
   };
 }
 
-/** Solde théorique d'un (produit, lot) à `at`, en rejouant `inventory_stock_moves` sur
- * l'emplacement (BR-STK-042) : entrées reçues moins sorties, `occurred_at <= at`. */
-async function computeTheoreticalQtyBase(
+/**
+ * Solde théorique d'une ligne à `counted_at` (BR-STK-042), lu dans le registre sans verrou de ligne mais en lecture
+ * verrouillante des mouvements (un fait validé par une transaction concurrente pendant l'attente des soldes est vu), et
+ * portée de la ligne (BR-STK-045) : un lot désigné, le seul solde sans lot, ou tous les lots du produit quand le
+ * compteur a donné un total sans détail (aucune autre ligne du même inventaire ne compte un lot de ce produit).
+ */
+async function theoreticalOfLine(
   uow: Transaction<DB>,
   params: {
     readonly locationId: string;
-    readonly productId: string;
-    readonly lotId: string | null;
-    readonly at: Date;
+    readonly line: {
+      readonly id: Buffer;
+      readonly product_id: Buffer;
+      readonly lot_id: Buffer | null;
+      readonly counted_at: Date;
+    };
+    readonly siblings: readonly {
+      readonly id: Buffer;
+      readonly product_id: Buffer;
+      readonly lot_id: Buffer | null;
+    }[];
   },
-): Promise<number> {
-  const inflow = await uow
-    .selectFrom('inventory_stock_moves')
-    .select(({ fn }) => fn.sum('quantity').as('total'))
-    .where('to_location_id', '=', toBin(params.locationId))
-    .where('product_id', '=', toBin(params.productId))
-    .$if(params.lotId !== null, (qb) => qb.where('lot_id', '=', toBin(params.lotId as string)))
-    .$if(params.lotId === null, (qb) => qb.where('lot_id', 'is', null))
-    .where('occurred_at', '<=', params.at)
-    .executeTakeFirst();
-  const outflow = await uow
-    .selectFrom('inventory_stock_moves')
-    .select(({ fn }) => fn.sum('quantity').as('total'))
-    .where('from_location_id', '=', toBin(params.locationId))
-    .where('product_id', '=', toBin(params.productId))
-    .$if(params.lotId !== null, (qb) => qb.where('lot_id', '=', toBin(params.lotId as string)))
-    .$if(params.lotId === null, (qb) => qb.where('lot_id', 'is', null))
-    .where('occurred_at', '<=', params.at)
-    .executeTakeFirst();
-  return Number(inflow?.total ?? 0) - Number(outflow?.total ?? 0);
+): Promise<{
+  readonly theoretical: number;
+  readonly allLots: boolean;
+  readonly lotBalances: readonly CountLotBalance[];
+}> {
+  const lotId = fromBinOrNull(params.line.lot_id);
+  const buckets = await ledgerBucketsAt(uow, {
+    locationId: params.locationId,
+    productId: fromBin(params.line.product_id),
+    at: params.line.counted_at,
+    lock: true,
+  });
+  const scope = resolveCountLineScope({
+    lotId,
+    hasSiblingLotLine: params.siblings.some(
+      (other) =>
+        !other.id.equals(params.line.id) &&
+        other.lot_id !== null &&
+        other.product_id.equals(params.line.product_id),
+    ),
+    productHasLots: bucketsHaveLots(buckets),
+  });
+  const allLots = scope === 'ALL_LOTS';
+  return {
+    theoretical: bucketBalance(buckets, scope, lotId),
+    allLots,
+    lotBalances: allLots ? await lotBalancesOf(uow, buckets) : [],
+  };
 }
 
 async function currentUnitCostXaf(
@@ -220,35 +251,54 @@ async function applyLineAdjustment(
     readonly decidedBy: string;
     /** Instant de la comptabilisation (soumission ou décision) : date de clôture des conflits. */
     readonly postedAt: Date;
+    /**
+     * Lots du produit et leurs soldes à `counted_at`, pour une ligne qui porte sur tous les lots (BR-STK-045) : l'écart
+     * se répartit alors en FIFO inverse, un mouvement par lot. Absent : un seul mouvement, sur le lot de la ligne.
+     */
+    readonly lotBalances?: readonly CountLotBalance[];
   },
 ): Promise<void> {
   if (params.variance === 0) return;
-  const lotId = fromBinOrNull(params.line.lot_id);
   const adjustmentLocationId = await virtualLocationId(uow, 'V_ADJUSTMENT');
-  const isGain = params.variance > 0;
-  await recordStockMove(uow, deps, {
-    productId: fromBin(params.line.product_id),
-    ...(lotId !== null ? { lotId } : {}),
-    quantityBase: Math.abs(params.variance),
-    fromLocationId: isGain ? adjustmentLocationId : params.locationId,
-    toLocationId: isGain ? params.locationId : adjustmentLocationId,
-    moveType: isGain ? 'INVENTORY_GAIN' : 'INVENTORY_LOSS',
-    occurredAt: params.line.counted_at,
-    sourceDocType: 'INVENTORY_COUNT',
-    sourceDocId: params.countId,
-    sourceLineId: fromBin(params.line.id),
-    // INVENTORY_GAIN est une entrée valorisée (record-move.ts, VALUATION_ENTRY_MOVE_TYPES) :
-    // coût figé à la soumission. INVENTORY_LOSS n'en est pas une : le CMUP courant (au moment
-    // où le mouvement est réellement appliqué, immédiat ou différé à la décision) s'applique
-    // — écart de conception déjà présent dans record-move.ts, pas introduit ici.
-    // Lot d'animaux : jamais de coût déclaré, le coût par tête s'applique (P7-03, ADR-027).
-    ...(isGain && (lotId === null || (await biologicalLotUnitCostXaf(uow, lotId)) === null)
-      ? { declaredUnitCostXaf: params.unitCostXaf }
-      : {}),
-    createdBy: params.decidedBy,
-    capturedOffline: false,
-    allowNegative: true,
-  });
+  const parts =
+    params.lotBalances !== undefined
+      ? distributeLotLessVariance(params.variance, params.lotBalances)
+      : [
+          {
+            lotId: fromBinOrNull(params.line.lot_id),
+            quantity: Math.abs(params.variance),
+            direction: params.variance > 0 ? ('GAIN' as const) : ('LOSS' as const),
+          },
+        ];
+  for (const part of parts) {
+    const isGain = part.direction === 'GAIN';
+    await recordStockMove(uow, deps, {
+      productId: fromBin(params.line.product_id),
+      // Toujours explicite (BR-STK-045) : `null` est « sans lot », jamais résolu par le FIFO du serveur ; sinon la perte
+      // d'une ligne sans lot irait aux lots, et le solde sans lot compté resterait faux (INV-STK-09).
+      lotId: part.lotId,
+      quantityBase: part.quantity,
+      fromLocationId: isGain ? adjustmentLocationId : params.locationId,
+      toLocationId: isGain ? params.locationId : adjustmentLocationId,
+      moveType: isGain ? 'INVENTORY_GAIN' : 'INVENTORY_LOSS',
+      occurredAt: params.line.counted_at,
+      sourceDocType: 'INVENTORY_COUNT',
+      sourceDocId: params.countId,
+      sourceLineId: fromBin(params.line.id),
+      // INVENTORY_GAIN est une entrée valorisée (record-move.ts, VALUATION_ENTRY_MOVE_TYPES) :
+      // coût figé à la soumission. INVENTORY_LOSS n'en est pas une : le CMUP courant (au moment
+      // où le mouvement est réellement appliqué, immédiat ou différé à la décision) s'applique
+      // — écart de conception déjà présent dans record-move.ts, pas introduit ici.
+      // Lot d'animaux : jamais de coût déclaré, le coût par tête s'applique (P7-03, ADR-027).
+      ...(isGain &&
+      (part.lotId === null || (await biologicalLotUnitCostXaf(uow, part.lotId)) === null)
+        ? { declaredUnitCostXaf: params.unitCostXaf }
+        : {}),
+      createdBy: params.decidedBy,
+      capturedOffline: false,
+      allowNegative: true,
+    });
+  }
   // AT-049 : l'inventaire régularise un solde négatif né d'un fait hors ligne (INV-STK-05).
   await closeStockNegativeConflicts(uow, {
     locationId: params.locationId,
@@ -257,6 +307,45 @@ async function applyLineAdjustment(
     resolvedAt: params.postedAt,
     countId: params.countId,
   });
+}
+
+/**
+ * BR-STK-044, INV-STK-09 : une fois l'inventaire comptabilisé, le solde de chaque ligne à son instant de comptage est la
+ * quantité comptée. Entre la soumission et la décision d'un inventaire à valider, ou sous une écriture concurrente
+ * validée pendant l'attente des soldes, un mouvement daté d'avant le comptage a pu s'enregistrer : le même ajustement
+ * compensatoire que pour un mouvement tardif (motif `RAPPROCHEMENT_INVENTAIRE`) rétablit le solde, ligne par ligne.
+ * Sans dérive (le cas courant), aucune écriture.
+ */
+async function reconcilePostedCount(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  params: {
+    readonly countId: string;
+    readonly locationId: string;
+    readonly siteId: string;
+    readonly decidedBy: string;
+  },
+): Promise<void> {
+  const lines = await uow
+    .selectFrom('inventory_inventory_count_lines')
+    .selectAll()
+    .where('count_id', '=', toBin(params.countId))
+    .orderBy('id', 'asc')
+    .execute();
+  for (const line of lines) {
+    const posted: PostedCountLine = {
+      lineId: fromBin(line.id),
+      countId: params.countId,
+      locationId: params.locationId,
+      siteId: params.siteId,
+      productId: fromBin(line.product_id),
+      lotId: fromBinOrNull(line.lot_id),
+      allLots: Boolean(line.all_lots),
+      countedAt: line.counted_at,
+      countedQtyBase: Number(line.counted_qty_base),
+    };
+    await reconcileCountLine(uow, deps, posted, { kind: 'POSTING', createdBy: params.decidedBy });
+  }
 }
 
 function buildCountCommands(
@@ -384,6 +473,8 @@ function buildCountCommands(
       readonly theoretical: number;
       readonly variance: number;
       readonly unitCostXaf: number;
+      /** Lots à répartir (BR-STK-045), seulement pour une ligne qui porte sur tous les lots. */
+      readonly lotBalances: readonly CountLotBalance[] | undefined;
     }> = [];
 
     // ADR-038 N5 : soldes de tous les produits comptés, triés, avant le premier mouvement.
@@ -392,17 +483,21 @@ function buildCountCommands(
       lines.map((line) => ({ locationId, productId: fromBin(line.product_id) })),
     );
     for (const line of lines) {
-      const lotId = fromBinOrNull(line.lot_id);
-      const theoretical = await computeTheoreticalQtyBase(uow, {
+      const { theoretical, allLots, lotBalances } = await theoreticalOfLine(uow, {
         locationId,
-        productId: fromBin(line.product_id),
-        lotId,
-        at: line.counted_at,
+        line,
+        siblings: lines,
       });
-      const variance = Number(line.counted_qty_base) - theoretical;
+      const variance = reconciliationDelta(Number(line.counted_qty_base), theoretical);
       const unitCostXaf = await currentUnitCostXaf(uow, line.product_id, line.lot_id);
       varianceValueXaf += variance * unitCostXaf;
-      computed.push({ line, theoretical, variance, unitCostXaf });
+      computed.push({
+        line,
+        theoretical,
+        variance,
+        unitCostXaf,
+        lotBalances: allLots ? lotBalances : undefined,
+      });
 
       await uow
         .updateTable('inventory_inventory_count_lines')
@@ -410,6 +505,7 @@ function buildCountCommands(
           theoretical_qty_base: String(theoretical),
           variance_qty_base: String(variance),
           unit_cost_xaf: unitCostXaf,
+          all_lots: allLots ? 1 : 0,
         })
         .where('id', '=', line.id)
         .execute();
@@ -443,6 +539,7 @@ function buildCountCommands(
           unitCostXaf: entry.unitCostXaf,
           decidedBy: envelope.author_user_id,
           postedAt: occurredAt,
+          ...(entry.lotBalances !== undefined ? { lotBalances: entry.lotBalances } : {}),
         });
       }
       await uow
@@ -459,6 +556,12 @@ function buildCountCommands(
         })
         .where('id', '=', row.id)
         .execute();
+      await reconcilePostedCount(uow, deps, {
+        countId: envelope.payload.countId,
+        locationId,
+        siteId: fromBin(row.site_id),
+        decidedBy: envelope.author_user_id,
+      });
       await recordCountChange(uow, row);
       await publishInventoryAdjustedEvent(uow, deps, {
         countId: envelope.payload.countId,
@@ -877,6 +980,19 @@ function registerInventoryAdjustmentDecisionHandler(
         }
         for (const line of lines) {
           const variance = line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0;
+          // BR-STK-045 : l'écart figé d'une ligne sur tous les lots se répartit sur les soldes par lot d'aujourd'hui à
+          // `counted_at` (un fait tardif a pu s'enregistrer entre la soumission et la décision).
+          const lotBalances = Boolean(line.all_lots)
+            ? await lotBalancesOf(
+                uow,
+                await ledgerBucketsAt(uow, {
+                  locationId,
+                  productId: fromBin(line.product_id),
+                  at: line.counted_at,
+                  lock: true,
+                }),
+              )
+            : undefined;
           await applyLineAdjustment(uow, deps, {
             countId: ctx.subjectId,
             locationId,
@@ -885,6 +1001,7 @@ function registerInventoryAdjustmentDecisionHandler(
             unitCostXaf: line.unit_cost_xaf !== null ? Number(line.unit_cost_xaf) : 0,
             decidedBy: ctx.decidedBy,
             postedAt: ctx.decidedAt,
+            ...(lotBalances !== undefined ? { lotBalances } : {}),
           });
         }
         await uow
@@ -897,6 +1014,13 @@ function registerInventoryAdjustmentDecisionHandler(
           })
           .where('id', '=', row.id)
           .execute();
+        // BR-STK-044 : ce qui s'est enregistré entre la soumission et la décision, daté d'avant le comptage.
+        await reconcilePostedCount(uow, deps, {
+          countId: ctx.subjectId,
+          locationId,
+          siteId: fromBin(row.site_id),
+          decidedBy: ctx.decidedBy,
+        });
         await recordCountChange(uow, row);
         // P9-08 : ferme l'alerte `INVENTORY_VARIANCE` du même inventaire (AV-406).
         await publishInventoryAdjustedEvent(uow, deps, {

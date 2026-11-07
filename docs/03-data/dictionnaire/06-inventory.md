@@ -314,7 +314,7 @@
 | `submitted_at` | ts | Oui | — | |
 | `variance_value_xaf` | bigint | Oui | — | Somme signée des écarts valorisés |
 | `abs_variance_value_xaf` | money_xaf | Oui | — | Base du seuil |
-| `net_variance_after_reconciliation_xaf` | bigint | Oui | — | Après rapprochements tardifs (BR-STK-044) |
+| `net_variance_after_reconciliation_xaf` | bigint | Oui | — | Écart constaté plus valeur des rapprochements tardifs (BR-STK-044) ; nul tant qu'aucun rapprochement n'a eu lieu. Mesure financière (RC-05) |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
 | `posted_at` | ts | Oui | — | |
 | [STD-ORIGIN] | | | | |
@@ -337,14 +337,15 @@
 | `counted_qty_base` | qty | Non | — | ≥ 0 |
 | `theoretical_qty_base` | qty | Oui | — | Calculé par le serveur à la soumission |
 | `variance_qty_base` | qty | Oui | — | Compté − théorique |
-| `reconciled_adjustment_qty_base` | qty | Non | 0 | Cumul des rapprochements tardifs |
+| `reconciled_adjustment_qty_base` | qty | Non | 0 | Cumul signé des rapprochements tardifs (BR-STK-044) : positif = gain |
+| `all_lots` | bool | Non | 0 | 1 : ligne sans lot qui porte sur tous les lots du produit dans l'emplacement ; le théorique est le total des soldes et l'écart se répartit en FIFO inverse (BR-STK-045, ADR-059). 0 : un lot désigné, ou le seul solde sans lot |
 | `unit_cost_xaf` | money_xaf | Oui | — | |
 | `variance_reason_code_id` | uuid → catalog.reason_codes | Oui | — | Requis si écart ≠ 0 à la comptabilisation |
 | `declared_unit_cost_xaf` | money_xaf | Oui | — | Pour `OPENING` |
 | `comment` | text | Oui | — | |
 | `command_id` | uuid | Oui | — | |
 
-- **PK** `id`. **UQ** `(count_id, product_id, lot_id)`. **Suppr.** Suit l'inventaire. **Intégrité** INV-STK-09.
+- **PK** `id`. **UQ** `(count_id, product_id, lot_id)`. **IX** `(product_id, counted_at)` (recherche, à chaque mouvement enregistré, des lignes comptées après lui). **Suppr.** Suit l'inventaire. **Intégrité** INV-STK-09.
 
 ## inventory.stock_thresholds
 

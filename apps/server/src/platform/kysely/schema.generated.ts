@@ -1465,6 +1465,7 @@ export interface InventoryCostEntries {
 }
 
 export interface InventoryInventoryCountLines {
+  all_lots: Generated<number>;
   command_id: Buffer | null;
   comment: string | null;
   count_id: Buffer;

@@ -27,8 +27,10 @@ import {
   estimatedVariance,
   MAX_COUNT_COMMENT,
   parseCounted,
+  reconciledLinesOf,
   recordLinesPayload,
   REQUIRE_VARIANCE_REASON,
+  SYSTEM_COUNT_REASON_CODES,
   type CountInput,
   type CountType,
 } from './count.js';
@@ -90,7 +92,11 @@ export function CountScreen() {
   const history = counts.filter(
     (candidate) => candidate.locationId === location.id && candidate !== count,
   );
-  const reasons = refs.reasonCodes.filter((reason) => reason.category === 'INVENTORY_ADJUSTMENT');
+  const reasons = refs.reasonCodes.filter(
+    (reason) =>
+      reason.category === 'INVENTORY_ADJUSTMENT' &&
+      !SYSTEM_COUNT_REASON_CODES.includes(reason.code),
+  );
 
   const resetEntries = () => {
     setTexts({});
@@ -187,6 +193,11 @@ export function CountScreen() {
                   {t(`count.type.${candidate.countType}`, { defaultValue: candidate.countType })} ·{' '}
                   {t('count.lines_count', { count: candidate.lines.size })}
                 </small>
+                {reconciledLinesOf(candidate).length > 0 ? (
+                  <small>
+                    {t('count.reconciled', { count: reconciledLinesOf(candidate).length })}
+                  </small>
+                ) : null}
               </span>
               <span>
                 {candidate.submitting

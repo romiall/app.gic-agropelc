@@ -26,6 +26,12 @@ export const MAX_COUNT_COMMENT = 2000;
 export const COUNT_TYPES = ['FULL', 'PARTIAL', 'SPOT'] as const;
 export type CountType = (typeof COUNT_TYPES)[number];
 
+/**
+ * Motifs `INVENTORY_ADJUSTMENT` posés par le serveur, jamais proposés au compteur : le rapprochement tardif d'un
+ * inventaire (BR-STK-044) est un ajustement du système, pas une explication d'écart.
+ */
+export const SYSTEM_COUNT_REASON_CODES: readonly string[] = ['RAPPROCHEMENT_INVENTAIRE'];
+
 export const lineKey = (productId: string, lotId: string | null): string =>
   `${productId}:${lotId ?? ''}`;
 
@@ -38,6 +44,8 @@ export interface CountLineView {
   /** Saisie de l'appareil pas encore retéléchargée. */
   readonly pending: boolean;
   readonly varianceQtyBase: number | null;
+  /** Cumul des rapprochements tardifs de la ligne (BR-STK-044), signé ; 0 hors rapprochement. */
+  readonly reconciledQtyBase: number;
 }
 
 export interface CountView {
@@ -98,6 +106,7 @@ export function deviceCounts(
             pending: false,
             varianceQtyBase:
               line.variance_qty_base === null ? null : Number(line.variance_qty_base),
+            reconciledQtyBase: Number(line.reconciled_adjustment_qty_base ?? 0),
           },
         ]),
       ),
@@ -148,6 +157,7 @@ export function deviceCounts(
           comment: line.comment ?? null,
           pending: true,
           varianceQtyBase: null,
+          reconciledQtyBase: 0,
         });
       }
       counts.set(count.id, {
@@ -162,6 +172,26 @@ export function deviceCounts(
     }
   }
   return [...counts.values()].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+}
+
+/**
+ * Les lignes d'un inventaire que des faits arrivés après la comptabilisation ont rapprochées (BR-STK-044), avec le
+ * cumul signé de chacune. Vide pour un inventaire sans rapprochement.
+ */
+export function reconciledLinesOf(
+  count: Pick<CountView, 'lines'>,
+): readonly {
+  readonly productId: string;
+  readonly lotId: string | null;
+  readonly quantity: number;
+}[] {
+  return [...count.lines.values()]
+    .filter((line) => line.reconciledQtyBase !== 0)
+    .map((line) => ({
+      productId: line.productId,
+      lotId: line.lotId,
+      quantity: line.reconciledQtyBase,
+    }));
 }
 
 /** Inventaire en cours de saisie sur l'emplacement (ni soumis, ni abandonné), s'il y en a un. */

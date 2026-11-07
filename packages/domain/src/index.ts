@@ -111,6 +111,17 @@ export {
 } from './stock-engine.js';
 
 export type {
+  CountAdjustmentPart,
+  CountLineScope,
+  CountLotBalance,
+} from './inventory-count-reconciliation.js';
+export {
+  distributeLotLessVariance,
+  reconciliationDelta,
+  resolveCountLineScope,
+} from './inventory-count-reconciliation.js';
+
+export type {
   GeoPoint,
   CheckinResult,
   CheckinEvaluation,
