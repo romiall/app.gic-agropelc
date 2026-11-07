@@ -190,6 +190,59 @@ describe('identity_device_status_periods (P5-23, AV-212)', () => {
   });
 });
 
+describe('identity_user_status_periods (AV-229)', () => {
+  /** Utilisateur, puis une période close insérée comme le ferait `reactivate`. */
+  async function userPeriod(conn: PoolConnection) {
+    const admin = await insertBootstrapUser(conn);
+    const insert = (values: { status?: string; from?: string; to?: string; user?: Buffer }) =>
+      conn.query(
+        `INSERT INTO identity_user_status_periods (command_id, user_id, status, valid_from, valid_to, reason, closed_by)
+         VALUES (?, ?, ?, ?, ?, 'Test', ?)`,
+        [
+          randomId(),
+          values.user ?? admin,
+          values.status ?? 'SUSPENDED',
+          values.from ?? '2026-09-24 09:00:00.000000',
+          values.to ?? '2026-09-24 10:00:00.000000',
+          admin,
+        ],
+      );
+    return { user: admin, insert };
+  }
+
+  it('accepte une période close SUSPENDED ou DEACTIVATED ; refuse un autre statut, une période vide ou un utilisateur inconnu', async () => {
+    await withRollback(async (conn) => {
+      const { insert } = await userPeriod(conn);
+      await insert({});
+      await insert({ status: 'DEACTIVATED' });
+      await expect(insert({ status: 'ACTIVE' })).rejects.toThrow(
+        /ck_identity_user_status_periods_status/,
+      );
+      await expect(insert({ to: '2026-09-24 09:00:00.000000' })).rejects.toThrow(
+        /ck_identity_user_status_periods_bounds/,
+      );
+      await expect(insert({ user: randomId() })).rejects.toThrow(
+        /fk_identity_user_status_periods_user/,
+      );
+    });
+  });
+
+  it('ajout seul : modification et suppression refusées (BR-ADM-002, INV-GLO-03)', async () => {
+    await withRollback(async (conn) => {
+      const { user, insert } = await userPeriod(conn);
+      await insert({});
+      await expect(
+        conn.query("UPDATE identity_user_status_periods SET reason = 'Autre' WHERE user_id = ?", [
+          user,
+        ]),
+      ).rejects.toThrow(/aucune modification/);
+      await expect(
+        conn.query('DELETE FROM identity_user_status_periods WHERE user_id = ?', [user]),
+      ).rejects.toThrow(/suppression physique interdite/);
+    });
+  });
+});
+
 describe('identity_role_permissions', () => {
   it('autorise la suppression (retrait de droit, liaison de configuration)', async () => {
     await withRollback(async (conn) => {

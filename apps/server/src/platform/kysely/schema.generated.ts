@@ -1391,6 +1391,17 @@ export interface IdentityUserRoleAssignments {
   version: Generated<number>;
 }
 
+export interface IdentityUserStatusPeriods {
+  closed_by: Buffer;
+  command_id: Buffer;
+  created_at: Generated<Date>;
+  reason: string | null;
+  status: string;
+  user_id: Buffer;
+  valid_from: Date;
+  valid_to: Date;
+}
+
 export interface IdentityUsers {
   active_phone: string | null;
   created_at: Generated<Date>;
@@ -2945,6 +2956,7 @@ export interface DB {
   identity_role_permissions: IdentityRolePermissions;
   identity_roles: IdentityRoles;
   identity_user_role_assignments: IdentityUserRoleAssignments;
+  identity_user_status_periods: IdentityUserStatusPeriods;
   identity_users: IdentityUsers;
   inventory_consumptions: InventoryConsumptions;
   inventory_cost_entries: InventoryCostEntries;

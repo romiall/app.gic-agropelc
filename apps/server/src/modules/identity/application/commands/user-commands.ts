@@ -6,6 +6,11 @@
  * dans l'état cible (rejeu sans effet, BR-SYN-007). `status_changed_at` = `occurred_at` :
  * exactement ce que compare `identity/application/public/user-check.ts` pour BR-ADM-002
  * (commandes hors ligne antérieures à la désactivation acceptées, postérieures en quarantaine).
+ *
+ * AV-229 : `reactivate` (depuis `SUSPENDED` ou `DEACTIVATED`) et `deactivate` (depuis `SUSPENDED`) réécrivent
+ * `status_changed_at` ; la période hors service qu'elles ferment est consignée d'abord (`identity_user_status_periods`,
+ * ajout seul), pour que le contrôle d'utilisateur du pipeline mette encore en quarantaine un fait daté pendant cette
+ * période. Chaque transition lit le compte `FOR UPDATE` (ADR-038 : deux transitions simultanées se suivent).
  */
 import { z } from 'zod';
 import { sql, type Kysely } from 'kysely';
@@ -20,6 +25,7 @@ import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { hasOtherActiveAdmin } from './admin-guard.js';
 import { revokeUserSessions } from './revoke-sessions.js';
+import { closeUserOutOfServicePeriod, isUserOutOfServiceStatus } from './user-status-periods.js';
 import { hashPassword } from '../auth/password.js';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@gic/domain';
 
@@ -155,6 +161,7 @@ const suspend: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => 
     .selectFrom('identity_users')
     .select('status')
     .where('id', '=', userId)
+    .forUpdate()
     .executeTakeFirst();
   if (!user) return notFound();
   if (user.status === 'SUSPENDED') return { status: 'APPLIED' };
@@ -183,8 +190,9 @@ const reactivate: CommandHandler<EmptyPayload> = async (uow, envelope) => {
   const userId = toBin(envelope.aggregate_id);
   const user = await uow
     .selectFrom('identity_users')
-    .select(['status', 'phone', 'email'])
+    .select(['status', 'phone', 'email', 'status_changed_at', 'status_reason'])
     .where('id', '=', userId)
+    .forUpdate()
     .executeTakeFirst();
   if (!user) return notFound();
   if (user.status === 'ACTIVE') return { status: 'APPLIED' };
@@ -206,11 +214,24 @@ const reactivate: CommandHandler<EmptyPayload> = async (uow, envelope) => {
     return emailAlreadyUsed();
   }
 
+  const occurredAt = new Date(envelope.occurred_at);
+  // AV-229 : la période hors service que la réactivation ferme, avant de réécrire la ligne vivante.
+  if (isUserOutOfServiceStatus(user.status)) {
+    await closeUserOutOfServicePeriod(uow, {
+      commandId: envelope.command_id,
+      userId: envelope.aggregate_id,
+      status: user.status,
+      validFrom: user.status_changed_at,
+      closedAt: occurredAt,
+      reason: user.status_reason,
+      closedBy: envelope.author_user_id,
+    });
+  }
   await uow
     .updateTable('identity_users')
     .set({
       status: 'ACTIVE',
-      status_changed_at: new Date(envelope.occurred_at),
+      status_changed_at: occurredAt,
       status_reason: null,
       updated_by: toBin(envelope.author_user_id),
       version: sql`version + 1`,
@@ -224,8 +245,9 @@ const deactivate: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) 
   const userId = toBin(envelope.aggregate_id);
   const user = await uow
     .selectFrom('identity_users')
-    .select('status')
+    .select(['status', 'status_changed_at', 'status_reason'])
     .where('id', '=', userId)
+    .forUpdate()
     .executeTakeFirst();
   if (!user) return notFound();
   if (user.status === 'DEACTIVATED') return { status: 'APPLIED' };
@@ -236,6 +258,18 @@ const deactivate: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) 
   const occurredAt = new Date(envelope.occurred_at);
   if (!(await hasOtherActiveAdmin(uow, envelope.aggregate_id, occurredAt))) return lastAdmin();
 
+  // AV-229 : la suspension que la désactivation ferme (les faits datés entre les deux restent en quarantaine).
+  if (user.status === 'SUSPENDED') {
+    await closeUserOutOfServicePeriod(uow, {
+      commandId: envelope.command_id,
+      userId: envelope.aggregate_id,
+      status: 'SUSPENDED',
+      validFrom: user.status_changed_at,
+      closedAt: occurredAt,
+      reason: user.status_reason,
+      closedBy: envelope.author_user_id,
+    });
+  }
   await uow
     .updateTable('identity_users')
     .set({
