@@ -14,6 +14,7 @@
 import { sql, type Kysely, type RawBuilder, type Transaction } from 'kysely';
 import { businessDayEndUtc, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
+import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { scopeSql, type ReadScope } from '../../../../platform/read-scope.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
@@ -36,6 +37,7 @@ export function saleActivityArms(
 ): RawBuilder<unknown> {
   return sql`
       SELECT s.id AS sale_id, s.site_id, s.from_location_id AS location_id, l.product_id,
+             s.channel_code, COALESCE(s.commercial_user_id, s.seller_user_id) AS seller_id,
              s.business_date AS day,
              l.quantity_base AS sold_qty, 0 AS cancelled_qty,
              l.line_total_xaf AS sold_xaf, 0 AS cancelled_xaf
@@ -44,6 +46,7 @@ export function saleActivityArms(
        WHERE s.occurred_at >= ${start} AND s.occurred_at < ${end} ${filters}
       UNION ALL
       SELECT s.id AS sale_id, s.site_id, s.from_location_id AS location_id, l.product_id,
+             s.channel_code, COALESCE(s.commercial_user_id, s.seller_user_id) AS seller_id,
              c.applied_business_date AS day,
              0 AS sold_qty, cl.quantity_base AS cancelled_qty,
              0 AS sold_xaf, cl.amount_xaf AS cancelled_xaf
@@ -135,6 +138,83 @@ export async function salesActivityByDay(
       flaggedCount: value.flagged,
     }));
 }
+
+export interface SalesBreakdownLine {
+  /** Canal de vente (`channel_code`) ou utilisateur attribué (commercial, à défaut le vendeur). */
+  readonly key: string;
+  /** Chiffre d'affaires de la période, vendu − annulé (même définition que `salesActivityByDay`). */
+  readonly netXaf: number;
+  /** Ventes de la période non annulées en totalité. */
+  readonly salesCount: number;
+}
+
+type Dimension = 'channel_code' | 'seller_id';
+
+async function salesBreakdown(
+  executor: Executor,
+  scope: ReadScope,
+  period: ActivityPeriod,
+  dimension: Dimension,
+): Promise<readonly SalesBreakdownLine[]> {
+  const start = businessDayStartUtc(period.fromDay);
+  const end = businessDayEndUtc(period.toDay);
+  const saleScope = scopeSql(scope, {
+    site: 's.site_id',
+    users: ['s.seller_user_id', 's.commercial_user_id'],
+  });
+  const column = sql.raw(dimension === 'channel_code' ? 'x.channel_code' : 'x.seller_id');
+  const amounts = await sql<{ readonly k: Buffer | string; readonly net_xaf: string }>`
+    SELECT ${column} AS k, COALESCE(SUM(x.sold_xaf - x.cancelled_xaf), 0) AS net_xaf
+      FROM (${saleActivityArms(start, end, sql`AND ${saleScope}`)}) x
+     GROUP BY ${column}
+  `.execute(executor);
+  const saleColumn = sql.raw(
+    dimension === 'channel_code'
+      ? 's.channel_code'
+      : 'COALESCE(s.commercial_user_id, s.seller_user_id)',
+  );
+  const counts = await sql<{ readonly k: Buffer | string; readonly sales: string }>`
+    SELECT ${saleColumn} AS k, COUNT(*) AS sales
+      FROM sales_sales s
+     WHERE s.status <> 'CANCELLED' AND s.occurred_at >= ${start} AND s.occurred_at < ${end}
+       AND ${saleScope}
+     GROUP BY ${saleColumn}
+  `.execute(executor);
+  const keyOf = (value: Buffer | string): string =>
+    typeof value === 'string' ? value : fromBin(value);
+  const lines = new Map<string, { net: number; count: number }>();
+  const entry = (key: string) => {
+    let value = lines.get(key);
+    if (!value) {
+      value = { net: 0, count: 0 };
+      lines.set(key, value);
+    }
+    return value;
+  };
+  for (const row of amounts.rows) entry(keyOf(row.k)).net = Number(row.net_xaf);
+  for (const row of counts.rows) entry(keyOf(row.k)).count = Number(row.sales);
+  return [...lines.entries()]
+    .map(([key, value]) => ({ key, netXaf: value.net, salesCount: value.count }))
+    .sort((a, b) => b.netXaf - a.netXaf || a.key.localeCompare(b.key));
+}
+
+/** Chiffre d'affaires par canal de vente sur la période, du plus élevé au plus faible (D11 §7.2, bloc VENTES). */
+export const salesByChannel = (
+  executor: Executor,
+  scope: ReadScope,
+  period: ActivityPeriod,
+): Promise<readonly SalesBreakdownLine[]> =>
+  salesBreakdown(executor, scope, period, 'channel_code');
+
+/**
+ * Chiffre d'affaires par commercial attribué (à défaut, le vendeur du point de vente) sur la période, classé du plus
+ * élevé au plus faible (D11 §7.2, bloc VENTES) ; `key` est l'identifiant de l'utilisateur.
+ */
+export const salesBySeller = (
+  executor: Executor,
+  scope: ReadScope,
+  period: ActivityPeriod,
+): Promise<readonly SalesBreakdownLine[]> => salesBreakdown(executor, scope, period, 'seller_id');
 
 export interface FlaggedSalesOfDay {
   /** Ventes du jour non annulées portant au moins un drapeau (= `flaggedCount` du jour). */

@@ -22,7 +22,7 @@ import { logStructured } from '../../platform/observability/logger.js';
 import type { ReadScope } from '../../platform/read-scope.js';
 import type { ScopeIssue } from './scope-adapter.js';
 import { alertSummary } from '../../modules/communication/application/public/index.js';
-import { listProducts } from '../../modules/catalog/application/public/index.js';
+import { findSalesChannel, listProducts } from '../../modules/catalog/application/public/index.js';
 import {
   conversionCohort,
   inactiveAfterDays,
@@ -56,10 +56,12 @@ import {
   receivablesSummary,
   repurchaseRate,
   salesActivityByDay,
+  salesByChannel,
+  salesBySeller,
   sumSalesActivity,
   targetAttainment,
 } from '../../modules/sales/application/public/index.js';
-import { hasPermissionAt } from '../../modules/identity/application/public/index.js';
+import { hasPermissionAt, userFullNames } from '../../modules/identity/application/public/index.js';
 import { toBin } from '../../platform/kysely/uuid-columns.js';
 import { supplierServiceRate } from '../../modules/procurement/application/public/index.js';
 import { countPendingApprovalsFor } from '../../modules/approvals/application/public/index.js';
@@ -269,52 +271,95 @@ async function cashedOf(context: DashboardContext, window: AnalyticsPeriodWindow
   return rows.reduce((total, row) => total + row.confirmedXaf - row.cancelledXaf, 0);
 }
 
+/** Lignes du détail du bloc VENTES : au plus cinq canaux et cinq commerciaux, les plus élevés d'abord (D11 §7.2). */
+const SALES_DETAIL_MAX = 5;
+
 export async function salesBlock(context: DashboardContext): Promise<DashboardBlock> {
-  const [current, previous, orders, previousOrders] = await Promise.all([
+  const [current, previous, orders, previousOrders, byChannel, bySeller] = await Promise.all([
     salesOf(context, context.period),
     salesOf(context, context.period.previous),
     ordersActivity(context.executor, scopeOf(context), utcWindow(context.period)),
     ordersActivity(context.executor, scopeOf(context), utcWindow(context.period.previous)),
+    salesByChannel(context.executor, scopeOf(context), dayWindow(context.period)),
+    salesBySeller(context.executor, scopeOf(context), dayWindow(context.period)),
   ]);
+  // Libellés : le nom du canal du référentiel (à défaut son code), le nom complet de l'utilisateur (à défaut « Inconnu »).
+  const topChannels = byChannel.slice(0, SALES_DETAIL_MAX);
+  const channelNames = new Map(
+    await Promise.all(
+      topChannels.map(
+        async (line) =>
+          [
+            line.key,
+            (await findSalesChannel(context.executor, line.key))?.name ?? line.key,
+          ] as const,
+      ),
+    ),
+  );
+  const topSellers = bySeller.slice(0, SALES_DETAIL_MAX);
+  const sellerNames = await userFullNames(
+    context.executor,
+    topSellers.map((line) => line.key),
+  );
+  const details = [
+    ...topChannels.map((line) => ({
+      label: fitLabel(`CA par canal — ${channelNames.get(line.key) ?? line.key}`, DETAIL_LABEL_MAX),
+      value: line.netXaf,
+      unit: 'xaf' as const,
+    })),
+    ...topSellers.map((line, index) => ({
+      label: fitLabel(
+        `Top commerciaux n° ${index + 1} — ${sellerNames.get(line.key) ?? 'Utilisateur inconnu'}`,
+        DETAIL_LABEL_MAX,
+      ),
+      value: line.netXaf,
+      unit: 'xaf' as const,
+    })),
+  ];
   const average = (net: number, count: number) =>
     net > 0 && count > 0 ? Math.round(net / count) : null;
   const can = context.canReadValuation;
-  return block('VENTES', 'Ventes', [
-    kpi({
-      code: 'KPI-COM-08',
-      label: 'Chiffre d’affaires',
-      unit: 'xaf',
-      value: current.netXaf,
-      previous: previous.netXaf,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_sales_line', ['revenue'], { dimensions: ['site_id'] }),
-    }),
-    kpi({
-      code: 'KPI-COM-07',
-      label: 'Ventes',
-      unit: 'count',
-      value: current.salesCount,
-      previous: previous.salesCount,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_sales_line', ['sales_count']),
-    }),
-    kpi({
-      code: 'KPI-COM-10',
-      label: 'Panier moyen',
-      unit: 'xaf',
-      value: average(current.netXaf, current.salesCount),
-      canReadValuation: can,
-    }),
-    kpi({
-      code: 'KPI-COM-06',
-      label: 'Commandes confirmées',
-      unit: 'count',
-      value: orders.orders,
-      previous: previousOrders.orders,
-      canReadValuation: can,
-      explore: exploreLink(context, 'f_orders', ['orders_count']),
-    }),
-  ]);
+  return block(
+    'VENTES',
+    'Ventes',
+    [
+      kpi({
+        code: 'KPI-COM-08',
+        label: 'Chiffre d’affaires',
+        unit: 'xaf',
+        value: current.netXaf,
+        previous: previous.netXaf,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_sales_line', ['revenue'], { dimensions: ['site_id'] }),
+      }),
+      kpi({
+        code: 'KPI-COM-07',
+        label: 'Ventes',
+        unit: 'count',
+        value: current.salesCount,
+        previous: previous.salesCount,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_sales_line', ['sales_count']),
+      }),
+      kpi({
+        code: 'KPI-COM-10',
+        label: 'Panier moyen',
+        unit: 'xaf',
+        value: average(current.netXaf, current.salesCount),
+        canReadValuation: can,
+      }),
+      kpi({
+        code: 'KPI-COM-06',
+        label: 'Commandes confirmées',
+        unit: 'count',
+        value: orders.orders,
+        previous: previousOrders.orders,
+        canReadValuation: can,
+        explore: exploreLink(context, 'f_orders', ['orders_count']),
+      }),
+    ],
+    details,
+  );
 }
 
 export async function financeBlock(context: DashboardContext): Promise<DashboardBlock> {

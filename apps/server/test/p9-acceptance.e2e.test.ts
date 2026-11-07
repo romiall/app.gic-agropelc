@@ -34,6 +34,8 @@ import {
   periodNetRevenue,
   periodRevenue,
   salesActivityByDay,
+  salesByChannel,
+  salesBySeller,
 } from '../src/modules/sales/application/public/index.js';
 import {
   assignTestRole,
@@ -294,6 +296,28 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
       netRevenueXaf: revenue.netRevenueXaf,
       saleCount: revenue.saleCount,
     });
+  });
+
+  it('D11 §7.2 : le chiffre d’affaires par canal et le classement des vendeurs égalent la référence du jour, annulations comprises', async () => {
+    const scope = { siteIds: [world.siteP] };
+    const window = { fromDay: DAY, toDay: DAY };
+    const [day] = await salesActivityByDay(db, scope, window);
+    const bySeller = await salesBySeller(db, scope, window);
+    const byChannel = await salesByChannel(db, scope, window);
+    // Chaque ventilation somme au chiffre d’affaires du jour et au nombre de ventes (A et B ; C est annulée en entier).
+    for (const lines of [bySeller, byChannel]) {
+      expect(lines.reduce((total, line) => total + line.netXaf, 0)).toBe(day!.netXaf);
+      expect(lines.reduce((total, line) => total + line.salesCount, 0)).toBe(day!.salesCount);
+    }
+    // A (10) + C (4) − annulation de C (4) = 10 pour s0 ; B (6) pour s1 : du plus élevé au plus faible.
+    expect(bySeller).toEqual([
+      { key: s0.userId, netXaf: 10 * PRICE, salesCount: 1 },
+      { key: s1.userId, netXaf: 6 * PRICE, salesCount: 1 },
+    ]);
+    expect(byChannel.every((line) => line.key.length > 0)).toBe(true);
+    // Le périmètre d’un autre site ne voit rien de ces ventes.
+    expect(await salesBySeller(db, { siteIds: [world.siteS] }, window)).toEqual([]);
+    expect(await salesByChannel(db, { siteIds: [] }, window)).toEqual([]);
   });
 
   it('AT-045 : l’enquête sur la vente annulée dit qui, quand, depuis quel appareil, avant et après ; la chaîne se vérifie', async () => {

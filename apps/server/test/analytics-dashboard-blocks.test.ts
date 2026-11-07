@@ -38,6 +38,7 @@ import { buildDashboard } from '../src/analytics-api/dashboards/dashboard-builde
 import {
   commercialBlock,
   financeBlock,
+  salesBlock,
   fitLabel,
   guarded,
   productionBlock,
@@ -451,6 +452,16 @@ describe('P9-25 : bornes des blocs de tableau de bord', { timeout: 120_000 }, ()
         expect(
           await periodProductQuantity(trx, { ...window, siteIds: [], productId: freshUuid() }),
         ).toBe(0);
+      });
+    });
+
+    it('salesBlock : une étendue sans site rend des zéros et aucun détail (canal, classement), sans erreur', async () => {
+      await withTestUow(async (trx) => {
+        const block = await salesBlock(contextOf(trx, { siteIds: [] }));
+        expect(block.unavailable).toBeNull();
+        expect(kpiOf(block, 'KPI-COM-08')?.value).toBe(0);
+        expect(kpiOf(block, 'KPI-COM-07')?.value).toBe(0);
+        expect(block.details).toEqual([]);
       });
     });
 
