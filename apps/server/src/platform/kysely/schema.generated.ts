@@ -179,6 +179,19 @@ export interface AnalyticsFPurchases {
   supplier_id: Generated<Buffer>;
 }
 
+export interface AnalyticsFStaffPresence {
+  absence_code: string | null;
+  absent_count: Generated<number>;
+  business_day: Date | null;
+  day_status: Generated<string>;
+  present_count: Generated<number>;
+  presence_id: Buffer;
+  role_label: string | null;
+  sheet_id: Buffer;
+  site_id: Buffer;
+  worked_minutes: number | null;
+}
+
 export interface AnalyticsFSalesLine {
   amount_xaf: Generated<number>;
   business_day: Date | null;
@@ -2895,6 +2908,7 @@ export interface DB {
   analytics_f_prospecting: AnalyticsFProspecting;
   analytics_f_purchases: AnalyticsFPurchases;
   analytics_f_sales_line: AnalyticsFSalesLine;
+  analytics_f_staff_presence: AnalyticsFStaffPresence;
   analytics_f_stock_balance: AnalyticsFStockBalance;
   analytics_f_stock_moves: AnalyticsFStockMoves;
   analytics_kpi_snapshots: AnalyticsKpiSnapshots;

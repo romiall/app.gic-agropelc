@@ -33,7 +33,7 @@ function weeklySales(overrides: Partial<ExplorationDefinition> = {}): Exploratio
 }
 
 describe('catalogue de la couche sémantique (D11, dictionnaire 12-analytics)', () => {
-  it('déclare les treize jeux du dictionnaire, sans incohérence interne', () => {
+  it('déclare les quatorze jeux du dictionnaire, sans incohérence interne', () => {
     expect(ANALYTICS_DATASETS.map((d) => d.code)).toEqual([
       'f_sales_line',
       'f_orders',
@@ -43,6 +43,7 @@ describe('catalogue de la couche sémantique (D11, dictionnaire 12-analytics)', 
       'f_losses',
       'f_prospecting',
       'f_attendance',
+      'f_staff_presence',
       'f_production_daily',
       'f_costs',
       'f_expenses',
@@ -406,7 +407,7 @@ describe('validateExploration (BR-ANA-006, D11 §8)', () => {
 describe('document source d’une ligne (P9-21 ; BR-ANA-010 niveau 2, AV-449)', () => {
   const withSource = ANALYTICS_DATASETS.filter((dataset) => dataset.source !== undefined);
 
-  it('onze jeux de lignes détaillées déclarent leur document ; les jeux d’agrégats n’en ont pas', () => {
+  it('douze jeux de lignes détaillées déclarent leur document ; les jeux d’agrégats n’en ont pas', () => {
     expect(withSource.map((dataset) => dataset.code).sort()).toEqual([
       'f_attendance',
       'f_cash',
@@ -418,6 +419,7 @@ describe('document source d’une ligne (P9-21 ; BR-ANA-010 niveau 2, AV-449)', 
       'f_prospecting',
       'f_purchases',
       'f_sales_line',
+      'f_staff_presence',
       'f_stock_moves',
     ]);
     expect(datasetOf('f_stock_balance')!.source).toBeUndefined();

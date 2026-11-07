@@ -52,6 +52,8 @@ function dateOnly(value: Date): string {
 }
 
 export interface PresenceSheetFilter {
+  /** Feuilles désignées (projection du jeu `presence`) ; vide : rien à lire ; absent : toutes. */
+  readonly ids?: readonly string[];
   /** Sites lus ; vide : rien à lire ; absent : tous. */
   readonly siteIds?: readonly string[];
   /** Semaine exacte (lundi). */
@@ -69,6 +71,7 @@ export async function listPresenceSheets(
   filter: PresenceSheetFilter,
 ): Promise<readonly PresenceSheetSummary[]> {
   if (filter.siteIds !== undefined && filter.siteIds.length === 0) return [];
+  if (filter.ids !== undefined && filter.ids.length === 0) return [];
   const limit = Math.min(filter.limit ?? PRESENCE_LIST_DEFAULT_LIMIT, PRESENCE_LIST_MAX_LIMIT);
   const sheets = await executor
     .selectFrom('fieldwork_presence_sheets')
@@ -78,6 +81,13 @@ export async function listPresenceSheets(
         'site_id',
         'in',
         filter.siteIds!.map((id) => toBin(id)),
+      ),
+    )
+    .$if(filter.ids !== undefined, (qb) =>
+      qb.where(
+        'id',
+        'in',
+        filter.ids!.map((id) => toBin(id)),
       ),
     )
     .$if(filter.weekStart !== undefined, (qb) =>

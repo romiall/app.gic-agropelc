@@ -34,7 +34,7 @@ export type {
   ToDeliverLine,
 } from './distribution-metrics.js';
 // P4-09 : chiffre d'affaires, coût des ventes et marges (BR-FIN-042, 043).
-export { lotRevenue, periodRevenue, periodProductQuantity } from './revenue.js';
+export { lotRevenue, periodNetRevenue, periodRevenue, periodProductQuantity } from './revenue.js';
 export type { LotRevenue, LotRevenueMonth, PeriodRevenue, RevenueFilter } from './revenue.js';
 // P4-10 : lectures des commandes, ventes, livraisons et encaissements.
 export {

@@ -64,6 +64,8 @@ flowchart TB
 | `customers` | Comptes du portefeuille (équipe pour un responsable ; clients rattachés au PDV), affectations courantes, encours, liens Kommo — encours (`outstanding_xaf`, comptes absorbés compris) depuis P4-11, compte republié à chaque vente ou encaissement qui le touche | `USER`, `TEAM`, `SITE` | ≤ 2 000 comptes ≈ 1 Mo | Incrémental ; `SCOPE_EXIT` sur réaffectation |
 | `crm_activity` | Visites et interactions des 90 derniers jours ; objectifs | Idem | < 1 Mo | Incrémental |
 | `fieldwork` | Sessions de travail de l'agent : décisions du serveur (recalcul défavorable et dérogation, remplacement, clôture de 23:59, décision du responsable) — DÉDUIT (P3-07), aucun autre jeu ne portant les sessions (D03 §12) | `USER` | < 10 Ko | Incrémental |
+| `presence` | Feuilles de présence du personnel des sites dont l'utilisateur lit la présence (fiche PT ; AV-514 (4)) : en-tête, lignes et jours, annulées comprises, **toute l'historique** (une feuille par site et par semaine) ; émis par `fieldwork` (`PRESENCE_SHEET`, ligne du site de la feuille), servi aux appareils dont l'utilisateur atteint `fieldwork.presence.read` sur ce site (`sync/device-scope.ts`) | `SITE` | < 200 Ko | Incrémental ; l'annulation d'une feuille la réémet (statut `CANCELLED`) |
+| `weekly_reports` | Bilans hebdomadaires de l'utilisateur (AV-514 (4)) : ses cinq rubriques, l'état « vu » et le commentaire du responsable ; jamais ceux d'un autre commercial (le responsable lit son équipe en ligne) ; émis par `crm` (`WEEKLY_REPORT`) | `USER` | < 50 Ko | Incrémental ; chaque correction et chaque « vu » réémet la ligne |
 | `orders` | Commandes ouvertes du périmètre (commercial, emplacement de préparation) — construit en P4-11 : brouillons pour leur titulaire, commandes confirmées ou partiellement livrées pour leur titulaire (commercial attributaire, à défaut l'auteur), ses équipes (DÉDUIT : responsable commercial, § 3.2) et l'emplacement de préparation ; lignes avec commandé, vendu, livré, retiré et prix devisés, sans coût. Lignes `LOCATION` réservées aux emplacements des sites qu'atteint `sales.order.read` (magasinier, vendeur du PDV) | `USER`, `TEAM`, `LOCATION` | < 500 Ko | Incrémental ; `SCOPE_EXIT` à la livraison complète, à la clôture ou à l'annulation, et pour l'ancien emplacement d'une commande déplacée |
 | `sales_recent` | Ventes et encaissements des 7 derniers jours de l'utilisateur ou du PDV — construit en P4-11 : ventes (vendeur, commercial attributaire, site ; lignes au prix appliqué sans coût figé, RC-05 ; encaissements affectés) et encaissements (receveur, site ; affectations), republiés à chaque changement (paiement, annulation, livraison). Lignes `SITE` réservées aux sites qu'atteint `sales.sale.read` | `USER`, `SITE` | < 2 Mo | Incrémental ; purge locale au-delà de 7 j |
 | `stock` | Soldes, lots en solde, seuils des emplacements du périmètre | `LOCATION` | < 500 Ko | Incrémental (`row_version`) |
@@ -87,6 +89,8 @@ Budget total visé par appareil : **≤ 20 Mo de données + ≤ 50 Mo de pièces
 | `policies` | — | — | ● | ● | ● | ● | ● | ● | ● | — | ● |
 | `customers`, `crm_activity` | — | — | ● (équipe) | ● | ● | ● (PDV) | — | ○ | — | — | — |
 | `fieldwork` | — | — | ● | ● | — | — | — | — | — | — | — |
+| `presence` | ● | ● | — | — | — | — | ● | ● | — | — | — |
+| `weekly_reports` | — | — | — | ● | ● | — | — | — | — | — | — |
 | `orders` | — | — | ● | ● | ● | ○ | — | — | ● | — | — |
 | `sales_recent` | — | — | ○ | ● | ● | ● | — | ● | — | — | — |
 | `stock`, `transfers`, `counts` | — | — | ○ | ● (mobile) | — | ● (PDV) | ● | ● | ● | — | — |

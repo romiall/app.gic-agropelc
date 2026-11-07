@@ -52,6 +52,7 @@ import {
 } from '../src/modules/crm/application/public/index.js';
 import {
   periodProductQuantity,
+  periodNetRevenue,
   periodRevenue,
   targetAttainment,
 } from '../src/modules/sales/application/public/index.js';
@@ -443,6 +444,10 @@ describe('P9-25 : bornes des blocs de tableau de bord', { timeout: 120_000 }, ()
         const window = { fromUtc: PERIOD.startUtc, toUtc: PERIOD.endUtc };
         expect(await periodRevenue(trx, { ...window, siteIds: [] })).toEqual(ZEROS);
         expect(await periodRevenue(trx, { ...window, customerIds: [] })).toEqual(ZEROS);
+        // La variante sans le coût des ventes ne lit rien non plus pour un périmètre vide.
+        const { costOfSalesXaf: _cost, grossMarginXaf: _margin, ...netZeros } = ZEROS;
+        expect(await periodNetRevenue(trx, { ...window, siteIds: [] })).toEqual(netZeros);
+        expect(await periodNetRevenue(trx, { ...window, customerIds: [] })).toEqual(netZeros);
         expect(
           await periodProductQuantity(trx, { ...window, siteIds: [], productId: freshUuid() }),
         ).toBe(0);

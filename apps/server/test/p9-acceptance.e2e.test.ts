@@ -31,6 +31,7 @@ import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { JobRunner } from '../src/platform/jobs/job-runner.js';
 import {
+  periodNetRevenue,
   periodRevenue,
   salesActivityByDay,
 } from '../src/modules/sales/application/public/index.js';
@@ -281,6 +282,18 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     // Trois ventes enregistrées dont une annulée : KPI-COM-07 en compte deux, periodRevenue trois.
     expect(day!.salesCount).toBe(2);
     expect(revenue.saleCount).toBe(3);
+    // La variante sans le coût des ventes (bilan hebdomadaire, AV-514) rend les mêmes chiffres de chiffre d'affaires.
+    const net = await periodNetRevenue(db, {
+      fromUtc: businessDayStartUtc(DAY),
+      toUtc: businessDayEndUtc(DAY),
+      siteIds,
+    });
+    expect(net).toEqual({
+      grossRevenueXaf: revenue.grossRevenueXaf,
+      cancelledXaf: revenue.cancelledXaf,
+      netRevenueXaf: revenue.netRevenueXaf,
+      saleCount: revenue.saleCount,
+    });
   });
 
   it('AT-045 : l’enquête sur la vente annulée dit qui, quand, depuis quel appareil, avant et après ; la chaîne se vérifie', async () => {

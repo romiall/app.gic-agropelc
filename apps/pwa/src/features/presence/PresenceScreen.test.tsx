@@ -338,4 +338,39 @@ describe('Présence du personnel (ECR-TER-03)', () => {
     ).toBeInTheDocument();
     expect(vi.mocked(authorizedRequest)).not.toHaveBeenCalled();
   });
+
+  it('hors ligne : les feuilles que l’appareil connaît (jeu presence) de la semaine se lisent, sans les autres semaines', async () => {
+    const known = (id: string, overrides: Record<string, unknown>) => ({
+      key: `presence:PRESENCE_SHEET:${id}`,
+      dataset: 'presence',
+      entity_type: 'PRESENCE_SHEET',
+      entity_id: id,
+      scope_type: 'SITE',
+      scope_id: IDS.site,
+      seq: 1,
+      row_version: 1,
+      data: recordedSheet({ id, ...overrides }),
+    });
+    await getDb().projections.bulkPut([
+      known(SHEET_ID, {}),
+      known('01900000-0000-7000-8000-0000000000a2', {
+        weekStart: '2026-10-26',
+        paperRef: '000041',
+        lines: [{ lineNo: 1, personName: 'Marie Nkoa', days: [] }],
+      }),
+    ]);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    render(
+      <MemoryRouter>
+        <PresenceScreen />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/feuilles connues de cet appareil/)).toBeInTheDocument();
+    expect(screen.getByText('Paul Essomba')).toBeInTheDocument();
+    expect(screen.queryByText('Marie Nkoa')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Les feuilles déjà reportées se lisent en ligne.'),
+    ).not.toBeInTheDocument();
+    expect(vi.mocked(authorizedRequest)).not.toHaveBeenCalled();
+  });
 });

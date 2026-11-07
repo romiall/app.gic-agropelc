@@ -17,6 +17,8 @@ import { listTeamsOfUserAt } from '../../organization/application/public/index.j
 
 export const CUSTOMERS_DATASET = 'customers';
 export const CRM_ACTIVITY_DATASET = 'crm_activity';
+/** Jeu des bilans hebdomadaires de l'utilisateur (AV-514 (4)) : ligne `USER` de l'auteur seulement. */
+export const WEEKLY_REPORTS_DATASET = 'weekly_reports';
 /** Jeu des référentiels de vente (étapes, sources), propriété du catalogue des jeux. */
 export const REFERENCES_DATASET = 'catalog';
 
@@ -188,6 +190,29 @@ export async function emitPipelineStepChange(uow: Uow, stepId: string): Promise<
       entityId: stepId,
       scopeType: 'GLOBAL',
       scopeId: null,
+      rowVersion: row.version,
+    },
+  ]);
+}
+
+/**
+ * Bilan hebdomadaire (AV-514 (4)) : ligne `USER` de son auteur, à sa version. Il relit ainsi son historique sans réseau ;
+ * le responsable lit les bilans de son équipe en ligne (`GET /weekly-reports`).
+ */
+export async function emitWeeklyReportChange(uow: Uow, reportId: Buffer | string): Promise<void> {
+  const row = await uow
+    .selectFrom('crm_weekly_reports')
+    .select(['id', 'user_id', 'version'])
+    .where('id', '=', typeof reportId === 'string' ? toBin(reportId) : reportId)
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: WEEKLY_REPORTS_DATASET,
+      entityType: 'WEEKLY_REPORT',
+      entityId: fromBin(row.id),
+      scopeType: 'USER',
+      scopeId: fromBin(row.user_id),
       rowVersion: row.version,
     },
   ]);

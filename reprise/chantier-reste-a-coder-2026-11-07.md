@@ -16,7 +16,7 @@
 | 4a | Report des pièces papier DA, BC, VC, FI (FA, FJC et JE sont des documents dérivés : non reportables) — AV-530 | fait, commité | voir `git log` |
 | 4b | Report de la fiche de suivi de lot FL (mortalité, aliment, pesée, observation ; les œufs par l'écran de collecte) — AV-531 | fait, commité | voir `git log` |
 | 4 | Report des pièces papier DA, BC, VC, FI, FL (FA, FJC et JE sont des documents dérivés : non reportables) + registre des carnets par site (AV-312) | en cours | — |
-| 5 | Restes d'AV-514 (jeux hors ligne des feuilles de présence et des bilans, vue d'analyse, rattachement à un compte) | à faire | — |
+| 5 | Restes d'AV-514 : jeux hors ligne `presence` et `weekly_reports`, vue d'analyse de la présence, rattachement à un compte, chiffres du bilan allégés — AV-532, migration `20261204110000` | fait, commité | voir `git log` |
 | 6 | Besoins serveur des écrans (S-xx ouverts : voir `docs/10-development-plan/16-besoins-serveur-des-ecrans.md`), tirage groupé des jeux (AV-319 b) | à faire | — |
 | 7 | Restes de P9 : `DeviceEnrollmentRequested` (AV-432), disponible par zone et détail par canal des tableaux, `PushSendOptions` | à faire | — |
 | 8 | S-12 (clients du siège hors ligne), S-39 seconde partie (objectifs de site), tablette partagée multi-vendeurs : défauts paramétrables + AV | à faire | — |

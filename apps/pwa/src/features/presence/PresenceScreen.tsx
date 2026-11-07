@@ -37,6 +37,7 @@ import { holdsAnyRole, ROLE_SETS } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
+import { useProjected } from '../../storage/projections.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
@@ -81,7 +82,8 @@ function dayLabel(day: string): string {
 const formatDay = (day: string): string => day.split('-').reverse().join('/');
 
 type SheetsState =
-  | { readonly status: 'OFFLINE' }
+  /** Hors ligne : les feuilles de la semaine que l'appareil connaît (jeu `presence`, AV-514 (4)), en lecture seule. */
+  | { readonly status: 'OFFLINE'; readonly sheets: readonly ServerPresenceSheet[] }
   | { readonly status: 'LOADING' }
   | { readonly status: 'ERROR' }
   | { readonly status: 'OK'; readonly sheets: readonly ServerPresenceSheet[] };
@@ -96,6 +98,7 @@ function useRecordedSheets(
   online: boolean,
 ): { readonly state: SheetsState; readonly reload: () => void } {
   const [attempt, setAttempt] = useState(0);
+  const known = useProjected<ServerPresenceSheet>('presence', 'PRESENCE_SHEET');
   const [loaded, setLoaded] = useState<{
     key: string;
     weekStart: string;
@@ -119,7 +122,12 @@ function useRecordedSheets(
     };
   }, [key, online, weekStart]);
   const reload = useCallback(() => setAttempt((current) => current + 1), []);
-  if (!online) return { state: { status: 'OFFLINE' }, reload };
+  if (!online) {
+    const sheets = (known ?? [])
+      .filter((sheet) => sheet.weekStart === weekStart)
+      .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+    return { state: { status: 'OFFLINE', sheets }, reload };
+  }
   if (loaded?.key === key) {
     return {
       state: loaded.sheets ? { status: 'OK', sheets: loaded.sheets } : { status: 'ERROR' },
@@ -607,7 +615,30 @@ export function PresenceScreen() {
       <Section title={t('presence.recorded_title')}>
         <p className="muted">{t('presence.recorded_week', { date: formatDay(draft.weekStart) })}</p>
         {recorded.state.status === 'OFFLINE' ? (
-          <Banner tone="info">{t('presence.recorded_offline')}</Banner>
+          <>
+            <Banner tone="info">
+              {recorded.state.sheets.length > 0
+                ? t(
+                    'presence.recorded_offline_known',
+                    'Hors ligne : feuilles connues de cet appareil à la dernière synchronisation, en lecture seule.',
+                  )
+                : t('presence.recorded_offline')}
+            </Banner>
+            {recorded.state.sheets.length > 0 ? (
+              <ul className="presence-sheets">
+                {recorded.state.sheets.map((sheet) => (
+                  <RecordedSheet
+                    key={sheet.id}
+                    sheet={sheet}
+                    siteName={siteName(sheet.siteId)}
+                    canCancel={false}
+                    userId={userId}
+                    onCancelled={recorded.reload}
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </>
         ) : recorded.state.status === 'LOADING' ? (
           <SkeletonRows rows={2} />
         ) : recorded.state.status === 'ERROR' ? (

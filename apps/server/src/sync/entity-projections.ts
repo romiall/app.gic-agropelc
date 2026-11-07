@@ -19,6 +19,8 @@ import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.j
 import { codeEntityId } from '../platform/sync/code-entity-id.js';
 import { COMMUNICATION_PROJECTIONS } from './communication-projections.js';
 import { KPI_PROJECTIONS } from './kpi-projections.js';
+import { listWeeklyReports } from '../modules/crm/application/public/index.js';
+import { listPresenceSheets } from '../modules/fieldwork/application/public/index.js';
 
 /** Périmètre de la ligne `change_feed` projetée (P2-06) : nécessaire quand la clé réelle de
  * l'entité est composite (`STOCK_BALANCE` : produit × emplacement) ou quand seule une ligne
@@ -1367,6 +1369,23 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       approval_request_id: fromBinOrNull(row.approval_request_id),
       version: row.version,
     };
+  },
+
+  // Jeu `presence` (AV-514 (4)) : feuilles de présence du personnel d'un site, pour relire l'historique sans réseau. La
+  // ligne n'est servie que si la feuille est bien de ce site (une feuille ne change pas de site).
+  PRESENCE_SHEET: async (executor, entityId, context) => {
+    if (context.scopeType !== 'SITE' || context.scopeId === null) return undefined;
+    const [sheet] = await listPresenceSheets(executor, { ids: [entityId], includeCancelled: true });
+    if (!sheet || sheet.siteId !== context.scopeId) return undefined;
+    return { ...sheet };
+  },
+
+  // Jeu `weekly_reports` (AV-514 (4)) : bilans hebdomadaires de l'utilisateur, jamais ceux d'un autre.
+  WEEKLY_REPORT: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
+    const [report] = await listWeeklyReports(executor, { ids: [entityId] });
+    if (!report || report.userId !== context.scopeId) return undefined;
+    return { ...report };
   },
 
   // P6-07 — jeu `procurement` (01-architecture-offline.md §3.1 : « BC livrables sur le site,

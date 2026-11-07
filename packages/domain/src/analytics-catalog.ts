@@ -343,6 +343,34 @@ const BASE_DATASETS: readonly DatasetDefinition[] = [
     ],
   },
   {
+    code: 'f_staff_presence',
+    label: 'Présence du personnel (fiches PT)',
+    view: 'analytics_f_staff_presence',
+    temporality: 'FLOW',
+    permissions: ['fieldwork.presence.read'],
+    periodDimension: 'business_day',
+    // Une feuille est d'un site et les droits de présence sont à portée de site (AV-514) : portée par le site, jamais par la
+    // personne (les lignes du personnel n'ont pas toutes un compte).
+    scope: { SITE: ['site_id'] },
+    dimensions: [
+      dim('business_day', 'Jour', 'date'),
+      dim('site_id', 'Site', 'id'),
+      dim('role_label', 'Fonction', 'code'),
+      dim('day_status', 'Présent, absent ou non renseigné', 'code'),
+      dim('absence_code', 'Code d’absence', 'code'),
+    ],
+    measures: [
+      sum('present_days', 'Jours de présence (personne × jour)', 'present_count', 'count'),
+      sum('absent_days', 'Jours d’absence (personne × jour)', 'absent_count', 'count'),
+      sum(
+        'worked_minutes',
+        'Durée travaillée (minutes, jours relevés en heures)',
+        'worked_minutes',
+        'minutes',
+      ),
+    ],
+  },
+  {
     code: 'f_production_daily',
     label: 'Production du jour par lot',
     view: 'analytics_f_production_daily',
@@ -506,6 +534,12 @@ const DOCUMENT_SOURCES: Readonly<
     label: 'Session de travail (document)',
     type: 'WORK_SESSION',
     route: '/api/v1/work-sessions',
+  },
+  f_staff_presence: {
+    dimension: 'sheet_id',
+    label: 'Feuille de présence (document)',
+    type: 'PRESENCE_SHEET',
+    route: '/api/v1/staff-presence',
   },
   f_costs: {
     dimension: 'entry_id',

@@ -40,6 +40,7 @@ import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
 import { findSite } from '../../../organization/application/public/index.js';
+import { emitPresenceSheetChange } from '../sync-changes.js';
 
 type Uow = Transaction<DB>;
 
@@ -126,8 +127,35 @@ interface StoredLine {
   readonly absence_code: string | null;
 }
 
-const sameLinkedUser = (stored: Buffer | null, sent: string | null | undefined): boolean =>
-  stored === null ? !sent : sent ? stored.equals(toBin(sent)) : false;
+/**
+ * Même compte lié ? Une charge qui ne nomme aucun compte (`undefined`) n'exclut pas celui que le serveur a rattaché à la
+ * ligne d'après le nom de la personne (AV-514 (7)) : sans cela, le rejeu de la feuille serait refusé. `null` dit « aucun
+ * compte » : la ligne n'en a pas.
+ */
+const sameLinkedUser = (stored: Buffer | null, sent: string | null | undefined): boolean => {
+  if (sent === undefined) return true;
+  if (sent === null) return stored === null;
+  return stored !== null && stored.equals(toBin(sent));
+};
+
+/**
+ * AV-514 (7) : comptes actifs (hors comptes du système) par clé de nom complet. Un nom que portent deux comptes ne désigne
+ * personne (`null`) : on ne devine pas entre deux homonymes.
+ */
+async function accountsByName(uow: Uow): Promise<Map<string, string | null>> {
+  const users = await uow
+    .selectFrom('identity_users')
+    .select(['id', 'full_name'])
+    .where('status', '=', 'ACTIVE')
+    .where('is_system', '=', 0)
+    .execute();
+  const byName = new Map<string, string | null>();
+  for (const user of users) {
+    const key = personNameKey(user.full_name);
+    byName.set(key, byName.has(key) ? null : fromBin(user.id));
+  }
+  return byName;
+}
 
 /**
  * La feuille enregistrée sous cet identifiant est-elle celle de la charge ? Même auteur, même site, même semaine, mêmes
@@ -288,6 +316,16 @@ const buildRecordSheet =
       }
     }
 
+    // AV-514 (7) : une personne dont la ligne ne désigne aucun compte (`userId` absent, non `null`) est rattachée au compte
+    // actif de même nom complet, s'il est unique ; sinon la ligne reste sans compte.
+    const accounts = p.lines.some((line) => line.userId === undefined)
+      ? await accountsByName(uow)
+      : null;
+    const accountOf = (line: RecordPayload['lines'][number]): string | null =>
+      line.userId === undefined
+        ? (accounts?.get(personNameKey(line.personName)) ?? null)
+        : line.userId;
+
     const duplicate = await hasSheetWithSameNumber(uow, p, sheetId);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     await uow
@@ -321,7 +359,7 @@ const buildRecordSheet =
             person_name: line.personName,
             person_role: line.personRole ?? null,
             mission_label: line.missionLabel ?? null,
-            user_id: toBinOrNull(line.userId ?? null),
+            user_id: toBinOrNull(accountOf(line)),
             arrival_time: timeColumn(day.arrival),
             departure_time: timeColumn(day.departure),
             absence_code: day.absenceCode ?? null,
@@ -330,6 +368,7 @@ const buildRecordSheet =
           .execute();
       }
     }
+    await emitPresenceSheetChange(uow, sheetId);
     // AV-514 (6) : la seconde feuille d'un même numéro est enregistrée et signalée, jamais refusée (BR-SYN-007).
     return duplicate
       ? { status: 'APPLIED_WITH_WARNINGS', warnings: ['PRESENCE_SHEET_DUPLICATE'] }
@@ -362,6 +401,7 @@ const cancelSheet: CommandHandler<CancelPayload> = async (uow, envelope) => {
     })
     .where('id', '=', sheet.id)
     .execute();
+  await emitPresenceSheetChange(uow, sheet.id);
   return { status: 'APPLIED' };
 };
 
