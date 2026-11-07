@@ -64,6 +64,14 @@ console.log(decodeURIComponent(u.pathname.slice(1)));
   rm -f "$CNF"
   [ -s "$DUMP" ] || fail "sauvegarde vide ($DUMP)"
   echo "  $DUMP ($(du -h "$DUMP" | cut -f1))"
+  # Les sauvegardes d'avant livraison ne s'accumulent pas (decision du porteur du 07/11/2026) : les cinq plus recentes
+  # sont gardees, la nouvelle comprise. Seuls les noms gic-AAAAMMJJ-HHMMSS.sql.gz de ~/backups_db sont concernes : ni
+  # daily/ (backup-db.sh, qui a sa propre rotation), ni les copies faites a la main. Jamais d'echec de livraison ici.
+  OLD_DUMPS="$(ls -1 "$HOME/backups_db" 2>/dev/null | grep -E '^gic-[0-9]{8}-[0-9]{6}\.sql\.gz$' | sort | head -n -5 || true)"
+  if [ -n "$OLD_DUMPS" ]; then
+    for old in $OLD_DUMPS; do rm -f "$HOME/backups_db/$old" || true; done
+    echo "  sauvegardes d'avant livraison les plus anciennes supprimees (cinq gardees) : $(printf '%s\n' "$OLD_DUMPS" | wc -l | tr -d ' ')"
+  fi
 fi
 
 echo "== 3/8 Mise en place des nouveaux fichiers (ancienne version gardee dans $APP/$PREV)"

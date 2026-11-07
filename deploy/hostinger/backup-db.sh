@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
-# Sauvegarde quotidienne de la base (Hostinger). Execute SUR LE SERVEUR par une tache cron (voir README.md, section
-# "Operations planifiees"), jamais a la main sans lire README.md. Aucun secret ici : l'identifiant de base vient du .env
-# de l'application, ecrit dans un fichier temporaire (mode 600) que mysqldump lit puis qui est supprime.
+# Sauvegarde de la base (Hostinger), UNE TOUS LES DEUX JOURS, cinq copies au plus (decision du porteur du 07/11/2026).
+# Execute SUR LE SERVEUR par une tache cron (voir README.md, section "Operations planifiees"), jamais a la main sans
+# lire README.md. Aucun secret ici : l'identifiant de base vient du .env de l'application, ecrit dans un fichier
+# temporaire (mode 600) que mysqldump lit puis qui est supprime.
+#
+# Frequence : le cron peut passer CHAQUE NUIT ; le script ne sauvegarde que si la derniere sauvegarde a plus de
+# BACKUP_MIN_INTERVAL_HOURS (44 h par defaut), donc une nuit sur deux. Une nuit en echec est reprise des la nuit
+# suivante (un cron "un jour sur deux" attendrait deux jours de plus). BACKUP_FORCE=1 ignore ce delai (essai a la main).
 #
 # Ce que fait le script :
+#   0. rien a faire si la derniere sauvegarde est recente (voir ci-dessus) ;
 #   1. verrou (une seule sauvegarde a la fois), dossier de destination cree ;
 #   2. mysqldump --single-transaction --routines --triggers, compresse, ecrit sous un nom provisoire ;
 #   3. controle : archive gzip valide, taille minimale, pied "Dump completed", nombre de tables ; sinon le fichier
 #      provisoire est supprime et le script echoue (code non nul : cron envoie le message d'erreur) ;
 #   4. le fichier prend son nom definitif gic-daily-AAAAMMJJ-HHMMSS.sql.gz (UTC), latest.txt et une ligne OK du journal
 #      (backup.log, 500 lignes gardees) sont ecrits : la sauvegarde existe, quoi qu'il arrive ensuite ;
-#   5. rotation (backup-rotate.mjs) : 14 jours, plus la derniere de chacun des 6 derniers mois, jamais la plus recente ;
-#      son echec (code non nul, sortie inattendue) est journalise ECHEC et fait echouer le script : la derniere ligne du
-#      journal est lue par pull-backups.ps1, qui s'arrete alors au lieu de "reussir" en silence.
-# Les sauvegardes de livraison (~/backups_db/gic-<horodatage>.sql.gz) sont dans le dossier parent : jamais touchees.
+#   5. rotation (backup-rotate.mjs --keep-last 5) : les cinq plus recentes sont gardees, la plus ancienne est supprimee
+#      apres chaque ajout (cinq copies = dix jours d'historique) ; son echec (code non nul, sortie inattendue) est
+#      journalise ECHEC et fait echouer le script : la derniere ligne du journal est lue par pull-backups.ps1, qui
+#      s'arrete alors au lieu de "reussir" en silence.
+# Les sauvegardes de livraison (~/backups_db/gic-<horodatage>.sql.gz) sont dans le dossier parent : jamais touchees ici
+# (remote-update.sh en garde cinq).
 # Le dump contient toutes les donnees de GIC (comptes, mots de passe haches, ventes) : umask 077, dossier en 700.
 #
 # Variables (toutes facultatives) : APP_DIR, OPS_DIR (ou sont backup-rotate.mjs), BACKUP_DIR, BACKUP_LOG,
-# BACKUP_KEEP_DAYS, BACKUP_KEEP_MONTHS, BACKUP_MIN_BYTES, BACKUP_MIN_TABLES, BACKUP_DUMP_ARGS (options de mysqldump en plus, par exemple
-# --no-tablespaces sur un MySQL 8 dont le compte n a pas le privilege PROCESS).
+# BACKUP_KEEP_LAST (5), BACKUP_MIN_INTERVAL_HOURS (44), BACKUP_FORCE (0), BACKUP_MIN_BYTES, BACKUP_MIN_TABLES,
+# BACKUP_DUMP_ARGS (options de mysqldump en plus, par exemple --no-tablespaces sur un MySQL 8 dont le compte n a pas
+# le privilege PROCESS).
 # Fichier ASCII volontairement (sortie lisible dans la console Windows).
 set -euo pipefail
 umask 077
@@ -27,8 +36,9 @@ APP="${APP_DIR:-$HOME/domains/gic-agropelc.com/nodejs-app}"
 OPS="${OPS_DIR:-$HOME/gic-ops}"
 DEST="${BACKUP_DIR:-$HOME/backups_db/daily}"
 LOG="${BACKUP_LOG:-$HOME/backups_db/backup.log}"
-KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
-KEEP_MONTHS="${BACKUP_KEEP_MONTHS:-6}"
+KEEP_LAST="${BACKUP_KEEP_LAST:-5}"
+MIN_INTERVAL_HOURS="${BACKUP_MIN_INTERVAL_HOURS:-44}"
+FORCE="${BACKUP_FORCE:-0}"
 MIN_BYTES="${BACKUP_MIN_BYTES:-20000}"
 MIN_TABLES="${BACKUP_MIN_TABLES:-50}"
 DUMP_ARGS="${BACKUP_DUMP_ARGS:-}"
@@ -54,6 +64,22 @@ fail() {
 
 mkdir -p "$DEST" "$(dirname "$LOG")"
 chmod 700 "$DEST" 2>/dev/null || true
+
+# Reglages numeriques : une valeur absurde est un echec journalise, pas un comportement imprevu.
+case "$KEEP_LAST" in ''|*[!0-9]*|0) fail "BACKUP_KEEP_LAST doit etre un entier superieur ou egal a 1 ($KEEP_LAST)" ;; esac
+case "$MIN_INTERVAL_HOURS" in ''|*[!0-9]*) fail "BACKUP_MIN_INTERVAL_HOURS doit etre un entier ($MIN_INTERVAL_HOURS)" ;; esac
+
+# Une sauvegarde tous les deux jours : rien a faire tant que la derniere a moins de MIN_INTERVAL_HOURS (date du fichier,
+# ecrit a la fin de la sauvegarde). Aucune ligne de journal : backup.log ne garde que les sauvegardes et les echecs, et sa
+# derniere ligne reste celle que pull-backups.ps1 lit.
+if [ "$FORCE" != "1" ] && [ "$MIN_INTERVAL_HOURS" -gt 0 ]; then
+  LAST_BACKUP="$(ls -1 "$DEST" 2>/dev/null | grep -E '^gic-daily-[0-9]{8}-[0-9]{6}\.sql\.gz$' | sort | tail -n 1 || true)"
+  if [ -n "$LAST_BACKUP" ] && [ -n "$(find "$DEST/$LAST_BACKUP" -maxdepth 0 -mmin "-$((MIN_INTERVAL_HOURS * 60))" 2>/dev/null)" ]; then
+    echo "Derniere sauvegarde ($LAST_BACKUP) de moins de ${MIN_INTERVAL_HOURS} h : rien a faire (BACKUP_FORCE=1 pour forcer)."
+    exit 0
+  fi
+fi
+
 # Verrou : un script reste parfois bloque (reseau) ; au-dela de 3 heures le verrou est considere perime.
 if ! mkdir "$LOCK" 2>/dev/null; then
   if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +180 2>/dev/null)" ]; then
@@ -108,7 +134,7 @@ trim_log() { if [ "$(wc -l < "$LOG")" -gt 500 ]; then tail -n 500 "$LOG" > "$LOG
 if [ -f "$OPS/backup-rotate.mjs" ]; then
   # Un code non nul de la rotation (sous `set -e`, l'affectation aurait tue le script sans une ligne de journal) ou une
   # sortie qui ne commence pas par "rotation :" (script muet) sont des echecs journalises.
-  ROTATION="$(node "$OPS/backup-rotate.mjs" "$DEST" --keep-days "$KEEP_DAYS" --keep-months "$KEEP_MONTHS" | tail -n 1)" \
+  ROTATION="$(node "$OPS/backup-rotate.mjs" "$DEST" --keep-last "$KEEP_LAST" | tail -n 1)" \
     || { trim_log; fail "rotation en echec (backup-rotate.mjs) ; la sauvegarde $FINAL existe"; }
   case "$ROTATION" in
     "rotation :"*) ;;
