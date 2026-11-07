@@ -27,6 +27,14 @@ import {
 import { openOrders, type OrderView } from '../sales/open-orders.js';
 import { deduceChannel, openWorkSession, saleZoneId } from '../sales/pricing.js';
 import type { SalesReferences } from '../sales/references.js';
+import { settingValue } from '../sales/stock.js';
+import type { SettingData } from '../sales/types.js';
+import {
+  BACKDATE_MAX_HOURS_SETTING,
+  JUSTIFICATION_AFTER_HOURS_SETTING,
+  backdatingWindowFrom,
+  type BackdatingWindow,
+} from '@gic/domain';
 import {
   computeLine,
   linePayload,
@@ -290,8 +298,23 @@ export type SlipResolution =
 
 const refuse = (issues: SlipIssue[]): SlipResolution => ({ ok: false, issues });
 
+/**
+ * La fenêtre de saisie rétroactive des réglages visibles de l'appareil (AV-078) : `sync.justification_after_hours` et
+ * `sync.backdate_max_hours` ; absents, les défauts de 24 h et 72 h. Le serveur la juge de la même façon.
+ */
+export function backdatingWindowOf(settings: readonly SettingData[], now: Date): BackdatingWindow {
+  return backdatingWindowFrom(
+    settingValue(settings, JUSTIFICATION_AFTER_HOURS_SETTING, null, now),
+    settingValue(settings, BACKDATE_MAX_HOURS_SETTING, null, now),
+  );
+}
+
 /** Défauts communs : numéro de la pièce, date et motif d'antidatage (AV-078, AV-312). */
-function commonIssues(form: SlipForm, now: Date): { issues: SlipIssue[]; meta: SlipMeta | null } {
+function commonIssues(
+  form: SlipForm,
+  now: Date,
+  window: BackdatingWindow,
+): { issues: SlipIssue[]; meta: SlipMeta | null } {
   const issues: SlipIssue[] = [];
   const paperRef = normalizeSlipRef(form.paperRef);
   if (!paperRef) issues.push('REF_REQUIRED');
@@ -303,7 +326,7 @@ function commonIssues(form: SlipForm, now: Date): { issues: SlipIssue[]; meta: S
     issues.push('DATE_INVALID');
   } else {
     occurredAt = when.toISOString();
-    const evaluation = evaluateBackdating(occurredAt, now);
+    const evaluation = evaluateBackdating(occurredAt, now, window);
     if (evaluation.isFuture) issues.push('DATE_FUTURE');
     const typed = form.backdatedReason.trim();
     if (evaluation.requiresReason && !typed) issues.push('BACKDATE_REASON_REQUIRED');
@@ -368,7 +391,11 @@ function customerOf(form: SlipForm, refs: SalesReferences) {
 export function resolveSlip(entered: SlipForm, context: SlipContext): SlipResolution {
   // Une ligne laissée vide n'est pas une ligne : seules les lignes entamées comptent.
   const form: SlipForm = { ...entered, lines: entered.lines.filter((line) => !isBlankLine(line)) };
-  const common = commonIssues(form, context.now);
+  const common = commonIssues(
+    form,
+    context.now,
+    backdatingWindowOf(context.refs.settings, context.now),
+  );
   const issues = [...common.issues];
   const resolved = resolveBody(form, context);
   if (!resolved.ok) issues.push(...resolved.issues);

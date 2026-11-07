@@ -55,6 +55,7 @@ import {
 } from './report-commands.js';
 import {
   SLIP_ISSUE_MESSAGES,
+  backdatingWindowOf,
   emptySlipForm,
   resolveSlip,
   type SlipContext,
@@ -146,9 +147,12 @@ export function PaperSlipReportScreen() {
 
   // Évaluation de l'antidatage en direct
   const occurredDate = new Date(form.occurredAt);
+  // Fenêtre des paramètres `sync.justification_after_hours` et `sync.backdate_max_hours` (AV-078), comme le serveur.
+  const backdatingWindow = backdatingWindowOf(refs?.settings ?? [], clock.now());
   const backdatingEval = evaluateBackdating(
     Number.isNaN(occurredDate.getTime()) ? clock.now().toISOString() : occurredDate.toISOString(),
     clock.now(),
+    backdatingWindow,
   );
 
   // Analyse globale pour le registre des carnets
@@ -412,10 +416,7 @@ export function PaperSlipReportScreen() {
               {backdatingEval.isCriticalDelay ? (
                 <div className="report-continuity-alert">
                   <Banner tone="warn">
-                    {t(
-                      'piece.critical_delay_warning',
-                      'Attention : le délai de report dépasse 72 h. Cette pièce fera l’objet d’une vérification comptable a posteriori.',
-                    )}
+                    {t('piece.critical_delay_warning', { hours: backdatingWindow.maxHours })}
                   </Banner>
                 </div>
               ) : null}
@@ -423,10 +424,9 @@ export function PaperSlipReportScreen() {
               {backdatingEval.requiresReason ? (
                 <Field
                   label={t('piece.backdated_reason', 'Motif de report / antidatage')}
-                  hint={t(
-                    'piece.backdated_reason_hint',
-                    'Requis car la pièce a été signée il y a plus de 24 h.',
-                  )}
+                  hint={t('piece.backdated_reason_hint', {
+                    hours: backdatingWindow.justificationAfterHours,
+                  })}
                 >
                   {(ctrl) => (
                     <Input

@@ -104,6 +104,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `audit.log.read` | ALL | ALL | — | — | — | — | — | — | — | — | ALL |
 | `sync.monitor.read` | ALL | ALL | TEAM | — | — | — | SITE | SITE | SITE | — | — |
 | `sync.conflict.resolve` | ALL | ALL | TEAM | — | — | — | ALL | SITE | SITE | ALL | ALL |
+| `sync.backdate.exceed` (saisir au-delà de la fenêtre rétroactive : chargement de l'historique, AV-078, AV-528 ; sensible) | ALL | ALL | — | — | — | — | — | — | — | — | ALL |
 | `integrations.kommo.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `integrations.kommo.monitor` | ALL | ALL | ALL | — | — | — | — | — | — | — | — |
 | `comm.alert.read` | ALL | ALL | TEAM | OWN | OWN | SITE | ALL | SITE | SITE | ALL | ALL |

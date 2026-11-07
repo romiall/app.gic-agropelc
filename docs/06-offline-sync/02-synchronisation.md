@@ -108,7 +108,9 @@ Règles :
      occurred_at ≤ now + tolérance (`sync.occurred_at_future_tolerance_minutes`, 5 min par défaut,
        AV-226 ; après correction de l'écart s'il est négatif : seule une horloge en avance est excusée)
        → sinon REJECTED OCCURRED_AT_FUTURE
-     fenêtre rétroactive (AV-078) → sinon REJECTED BACKDATE_EXCEEDED ou exigence de justification
+     fenêtre rétroactive (AV-078, AV-528 ; écart `client_created_at − occurred_at`, deux dates de l'appareil) →
+       sinon REJECTED BACKDATE_EXCEEDED (au-delà de `sync.backdate_max_hours`, sauf droit `sync.backdate.exceed`)
+       ou REJECTED JUSTIFICATION_REQUIRED (au-delà de `sync.justification_after_hours`, sans `backdated_reason`)
      command_version supportée → sinon REJECTED UNSUPPORTED_VERSION
 4. RBAC évalué à occurred_at (BR-ADM-004) → sinon REJECTED FORBIDDEN (audit DENIED)
 5. Validation du schéma et des règles de validité → sinon REJECTED <CODE_METIER>

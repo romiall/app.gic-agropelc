@@ -7,6 +7,7 @@ import {
   extractSlipNumber,
   normalizeSlipRef,
 } from './registre-carnets.js';
+import { backdatingWindowFrom } from '@gic/domain';
 
 describe('registre-carnets (AV-308, AV-312, AV-078)', () => {
   describe('extractSlipNumber & normalizeSlipRef', () => {
@@ -120,6 +121,17 @@ describe('registre-carnets (AV-308, AV-312, AV-078)', () => {
       const occurred = '2026-11-04T12:00:00Z';
       const evalRes = evaluateBackdating(occurred, now);
       expect(evalRes.isFuture).toBe(true);
+    });
+
+    it('la fenêtre vient des paramètres : 12 h pour le motif, 48 h au maximum', () => {
+      const window = backdatingWindowFrom(12, 48);
+      const fifteenHours = evaluateBackdating('2026-11-03T03:00:00Z', now, window);
+      expect(fifteenHours).toMatchObject({ requiresReason: true, isCriticalDelay: false });
+      const sixtyHours = evaluateBackdating('2026-11-01T06:00:00Z', now, window);
+      expect(sixtyHours).toMatchObject({ requiresReason: true, isCriticalDelay: true });
+      // Avec les défauts, les mêmes dates sont : 15 h libre, 60 h avec motif.
+      expect(evaluateBackdating('2026-11-03T03:00:00Z', now).requiresReason).toBe(false);
+      expect(evaluateBackdating('2026-11-01T06:00:00Z', now).isCriticalDelay).toBe(false);
     });
   });
 });

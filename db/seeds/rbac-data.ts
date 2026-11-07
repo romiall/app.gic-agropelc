@@ -330,6 +330,14 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isApproval: false,
     isSensitive: false,
   },
+  {
+    code: 'sync.backdate.exceed',
+    module: 'sync',
+    description: 'Saisir au-delà de la fenêtre rétroactive : chargement de l’historique (AV-078)',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: true,
+  },
 
   // integrations (2)
   {
@@ -1256,6 +1264,7 @@ function grants(
 export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
   // DIRECTION — 82, toujours ALL
   ...grants('DIRECTION', [
+    ['sync.backdate.exceed', 'ALL'],
     ['identity.user.read', 'ALL'],
     ['identity.device.read', 'ALL'],
     ['identity.device.block', 'ALL'],
@@ -1343,6 +1352,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
   // ADMIN — 31, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
   // + finance.expense_category.manage, P8-03)
   ...grants('ADMIN', [
+    ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'ALL'],
     ['fieldwork.presence.read', 'ALL'],
     ['identity.user.read', 'ALL'],
@@ -1763,6 +1773,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
 
   // FINANCE — 58 (+ finance.expense_category.manage, P8-03)
   ...grants('FINANCE', [
+    ['sync.backdate.exceed', 'ALL'],
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'ALL'],

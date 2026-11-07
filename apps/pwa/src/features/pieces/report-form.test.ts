@@ -15,6 +15,7 @@ import {
   POS_CASH_ACCOUNT,
   cashTransferTargetRow,
   expenseCategoryRow,
+  meSettingRow,
   orderRow,
   posCashAccountRow,
   seedSalesFixtures,
@@ -201,6 +202,22 @@ describe('défauts communs : numéro, date, motif d’antidatage (AV-078, AV-312
     expect(accepted.meta.backdatedReason).toBe('Retour de tournée');
     expect(accepted.meta.occurredAt).toBe(new Date(old).toISOString());
     expect(accepted.meta.paperRef).toBe('BV-000142');
+  });
+
+  it('la fenêtre vient des paramètres de l’appareil (AV-078) : 48 h avant le motif, ici, au lieu de 24 h', async () => {
+    const old = toLocalInput(new Date('2026-11-03T02:00:00.000Z')); // 32 h avant NOW
+    const valid = {
+      locationId: IDS.pos,
+      lines: [line()],
+      customerId: IDS.customer,
+      occurredAt: old,
+    };
+    expect(issuesOf(valid)).toContain('BACKDATE_REASON_REQUIRED');
+    await getDb().projections.put(meSettingRow('sync.justification_after_hours', 48));
+    await getDb().projections.put(meSettingRow('sync.backdate_max_hours', 96));
+    refs = await loadSalesReferences(getDb());
+    expect(issuesOf({ ...valid, paperRef: '  ' })).not.toContain('BACKDATE_REASON_REQUIRED');
+    expect(resolve(valid).ok).toBe(true);
   });
 
   it('numéro normalisé comme le registre des carnets', () => {

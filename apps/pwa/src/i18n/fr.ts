@@ -4912,7 +4912,7 @@ export const fr = {
     slip_ref_hint: 'Ex. BV-000142, RE-0045, BD-012…',
     occurred_at: 'Date et heure manuscrite de la pièce',
     backdated_reason: 'Motif de report / antidatage',
-    backdated_reason_hint: 'Requis car la pièce a été signée il y a plus de 24 h.',
+    backdated_reason_hint: 'Requis car la pièce a été signée il y a plus de {{hours}} h.',
     photo_label: 'Preuve photo de la souche',
     photo_hint:
       'Recommandé : prenez en photo la souche ou le feuillet du carnet comme justificatif.',
@@ -4921,7 +4921,7 @@ export const fr = {
     gap_warning:
       'Saut détecté : la dernière pièce enregistrée était le n° {{last}}. Pièces manquantes : {{missing}}.',
     critical_delay_warning:
-      'Attention : le délai de report dépasse 72 h. Cette pièce fera l’objet d’une vérification comptable a posteriori.',
+      'Attention : la pièce date de plus de {{hours}} h. Le serveur refuse un report aussi ancien, sauf à qui a le droit de charger l’historique (Direction, Admin, Finance).',
     future_date_error: 'La date de la pièce ne peut pas être dans le futur.',
     submit_report: 'Enregistrer le report',
     report_success: 'Pièce {{ref}} enregistrée dans la file d’attente locale (outbox).',
@@ -6052,7 +6052,7 @@ export const fr = {
     reason_apply: 'Appliquer le motif',
     reason_label: 'Motif d’antidatage commun',
     reason_hint:
-      'Pour les pièces de plus de 24 h dont le fichier ne donne pas de motif (colonne « Motif d’antidatage »).',
+      'Pour les pièces de plus de 24 h dont le fichier ne donne pas de motif (colonne « Motif d’antidatage »). Au-delà de 72 h, le serveur ne charge une pièce que pour qui a le droit de charger l’historique (Direction, Admin, Finance).',
     file_label: 'Fichier CSV',
     file_hint:
       'Le fichier est lu sur cet appareil. Rien n’est envoyé tant que vous ne touchez pas « Charger ».',

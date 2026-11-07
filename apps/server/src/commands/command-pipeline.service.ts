@@ -29,9 +29,14 @@
  *
  * Hors périmètre P0-06, délibérément non traité ici (voir docs/10-development-plan/
  * 06-passage-au-developpement.md §3 et le plan de cette session) :
- * - fenêtre de rétrodatation (AV-078) → P0-12 ;
  * - fusion automatique / `base_version` (intentions sur état partagé) → chaque module
  *   métier la décide dans son propre gestionnaire (ce pipeline reste générique).
+ *
+ * Fenêtre de saisie rétroactive (AV-078, BR-SYN-012 ; étape 3d-bis, appliquée à toute commande depuis le
+ * 07/11/2026, AV-528) : `client_created_at − occurred_at` au-delà de `sync.justification_after_hours` (24 h) exige un
+ * motif (`JUSTIFICATION_REQUIRED`), au-delà de `sync.backdate_max_hours` (72 h) la saisie est refusée
+ * (`BACKDATE_EXCEEDED`) sauf à qui a le droit `sync.backdate.exceed` (chargement de l'historique) ; le motif est
+ * conservé dans l'audit.
  *
  * P0-12 (`sync/sync-push.service.ts`) : `HandleCommandContext` porte en plus, en option,
  * `deviceSentAt`/`batchId`/`clockSkewMs`/`clockSuspect` — propres à `/sync/push` (un lot), absents pour
@@ -43,7 +48,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import {
+  BACKDATE_EXCEED_PERMISSION,
+  BACKDATE_MAX_HOURS_SETTING,
+  JUSTIFICATION_AFTER_HOURS_SETTING,
+  backdatingRefusal,
+  backdatingWindowFrom,
   clampClockSkewMs,
+  evaluateBackdatingGap,
   futureToleranceMsFrom,
   isClockSkewSuspect,
   type Clock,
@@ -436,6 +447,15 @@ export class CommandPipelineService {
       return this.markAndReject(claim, 'OCCURRED_AT_FUTURE', 'Horodatage dans le futur.');
     }
 
+    // Étape 3d-bis : fenêtre de saisie rétroactive (AV-078, BR-SYN-012). L'écart se mesure entre deux dates de l'appareil
+    // (`client_created_at` − `occurred_at`) : une opération saisie hors ligne puis synchronisée tard n'est pas
+    // rétroactive. Au-delà du seuil, un motif est exigé ; au-delà du maximum, refus, sauf à qui a le droit de charger
+    // l'historique. Ces refus sont ceux d'une saisie invalide (erreur de date), pas d'un fait accompli (BR-SYN-007).
+    const backdatingError = await this.backdatingRefusal(envelope, occurredAt, serverNow);
+    if (backdatingError !== null) {
+      return this.markAndReject(claim, backdatingError.code, backdatingError.message);
+    }
+
     // Étape 3e : version supportée.
     if (!this.registry.isVersionSupported(envelope.command_type, envelope.command_version)) {
       return this.markAndReject(
@@ -532,6 +552,10 @@ export class CommandPipelineService {
             entityId: envelope.aggregate_id,
             ...(handlerAudit?.before !== undefined ? { before: handlerAudit.before } : {}),
             after: handlerAudit?.after ?? storedPayload,
+            // Le motif d'une saisie rétroactive (AV-078) : la signale à qui relit l'audit.
+            ...((envelope.backdated_reason ?? '').trim().length > 0
+              ? { reason: envelope.backdated_reason }
+              : {}),
             result: 'SUCCESS',
             correlationId: ctx.correlationId ?? null,
           },
@@ -613,6 +637,59 @@ export class CommandPipelineService {
         at,
       }),
     );
+  }
+
+  /**
+   * Refus d'une saisie rétroactive (AV-078) : fenêtre lue dans `sync.justification_after_hours` (24 h) et
+   * `sync.backdate_max_hours` (72 h) ; le droit `sync.backdate.exceed` se juge à l'heure du serveur (c'est le
+   * privilège de l'auteur aujourd'hui, pas à la date reculée de l'opération). `null` : la saisie passe.
+   */
+  private async backdatingRefusal(
+    envelope: {
+      readonly client_created_at: string;
+      readonly backdated_reason: string | null;
+      readonly author_user_id: string;
+    },
+    occurredAt: Date,
+    at: Date,
+  ): Promise<{ readonly code: string; readonly message: string } | null> {
+    const gapMs = new Date(envelope.client_created_at).getTime() - occurredAt.getTime();
+    // Cas courant, avant toute lecture de réglage : date égale ou postérieure à la saisie, ou à moins d'une minute
+    // (le temps de saisie, ce n'est pas une saisie rétroactive, même si le seuil du motif était réglé à zéro).
+    if (!(gapMs > 60 * 1000)) return null;
+    const read = (key: string) =>
+      currentSettingValue(this.db, { key, scopeType: 'GLOBAL', scopeId: null, at });
+    const window = backdatingWindowFrom(
+      await read(JUSTIFICATION_AFTER_HOURS_SETTING),
+      await read(BACKDATE_MAX_HOURS_SETTING),
+    );
+    const evaluation = evaluateBackdatingGap(gapMs, window);
+    if (!evaluation.requiresReason && !evaluation.exceedsWindow) return null;
+    const canExceedWindow = evaluation.exceedsWindow
+      ? await hasPermissionAt(
+          this.db,
+          toBin(envelope.author_user_id),
+          BACKDATE_EXCEED_PERMISSION,
+          at,
+        )
+      : false;
+    const refusal = backdatingRefusal(evaluation, {
+      hasReason: (envelope.backdated_reason ?? '').trim().length > 0,
+      canExceedWindow,
+    });
+    if (refusal === 'BACKDATE_EXCEEDED') {
+      return {
+        code: 'BACKDATE_EXCEEDED',
+        message: `Saisie rétroactive refusée : l'opération est datée de plus de ${window.maxHours} h avant sa saisie.`,
+      };
+    }
+    if (refusal === 'JUSTIFICATION_REQUIRED') {
+      return {
+        code: 'JUSTIFICATION_REQUIRED',
+        message: `Un motif est exigé : l'opération est datée de plus de ${window.justificationAfterHours} h avant sa saisie.`,
+      };
+    }
+    return null;
   }
 
   /**

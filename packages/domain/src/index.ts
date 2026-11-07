@@ -110,6 +110,18 @@ export {
   evaluateStockThreshold,
 } from './stock-engine.js';
 
+export type { BackdatingEvaluation, BackdatingRefusal, BackdatingWindow } from './backdating.js';
+export {
+  BACKDATE_EXCEED_PERMISSION,
+  BACKDATE_MAX_HOURS_SETTING,
+  DEFAULT_BACKDATE_MAX_HOURS,
+  DEFAULT_JUSTIFICATION_AFTER_HOURS,
+  JUSTIFICATION_AFTER_HOURS_SETTING,
+  backdatingRefusal,
+  backdatingWindowFrom,
+  evaluateBackdatingGap,
+} from './backdating.js';
+
 export type {
   CountAdjustmentPart,
   CountLineScope,

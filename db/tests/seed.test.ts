@@ -78,7 +78,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 11 rôles, 124 permissions et 503 octrois attendus', async () => {
+  it('crée exactement les 11 rôles, 130 permissions et 523 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -89,7 +89,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(129); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E)
+    expect(PERMISSIONS.length).toBe(130); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E), sync.backdate.exceed (AV-078, AV-528)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -109,7 +109,8 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // + 16 octrois de PP-E (AV-313, AV-314) : fieldwork.presence.record et .read (Direction, Administrateur : ALL ;
     // Resp. production, Resp. ferme : SITE) = 8 ; crm.weekly_report.read et .review (Direction : ALL, Resp. commercial :
     // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
-    expect(ROLE_PERMISSIONS.length).toBe(520);
+    // + 3 octrois sync.backdate.exceed (Direction, Administrateur, Finance : ALL, chargement de l'historique, AV-528).
+    expect(ROLE_PERMISSIONS.length).toBe(523);
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>
