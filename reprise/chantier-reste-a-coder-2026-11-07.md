@@ -15,11 +15,11 @@
 | 3 | Quarantaine d'un compte suspendu puis réactivé (AV-229) — migration `20261204100000` | fait, commité | `6d04b78d` |
 | 4a | Report des pièces papier DA, BC, VC, FI (FA, FJC et JE sont des documents dérivés : non reportables) — AV-530 | fait, commité | voir `git log` |
 | 4b | Report de la fiche de suivi de lot FL (mortalité, aliment, pesée, observation ; les œufs par l'écran de collecte) — AV-531 | fait, commité | voir `git log` |
-| 4 | Report des pièces papier DA, BC, VC, FI, FL (FA, FJC et JE sont des documents dérivés : non reportables) + registre des carnets par site (AV-312) | en cours | — |
+| 4 | Report des pièces papier DA, BC, VC, FI, FL (lots 4a et 4b ; FA, FJC et JE sont des documents dérivés : non reportables) ; registre serveur des carnets par site (AV-312) **non fait, consigné** : il attend la colonne dédiée d'AV-501 (b) | fait (registre consigné) | voir les lots 4a, 4b et 8 |
 | 5 | Restes d'AV-514 : jeux hors ligne `presence` et `weekly_reports`, vue d'analyse de la présence, rattachement à un compte, chiffres du bilan allégés — AV-532, migration `20261204110000` | fait, commité | voir `git log` |
 | 6 | Besoins serveur des écrans : revue des 52 besoins par trois relecteurs, S-08, S-20, S-21, S-33, S-34, S-36, S-41 (a), S-42, S-50 et S-52 codés, le reste consigné — AV-533, AV-534 | fait, commité | voir `git log` |
 | 7 | Restes de P9 : `DeviceEnrollmentRequested` (AV-432) fait avec le lot 6 ; détail par canal et classement des commerciaux du bloc VENTES livrés ; `PushSendOptions` déjà exporté ; disponible par zone (KPI-STK-01) consigné — AV-535 | fait, commité | voir `git log` |
-| 8 | S-12 (clients du siège hors ligne), S-39 seconde partie (objectifs de site), tablette partagée multi-vendeurs : défauts paramétrables + AV | à faire | — |
+| 8 | S-12 (clients du siège hors ligne), S-39 seconde partie (objectifs de site), tablette partagée multi-vendeurs, registre serveur des carnets (AV-312) : **non codés, sciemment** — décision du porteur ou essai sur appareil requis ; raisons et conception consignées dans AV-522 et AV-312 | fait (consigné), commité | voir `git log` |
 | 9 | Web Push côté serveur sans clés (AV-365) : adaptateur RFC 8291 et 8292 prouvé contre l'exemple de la RFC, activation par les variables VAPID, clé publique servie à la PWA, script de génération ; abonnement de la PWA non fait — AV-536 | fait, commité | voir `git log` |
 | 10 | Vérification complète (`scratchpad\full-check.ps1`) | à faire | — |
 | 11 | Revue adverse (cinq relecteurs au plus) et clôture (CLAUDE.md, reprise, mémoire) | à faire | — |
