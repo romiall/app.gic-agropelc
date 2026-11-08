@@ -7,9 +7,10 @@
  *
  * Methode : pour chaque requete, protocole PREPARE seul (COM_STMT_PREPARE puis COM_STMT_CLOSE, jamais COM_STMT_EXECUTE) : le
  * serveur analyse la requete et resout ses tables et colonnes, il ne l'execute pas, ne lit aucune donnee et n'en ecrit
- * aucune. Les deux ecarts que le serveur absorbe a l'execution (mariadb-compat.mjs : CAST(? AS JSON) et FOR SHARE)
- * sont appliques au texte avant l'analyse, comme en production. Les requetes que le protocole PREPARE ne sait pas analyser
- * (erreur 1295) sont comptees a part.
+ * aucune. Les trois ecarts que le serveur absorbe a l'execution (mariadb-compat.mjs : CAST(? AS JSON), FOR SHARE et FOR
+ * UPDATE OF <tables>, ce dernier revele par la premiere analyse en ligne le 08/11/2026) sont appliques au texte avant
+ * l'analyse, comme en production. Les requetes que le protocole PREPARE ne sait pas analyser (erreur 1295) sont comptees
+ * a part.
  *
  * Usage, sur le serveur, apres les migrations (le corpus vient du code livre, qui peut employer une colonne nouvelle) :
  *   node --env-file=.env check-sql-corpus.mjs [--strict]
@@ -73,12 +74,21 @@ export function normalizeStatement(sql) {
     .replace(MULTI_ROW_VALUES, (_all, first) => first);
 }
 
+// Nom de table (entre accents graves ou nu, eventuellement qualifie) et liste de noms d'une clause FOR UPDATE OF.
+const LOCK_TABLE_NAME = '(?:`[^`]+`|[\\w$]+)(?:\\.(?:`[^`]+`|[\\w$]+))?';
+const LOCK_OF_CLAUSE = new RegExp(
+  '\\bfor (update|share) of\\s+' + LOCK_TABLE_NAME + '(?:\\s*,\\s*' + LOCK_TABLE_NAME + ')*',
+  'gi',
+);
+
 /**
- * Les deux reecritures que le serveur applique a la compilation sous MariaDB (mariadb-compat.mjs), appliquees ici au texte
- * final : CAST(? AS JSON) -> JSON_EXTRACT(?, '$') et FOR SHARE -> LOCK IN SHARE MODE.
+ * Les trois reecritures que le serveur applique a la compilation sous MariaDB (mariadb-compat.mjs), appliquees ici au texte
+ * final : FOR UPDATE OF <tables> -> FOR UPDATE (MariaDB n'a pas la clause OF), CAST(? AS JSON) -> JSON_EXTRACT(?, '$') et
+ * FOR SHARE -> LOCK IN SHARE MODE.
  */
 export function adaptForMariaDb(sql) {
   return sql
+    .replace(LOCK_OF_CLAUSE, (_all, word) => 'for ' + word)
     .replace(/CAST\(\s*\?\s+AS\s+JSON\s*\)/gi, () => "JSON_EXTRACT(?, '$')")
     .replace(/\bfor share\b/gi, () => 'lock in share mode');
 }

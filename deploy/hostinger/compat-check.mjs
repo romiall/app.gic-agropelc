@@ -5,7 +5,8 @@
  * Il rejoue, sur une table temporaire (rien n'est ecrit dans les tables de l'application), les ecritures et lectures
  * que le serveur fait le plus souvent, avec le vrai `jsonValue` du code construit et la couche mariadb-compat.mjs :
  *   - ecriture d'une colonne JSON (audit, evenements, commandes, taches) et relecture ;
- *   - lecture verrouillante en partage (`.forShare()`) et en ecriture (`.forUpdate()`) ;
+ *   - lecture verrouillante en partage (`.forShare()`) et en ecriture (`.forUpdate()`), dont celle a portee d'une table
+ *     d'une jointure (`.forUpdate('table')`, FOR UPDATE OF de MySQL 8 : la selection FIFO des lots) ;
  *   - ecriture JSON dans un ON DUPLICATE KEY UPDATE ;
  *   - la requete a fonction de fenetre de sync.devices.seq_gap_check (LAG, fenetre nommee, MIN OVER) : la vraie, rejouee
  *     en LECTURE SEULE sur la table reelle sync_command_inbox avec un identifiant d'appareil fictif (aucune ligne n'est
@@ -78,6 +79,26 @@ try {
         .forUpdate()
         .executeTakeFirstOrThrow();
     });
+    await step(
+      "lecture verrouillante a portee avec jointure (forUpdate('table') : FOR UPDATE OF de MySQL 8)",
+      async () => {
+        // Forme de la selection FIFO des lots de recordStockMove (soldes joints aux lots, verrou sur les soldes) : MariaDB
+        // refuse la clause OF, que mariadb-compat.mjs retire. Revele par le filet AV-540 a sa premiere analyse en ligne.
+        await sql`create temporary table _gic_compat_lots (id int not null primary key, rank_at int not null)`.execute(
+          c,
+        );
+        await c.insertInto('_gic_compat_lots').values({ id: 1, rank_at: 5 }).execute();
+        const rows = await c
+          .selectFrom('_gic_compat_probe')
+          .innerJoin('_gic_compat_lots', '_gic_compat_lots.id', '_gic_compat_probe.id')
+          .select(['_gic_compat_lots.id as lot_id', '_gic_compat_lots.rank_at as rank_at'])
+          .where('_gic_compat_probe.id', '=', 1)
+          .orderBy('_gic_compat_lots.rank_at', 'asc')
+          .forUpdate('_gic_compat_probe')
+          .execute();
+        assert.equal(rows.length, 1, 'une ligne attendue');
+      },
+    );
     await step('ON DUPLICATE KEY UPDATE avec une colonne JSON', async () => {
       await c
         .insertInto('_gic_compat_probe')
@@ -106,6 +127,7 @@ try {
       },
       false,
     );
+    await sql`drop temporary table if exists _gic_compat_lots`.execute(c);
     await sql`drop temporary table if exists _gic_compat_probe`.execute(c);
   });
 } catch (error) {

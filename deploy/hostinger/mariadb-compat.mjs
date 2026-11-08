@@ -1,10 +1,16 @@
 /**
  * Compatibilite MariaDB de l'hebergement (Hostinger : MariaDB 11.8 ; l'application vise MySQL 8.4).
  *
- * Deux constructions du code serveur n'existent pas en MariaDB et font echouer la requete (erreur 1064) :
+ * Trois constructions du code serveur n'existent pas en MariaDB et font echouer la requete (erreur 1064) :
  *   - CAST(? AS JSON)  -> JSON_EXTRACT(?, '$')   : toute ecriture d'une colonne JSON (audit, evenements, journal des
  *                                                  commandes, taches, alertes...) passe par `jsonValue()` ;
- *   - FOR SHARE        -> LOCK IN SHARE MODE     : toutes les lectures verrouillantes en partage (`.forShare()`).
+ *   - FOR SHARE        -> LOCK IN SHARE MODE     : toutes les lectures verrouillantes en partage (`.forShare()`) ;
+ *   - FOR UPDATE OF t  -> FOR UPDATE             : `.forUpdate('table')`, qui limite le verrou aux lignes d'une table de
+ *                                                  la jointure (MySQL 8) ; MariaDB n'a pas la clause OF et verrouille alors
+ *                                                  les lignes lues de toutes les tables de la requete (meme resultat, verrou
+ *                                                  plus large). Trouve par le filet AV-540 a sa premiere analyse en ligne :
+ *                                                  la selection FIFO des lots de recordStockMove (toute sortie de stock) en
+ *                                                  depend.
  * Elles sont reecrites au moment ou Kysely compile la requete : le code source et son comportement sous MySQL 8.4
  * ne changent pas (la suite d'essais n'est pas concernee). Les semis, eux, sont adaptes a la construction du paquet
  * (build-bundle.ps1), et les migrations par migrate.mjs.
@@ -64,6 +70,11 @@ export function installMariaDbCompat(DefaultQueryCompiler) {
     if (node.modifier === 'ForShare' && !node.rawModifier) {
       this.append('lock in share mode');
       return undefined;
+    }
+    // `FOR UPDATE OF <tables>` : la clause OF est retiree (voir l'en-tete) ; nowait / skip locked, qui sont des modificateurs
+    // distincts, suivent comme avant.
+    if (node.of && !node.rawModifier) {
+      return visitSelectModifier.call(this, { ...node, of: undefined });
     }
     return visitSelectModifier.call(this, node);
   };

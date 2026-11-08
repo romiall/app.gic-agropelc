@@ -50,8 +50,15 @@ const castSql = (db) =>
     .compile().sql;
 const shareSql = (db) =>
   db.selectFrom('t').select('id').where('id', '=', 1).forShare().compile().sql;
+const updateOfSql = (db) =>
+  db.selectFrom('t').select('id').where('id', '=', 1).forUpdate('t').compile().sql;
 assert.match(castSql(before), /CAST\(\? AS JSON\)/, 'avant installation : CAST(? AS JSON) attendu');
 assert.match(shareSql(before), /for share$/, 'avant installation : for share attendu');
+assert.match(
+  updateOfSql(before),
+  /for update of `t`$/,
+  'avant installation : for update of attendu',
+);
 
 assert.equal(installMariaDbCompat(DefaultQueryCompiler), true);
 assert.equal(
@@ -68,6 +75,7 @@ check(
   () => {
     assert.match(castSql(before), /CAST\(\? AS JSON\)/);
     assert.match(shareSql(before), /for share$/);
+    assert.match(updateOfSql(before), /for update of/);
     assert.doesNotMatch(castSql(db), /AS JSON/);
   },
 );
@@ -124,6 +132,40 @@ check('forShare : lock in share mode (et skip locked / nowait a la suite)', () =
   assert.equal(q.sql, 'select `id` from `t` limit ? lock in share mode skip locked');
   const n = db.selectFrom('t').select('id').forShare().noWait().compile();
   assert.equal(n.sql, 'select `id` from `t` lock in share mode nowait');
+});
+
+// Trouve le 08/11/2026 par le filet AV-540, a sa premiere analyse en ligne : la selection FIFO des lots de recordStockMove
+// (record-move.ts, stock-lots.ts) ecrit `.forUpdate('inventory_stock_balances')` ; MariaDB 11.8 refuse `FOR UPDATE OF`.
+check("forUpdate('table') : la clause OF de MySQL 8 est retiree (MariaDB la refuse)", () => {
+  assert.equal(updateOfSql(db), 'select `id` from `t` where `id` = ? for update');
+  assert.equal(
+    db
+      .selectFrom('t')
+      .innerJoin('u', 'u.id', 't.u_id')
+      .select('t.id')
+      .where('t.k', '=', 1)
+      .orderBy('u.rank_at', 'asc')
+      .forUpdate('t')
+      .compile().sql,
+    'select `t`.`id` from `t` inner join `u` on `u`.`id` = `t`.`u_id` where `t`.`k` = ? order by `u`.`rank_at` asc for update',
+  );
+  // Plusieurs tables, puis nowait / skip locked (modificateurs distincts) qui suivent comme avant.
+  assert.equal(
+    db.selectFrom('t').select('id').forUpdate(['t', 'u']).compile().sql,
+    'select `id` from `t` for update',
+  );
+  assert.equal(
+    db.selectFrom('t').select('id').forUpdate('t').noWait().compile().sql,
+    'select `id` from `t` for update nowait',
+  );
+  assert.equal(
+    db.selectFrom('t').select('id').forUpdate('t').skipLocked().compile().sql,
+    'select `id` from `t` for update skip locked',
+  );
+  assert.equal(
+    db.selectFrom('t').select('id').forShare('t').compile().sql,
+    'select `id` from `t` lock in share mode',
+  );
 });
 
 check('forUpdate et les autres requetes ne changent pas', () => {

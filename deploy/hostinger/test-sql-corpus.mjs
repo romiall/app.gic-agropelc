@@ -65,6 +65,29 @@ assert.equal(
   'select * from t where id = ? for update',
 );
 assert.equal(adaptForMariaDb('select 1'), 'select 1');
+// FOR UPDATE OF <tables> : MariaDB 11.8 n'a pas la clause OF (trouve par la premiere analyse en ligne, 08/11/2026).
+assert.equal(
+  adaptForMariaDb(
+    'select a from `b` inner join `l` on `l`.`id` = `b`.`k` where x = ? order by y asc for update of `b`',
+  ),
+  'select a from `b` inner join `l` on `l`.`id` = `b`.`k` where x = ? order by y asc for update',
+);
+assert.equal(
+  adaptForMariaDb('select 1 from `a` for update of `a`, `db`.`b`, c nowait'),
+  'select 1 from `a` for update nowait',
+);
+assert.equal(
+  adaptForMariaDb('select 1 from t for update of t skip locked'),
+  'select 1 from t for update skip locked',
+);
+assert.equal(
+  adaptForMariaDb('select 1 from t for share of t'),
+  'select 1 from t lock in share mode',
+);
+assert.equal(
+  adaptForMariaDb('select 1 from t where note = ? for update'),
+  'select 1 from t where note = ? for update',
+);
 
 // -- Empreinte et classement des refus -----------------------------------------------------------------------------
 assert.match(statementSha('select 1'), /^[0-9a-f]{12}$/);
