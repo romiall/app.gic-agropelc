@@ -5375,6 +5375,8 @@ export const fr = {
       production_high_mortality_alert_heads: 'Seuil d’alerte de mortalité (nombre de têtes)',
       production_daily_entry_working_days: 'Jours de saisie attendue d’un lot',
       production_standard_cost_alert_lookback_days: 'Fenêtre de contrôle du coût standard',
+      fieldwork_checkin_enabled:
+        'Pointage de prise de service en service (désactivé : masqué à l’écran, rien n’est supprimé)',
       fieldwork_geofence_radius_m: 'Rayon du géorepère par défaut',
       fieldwork_max_gps_accuracy_m: 'Précision GPS maximale acceptée',
       fieldwork_override_min_attempts: 'Tentatives de pointage avant une dérogation',
