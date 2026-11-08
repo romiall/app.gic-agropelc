@@ -6,7 +6,7 @@
  * l'appareil), utilisable hors ligne ; le compte est aussitôt proposé à la vente, qui dépendra de sa
  * création.
  */
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActionBar,
@@ -84,10 +84,48 @@ export function NewProspectScreen() {
   const refs = useSalesReferences();
   const online = useOnline();
   const [draft, setDraft] = useState<ProspectDraft>(EMPTY);
-  const [gps, setGps] = useState<GpsState>('idle');
+  // Le relevé automatique de l'ouverture est « en cours » dès le premier rendu quand l'appareil sait se localiser.
+  const [gps, setGps] = useState<GpsState>(() =>
+    typeof navigator !== 'undefined' && navigator.geolocation ? 'locating' : 'idle',
+  );
   const [submitted, setSubmitted] = useState<{ commandId: string; customerId: string }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
+
+  // Position du prospect (AV-538, décision du porteur du 08/11/2026) : relevée à l'ouverture de la fiche et pour
+  // chaque nouveau prospect, le bouton « Relever ma position » sert à réessayer. Sans API de localisation, le
+  // relevé automatique reste silencieux (le bouton, lui, le dit).
+  const requestPosition = useCallback(() => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const value: Position = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracyM: Number.isFinite(position.coords.accuracy)
+            ? Math.round(position.coords.accuracy)
+            : null,
+        };
+        setDraft((current) => ({ ...current, position: value }));
+        setGps('idle');
+      },
+      () => setGps('denied'),
+      { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS },
+    );
+  }, []);
+  const locate = useCallback(
+    (automatic: boolean) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        if (!automatic) setGps('denied');
+        return;
+      }
+      setGps('locating');
+      requestPosition();
+    },
+    [requestPosition],
+  );
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) requestPosition();
+  }, [requestPosition]);
 
   if (!refs || !userId) {
     return (
@@ -109,6 +147,8 @@ export function NewProspectScreen() {
             onClick={() => {
               setDraft(EMPTY);
               setSubmitted(undefined);
+              // Nouveau prospect, nouveau lieu : la position précédente n'est jamais reprise.
+              locate(true);
             }}
           >
             {t('prospect.another')}
@@ -157,29 +197,6 @@ export function NewProspectScreen() {
   const duplicateBlocks = online && check.duplicateOf !== null;
   const ready = check.issues.length === 0 && !duplicateBlocks && !busy;
   const categories = refs.customerCategories;
-
-  const locate = () => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGps('denied');
-      return;
-    }
-    setGps('locating');
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const value: Position = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracyM: Number.isFinite(position.coords.accuracy)
-            ? Math.round(position.coords.accuracy)
-            : null,
-        };
-        update({ position: value });
-        setGps('idle');
-      },
-      () => setGps('denied'),
-      { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS },
-    );
-  };
 
   const submit = async () => {
     if (!ready) return;
@@ -251,7 +268,7 @@ export function NewProspectScreen() {
               })}
             </p>
           ) : null}
-          <Button variant="outline" onClick={locate} disabled={gps === 'locating'}>
+          <Button variant="outline" onClick={() => locate(false)} disabled={gps === 'locating'}>
             {gps === 'locating' ? t('prospect.locating') : t('prospect.locate')}
           </Button>
         </div>

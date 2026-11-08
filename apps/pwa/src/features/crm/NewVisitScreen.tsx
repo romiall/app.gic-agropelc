@@ -32,6 +32,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { CustomerPicker } from '../sales/CustomerPicker.js';
+import { checkinEnabled, presentedFlags } from '../fieldwork/checkin-setting.js';
 import { openWorkSession } from '../sales/pricing.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
@@ -129,6 +130,8 @@ export function NewVisitScreen() {
   const proposePosition =
     geo.state !== 'locating' &&
     proposesCustomerPosition(customer, effective.position, refs.outbox, refs.customersPulledAt);
+  // Pointage désactivé (AV-537) : « hors prise de service » n'est plus annoncé (le serveur l'écrit toujours).
+  const shownFlags = presentedFlags(check.flags, checkinEnabled(refs.settings, now));
   const roles = navigation ? navigation.roles : [];
   const ready = check.issues.length === 0 && outcomes.length > 0 && !busy;
 
@@ -177,7 +180,7 @@ export function NewVisitScreen() {
           {t('visit.offline_banner')}
         </Banner>
       ) : null}
-      {check.flags.includes('OUT_OF_SESSION') ? (
+      {shownFlags.includes('OUT_OF_SESSION') ? (
         <Banner
           tone="warn"
           role="status"

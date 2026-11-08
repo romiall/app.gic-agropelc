@@ -168,6 +168,81 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await getDb().navigation.clear();
   });
 
+  describe('position de la vente (AV-538)', () => {
+    afterEach(async () => {
+      Reflect.deleteProperty(navigator, 'geolocation');
+      await getDb().navigation.clear();
+    });
+
+    const remember = (roles: string[]) =>
+      rememberNavigation(getDb(), new FixedClock(new Date('2026-10-10T08:00:00.000Z')), IDS.user, {
+        user: { fullName: 'Awa', roles },
+        sections: [],
+      });
+
+    it('commercial terrain : la position relevée à l’ouverture part avec la vente', async () => {
+      await seedSalesFixtures(getDb());
+      await remember(['COMMERCIAL_TERRAIN']);
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition: (
+            ok: (position: {
+              coords: { latitude: number; longitude: number; accuracy: number };
+            }) => void,
+          ) => ok({ coords: { latitude: 3.8667, longitude: 11.5167, accuracy: 20.4 } }),
+        },
+      });
+      const user = userEvent.setup();
+      renderScreen();
+      await addEggs(user);
+      await user.click(screen.getByRole('button', { name: 'Enregistrer la vente' }));
+      const [command] = await getDb().outbox.toArray();
+      expect(command).toMatchObject({ command_type: 'sales.sale.record' });
+      expect((command?.payload as { position?: unknown }).position).toEqual({
+        lat: 3.8667,
+        lng: 11.5167,
+        accuracyM: 20.4,
+      });
+    });
+
+    it('commercial terrain sans position (refus ou délai) : la vente part quand même, sans position', async () => {
+      await seedSalesFixtures(getDb());
+      await remember(['COMMERCIAL_TERRAIN']);
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: { getCurrentPosition: (_ok: unknown, fail: () => void) => fail() },
+      });
+      const user = userEvent.setup();
+      renderScreen();
+      await addEggs(user);
+      const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+      await waitFor(() => expect(record).toBeEnabled());
+      await user.click(record);
+      const [command] = await getDb().outbox.toArray();
+      expect(command).toMatchObject({ command_type: 'sales.sale.record' });
+      expect(command?.payload as object).not.toHaveProperty('position');
+    });
+
+    it('vendeur de PDV : aucune position relevée, aucune autorisation de localisation demandée', async () => {
+      await seedSalesFixtures(getDb());
+      await remember(['VENDEUR_PDV']);
+      const getCurrentPosition = vi.fn();
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: { getCurrentPosition },
+      });
+      const user = userEvent.setup();
+      renderScreen();
+      await addEggs(user);
+      await user.click(screen.getByRole('button', { name: 'Enregistrer la vente' }));
+      const [command] = await getDb().outbox.toArray();
+      expect(command).toMatchObject({ command_type: 'sales.sale.record' });
+      expect(command?.payload as object).not.toHaveProperty('position');
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+    });
+  });
+
   it('mobile money avec deux comptes connus : compte de réception à choisir (AV-218)', async () => {
     await seedSalesFixtures(getDb());
     for (const id of ['om', 'mtn']) {

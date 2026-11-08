@@ -357,7 +357,15 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: 60,
       isClientVisible: false,
     });
+    // AV-537 : le pointage est désactivé pour le pilote (décision du porteur du 08/11/2026) ; un retour accidentel
+    // à `true` rétablirait pour tous les commerciaux le signal « Vous n'avez pas pris service » et l'action « PRENDRE
+    // SERVICE » de l'accueil. L'appareil lit ce réglage : il doit lui être servi.
+    expect(seeded.get('fieldwork.checkin_enabled')).toMatchObject({
+      value: false,
+      isClientVisible: true,
+    });
     for (const key of [
+      'fieldwork.checkin_enabled',
       'finance.cash_sessions_per_day_max',
       'finance.cash_session_required',
       'finance.cash_session_required_for_payouts',

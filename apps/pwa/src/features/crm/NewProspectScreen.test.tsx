@@ -179,6 +179,90 @@ describe('+ Prospect (ECR-CRM-02)', () => {
     await db.syncMeta.delete('device');
   });
 
+  describe('position du prospect (AV-538)', () => {
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'geolocation');
+    });
+
+    it('relevée à l’ouverture : elle part avec le prospect, sans appuyer sur « Relever ma position »', async () => {
+      const getCurrentPosition = vi.fn(
+        (
+          ok: (position: {
+            coords: { latitude: number; longitude: number; accuracy: number };
+          }) => void,
+        ) => ok({ coords: { latitude: 3.8667, longitude: 11.5167, accuracy: 20.4 } }),
+      );
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: { getCurrentPosition },
+      });
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <NewProspectScreen />
+        </MemoryRouter>,
+      );
+      expect(
+        await screen.findByText(/Position : 3\.86670, 11\.51670 \(précision 20 m\)/),
+      ).toBeInTheDocument();
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      // Position seule : ni nom ni téléphone ne sont exigés pour retrouver le compte (BR-CRM-002).
+      await user.type(
+        screen.getByLabelText('Nom du client ou de l’établissement'),
+        'Épicerie Etoudi',
+      );
+      await user.selectOptions(screen.getByLabelText('Zone'), IDS.zone);
+      await user.click(screen.getByRole('button', { name: 'Enregistrer le prospect' }));
+      expect(await screen.findByText(/Prospect enregistré sur ce téléphone/)).toBeInTheDocument();
+      const [create] = await getDb().outbox.toArray();
+      expect(create).toMatchObject({
+        command_type: 'crm.customer.create',
+        payload: { position: { lat: 3.8667, lng: 11.5167, accuracyM: 20 } },
+      });
+      // « Autre prospect » relève une nouvelle position, jamais celle du prospect précédent.
+      await user.click(screen.getByRole('button', { name: 'Nouveau prospect' }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+    });
+
+    it('localisation refusée : le message le dit, le prospect reste enregistrable avec un téléphone', async () => {
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: { getCurrentPosition: (_ok: unknown, fail: () => void) => fail() },
+      });
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <NewProspectScreen />
+        </MemoryRouter>,
+      );
+      expect(
+        await screen.findByText(/Position indisponible : autorisez la localisation/),
+      ).toBeInTheDocument();
+      await user.type(
+        screen.getByLabelText('Nom du client ou de l’établissement'),
+        'Épicerie Etoudi',
+      );
+      await user.type(screen.getByLabelText('Téléphone'), '677 00 11 22');
+      await user.selectOptions(screen.getByLabelText('Zone'), IDS.zone);
+      await user.click(screen.getByRole('button', { name: 'Enregistrer le prospect' }));
+      expect(await screen.findByText(/Prospect enregistré sur ce téléphone/)).toBeInTheDocument();
+      const [create] = await getDb().outbox.toArray();
+      expect(create?.payload as object).not.toHaveProperty('position');
+    });
+
+    it('sans API de localisation : le relevé automatique reste silencieux (aucun message)', async () => {
+      render(
+        <MemoryRouter>
+          <NewProspectScreen />
+        </MemoryRouter>,
+      );
+      expect(await screen.findByLabelText('Téléphone')).toBeInTheDocument();
+      expect(screen.queryByText(/Position indisponible/)).not.toBeInTheDocument();
+    });
+  });
+
   it('en ligne, téléphone d’un compte existant : création bloquée sur l’appareil', async () => {
     const user = userEvent.setup();
     render(

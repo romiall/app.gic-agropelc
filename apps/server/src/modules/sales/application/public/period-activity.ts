@@ -227,11 +227,16 @@ export interface FlaggedSalesOfDay {
  * Ventes signalées d'un jour métier, ventilées par drapeau (signal `SALES_FLAGGED` de l'accueil, AV-255) :
  * mêmes ventes que `flaggedCount` de `salesActivityByDay` (non annulées, datées du jour, dans le
  * périmètre). Les drapeaux sont lus et comptés ici, sans `JSON_TABLE`.
+ *
+ * `ignoreFlags` (AV-537) : drapeaux qui ne comptent pas ; une vente qui n'en porte aucun autre n'est plus
+ * « signalée » (le pointage désactivé ne signale plus une vente « hors prise de service »). Vide par défaut :
+ * le compte est alors celui de `flaggedCount`.
  */
 export async function flaggedSalesOfDay(
   executor: Executor,
   scope: ReadScope,
   day: string,
+  options: { readonly ignoreFlags?: readonly string[] } = {},
 ): Promise<FlaggedSalesOfDay> {
   const saleScope = scopeSql(scope, {
     site: 's.site_id',
@@ -244,14 +249,34 @@ export async function flaggedSalesOfDay(
        AND s.occurred_at >= ${businessDayStartUtc(day)} AND s.occurred_at < ${businessDayEndUtc(day)}
        AND JSON_LENGTH(s.flags) > 0 AND ${saleScope}
   `.execute(executor);
+  return tallyFlaggedSales(
+    rows.rows.map((row) => row.flags),
+    options.ignoreFlags,
+  );
+}
+
+/**
+ * Compte des ventes signalées d'après la colonne `flags` de chacune (tableau JSON de codes) : une vente compte pour
+ * chacun de ses drapeaux ; les `ignoreFlags` ne comptent pas, et une vente qui n'en porte aucun autre n'est plus
+ * signalée. Sans drapeau ignoré, toute ligne lue est une vente signalée.
+ */
+export function tallyFlaggedSales(
+  flagLists: readonly unknown[],
+  ignoreFlags: readonly string[] = [],
+): FlaggedSalesOfDay {
+  const ignored = new Set(ignoreFlags);
   const byFlag = new Map<string, number>();
-  for (const row of rows.rows) {
-    const flags = Array.isArray(row.flags) ? (row.flags as unknown[]) : [];
-    for (const flag of new Set(flags.filter((value) => typeof value === 'string'))) {
-      byFlag.set(flag, (byFlag.get(flag) ?? 0) + 1);
-    }
+  let salesCount = 0;
+  for (const raw of flagLists) {
+    const flags = Array.isArray(raw) ? (raw as unknown[]) : [];
+    const kept = new Set(
+      flags.filter((value): value is string => typeof value === 'string' && !ignored.has(value)),
+    );
+    if (ignored.size > 0 && kept.size === 0) continue;
+    salesCount += 1;
+    for (const flag of kept) byFlag.set(flag, (byFlag.get(flag) ?? 0) + 1);
   }
-  return { salesCount: rows.rows.length, byFlag };
+  return { salesCount, byFlag };
 }
 
 /** Somme de l'activité des jours `[fromDay, toDay]` (semaine de l'accueil). */

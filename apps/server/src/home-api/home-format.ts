@@ -3,7 +3,31 @@
  * chaîne `AAAA-MM-JJ`, le jour métier de Douala étant déjà fixé par `businessDayOf`), montants en
  * français, variations et indicateurs.
  */
-import type { HomeKpi, HomeSignal, HomeTone, HomeUnit } from '@gic/contracts';
+import type { HomeAction, HomeKpi, HomeSignal, HomeTone, HomeUnit } from '@gic/contracts';
+
+/** Action de l'accueil qui mène à la prise de service (écran du pointage, ECR-TER-01). */
+export const START_SERVICE_ACTION = 'START_SERVICE';
+
+/**
+ * Actions de l'accueil d'un rôle quand le pointage est désactivé (AV-537, `fieldwork.checkin_enabled`) : plus de
+ * « PRENDRE SERVICE ». Si c'était l'action principale, la suivante prend sa place (un accueil garde toujours une
+ * action en avant). Pointage en service : les actions telles quelles (copie).
+ */
+export function homeActionsFor(
+  actions: readonly HomeAction[],
+  checkinEnabled: boolean,
+): HomeAction[] {
+  const copy = actions.map((action) => ({ ...action }));
+  if (checkinEnabled) return copy;
+  const droppedPrimary = copy.some(
+    (action) => action.code === START_SERVICE_ACTION && action.primary,
+  );
+  const kept = copy.filter((action) => action.code !== START_SERVICE_ACTION);
+  if (droppedPrimary && kept.length > 0 && !kept.some((action) => action.primary)) {
+    return kept.map((action, index) => (index === 0 ? { ...action, primary: true } : action));
+  }
+  return kept;
+}
 
 /** Décale un jour métier de `days` jours (négatif : passé). */
 export function shiftDay(day: string, days: number): string {

@@ -193,6 +193,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 
 | Clé | Défaut | Réf. |
 |---|---|---|
+| `fieldwork.checkin_enabled` | faux (pointage désactivé pour le pilote ; valeur absente = vrai ; global, visible de l'appareil ; ne masque que la présentation) | AV-537 |
 | `fieldwork.geofence_radius_m` | 500 | CM §10, AV-022 |
 | `fieldwork.max_gps_accuracy_m` | 150 | AV-022 |
 | `fieldwork.override_min_attempts` / `override_min_minutes` | 3 / 2 | AV-021 |

@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
-import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { IDS, meSettingRow, seedSalesFixtures } from '../sales/fixtures.js';
 import type { WorkSessionData, ZoneData } from '../sales/types.js';
 import { ServiceScreen } from './ServiceScreen.js';
 import {
@@ -215,6 +215,37 @@ describe('Pointage (ECR-TER-01, écran)', () => {
     Reflect.deleteProperty(navigator, 'geolocation');
     await getDb().projections.clear();
     await getDb().outbox.clear();
+  });
+
+  it('pointage désactivé (AV-537) : l’écran le dit, ne demande pas la position et ne propose pas de prise de service', async () => {
+    const getCurrentPosition = vi.fn();
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    await getDb().projections.put(meSettingRow('fieldwork.checkin_enabled', false));
+    render(
+      <MemoryRouter>
+        <ServiceScreen />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByText(/Le pointage n’est pas activé pour l’instant/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'PRENDRE SERVICE' })).not.toBeInTheDocument();
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(await getDb().outbox.count()).toBe(0);
+  });
+
+  it('pointage en service (réglage vrai) : l’écran propose la prise de service', async () => {
+    locateAt(INSIDE);
+    await getDb().projections.put(meSettingRow('fieldwork.checkin_enabled', true));
+    render(
+      <MemoryRouter>
+        <ServiceScreen />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('button', { name: 'PRENDRE SERVICE' })).toBeInTheDocument();
   });
 
   it('hors ligne, dans la zone : service pris aussitôt, puis fin de service rattachée à la session', async () => {

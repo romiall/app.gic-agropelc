@@ -20,6 +20,7 @@ import { creditCheck, xaf } from '@gic/domain';
 import { ActionBar, Button } from '../../components/ui/index.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
+import { useGeolocation } from '../../platform/useGeolocation.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
@@ -78,6 +79,11 @@ export function NewSaleScreen() {
   const navigation = useRememberedNavigation(userId);
   const refs = useSalesReferences();
   const online = useOnline();
+  // Position de la vente (AV-538, décision du porteur du 08/11/2026) : relevée à l'ouverture pour un commercial
+  // ou un responsable commercial seulement, jointe à la vente si on l'a, sans jamais la retenir ni la refuser.
+  const geo = useGeolocation({
+    enabled: navigation ? holdsAnyRole(navigation.roles, ROLE_SETS.fieldwork) : false,
+  });
 
   const [locationChoice, setLocationChoice] = useState<string | null>(null);
   // Client déjà choisi depuis sa fiche (ECR-CRM-03).
@@ -105,6 +111,8 @@ export function NewSaleScreen() {
     setPayment(EMPTY_PAYMENT);
     setSubmitted(undefined);
     setSaveError(false);
+    // Nouvelle vente, nouveau lieu possible : la position de la vente précédente n'est jamais reprise (AV-538).
+    geo.reset();
   };
 
   if (submitted) {
@@ -340,6 +348,15 @@ export function NewSaleScreen() {
           fromLocationId: location.id,
           ...(customer ? { customerId: customer.id } : {}),
           ...(context.channelCode ? { channelCode: context.channelCode } : {}),
+          ...(geo.position
+            ? {
+                position: {
+                  lat: geo.position.lat,
+                  lng: geo.position.lng,
+                  ...(geo.position.accuracyM !== null ? { accuracyM: geo.position.accuracyM } : {}),
+                },
+              }
+            : {}),
           lines: computed.map(linePayload),
           ...(amount > 0 && method
             ? {

@@ -73,6 +73,12 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-121',
   },
+  // AV-537 (décision du porteur du 08/11/2026, questionnaire Q44) : le pointage est désactivé pour le pilote
+  // (effectif nombreux, frictions internes redoutées) ; le dispositif reste en réserve et se rétablit en
+  // remettant ce réglage à vrai. Il ne masque que la présentation (action et signal de l'accueil, indicateurs
+  // « hors prise de service ») : la prise de service, les sessions et les dérogations restent possibles et les
+  // indicateurs restent écrits (INV-TER).
+  { key: 'fieldwork.checkin_enabled', value: false, isClientVisible: true, ref: 'AV-537' },
   { key: 'fieldwork.geofence_radius_m', value: 500, isClientVisible: true, ref: 'CM §10, AV-022' },
   { key: 'fieldwork.max_gps_accuracy_m', value: 150, isClientVisible: true, ref: 'AV-022' },
   { key: 'fieldwork.override_min_attempts', value: 3, isClientVisible: true, ref: 'AV-021' },

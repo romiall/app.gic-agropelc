@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { IDS, meSettingRow, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { NewVisitScreen } from './NewVisitScreen.js';
 import { EMPTY_VISIT, visitPayload } from './visit.js';
@@ -333,6 +333,18 @@ describe('+ Visite (ECR-CRM-04)', () => {
         pending_command_id: commands[0]?.command_id,
       }),
     ]);
+  });
+
+  it('pointage désactivé (AV-537) : plus d’avertissement « hors session » ni de lien « Prendre service » ; la position est relevée quand même', async () => {
+    await seedOutcome();
+    await getDb().projections.put(meSettingRow('fieldwork.checkin_enabled', false));
+    locateAt({ latitude: 3.8667, longitude: 11.5167, accuracy: 20 });
+    renderAt(`/clients/visite?client=${IDS.customer}`);
+
+    expect(await screen.findByText('Boutique Mvog-Mbi')).toBeInTheDocument();
+    expect(screen.getByText(/Position relevée \(précision 20 m\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/« hors session »/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Prendre service' })).not.toBeInTheDocument();
   });
 
   it('« Autre visite » relève une nouvelle position, jamais celle de la visite précédente', async () => {

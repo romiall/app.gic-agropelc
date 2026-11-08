@@ -864,6 +864,8 @@ export const fr = {
   service: {
     offline_banner:
       'Hors ligne : la tentative est évaluée sur ce téléphone et enregistrée ; elle sera envoyée au retour du réseau.',
+    disabled:
+      'Le pointage n’est pas activé pour l’instant : vous n’avez rien à faire ici. Vos prospects, vos visites et vos ventes s’enregistrent normalement, avec votre position quand le téléphone la donne.',
     start_title: 'Prendre service',
     zone_label: 'Zone de travail',
     zone_placeholder: 'Choisir la zone',

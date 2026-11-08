@@ -30,14 +30,7 @@ import {
   varianceSeverity,
   type Clock,
 } from '@gic/domain';
-import type {
-  HomeAction,
-  HomeActivity,
-  HomeKpi,
-  HomeResponse,
-  HomeSection,
-  HomeSignal,
-} from '@gic/contracts';
+import type { HomeActivity, HomeKpi, HomeResponse, HomeSection, HomeSignal } from '@gic/contracts';
 import type { DB } from '../platform/kysely/database.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
 import {
@@ -60,7 +53,10 @@ import {
   listSiteIdsInZones,
   listManagedTeamMembersAt,
 } from '../modules/organization/application/public/index.js';
-import { findWorkSessionAt } from '../modules/fieldwork/application/public/index.js';
+import {
+  findWorkSessionAt,
+  isCheckinEnabled,
+} from '../modules/fieldwork/application/public/index.js';
 import { pendingApprovalsFor } from '../modules/approvals/application/public/index.js';
 import {
   cashPosition,
@@ -102,6 +98,7 @@ import {
   conflictTypeLabel,
   flaggedSalesSignal,
   formatXaf,
+  homeActionsFor,
   kpi,
   lastDays,
   pendingApprovalsTitle,
@@ -128,6 +125,11 @@ interface Context {
   readonly canReadValuation: boolean;
   /** `analytics.dashboard.distribution` (P5-20) : blocs de distribution de la Finance et du magasinier. */
   readonly canReadDistribution: boolean;
+  /**
+   * Pointage en service (`fieldwork.checkin_enabled`, AV-537) : faux, l'accueil ne propose plus la prise de service
+   * et ne signale plus une vente « hors prise de service ».
+   */
+  readonly checkinEnabled: boolean;
 }
 
 interface Built {
@@ -266,7 +268,12 @@ async function salesBlock(
   }
   if (today.flaggedCount > 0) {
     // Ventilation par cause, gravité et lien (AV-255).
-    const flagged = flaggedSalesSignal(await flaggedSalesOfDay(ctx.executor, scope, ctx.day));
+    const flagged = flaggedSalesSignal(
+      await flaggedSalesOfDay(ctx.executor, scope, ctx.day, {
+        // Pointage désactivé (AV-537) : « hors prise de service » n'est plus une anomalie à montrer.
+        ignoreFlags: ctx.checkinEnabled ? [] : ['OUT_OF_SESSION'],
+      }),
+    );
     if (flagged) built.signals.push(flagged);
   }
   return built;
@@ -1004,7 +1011,7 @@ async function buildRole(
         coordination,
       ]);
       const extra = empty();
-      if (field && !session) {
+      if (field && !session && ctx.checkinEnabled) {
         extra.signals.push(
           signal({
             code: 'SERVICE_NOT_STARTED',
@@ -1137,8 +1144,14 @@ async function buildRole(
   }
 }
 
-function toSection(role: RoleDefinition, resolved: ResolvedScope, built: Built): HomeSection {
-  const actions: HomeAction[] = role.actions.map((action) => ({ ...action }));
+function toSection(
+  role: RoleDefinition,
+  resolved: ResolvedScope,
+  built: Built,
+  checkinEnabled: boolean,
+): HomeSection {
+  // Pointage désactivé (AV-537) : plus de « PRENDRE SERVICE » à l'accueil.
+  const actions = homeActionsFor(role.actions, checkinEnabled);
   return {
     role: role.code,
     roleLabel: role.label,
@@ -1177,6 +1190,7 @@ export async function buildHome(input: BuildHomeInput): Promise<HomeResponse> {
       DISTRIBUTION_READ,
       at,
     ),
+    checkinEnabled: await isCheckinEnabled(input.executor, at),
   };
 
   const sections: HomeSection[] = [];
@@ -1186,7 +1200,7 @@ export async function buildHome(input: BuildHomeInput): Promise<HomeResponse> {
     const role = ROLE_CATALOG[code]!;
     const resolved = await resolveScope(ctx, role);
     const built = await buildRole(ctx, role, resolved);
-    sections.push(toSection(role, resolved, built));
+    sections.push(toSection(role, resolved, built, ctx.checkinEnabled));
     signals.push(...built.signals);
   }
   // L'Admin a déjà le signal de tous les appareils en attente (section ADMIN).

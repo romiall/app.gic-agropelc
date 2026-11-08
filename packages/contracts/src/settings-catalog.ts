@@ -195,6 +195,7 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'production.daily_entry_working_days': weekdays('production'),
   'production.standard_cost_alert_lookback_days': days('production'),
   // Terrain et hors ligne
+  'fieldwork.checkin_enabled': flag('field'),
   'fieldwork.geofence_radius_m': int('field', 50, { unit: 'm', max: 5000 }),
   'fieldwork.max_gps_accuracy_m': { kind: 'number', group: 'field', unit: 'm', min: 1 },
   'fieldwork.override_min_attempts': int('field', 1),
