@@ -49,6 +49,21 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
       action('SYNC_STATUS', 'Synchronisation', { route: SYNC_ROUTE }),
     ],
   },
+  SUPERVISION: {
+    code: 'SUPERVISION',
+    label: 'Supervision consultative',
+    scopeKind: 'ALL',
+    conflictRoles: [],
+    actions: [
+      action('CONTROL_TOWER', 'Tour de contrôle', {
+        primary: true,
+        hint: 'Vue globale consultative de l’activité',
+      }),
+      action('RECEIVABLES', 'Créances', { hint: 'Suivi des retards' }),
+      action('COSTS_MARGINS', 'Coûts et marges', { route: '/finance/couts-et-marges' }),
+      action('SYNC_STATUS', 'Synchronisation', { route: SYNC_ROUTE }),
+    ],
+  },
   ADMIN: {
     code: 'ADMIN',
     label: 'Administrateur',
@@ -197,6 +212,7 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
 /** Ordre d'affichage des sections d'un utilisateur multi-rôles (UX-01 : union des rôles). */
 export const ROLE_ORDER: readonly string[] = [
   'DIRECTION',
+  'SUPERVISION',
   'FINANCE',
   'RESP_COMMERCIAL',
   'COMMERCIAL_TERRAIN',

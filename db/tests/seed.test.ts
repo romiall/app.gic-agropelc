@@ -78,12 +78,12 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 11 rôles, 130 permissions et 523 octrois attendus', async () => {
+  it('crée exactement les 12 rôles, 130 permissions et 561 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
     expect((roles as unknown as { c: number }).c).toBe(ROLES.length);
-    expect(ROLES.length).toBe(11);
+    expect(ROLES.length).toBe(12); // + SUPERVISION (AV-529)
 
     const [[permissions]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
@@ -110,7 +110,14 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // Resp. production, Resp. ferme : SITE) = 8 ; crm.weekly_report.read et .review (Direction : ALL, Resp. commercial :
     // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
     // + 3 octrois sync.backdate.exceed (Direction, Administrateur, Finance : ALL, chargement de l'historique, AV-528).
-    expect(ROLE_PERMISSIONS.length).toBe(523);
+    // + 38 octrois consultatifs ALL de SUPERVISION (AV-529, aucune permission d'approbation ni d'écriture).
+    expect(ROLE_PERMISSIONS.length).toBe(561);
+    const approvalCodes = new Set(PERMISSIONS.filter((p) => p.isApproval).map((p) => p.code));
+    expect(
+      ROLE_PERMISSIONS.filter(
+        (grant) => grant.roleCode === 'SUPERVISION' && approvalCodes.has(grant.permissionCode),
+      ),
+    ).toHaveLength(0);
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>

@@ -17,6 +17,7 @@ import type { NavigationRecord } from '../../storage/db.js';
 /** Ordre des rôles de l'accueil (`apps/server/src/home-api/role-catalog.ts`, `ROLE_ORDER`). */
 export const ROLE_ORDER: readonly string[] = [
   'DIRECTION',
+  'SUPERVISION',
   'FINANCE',
   'RESP_COMMERCIAL',
   'COMMERCIAL_TERRAIN',
@@ -47,6 +48,12 @@ const TAB = {
   lots: { id: 'lots', path: ROUTES.productionLots, labelKey: 'lots', icon: 'leaf' },
   eggs: { id: 'eggs', path: ROUTES.eggCollection, labelKey: 'eggs', icon: 'leaf' },
   approvals: { id: 'approvals', path: ROUTES.approvals, labelKey: 'approvals', icon: 'shield' },
+  controlTower: {
+    id: 'control_tower',
+    path: ROUTES.analyticsDirection,
+    labelKey: 'control_tower',
+    icon: 'chart',
+  },
   treasury: { id: 'treasury', path: ROUTES.treasury, labelKey: 'treasury', icon: 'cash' },
   receivables: {
     id: 'receivables',
@@ -74,10 +81,11 @@ const TAB = {
  * Deux destinations par rôle (choix du porteur du 30/10/2026, ADR-049), après « Accueil » ; les suivantes
  * d'une liste ne servent que si un écran n'est pas proposé au rôle. Responsable de ferme : la collecte des
  * œufs prend la place du stock dans la barre (choix du porteur du 31/10/2026, lot L6) ; le stock reste dans
- * « Plus ».
+ * « Plus ». Supervision consultative (AV-529) : tour de contrôle et créances.
  */
 const ROLE_TABS: Readonly<Record<string, readonly TabSpec[]>> = {
   DIRECTION: [TAB.approvals, TAB.treasury],
+  SUPERVISION: [TAB.controlTower, TAB.receivables],
   FINANCE: [TAB.receivables, TAB.treasury],
   RESP_COMMERCIAL: [TAB.customers, TAB.orders],
   COMMERCIAL_TERRAIN: [TAB.customers, TAB.sales],
@@ -91,7 +99,7 @@ const ROLE_TABS: Readonly<Record<string, readonly TabSpec[]>> = {
 };
 
 /** Rôles sans création rapide : le bouton « + » n'apparaît pas s'ils sont les seuls détenus. */
-const NO_QUICK_ACTIONS: readonly string[] = ['ADMIN'];
+const NO_QUICK_ACTIONS: readonly string[] = ['ADMIN', 'SUPERVISION'];
 
 /**
  * Deux onglets de destination : ceux du premier rôle détenu (ordre de l'accueil), complétés par les
@@ -169,6 +177,7 @@ const ACTION_ICON: Readonly<Record<string, IconName>> = {
   ORGANIZATION: 'store',
   SETTINGS: 'sliders',
   CONTROL_TOWER: 'chart',
+  COSTS_MARGINS: 'chart',
   FOLLOW_DELIVERIES: 'truck',
   STOCK_ALERTS: 'alert',
 };

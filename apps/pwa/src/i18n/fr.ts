@@ -131,6 +131,7 @@ export const fr = {
       eggs: 'Collecte',
       lots: 'Lots',
       approvals: 'Validations',
+      control_tower: 'Pilotage',
       treasury: 'Trésorerie',
       receivables: 'Créances',
       requests: 'Demandes',

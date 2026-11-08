@@ -14,7 +14,7 @@ import { currentSettingValue } from '../modules/organization/application/public/
 export const FINANCE_AUDIT_ENTITY_TYPES_KEY = 'audit.finance_entity_types';
 
 /** Rôles qui lisent tout le journal. */
-const UNRESTRICTED_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'DIRECTION']);
+const UNRESTRICTED_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'DIRECTION', 'SUPERVISION']);
 
 /** Types d'entité financiers par défaut (encaissements, caisses, dépenses, achats et dettes, ventes). */
 export const DEFAULT_FINANCE_AUDIT_ENTITY_TYPES: readonly string[] = [

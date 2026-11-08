@@ -6,11 +6,11 @@
  * propriétaires ; aucune valeur n'est stockée ni saisie.
  *
  * Périmètre d'un rôle (DÉDUIT de la matrice acteurs × domaines, D04-acteurs §4) :
- * Direction, Administrateur, Finance, Achats, Production : toute l'entreprise ; Resp. commercial :
- * son équipe et lui-même ; commerciaux : eux-mêmes ; vendeur de PDV, Resp. ferme, magasinier : les
- * sites de leur affectation (un site ou les sites d'une zone). Les montants de valeur (stock) exigent
- * `inventory.valuation.read` (RC-05, BR-ANA-004). Une section vide de données reste affichée : un
- * indicateur à zéro est une information.
+ * Direction, Supervision consultative, Administrateur, Finance, Achats, Production : toute
+ * l'entreprise ; Resp. commercial : son équipe et lui-même ; commerciaux : eux-mêmes ; vendeur de PDV,
+ * Resp. ferme, magasinier : les sites de leur affectation (un site ou les sites d'une zone). Les
+ * montants de valeur (stock) exigent `inventory.valuation.read` (RC-05, BR-ANA-004). Une section vide
+ * de données reste affichée : un indicateur à zéro est une information.
  *
  * Appareils (MP-06, AV-247) : l'Admin voit tous les appareils en attente ; un responsable qui approuve les
  * appareils de sa portée reçoit le même signal, compté dans cette portée et sans ses propres appareils
@@ -831,6 +831,49 @@ async function buildRole(
   resolved: ResolvedScope,
 ): Promise<Built> {
   const { scope } = resolved;
+  // Rôle strictement consultatif (AV-529) : aucun bloc de coordination (ni validations en attente,
+  // ni résolution de conflits de synchronisation).
+  if (role.code === 'SUPERVISION') {
+    const [sales, receivables, stock, production, cash] = await Promise.all([
+      salesBlock(ctx, scope),
+      receivablesBlock(ctx, scope),
+      stockBlock(ctx, scope, { value: true }),
+      productionBlock(ctx, scope),
+      cashPosition(ctx.executor),
+    ]);
+    const extra = empty();
+    extra.kpis.push(
+      kpi({
+        code: 'KPI-FIN-06',
+        label: 'Trésorerie',
+        value: cash.totalXaf,
+        unit: 'XAF',
+        detail: plural(cash.activeAccounts, 'compte actif', 'comptes actifs'),
+        tone: cash.negativeAccounts > 0 ? 'bad' : 'neutral',
+      }),
+    );
+    if (cash.negativeAccounts > 0) {
+      extra.signals.push(
+        signal({
+          code: 'CASH_NEGATIVE',
+          severity: 'CRITICAL',
+          title: plural(
+            cash.negativeAccounts,
+            'compte de trésorerie négatif',
+            'comptes de trésorerie négatifs',
+          ),
+          count: cash.negativeAccounts,
+        }),
+      );
+    }
+    return merge(
+      { ...sales, activity: [await recentSalesActivity(ctx, scope)] },
+      receivables,
+      stock,
+      production,
+      extra,
+    );
+  }
   const coordination = coordinationBlock(ctx, scope, role);
   switch (role.code) {
     case 'DIRECTION': {

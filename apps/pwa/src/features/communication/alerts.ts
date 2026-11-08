@@ -30,6 +30,7 @@ export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 
 export const ROLE_CODES = [
   'DIRECTION',
+  'SUPERVISION',
   'ADMIN',
   'FINANCE',
   'RESP_COMMERCIAL',

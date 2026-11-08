@@ -55,7 +55,7 @@ export interface RoleDiscountSetting {
 }
 
 // ---------------------------------------------------------------------------------------
-// 11 rôles (docs/01-functional/04-acteurs-et-roles.md §2). Tous is_system=true (livrés
+// 12 rôles (docs/01-functional/04-acteurs-et-roles.md §2). Tous is_system=true (livrés
 // avec le système, non supprimables), is_active=true.
 // ---------------------------------------------------------------------------------------
 export const ROLES: readonly RoleSeed[] = [
@@ -64,6 +64,13 @@ export const ROLES: readonly RoleSeed[] = [
     name: 'Direction',
     description:
       'Pilotage global et contrôle : tour de contrôle, anomalies, validations au-dessus des seuils, activation des tarifs, notes de direction (CM §53).',
+    allowedScopeTypes: ['GLOBAL'],
+  },
+  {
+    code: 'SUPERVISION',
+    name: 'Supervision consultative',
+    description:
+      'Suivi global consultatif (direction de projet hors opérations) : tour de contrôle, tableaux de bord, explorateur analytique, créances, coûts et marges, stocks, lots, achats et audit en lecture seule, sans aucune validation ni saisie.',
     allowedScopeTypes: ['GLOBAL'],
   },
   {
@@ -1831,6 +1838,48 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.finance', 'ALL'],
     ['analytics.explore', 'ALL'],
     ['analytics.view.share', 'ALL'],
+    ['analytics.export', 'ALL'],
+  ]),
+
+  // SUPERVISION — 38, toujours ALL, strictement consultatif (aucune écriture ni approbation)
+  ...grants('SUPERVISION', [
+    ['identity.user.read', 'ALL'],
+    ['identity.device.read', 'ALL'],
+    ['org.structure.read', 'ALL'],
+    ['catalog.product.read', 'ALL'],
+    ['audit.log.read', 'ALL'],
+    ['sync.monitor.read', 'ALL'],
+    ['integrations.kommo.monitor', 'ALL'],
+    ['comm.alert.read', 'ALL'],
+    ['comm.note.read', 'ALL'],
+    ['crm.customer.read', 'ALL'],
+    ['crm.visit.read', 'ALL'],
+    ['crm.target.read', 'ALL'],
+    ['crm.weekly_report.read', 'ALL'],
+    ['fieldwork.presence.read', 'ALL'],
+    ['fieldwork.session.read', 'ALL'],
+    ['pricing.price.read', 'ALL'],
+    ['sales.order.read', 'ALL'],
+    ['sales.sale.read', 'ALL'],
+    ['sales.payment.read', 'ALL'],
+    ['sales.receivable.read', 'ALL'],
+    ['inventory.stock.read', 'ALL'],
+    ['inventory.valuation.read', 'ALL'],
+    ['inventory.ledger.read', 'ALL'],
+    ['inventory.loss.read', 'ALL'],
+    ['production.lot.read', 'ALL'],
+    ['procurement.supplier.read', 'ALL'],
+    ['procurement.order.read', 'ALL'],
+    ['finance.cash.read', 'ALL'],
+    ['finance.expense.read', 'ALL'],
+    ['finance.payable.read', 'ALL'],
+    ['analytics.dashboard.direction', 'ALL'],
+    ['analytics.dashboard.commercial', 'ALL'],
+    ['analytics.dashboard.distribution', 'ALL'],
+    ['analytics.dashboard.stock', 'ALL'],
+    ['analytics.dashboard.production', 'ALL'],
+    ['analytics.dashboard.finance', 'ALL'],
+    ['analytics.explore', 'ALL'],
     ['analytics.export', 'ALL'],
   ]),
 ];

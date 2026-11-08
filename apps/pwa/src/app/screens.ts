@@ -152,7 +152,7 @@ const SELLER_ROLES = [
   'RESP_FERME',
 ];
 /** Rôles qui lisent les ventes (`sales.sale.read`). */
-const SALE_READER_ROLES = [...SELLER_ROLES, 'DIRECTION', 'FINANCE'];
+const SALE_READER_ROLES = [...SELLER_ROLES, 'DIRECTION', 'SUPERVISION', 'FINANCE'];
 
 /**
  * Rôles par permission de vente (07-security-rbac/01-rbac.md) : ils décident des écrans et des
@@ -163,6 +163,7 @@ export const ROLE_SETS = {
   saleRead: SALE_READER_ROLES,
   orderRead: [
     'DIRECTION',
+    'SUPERVISION',
     'RESP_COMMERCIAL',
     'COMMERCIAL_TERRAIN',
     'COMMERCIAL_SEDENTAIRE',
@@ -200,6 +201,7 @@ export const ROLE_SETS = {
   /** `crm.customer.read` (01-rbac.md) : tous les rôles qui suivent des clients. */
   customerRead: [
     'DIRECTION',
+    'SUPERVISION',
     'RESP_COMMERCIAL',
     'COMMERCIAL_TERRAIN',
     'COMMERCIAL_SEDENTAIRE',
@@ -213,16 +215,16 @@ export const ROLE_SETS = {
   targets: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** ECR-CRM-06 (`crm.customer.reassign` : responsable commercial TEAM, direction ALL). */
   reassignCustomers: ['RESP_COMMERCIAL', 'DIRECTION'],
-  /** ECR-TER-02 (`fieldwork.session.read`, `crm.visit.read` : responsable commercial TEAM, direction ALL). */
-  teamActivity: ['RESP_COMMERCIAL', 'DIRECTION'],
+  /** ECR-TER-02 (`fieldwork.session.read`, `crm.visit.read` : responsable commercial TEAM, direction et supervision ALL). */
+  teamActivity: ['RESP_COMMERCIAL', 'DIRECTION', 'SUPERVISION'],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-PRX-02 : rédaction (`pricing.rule.draft`) ; activation et fin par la Direction (AV-062). */
   priceRules: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** ECR-PRX-01 : `catalog.product.manage`, `catalog.reference.manage` (01-rbac.md) : administrateur. */
   catalog: ['ADMIN'],
-  /** ECR-PRX-03 : responsable commercial et direction (03-parcours-et-ecrans.md §3.2). */
-  priceSimulator: ['RESP_COMMERCIAL', 'DIRECTION'],
+  /** ECR-PRX-03 : responsable commercial, direction et supervision (03-parcours-et-ecrans.md §3.2). */
+  priceSimulator: ['RESP_COMMERCIAL', 'DIRECTION', 'SUPERVISION'],
   /** `fieldwork.checkin.perform` (01-rbac.md) : commercial terrain et responsable commercial. */
   fieldwork: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `crm.interaction.record` (01-rbac.md) : commerciaux et responsable commercial. */
@@ -245,8 +247,8 @@ export const ROLE_SETS = {
   lotSetup: ['RESP_PRODUCTION'],
   /** ECR-PRD-06 (`production.incubation.record` : production ALL, ferme SITE). */
   incubation: ['RESP_FERME', 'RESP_PRODUCTION'],
-  /** ECR-PRD-03 : responsable de production et direction (03-parcours-et-ecrans.md). */
-  lotSheet: ['RESP_PRODUCTION', 'DIRECTION'],
+  /** ECR-PRD-03 : responsable de production, direction et supervision (03-parcours-et-ecrans.md). */
+  lotSheet: ['RESP_PRODUCTION', 'DIRECTION', 'SUPERVISION'],
   /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
   purchaseRequest: [
     'DIRECTION',
@@ -264,9 +266,9 @@ export const ROLE_SETS = {
   purchaseOrders: ['RESP_ACHATS'],
   /**
    * ECR-APP-05 (`procurement.order.read`, valeurs et payé selon les droits) : Resp. achats et Finance
-   * (inventaire, UC-APP-12), Direction en lecture (AV-302).
+   * (inventaire, UC-APP-12), Direction et Supervision en lecture (AV-302, AV-529).
    */
-  orderMatching: ['RESP_ACHATS', 'FINANCE', 'DIRECTION'],
+  orderMatching: ['RESP_ACHATS', 'FINANCE', 'DIRECTION', 'SUPERVISION'],
   /**
    * ECR-STK-08 (`inventory.consumption.record`, 01-rbac.md) : magasinier, responsable de ferme, et les
    * autres détenteurs de la permission, vendeur de PDV (emballages, UC-STK-10) et responsable de
@@ -277,10 +279,11 @@ export const ROLE_SETS = {
   countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME'],
   /**
    * ECR-STK-07 (`inventory.ledger.read`, 01-rbac.md) : « responsables, direction » de l'inventaire des
-   * écrans, magasinier compris (WF-J3 étape 5), et la finance ; pas les vendeurs ni les commerciaux.
+   * écrans, magasinier compris (WF-J3 étape 5), supervision et finance ; pas les vendeurs ni les commerciaux.
    */
   stockLedger: [
     'DIRECTION',
+    'SUPERVISION',
     'RESP_COMMERCIAL',
     'RESP_PRODUCTION',
     'RESP_FERME',
@@ -300,6 +303,7 @@ export const ROLE_SETS = {
   /** `inventory.stock.read` : tous les rôles sauf l'administrateur. */
   stockRead: [
     'DIRECTION',
+    'SUPERVISION',
     'RESP_COMMERCIAL',
     'COMMERCIAL_TERRAIN',
     'COMMERCIAL_SEDENTAIRE',
@@ -381,8 +385,8 @@ export const ROLE_SETS = {
    * la file des validations (ADR-043, P8E-04).
    */
   supplierPaymentApprove: ['DIRECTION'],
-  /** ECR-FIN-03 : `finance.payable.read` (DIR, ACH, FIN ; ALL, AV-278) : dettes et factures (AV-298). */
-  payableRead: ['DIRECTION', 'RESP_ACHATS', 'FINANCE'],
+  /** ECR-FIN-03 : `finance.payable.read` (DIR, SUP, ACH, FIN ; ALL, AV-278, AV-529) : dettes et factures (AV-298). */
+  payableRead: ['DIRECTION', 'SUPERVISION', 'RESP_ACHATS', 'FINANCE'],
   /** `finance.supplier_invoice.record` (FIN) : saisie d'une facture fournisseur. */
   supplierInvoiceRecord: ['FINANCE'],
   /**
@@ -392,20 +396,27 @@ export const ROLE_SETS = {
   supplierInvoiceApprove: ['DIRECTION', 'FINANCE'],
   /**
    * ECR-FIN-06 : vue d'ensemble (`finance.payable.read`), pertes, coûts et marges des lots
-   * (`inventory.valuation.read`) ; Finance et Direction (inventaire, AV-303).
+   * (`inventory.valuation.read`) ; Finance, Direction et Supervision (inventaire, AV-303, AV-529).
    */
-  costsMargins: ['FINANCE', 'DIRECTION'],
+  costsMargins: ['FINANCE', 'DIRECTION', 'SUPERVISION'],
   /**
-   * ECR-FIN-01 : `sales.receivable.read` (FIN ALL, DIR ALL, RCO TEAM) ; inventaire et Direction
-   * (AV-304). Les autres détenteurs du droit voient les créances de leurs clients à l'encaissement.
+   * ECR-FIN-01 : `sales.receivable.read` (FIN ALL, DIR ALL, SUP ALL, RCO TEAM) ; inventaire, Direction
+   * et Supervision (AV-304, AV-529). Les autres détenteurs du droit voient les créances de leurs clients à l'encaissement.
    */
-  receivables: ['FINANCE', 'DIRECTION', 'RESP_COMMERCIAL'],
+  receivables: ['FINANCE', 'DIRECTION', 'SUPERVISION', 'RESP_COMMERCIAL'],
   /** `finance.supplier_payment.record` (FIN) : saisir un paiement, affecter une avance (ECR-FIN-04). */
   supplierPaymentRecord: ['FINANCE'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
-  /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
-  distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
+  /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, SUP, RCO ZONE, VEN SITE, MAG SITE, FIN). */
+  distributionDashboard: [
+    'DIRECTION',
+    'SUPERVISION',
+    'RESP_COMMERCIAL',
+    'VENDEUR_PDV',
+    'MAGASINIER',
+    'FINANCE',
+  ],
   /**
    * ECR-ADM-05 : `identity.device.read` (DIR ALL, ADM ALL, RCO TEAM, RPR SITE depuis AV-261, RFE SITE,
    * MAG SITE). Les actions de chaque appareil viennent du serveur (`actions`, BR-ADM-025).
@@ -436,12 +447,12 @@ export const ROLE_SETS = {
   /** ECR-ADM-07 (RP-1) : `org.settings.manage` et `approvals.policy.manage` (DIR et ADM, portée ALL). */
   settingsManage: ['DIRECTION', 'ADMIN'],
   /**
-   * ECR-AUD-01 (RP-1) : `audit.log.read` (DIR, ADM, FIN). La Finance n'y voit que les entités financières :
+   * ECR-AUD-01 (RP-1) : `audit.log.read` (DIR, SUP, ADM, FIN). La Finance n'y voit que les entités financières :
    * le serveur borne la lecture (AV-493).
    */
-  auditRead: ['DIRECTION', 'ADMIN', 'FINANCE'],
-  /** ECR-SYN-02 (RP-3) : `sync.monitor.read` (ADM et DIR, portée ALL). */
-  syncMonitor: ['ADMIN', 'DIRECTION'],
+  auditRead: ['DIRECTION', 'SUPERVISION', 'ADMIN', 'FINANCE'],
+  /** ECR-SYN-02 (RP-3) : `sync.monitor.read` (ADM, DIR et SUP, portée ALL). */
+  syncMonitor: ['ADMIN', 'DIRECTION', 'SUPERVISION'],
   /**
    * ECR-SYN-03 (RP-3) : `sync.conflict.resolve` (DIR, ADM, FIN, RCO, RPR, RFE, MAG, RAC — rôles propriétaires
    * de la matrice des conflits, 03-matrice-conflits.md).
@@ -467,31 +478,40 @@ export const ROLE_SETS = {
   ],
   /** ECR-NOT-03 (RP-4) : `comm.note.publish` (DIR). */
   notesPublish: ['DIRECTION'],
-  /** ECR-ANA-01 (RP-4) : `analytics.dashboard.direction` (DIR). */
-  analyticsDirection: ['DIRECTION'],
-  /** ECR-ANA-02 (RP-4) : `analytics.dashboard.commercial` (RCO, DIR, FIN, CTE, CSE). */
+  /** ECR-ANA-01 (RP-4) : `analytics.dashboard.direction` (DIR, SUP). */
+  analyticsDirection: ['DIRECTION', 'SUPERVISION'],
+  /** ECR-ANA-02 (RP-4) : `analytics.dashboard.commercial` (RCO, DIR, SUP, FIN, CTE, CSE). */
   analyticsCommercial: [
     'RESP_COMMERCIAL',
     'DIRECTION',
+    'SUPERVISION',
     'FINANCE',
     'COMMERCIAL_TERRAIN',
     'COMMERCIAL_SEDENTAIRE',
   ],
-  /** ECR-ANA-03 (RP-4) : `analytics.dashboard.stock` (MAG, DIR, RPR, RFE, RAC, FIN). */
+  /** ECR-ANA-03 (RP-4) : `analytics.dashboard.stock` (MAG, DIR, SUP, RPR, RFE, RAC, FIN). */
   analyticsStock: [
     'MAGASINIER',
     'DIRECTION',
+    'SUPERVISION',
     'RESP_PRODUCTION',
     'RESP_FERME',
     'RESP_ACHATS',
     'FINANCE',
   ],
-  /** ECR-ANA-04 (RP-4) : `analytics.dashboard.production` (RPR, RFE, DIR, FIN). */
-  analyticsProduction: ['RESP_PRODUCTION', 'RESP_FERME', 'DIRECTION', 'FINANCE'],
-  /** ECR-ANA-05 (RP-4) : `analytics.dashboard.finance` (FIN, DIR). */
-  analyticsFinance: ['FINANCE', 'DIRECTION'],
-  /** ECR-ANA-06 (RP-4) : `analytics.explore` (DIR, RCO, RPR, RAC, FIN). */
-  analyticsExplorer: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_PRODUCTION', 'RESP_ACHATS', 'FINANCE'],
+  /** ECR-ANA-04 (RP-4) : `analytics.dashboard.production` (RPR, RFE, DIR, SUP, FIN). */
+  analyticsProduction: ['RESP_PRODUCTION', 'RESP_FERME', 'DIRECTION', 'SUPERVISION', 'FINANCE'],
+  /** ECR-ANA-05 (RP-4) : `analytics.dashboard.finance` (FIN, DIR, SUP). */
+  analyticsFinance: ['FINANCE', 'DIRECTION', 'SUPERVISION'],
+  /** ECR-ANA-06 (RP-4) : `analytics.explore` (DIR, SUP, RCO, RPR, RAC, FIN). */
+  analyticsExplorer: [
+    'DIRECTION',
+    'SUPERVISION',
+    'RESP_COMMERCIAL',
+    'RESP_PRODUCTION',
+    'RESP_ACHATS',
+    'FINANCE',
+  ],
   /** ECR-PIE-01 (PP-B) : report de pièces papier & registre des carnets (AV-308, AV-312). */
   paperSlipReport: [
     'RESP_COMMERCIAL',
