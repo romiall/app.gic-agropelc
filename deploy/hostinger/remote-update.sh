@@ -157,6 +157,12 @@ fi
 
 trap - ERR
 rm -f "$BUNDLE"
+# Paquets envoyes par une livraison qui s'est arretee avant cette mise a jour (jamais utilises, quelques Mo chacun) : supprimes.
+STALE="$(find . -maxdepth 1 -name 'incoming-*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${STALE:-0}" != "0" ]; then
+  find . -maxdepth 1 -name 'incoming-*.tar.gz' -delete 2>/dev/null || true
+  echo "  paquets d'une livraison interrompue supprimes : $STALE"
+fi
 ls -1dt releases/* 2>/dev/null | tail -n +6 | xargs -r rm -rf
 echo "OK : livraison $RELEASE en ligne ($URL)."
 echo "Ancienne version : $APP/$PREV"

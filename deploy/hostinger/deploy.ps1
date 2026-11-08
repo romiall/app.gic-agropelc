@@ -45,10 +45,12 @@ Write-Host '== Mise a jour sur le serveur'
 $script = ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'remote-update.sh'))) -replace "`r`n", "`n"
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $noBackup = if ($NoDbBackup) { '1' } else { '0' }
-$strictSql = if ($StrictSql) { '1' } else { '0' }
+# Pas de variable nommee comme un parametre ($strictSql = $StrictSql, sans distinction de casse : PowerShell refuse d'y ranger
+# '0' ou '1', l'option etant un [switch]) ; test-ps-scripts.mjs le verifie pour tous les scripts du kit.
+$sqlStrictFlag = if ($StrictSql) { '1' } else { '0' }
 # PowerShell ajoute un retour chariot a la fin du texte envoye : tr le retire (sinon bash l'executerait comme une commande
 # et renverrait 127 meme si la mise a jour a reussi), sed retire l'eventuel BOM de la premiere ligne.
-$command = "tr -d '\r' | sed '1s/^\xEF\xBB\xBF//' | APP_DIR=$remoteHome/$AppDir NO_DB_BACKUP=$noBackup SQL_CORPUS_STRICT=$strictSql bash -s -- '$remoteBundle' '$release'"
+$command = "tr -d '\r' | sed '1s/^\xEF\xBB\xBF//' | APP_DIR=$remoteHome/$AppDir NO_DB_BACKUP=$noBackup SQL_CORPUS_STRICT=$sqlStrictFlag bash -s -- '$remoteBundle' '$release'"
 $script | & ssh @sshOptions -p $Port $target $command
 if ($LASTEXITCODE -ne 0) { throw 'La mise a jour a signale une erreur (voir ci-dessus ; en cas d''echec du script distant, l''ancienne version est remise en place par lui).' }
 Write-Host 'Termine.'
