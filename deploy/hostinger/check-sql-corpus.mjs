@@ -154,7 +154,7 @@ function readJson(file) {
 async function main() {
   const strict = process.argv.includes('--strict') || process.env.SQL_CORPUS_STRICT === '1';
   const corpusFile = process.env.SQL_CORPUS_FILE || path.join(HERE, 'sql-corpus.json');
-  const knownFile = path.join(HERE, 'sql-corpus-known.json');
+  const knownFile = process.env.SQL_CORPUS_KNOWN_FILE || path.join(HERE, 'sql-corpus-known.json');
   const url = process.env.SERVER_DATABASE_URL || process.env.DATABASE_URL;
   if (!url) throw new Error('SERVER_DATABASE_URL (ou DATABASE_URL) absent du .env.');
   if (!existsSync(corpusFile)) {
