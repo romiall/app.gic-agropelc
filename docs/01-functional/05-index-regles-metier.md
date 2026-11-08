@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **321**.
+Nombre total de règles : **323**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -36,6 +36,8 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-023 | L'autonomie hors ligne d'un appareil expire 7 jours après la dernière synchronisation réussie. L'application passe alors en lecture seule j… | AV-009 |
 | BR-ADM-024 | Le PIN local (6 chiffres) n'est jamais transmis au serveur. Après 5 échecs consécutifs, l'utilisateur doit se reconnecter en ligne avec son… | D (sécurité) |
 | BR-ADM-025 | Portée d'un appareil (lecture et décisions) : un décideur voit et décide un appareil si l'utilisateur qui l'a connecté relève de ses équipe… | D (AV-247, AV-254, AV-258 à AV-261 ; MP-06) |
+| BR-ADM-026 | Archive des photos jointes (AV-539, ADR-070) : une photo jointe n'est archivable que si elle est reçue et vérifiée (`AVAILABLE`), reçue par… | D (demande du porteur, Q10) |
+| BR-ADM-027 | Vidage de l'espace (AV-539, ADR-070) : le serveur ne supprime le fichier d'une photo archivée que si le volume qui la porte a été livré en… | D (demande du porteur, Q10 ; ADR-006) |
 
 ## D02 — Commercial / CRM opérationnel (CRM)
 

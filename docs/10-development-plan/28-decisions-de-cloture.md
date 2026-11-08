@@ -192,7 +192,9 @@ Les photos sont rangées sur le disque du serveur, hors base, et ne sont pas inc
 
 ★ **Pourquoi cette recommandation** : Les photos sont des preuves de réception et de mortalité : une copie sur votre PC évite de les perdre avec le disque, sans revenir sur votre décision de limiter l’espace en ligne.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☒ autre : **archive des photos téléchargée par période puis espace du serveur vidé** (dictée du 08/11/2026 : un bouton des paramètres, réservé à l’administrateur, télécharge les images d’un mois ou d’un trimestre, rangées par type d’opération et nommées d’après la référence de l’opération et la date et l’heure de leur soumission ; un second bouton vide l’espace du serveur ; les images de moins de 30 jours restent toujours dans le système ; l’archive est gardée dans le stockage interne de l’entreprise, 5 ans)
+
+**Suite donnée (08/11/2026)** : codée en local, ni poussée ni livrée en ligne ([ADR-070](../decisions/ADR-070-archive-des-photos-jointes.md), AV-539 ; défauts à confirmer : AV-545 à AV-549) — onglet « Archive des photos » des paramètres (Admin seul), fichiers ZIP rangés par mois et par type d’opération, empreinte SHA-256 affichée et vérifiable sur le fichier rangé, vidage refusé tant qu’un fichier n’est pas téléchargé en entier, plancher de 30 jours, photos d’opérations ouvertes gardées, trace en base et audit, `410` à la lecture d’une photo vidée. **À faire par vous** : relever la taille réelle du dossier des photos en ligne, désigner qui garde l’archive (deux exemplaires conseillés), essayer d’abord un petit mois.
 
 ### Q11 — Un téléphone est-il lié au premier compte qui l’a connecté ?
 

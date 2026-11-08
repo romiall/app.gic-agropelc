@@ -38,6 +38,9 @@ export { procurementOverview } from './home-metrics.js';
 export { RECEIPT_PHOTO_MISSING_CONFLICT, regularizeReceiptPhoto } from './receipt-photo.js';
 export type { ProcurementOverview } from './home-metrics.js';
 
+// AV-539 (ADR-070) : numéro, références et état de fermeture d'une réception, pour l'archive de ses photos.
+export { RECEIPT_ARCHIVE_CLOSED_STATUSES, receiptArchiveFacts } from './archive-facts.js';
+
 // P8-07 (ADR-043 §3) : facturation d'un BC, appelée par `finance` (quantités facturées écrites ici).
 export {
   lockOrderForInvoicing,

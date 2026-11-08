@@ -78,7 +78,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 12 rôles, 130 permissions et 561 octrois attendus', async () => {
+  it('crée exactement les 12 rôles, 132 permissions et 563 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -89,7 +89,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(130); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E), sync.backdate.exceed (AV-078, AV-528)
+    expect(PERMISSIONS.length).toBe(132); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E), sync.backdate.exceed (AV-078, AV-528), attachments.archive.export et .purge (AV-539, ADR-070)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -111,7 +111,8 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
     // + 3 octrois sync.backdate.exceed (Direction, Administrateur, Finance : ALL, chargement de l'historique, AV-528).
     // + 38 octrois consultatifs ALL de SUPERVISION (AV-529, aucune permission d'approbation ni d'écriture).
-    expect(ROLE_PERMISSIONS.length).toBe(561);
+    // + 2 octrois attachments.archive.export et .purge ALL (Administrateur seul : archive des photos jointes, AV-539).
+    expect(ROLE_PERMISSIONS.length).toBe(563);
     const approvalCodes = new Set(PERMISSIONS.filter((p) => p.isApproval).map((p) => p.code));
     expect(
       ROLE_PERMISSIONS.filter(

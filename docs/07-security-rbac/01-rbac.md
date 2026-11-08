@@ -98,6 +98,8 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `approvals.request.read` | ALL | — | TEAM | OWN | OWN | OWN | ALL | SITE | OWN | ALL | ALL |
 | `approvals.policy.manage` | ALL | ALL | — | — | — | — | — | — | — | — | — |
 | `attachments.attachment.manage` | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN |
+| `attachments.archive.export` | — | ALL | — | — | — | — | — | — | — | — | — |
+| `attachments.archive.purge` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `catalog.product.read` | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL |
 | `catalog.product.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `catalog.reference.manage` | — | ALL | — | — | — | — | — | — | — | — | — |

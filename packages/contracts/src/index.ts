@@ -65,6 +65,50 @@ export {
 } from './company-identity.js';
 export type { CompanyIdentityField, CompanyVatRegime } from './company-identity.js';
 
+// Archive des photos jointes (AV-539, ADR-070) : formes de `/api/v1/attachment-archives`.
+export {
+  ARCHIVE_ERROR_CODES,
+  ARCHIVE_ITEM_STATES,
+  ARCHIVE_RELEASE_REASONS,
+  ARCHIVE_STATUSES,
+  ATTACHMENT_ARCHIVES_PATH,
+  archiveCatalogPeriodSchema,
+  archiveCatalogSchema,
+  archiveCountSchema,
+  archiveListSchema,
+  archivePeriodViewSchema,
+  archiveSchema,
+  archiveSettingsSchema,
+  archiveVolumeSchema,
+  attachmentArchivedDetailsSchema,
+  cancelArchiveResponseSchema,
+  createArchiveRequestSchema,
+  createArchiveResponseSchema,
+  downloadTicketSchema,
+  purgeArchiveRequestSchema,
+  purgeArchiveResponseSchema,
+  purgeResultSchema,
+  verifyVolumeRequestSchema,
+  verifyVolumeResponseSchema,
+} from './attachment-archive.js';
+export type {
+  ArchiveCatalog,
+  ArchiveCatalogPeriod,
+  ArchiveCount,
+  ArchiveItemState,
+  ArchivePeriodView,
+  ArchiveReleaseReason,
+  ArchiveSettings,
+  ArchiveStatus,
+  ArchiveView,
+  ArchiveVolumeView,
+  AttachmentArchivedDetails,
+  CreateArchiveRequest,
+  DownloadTicket,
+  PurgeArchiveRequest,
+  PurgeResult,
+} from './attachment-archive.js';
+
 export {
   rawCommandEnvelopeSchema,
   pushRequestSchema,

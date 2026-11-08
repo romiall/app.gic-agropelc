@@ -335,6 +335,75 @@ export interface ApprovalsControlPolicies {
   version: Generated<number>;
 }
 
+export interface AttachmentsArchiveItems {
+  archive_id: Buffer;
+  attachment_id: Buffer;
+  captured_at: Date;
+  category: string;
+  created_at: Generated<Date>;
+  entry_path: string;
+  held_attachment_id: Buffer | null;
+  kind: string;
+  mime_type: string;
+  owner_id: Buffer;
+  owner_type: string;
+  reference: string;
+  release_reason: string | null;
+  resolved_at: Date | null;
+  secondary_reference: string | null;
+  sha256: string;
+  size_bytes: number;
+  state: Generated<string>;
+  submitted_at: Date;
+  volume_id: Buffer;
+}
+
+export interface AttachmentsArchives {
+  absent_count: Generated<number>;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  cutoff_at: Date;
+  file_count: number;
+  files_bytes: number;
+  granularity: string;
+  id: Buffer;
+  kept_open_count: Generated<number>;
+  live_key: string | null;
+  min_age_days: number;
+  period_end: Date;
+  period_start: Date;
+  retention_years: number;
+  status: Generated<string>;
+  volume_max_bytes: number;
+}
+
+export interface AttachmentsArchiveVolumes {
+  aborted_deliveries: Generated<number>;
+  archive_id: Buffer;
+  category: string;
+  created_at: Generated<Date>;
+  deliveries: Generated<number>;
+  file_count: number;
+  file_name: string;
+  files_bytes: number;
+  first_delivered_at: Date | null;
+  id: Buffer;
+  last_delivered_at: Date | null;
+  last_delivered_by: Buffer | null;
+  month_start: Date;
+  part: Generated<number>;
+  resolved_at: Date | null;
+  resolved_by: Buffer | null;
+  seq: number;
+  verified_at: Date | null;
+  verified_by: Buffer | null;
+  zip_bytes: number;
+  zip_sha256: string | null;
+}
+
 export interface AttachmentsAttachments {
   backdated_reason: string | null;
   captured_at: Date;
@@ -2916,6 +2985,9 @@ export interface DB {
   analytics_saved_views: AnalyticsSavedViews;
   approvals_approval_requests: ApprovalsApprovalRequests;
   approvals_control_policies: ApprovalsControlPolicies;
+  attachments_archive_items: AttachmentsArchiveItems;
+  attachments_archive_volumes: AttachmentsArchiveVolumes;
+  attachments_archives: AttachmentsArchives;
   attachments_attachments: AttachmentsAttachments;
   audit_audit_log: AuditAuditLog;
   audit_chain_head: AuditChainHead;

@@ -1,7 +1,7 @@
 # Matrice de traçabilité (Livrable n°17)
 
 > Section 34 du format final (PM §48 ; PM §42). Chaîne : **besoin → règle métier → module → entités → tables → API → écran → test d'acceptation**.
-> Une ligne par exigence source ([`../01-functional/00-exigences-sources.md`](../01-functional/00-exigences-sources.md)) : 84 exigences du CM (REQ-001 à REQ-084) et 15 contraintes du PM (REQ-201 à REQ-215), puis 9 exigences ajoutées par le porteur après le cadrage (REQ-301 à REQ-309, §15bis).
+> Une ligne par exigence source ([`../01-functional/00-exigences-sources.md`](../01-functional/00-exigences-sources.md)) : 84 exigences du CM (REQ-001 à REQ-084) et 15 contraintes du PM (REQ-201 à REQ-215), puis 9 exigences ajoutées par le porteur après le cadrage (REQ-301 à REQ-310, §15bis).
 > **Usage pendant le développement** : à la fin de chaque phase, vérifier que chaque ligne de la phase a ses tests verts ; toute exigence retirée ou modifiée exige une décision tracée (ADR ou registre `A-VALIDER.md`). Une ligne n'est jamais supprimée.
 
 **Conventions de lecture**
@@ -190,7 +190,7 @@
 
 ---
 
-## 15bis. Exigences ajoutées par le porteur après le cadrage (REQ-301 à REQ-309)
+## 15bis. Exigences ajoutées par le porteur après le cadrage (REQ-301 à REQ-310)
 
 Lot « Pièces papier » (PP), planifié le 22/10/2026 : PP-A à PP-E livrés, état et journal dans [`19-pieces-papier.md`](19-pieces-papier.md), conception et défauts dans AV-308 à AV-317 et AV-514. Les tests d'acceptation (`AT-*`) restent à rédiger ; les essais automatisés cités ci-dessous couvrent les lignes livrées.
 
@@ -205,6 +205,7 @@ Lot « Pièces papier » (PP), planifié le 22/10/2026 : PP-A à PP-E livrés, �
 | REQ-307 | Bilan hebdomadaire du commercial | AV-314 ; AV-514 ; ADR-056 | crm, PWA, domain | Bilan hebdomadaire | `crm.weekly_reports` (créée le 05/11/2026) | `crm.weekly_report.submit`, `crm.weekly_report.review` ; `GET /weekly-reports`, `GET /weekly-reports/figures` | ECR-CRM-08 ; pièce BH | `weekly-report.test.ts` (domaine et PWA), `crm-read.e2e.test.ts` (bloc PP-E), `WeeklyReportScreen.test.tsx`, `pieces-terrain.test.ts` ; `AT-*` à rédiger | PP-E, **livré** (05/11/2026) |
 | REQ-308 | Veille marché dans la visite et profil commercial du client | AV-315 ; AV-316 | crm, PWA | Ligne de veille marché ; compte client | `crm.visit_market_watch` (créée le 04/11/2026), `crm.customers` (profil commercial livré le 04/11/2026) | commandes de visite et de compte existantes, étendues | Écrans de visite et de compte client existants ; pièce VC (fiche de visite) depuis l'activité du compte | `pieces-terrain.test.ts` (pièce VC) ; `AT-*` à rédiger | PP-D ; fiche VC imprimée en PP-E (05/11/2026) |
 | REQ-309 | Facture client : exclusion levée le 26/10/2026, facture imprimée (FA) | AV-041 ; AV-451 ; ADR-048 | PWA | Vente | `sales_sales` | — | Détail d'une vente (« Facture ») | `pieces.test.ts` | PP-A, **livré** |
+| REQ-310 | Archive des photos jointes : téléchargement par période (mois ou trimestre), rangée par type d'opération, fichiers nommés d'après la référence et la date et l'heure de soumission ; vidage de l'espace du serveur après téléchargement complet ; images de moins de 30 jours toujours gardées ; Admin seulement | BR-ADM-026, BR-ADM-027 ; INV-ADM-06 ; ADR-006 ; ADR-046 ; ADR-070 ; AV-539, AV-545 à AV-549 ; AV-074 | attachments, procurement, inventory, finance, approvals, identity, organization, PWA, domain | Plan d'archive ; fichier d'archive (volume) ; photo archivée | `attachments.archives`, `attachments.archive_volumes`, `attachments.archive_items` (migration `20261206090000`) ; paramètres `attachments.archive.*` | `GET /attachment-archives/catalog`, `GET`/`POST /attachment-archives`, `POST /{id}/volumes/{volumeId}/ticket`, `GET /attachment-archives/download?ticket=`, `POST /{id}/volumes/{volumeId}/verify`, `POST /{id}/purge`, `POST /{id}/cancel` ; `410 ATTACHMENT_ARCHIVED` ; droits `attachments.archive.export`, `attachments.archive.purge` | Paramètres > Archive des photos (Admin) ; message « photo archivée » à la place d'une image | `attachment-archive.e2e.test.ts` (parcours complet sur la vraie base), `stored-zip-writer.test.ts`, `attachment-archive.test.ts` (domaine), `attachment-archives.test.ts` (base), `ArchivePanel.test.tsx`, `sha256.test.ts`, `PhotoViews.test.tsx` | Hors phase, **livré** (08/11/2026, en local) |
 
 ## 16. Contrôle de couverture
 

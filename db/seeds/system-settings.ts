@@ -522,6 +522,27 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'D13 §7.1, AV-399',
   },
+  // AV-539, ADR-070 (archive des photos jointes) : ancienneté minimale d'une photo archivable (plancher de 30 jours en
+  // code et en base : ce réglage ne peut qu'augmenter), taille d'un fichier d'archive, période proposée, conservation.
+  {
+    key: 'attachments.archive.min_age_days',
+    value: 30,
+    isClientVisible: false,
+    ref: 'AV-539, AV-545',
+  },
+  { key: 'attachments.archive.volume_max_mb', value: 512, isClientVisible: false, ref: 'AV-545' },
+  {
+    key: 'attachments.archive.default_granularity',
+    value: 'QUARTER',
+    isClientVisible: false,
+    ref: 'AV-539, AV-545',
+  },
+  {
+    key: 'attachments.archive.retention_years',
+    value: 5,
+    isClientVisible: false,
+    ref: 'AV-074, AV-549',
+  },
   {
     key: 'procurement.receipt_incomplete_alert_days',
     value: 2,
