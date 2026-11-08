@@ -191,6 +191,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `inventory.cost_entry.record` (frais généraux d'une ferme, AV-103) | — | — | — | — | — | — | ALL | SITE | — | — | ALL |
 | `production.lot.read` | ALL | — | — | — | — | — | ALL | SITE | — | ALL | ALL |
 | `production.lot.manage` | — | — | — | — | — | — | ALL | — | — | — | — |
+| `production.lot_opening.post` (ADR-069, AV-541 : reprise d'un lot en cours, validée comme le stock d'ouverture) | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
 | `production.daily.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |
 | `production.mortality.approve` | A·ALL | — | — | — | — | — | A·ALL | — | — | — | — |
 | `production.incubation.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |

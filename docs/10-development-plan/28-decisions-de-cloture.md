@@ -269,7 +269,9 @@ La commande du stock d’ouverture refuse les animaux, les services et les produ
 
 ★ **Pourquoi cette recommandation** : Un lot d’ouverture au coût déclaré est la façon propre de reprendre un stock vivant : il garde la traçabilité du lot sans créer d’achat fictif ; C et D couvrent les cas où il n’y a rien à reprendre ou où l’on repart de la ferme.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : ☒ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+
+> *Suite (08/11/2026) : la commande est codée localement — `production.lot_opening.post` (« reprise d'un lot en cours » : effectif repris, mise en place réelle, valeur totale, validée par la Direction ; [ADR-069](../decisions/ADR-069-reprise-d-un-lot-en-cours.md), AV-541 à AV-544), écran « Reprise d'un lot » et chargement par fichier « Lots en cours ». Elle couvre les lots d'élevage des fermes (R3). Le stock vif sans lot de production et les produits à lot obligatoire restent hors de cette commande (AV-544) ; le stock de Bonabéri est conservé tel quel (Q05).*
 
 ### Q44 — Comment les commerciaux se pointent-ils au démarrage ? *(ajoutée après relecture)*
 
@@ -1317,6 +1319,10 @@ Les 403 points ouverts du registre au 08/11/2026 (classe : 129 importants, 274 s
 | AV-534 | Empreinte de l'enveloppe et drapeau captured_offline (S-13) : une commande renvoyée avec un autre drapeau est refusée | Secondaire | P0 | Q29 |
 | AV-535 | Restes de P9 (D11 §7.2) : détail par canal et classement des commerciaux du bloc VENTES livrés ; disponible par zone (KPI-STK-01) non livré | Secondaire | P9 | Q41 · Analyse, alertes et notifications |
 | AV-536 | Web Push : adaptateur serveur réel (RFC 8291 et 8292) activé par les clés VAPID du porteur ; abonnement de la PWA non fait | Importante | P9 | Q14 |
+| AV-541 | Reprise d'un lot en cours : forme, droit et validation (stock d'ouverture par lot, suite d'AV-517 (3)(b) et d'AV-072) | Importante | P7 | Q42 |
+| AV-542 | Contenu et bornes d'une reprise de lot : effectif à la date d'arrêt, mise en place réelle, valeur totale en coût `ANIMAUX`, mortalité antérieure non reprise ; bornes de saisie et doublon d'un même lot réel | Importante | P7 | Q42 |
+| AV-543 | Correction d'une reprise de lot comptabilisée | Importante | P7 | Q42 |
+| AV-544 | Stock vif sans lot de production (point de vente, magasin) et produits à lot obligatoire : non couverts par la reprise de lot | Importante | P7 | Q42, Q05 |
 | AV-521 | Appareils : réservation atomique de l'essai de connexion, appareil lié à son premier compte, effacement des données d'un appareil hors serv… | Importante | MP | Q11 |
 | AV-520 | Synchronisation : zones du périmètre, compaction du flux de changements, sortie d'une quarantaine, rapprochement manuel et annulation d'une… | Importante | P5 | Q41 · Distribution, caisse et quotas |
 | AV-519 | Réception sans bon de commande, export CSV du registre de stock, motifs par défaut (AV-320) | Importante | P6 | Q41 · Achats et production |

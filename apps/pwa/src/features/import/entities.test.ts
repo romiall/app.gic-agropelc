@@ -505,8 +505,10 @@ describe('contrôle d’un fichier', () => {
       // leur fichier modèle est gardé dans `slips.test.ts`, colonne par colonne.
       if (entity.id === 'slips') continue;
       // Stock d'ouverture, comptes de trésorerie et règles de prix se contrôlent contre les référentiels d'un
-      // appareil : leur exemple est gardé dans `rp2-entities.test.ts`.
-      if (['opening_stock', 'cash_accounts', 'price_rules'].includes(entity.id)) continue;
+      // appareil : leur exemple est gardé dans `rp2-entities.test.ts` ; celui des lots repris, dans
+      // `lot-opening-entity.test.ts`.
+      if (['opening_stock', 'cash_accounts', 'price_rules', 'lot_opening'].includes(entity.id))
+        continue;
       // L'exemple de produit cite la catégorie VOLAILLE (qui doit exister) ; celui des catégories la crée.
       // Celui de la présence nomme un site de l'application (« Ferme de Bonabéri »).
       const context =
@@ -537,12 +539,13 @@ describe('contrôle d’un fichier', () => {
     }
   });
 
-  it('les types sont proposés dans l’ordre de chargement : catégories, produits, règles de prix, stock d’ouverture, fournisseurs, clients, comptes de trésorerie, pièces, présence', () => {
+  it('les types sont proposés dans l’ordre de chargement : catégories, produits, règles de prix, stock d’ouverture, lots repris, fournisseurs, clients, comptes de trésorerie, pièces, présence', () => {
     expect(IMPORT_ENTITIES.map((entity) => entity.id)).toEqual([
       'categories',
       'products',
       'price_rules',
       'opening_stock',
+      'lot_opening',
       'suppliers',
       'customers',
       'cash_accounts',

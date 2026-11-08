@@ -187,6 +187,14 @@ export type {
   TransferReturnToSourcePayload,
 } from './stock-transfer-commands.js';
 
+// Reprise d'un lot en cours (ADR-069, BR-PRD-016 ; AV-541 à AV-544).
+export {
+  LOT_OPENING_AGGREGATE_TYPE,
+  LOT_OPENING_POST_COMMAND,
+  lotOpeningPostPayloadSchema,
+} from './lot-opening-commands.js';
+export type { LotOpeningPostPayload } from './lot-opening-commands.js';
+
 // Messages de validation en français (S-37, P5-23).
 export { describeIssueFr, describeIssuesFr } from './validation-messages.js';
 

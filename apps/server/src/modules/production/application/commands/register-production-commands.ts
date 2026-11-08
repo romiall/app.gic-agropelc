@@ -13,7 +13,12 @@ import {
 } from '../../../../platform/sync/command-handler-registry.provider.js';
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
+import {
+  APPROVAL_DECISION_HANDLER_REGISTRY,
+  type ApprovalDecisionHandlerRegistry,
+} from '../../../approvals/application/public/index.js';
 import { registerLotCommands } from './lot-commands.js';
+import { registerLotOpeningCommands } from './lot-opening-commands.js';
 import { registerDailyCommands } from './daily-commands.js';
 import { registerEggCollectionCommands } from './egg-collection-commands.js';
 import { registerIncubationCommands } from './incubation-commands.js';
@@ -24,12 +29,20 @@ import { registerOverheadCommands } from './overhead-commands.js';
 export class ProductionCommandsRegistrar implements OnModuleInit {
   constructor(
     @Inject(COMMAND_HANDLER_REGISTRY) private readonly registry: CommandHandlerRegistry,
+    @Inject(APPROVAL_DECISION_HANDLER_REGISTRY)
+    private readonly decisionRegistry: ApprovalDecisionHandlerRegistry,
     @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
     @Inject(DocumentSequenceService) private readonly documentSequences: DocumentSequenceService,
   ) {}
 
   onModuleInit(): void {
     registerLotCommands(this.registry, this.idGenerator, this.documentSequences);
+    registerLotOpeningCommands(
+      this.registry,
+      this.decisionRegistry,
+      this.idGenerator,
+      this.documentSequences,
+    );
     registerDailyCommands(this.registry, this.idGenerator, this.documentSequences);
     registerEggCollectionCommands(this.registry, this.idGenerator, this.documentSequences);
     registerIncubationCommands(this.registry, this.idGenerator, this.documentSequences);

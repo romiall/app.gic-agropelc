@@ -917,7 +917,7 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // production (6)
+  // production (7)
   {
     code: 'production.lot.read',
     module: 'production',
@@ -931,6 +931,14 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     module: 'production',
     description: 'Créer et clôturer un lot de production',
     supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'production.lot_opening.post',
+    module: 'production',
+    description: 'Reprendre un lot en cours à la date d’arrêt (déclaration soumise à validation)',
+    supportedScopes: ['ALL', 'SITE'],
     isApproval: false,
     isSensitive: false,
   },
@@ -1356,8 +1364,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // ADMIN — 31, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
-  // + finance.expense_category.manage, P8-03)
+  // ADMIN — 32, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
+  // + finance.expense_category.manage, P8-03 ; + production.lot_opening.post, ADR-069)
   ...grants('ADMIN', [
     ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'ALL'],
@@ -1390,6 +1398,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.customer.merge', 'ALL'],
     ['crm.pipeline.configure', 'ALL'],
     ['inventory.opening.post', 'ALL'],
+    ['production.lot_opening.post', 'ALL'], // ADR-069 (AV-541) : chargement des lots en cours
     ['finance.expense_category.manage', 'ALL'],
   ]),
 
@@ -1595,7 +1604,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 49 (dont identity.device.read SITE, AV-261, MP-06, et la présence du personnel, PP-E)
+  // RESP_PRODUCTION — 50 (dont identity.device.read SITE, AV-261, MP-06, et la présence du personnel, PP-E)
   ...grants('RESP_PRODUCTION', [
     ['fieldwork.presence.record', 'SITE'],
     ['fieldwork.presence.read', 'SITE'],
@@ -1631,6 +1640,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.threshold.manage', 'ALL'],
     ['production.lot.read', 'ALL'],
     ['production.lot.manage', 'ALL'],
+    ['production.lot_opening.post', 'ALL'], // ADR-069 (AV-541)
     ['production.daily.record', 'ALL'],
     ['production.mortality.approve', 'ALL'],
     ['production.incubation.record', 'ALL'],
@@ -1649,7 +1659,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 56 (dont la présence du personnel, PP-E)
+  // RESP_FERME — 57 (dont la présence du personnel, PP-E)
   ...grants('RESP_FERME', [
     ['fieldwork.presence.record', 'SITE'],
     ['fieldwork.presence.read', 'SITE'],
@@ -1695,6 +1705,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.consumption.record', 'SITE'],
     ['inventory.threshold.manage', 'SITE'],
     ['production.lot.read', 'SITE'],
+    ['production.lot_opening.post', 'SITE'], // ADR-069 (AV-541)
     ['production.daily.record', 'SITE'],
     ['production.incubation.record', 'SITE'],
     ['procurement.supplier.read', 'SITE'],

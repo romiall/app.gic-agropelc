@@ -42,6 +42,18 @@ export const CONTROL_POLICIES: readonly ControlPolicySeed[] = [
     approverScope: 'ALL',
     ref: 'AV-108',
   },
+  // ADR-069 (AV-541) : la reprise d'un lot en cours est toujours validée, par les mêmes approbateurs que le stock
+  // d'ouverture (BR-STK-046) ; sans cette politique, la commande est refusée `CONTROL_POLICY_MISSING`.
+  {
+    code: 'LOT_OPENING_DEFAULT',
+    operationType: 'LOT_OPENING',
+    condition: {},
+    requiresPhoto: false,
+    requiresApproval: true,
+    approverPermission: 'inventory.count.approve',
+    approverScope: 'ALL',
+    ref: 'AV-541',
+  },
 ];
 
 export interface ReasonCodeSeed {

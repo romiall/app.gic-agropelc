@@ -54,6 +54,10 @@ import {
   type ProductView,
 } from '../../pwa/src/features/catalog/catalog.js';
 import { campaignPayload } from '../../pwa/src/features/pricing/campaign.js';
+import {
+  EMPTY_LOT_OPENING,
+  lotOpeningPayload,
+} from '../../pwa/src/features/production/lot-opening.js';
 import { policyCommand, settingCommand } from '../../pwa/src/features/settings/settings.js';
 import { commandOf, type DeviceAction } from '../../pwa/src/features/devices/devices.js';
 import {
@@ -618,6 +622,23 @@ function samples(): Sample[] {
           { productId: id(), quantityBase: 50.5, unitCostXaf: 3000 },
         ],
       },
+    },
+    {
+      label: 'chargement : reprise d’un lot en cours (ADR-069)',
+      commandType: 'production.lot_opening.post',
+      payload: lotOpeningPayload({
+        ...EMPTY_LOT_OPENING,
+        lotType: 'PONDEUSE',
+        productId: id(),
+        mainLocationId: id(),
+        placedOn: '2026-10-05',
+        quantityText: '4 800',
+        valueText: '5 760 000',
+        supplierId: id(),
+        strain: 'Lohmann',
+        avgWeightText: '1250,5',
+        notes: 'Bande reprise',
+      }),
     },
     {
       label: 'chargement : caisse de point de vente (AV-517)',
