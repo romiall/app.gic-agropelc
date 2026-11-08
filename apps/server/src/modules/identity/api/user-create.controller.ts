@@ -250,6 +250,8 @@ export class UserCreateController {
           result: 'SUCCESS',
           correlationId: request.correlationId,
         });
+        // Le compte (nom et statut) va à tous les appareils ; son affectation initiale, publiée à lui seul par
+        // `insertRoleAssignment` (ADR-071), n'a rien à y ajouter.
         await recordChanges(trx, [
           {
             dataset: 'user',
@@ -258,17 +260,6 @@ export class UserCreateController {
             scopeType: 'GLOBAL',
             scopeId: null,
           },
-          ...(role !== undefined
-            ? [
-                {
-                  dataset: 'role_assignment',
-                  entityType: 'ROLE_ASSIGNMENT',
-                  entityId: assignmentId,
-                  scopeType: 'GLOBAL' as const,
-                  scopeId: null,
-                },
-              ]
-            : []),
         ]);
       });
     } catch (error) {

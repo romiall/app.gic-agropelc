@@ -21,7 +21,6 @@ import { createDatabase } from './dist/platform/kysely/database.js';
 import { withUnitOfWork } from './dist/platform/unit-of-work.js';
 import { insertRoleAssignment } from './dist/modules/identity/application/role-assignment-writer.js';
 import { recordAudit } from './dist/audit/record-audit.js';
-import { recordChanges } from './dist/platform/sync/change-feed.js';
 import { jsonValue } from './dist/platform/kysely/json-value.js';
 import { fromBin, toBin } from './dist/platform/kysely/uuid-columns.js';
 
@@ -205,15 +204,7 @@ async function grantTestAccess(uow, deps) {
       reason: 'Acces de test temporaire demande par le porteur (grant-test-access.mjs)',
       result: 'SUCCESS',
     });
-    await recordChanges(uow, [
-      {
-        dataset: 'role_assignment',
-        entityType: 'ROLE_ASSIGNMENT',
-        entityId: assignmentId,
-        scopeType: 'GLOBAL',
-        scopeId: null,
-      },
-    ]);
+    // Journal de synchronisation : `insertRoleAssignment` publie l'affectation a son utilisateur seul (ADR-071).
     await uow
       .insertInto('platform_domain_events')
       .values({

@@ -70,11 +70,20 @@ async function main(): Promise<void> {
       [userId, role.id],
     );
     if (!assignment) {
+      const assignmentId = newId();
       await conn.query(
         `INSERT INTO identity_user_role_assignments
            (id, user_id, role_id, scope_type, valid_from, created_by)
          VALUES (?, ?, ?, 'GLOBAL', '2020-01-01 00:00:00', ?)`,
-        [newId(), userId, role.id, userId],
+        [assignmentId, userId, role.id, userId],
+      );
+      // Publiée à son utilisateur seul, comme `emitRoleAssignmentChange` du serveur (ADR-071) : l'appareil de
+      // l'administrateur reçoit son affectation, aucun autre.
+      await conn.query(
+        `INSERT INTO sync_change_feed
+           (dataset, entity_type, entity_id, change_type, scope_type, scope_id, row_version)
+         VALUES ('role_assignment', 'ROLE_ASSIGNMENT', ?, 'UPSERT', 'USER', ?, 1)`,
+        [assignmentId, userId],
       );
       console.log('  + identity_user_role_assignments : ADMIN (GLOBAL) affecté');
     }

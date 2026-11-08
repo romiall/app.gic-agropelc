@@ -40,6 +40,8 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { hashPassword } from '../src/modules/identity/application/auth/password.js';
 import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
+import { emitRoleAssignmentChange } from '../src/modules/identity/application/sync-changes.js';
+import { withUnitOfWork } from '../src/platform/unit-of-work.js';
 import {
   recordStockMove,
   virtualLocationId,
@@ -314,19 +316,24 @@ async function assignRole(
   if (scope.scopeType === 'ZONE')
     existing = existing.where('scope_zone_id', '=', toBin(scope.zoneId));
   if (await existing.executeTakeFirst()) return;
-  await db
-    .insertInto('identity_user_role_assignments')
-    .values({
-      id: toBin(ids.newId()),
-      user_id: toBin(userId),
-      role_id: role.id,
-      scope_type: scope.scopeType,
-      scope_site_id: scope.scopeType === 'SITE' ? toBin(scope.siteId) : null,
-      scope_zone_id: scope.scopeType === 'ZONE' ? toBin(scope.zoneId) : null,
-      valid_from: new Date('2020-01-01T00:00:00.000Z'),
-      created_by: toBin(userId),
-    })
-    .execute();
+  const assignmentId = ids.newId();
+  await withUnitOfWork(db, async (uow) => {
+    await uow
+      .insertInto('identity_user_role_assignments')
+      .values({
+        id: toBin(assignmentId),
+        user_id: toBin(userId),
+        role_id: role.id,
+        scope_type: scope.scopeType,
+        scope_site_id: scope.scopeType === 'SITE' ? toBin(scope.siteId) : null,
+        scope_zone_id: scope.scopeType === 'ZONE' ? toBin(scope.zoneId) : null,
+        valid_from: new Date('2020-01-01T00:00:00.000Z'),
+        created_by: toBin(userId),
+      })
+      .execute();
+    // Publiée au compte de démonstration seul, comme toute affectation (ADR-071).
+    await emitRoleAssignmentChange(uow, assignmentId);
+  });
   console.log(`  + rôle ${roleCode} (${scope.scopeType})`);
 }
 
