@@ -9,7 +9,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Banner, Button } from '../../components/ui/index.js';
 import { getDb } from '../../storage/db.js';
-import { fetchAttachmentContent } from '../../sync/attachment-content.js';
+import { fetchAttachmentContent, type ArchivedPhoto } from '../../sync/attachment-content.js';
+import { formatDateTime } from '../home/format-home.js';
 import { saveErrorKey } from '../sales/submit.js';
 import {
   hasUsablePhoto,
@@ -130,6 +131,7 @@ export function ServerPhoto({
   const [attempt, setAttempt] = useState(0);
   const [url, setUrl] = useState<string>();
   const [failure, setFailure] = useState<string>();
+  const [archived, setArchived] = useState<ArchivedPhoto>();
 
   useEffect(() => {
     if (!shown) return;
@@ -143,6 +145,7 @@ export function ServerPhoto({
           setUrl(objectUrl);
         } else {
           setFailure(result.reason);
+          setArchived(result.archived);
         }
       })
       .catch(() => {
@@ -162,6 +165,19 @@ export function ServerPhoto({
     );
   }
   if (failure) {
+    // Photo vidée du serveur après l'archive (AV-539) : un nouvel essai n'y changerait rien, on dit où la chercher.
+    if (failure === 'ARCHIVED') {
+      return (
+        <Banner tone="info" role="status">
+          {archived
+            ? t('photo.view_error.ARCHIVED', {
+                date: formatDateTime(archived.archivedAt),
+                reference: archived.reference,
+              })
+            : t('photo.view_error.ARCHIVED_UNKNOWN')}
+        </Banner>
+      );
+    }
     return (
       <Banner
         tone="warn"
