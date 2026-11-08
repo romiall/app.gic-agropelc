@@ -24,6 +24,57 @@
 
 Aucun point du registre n'est bloquant au sens du registre (classe BLOQUANT : aucun). Les questions ci-dessous sont celles qui **conditionnent le pilote** ou qui **ferment un chantier**.
 
+## Réponses reçues (état du 08/11/2026, 15 h : 44 questions sur 50)
+
+Lues dans la page de réponses (collection `answers`). Elles seront consignées au journal d'[`A-VALIDER.md`](../A-VALIDER.md) § 3 quand le questionnaire sera fini (Q38, Q39, Q40, Q41, Q46 et Q50 restent sans réponse). « Suite » : ce qui a été fait ou reste à faire.
+
+| Question | Réponse du porteur | Suite |
+|---|---|---|
+| Q01 | C : un point de vente et une ferme ensemble | Pilote : Bonabéri et la ferme (site `FERME`) |
+| Q02 | « dès demain » | Pilote visé le 09/11/2026 |
+| Q03 | C : pas de critère chiffré | Aucune |
+| Q04 | A : GIC donne ses fichiers, je prépare les CSV, le porteur les envoie | Attend les fichiers (C06) |
+| Q05 | Autre : valeurs actuelles de Bonabéri gardées, prix du poulet de chair à 3 500, il les modifiera lui-même après concertation | Aucune (script déjà passé en ligne) |
+| Q06 | A : seuil actuel de téléphones | Aucune |
+| Q07 | A : le porteur avec des sessions Claude Code à la demande | Aucune |
+| Q08 | Autre : rester sur la MariaDB de Hostinger et y faire tout fonctionner, trouver une solution tout de suite en cas de blocage | Fait : tâche `sync.devices.seq_gap_check` corrigée (livraison `20261108-135742`) ; reste à lire les journaux du serveur et à essayer les essais sur MariaDB 11.8 (accord du porteur) |
+| Q09 | A : copie des sauvegardes sur son PC par une tâche Windows | Action du porteur (C02) |
+| Q10 | Autre (dictée) : archive des photos par période, un dossier par opération, vidage, au moins 30 jours gardés | AV-539, carte de session proposée, non codé |
+| Q11 | A : liaison appareil-compte laissée libre | Aucune |
+| Q12 | A : cinq lectures en ligne | Fait (journal du kit) |
+| Q13 | Cochés : essais sur téléphones réels, formation courte par rôle, sauvegardes périodiques et copie hors hébergement, comptes/rôles/appareils du pilote | Actions du porteur (C01 à C05) |
+| Q14 | B : Web Push après le pilote | Aucune |
+| Q15 | A : un appareil par vendeur | Aucune |
+| Q16 | A : recherche des clients en ligne pour la Direction et la Finance | Aucune |
+| Q17 | A : la Direction fixe les objectifs de site | Aucune |
+| Q18 | A : contrôle des carnets de papier gardé sur l'appareil | Aucune |
+| Q19 | B : performance et charge mesurées pendant et après le pilote | Après le pilote |
+| Q20 | Aucune fonction ajoutée | Retours clients, commissions, frais de livraison, reçu imprimé : hors périmètre confirmé |
+| Q21 | B : Kommo reporté sans date | Aucune |
+| Q22 | A : français seulement | Aucune |
+| Q23 | B : le droit de dépasser la fenêtre d'antidatage aussi au responsable de ferme et de production | Fait (commit `289c92f4`, 563 octrois), pas encore en ligne |
+| Q24 | A : jeu `role_assignment` restreint aux affectations de l'utilisateur | Carte de session proposée, non codé |
+| Q25 | A : auto-approbation de la Direction conservée | Aucune |
+| Q26 | A : connexion actuelle pour le pilote | Aucune |
+| Q27 | A : 7 jours sans synchronisation | Aucune |
+| Q28 | Autre : permissions modifiables par l'Admin et les profils de direction dans l'application | **Gros lot à concevoir** (éditeur de permissions : audit, garde-fous contre l'élévation de droits, séparation Admin/Direction) |
+| Q29 | Autre : « non je ne veux pas de ces complications » | À confirmer : les quatre cas restent à leur défaut, aucun code |
+| Q30 | A : toutes les recommandations | Trois petits lots d'affichage à faire |
+| Q31 | A : attendre le comptable | Action du porteur (C08) |
+| Q32 | A : coût moyen pondéré | Aucune |
+| Q33 | A : pas de verrouillage des mois | Aucune |
+| Q34 | A : les exports de l'explorateur suffisent | Aucune |
+| Q35 | A : seuils d'argent actuels | Aucune |
+| Q36 | A : durées de conservation 10 ans / 2 ans / 5 ans, à confirmer avec le comptable | Purge à programmer plus tard (petit lot) |
+| Q37 | A : présence du personnel pour la statistique et le suivi | Aucune |
+| Q42 | A : stock d'ouverture par lot | Carte de session proposée, non codé |
+| Q43 | A : séparer les rôles (Admin technique sans rôle métier, Direction au seul PDG) | Action du porteur ; rôles de test à leur échéance du 29/11 |
+| Q44 | Autre : pointage désactivé pour l'instant, position relevée à l'enregistrement d'une opération | Fait et en ligne (AV-537, AV-538 ; livraison `20261108-144832`) |
+| Q45 | A : aucun coût de plus pendant le pilote | Aucune |
+| Q47 | A : seul le livré non payé est une créance | À faire : activer `sales.receivables_delivered_only` (révision du réglage) et faire suivre les vues d'analyse |
+| Q48 | A : pas de commande au poids pendant le pilote | Aucune |
+| Q49 | B : reprise de l'historique du mois en cours | Chargement par l'écran « Charger des données », compte du porteur |
+
 ## 1. Démarrer le pilote
 
 Ces décisions conditionnent le premier jour chez GIC : le périmètre, les données de départ, les appareils et l’hébergement.
