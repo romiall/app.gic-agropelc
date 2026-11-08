@@ -50,6 +50,7 @@ describe('jeux presence et weekly_reports de /sync/pull (AV-514 (4))', () => {
   let storekeeperA: Actor;
   let writer1: Actor;
   let writer2: Actor;
+  let reviewer: Actor;
 
   async function run(
     actor: Actor,
@@ -155,6 +156,13 @@ describe('jeux presence et weekly_reports de /sync/pull (AV-514 (4))', () => {
       writer2 = await actor();
       await assignTestRole(trx, writer1.userId, writerRole, adminId);
       await assignTestRole(trx, writer2.userId, writerRole, adminId);
+      // Un responsable qui marque les bilans « vus » (portée globale).
+      const reviewerRole = await insertTestRole(trx, adminId);
+      await grantTestPermission(trx, reviewerRole, 'crm.weekly_report.review', adminId, {
+        maxScope: 'ALL',
+      });
+      reviewer = await actor();
+      await assignTestRole(trx, reviewer.userId, reviewerRole, adminId);
     });
     const maxSeq = await db
       .selectFrom('sync_change_feed')
@@ -291,5 +299,36 @@ describe('jeux presence et weekly_reports de /sync/pull (AV-514 (4))', () => {
     const corrected = latest(await pull(writer1, 'weekly_reports'), 'WEEKLY_REPORT', reportId);
     expect(corrected?.data).toMatchObject({ successes: 'Quatre nouveaux clients' });
     expect(corrected!.row_version).toBeGreaterThan(first!.row_version);
+  });
+
+  it('weekly_reports : le « vu » du responsable réémet la ligne de l’auteur (statut, commentaire, version suivante)', async () => {
+    const reportId = freshUuid();
+    await run(
+      writer1,
+      'crm.weekly_report.submit',
+      'WEEKLY_REPORT',
+      reportId,
+      `${DAY}T11:10:00.000Z`,
+      // Une autre semaine que les essais précédents : un seul bilan par commercial et par semaine.
+      { weekStart: '2026-09-07', successes: 'Cinq nouveaux clients' },
+    );
+    const before = latest(await pull(writer1, 'weekly_reports'), 'WEEKLY_REPORT', reportId)!;
+    expect(before.data).toMatchObject({ status: 'SUBMITTED', managerComment: null });
+
+    await run(
+      reviewer,
+      'crm.weekly_report.review',
+      'WEEKLY_REPORT',
+      reportId,
+      `${DAY}T11:40:00.000Z`,
+      { comment: 'Bien, à suivre' },
+    );
+    const after = latest(await pull(writer1, 'weekly_reports'), 'WEEKLY_REPORT', reportId)!;
+    expect(after.data).toMatchObject({ status: 'REVIEWED', managerComment: 'Bien, à suivre' });
+    expect(after.row_version).toBeGreaterThan(before.row_version);
+    // La ligne reste celle de l'auteur : le responsable ne reçoit pas le bilan par ce jeu (il le lit en ligne).
+    expect(
+      latest(await pull(reviewer, 'weekly_reports'), 'WEEKLY_REPORT', reportId),
+    ).toBeUndefined();
   });
 });

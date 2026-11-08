@@ -114,69 +114,76 @@ const sales = dataset('f_sales_line');
 // --- Chaque jeu, chaque mesure, chaque dimension -----------------------------------------------------------
 
 describe('compilation de tout le catalogue', () => {
-  it('chaque mesure, seule, puis chaque dimension avec la première mesure, s’exécute et rend des valeurs typées', async () => {
-    await snapshot(async (trx) => {
-      let queries = 0;
-      for (const target of ANALYTICS_DATASETS) {
-        for (const measure of target.measures) {
-          const alone = await explore(
-            trx,
-            planOf(definitionOf(target, { measures: [measure.name] })),
-          );
-          queries += 1;
-          // Sans dimension : une seule ligne ; une somme ou un compte vaut un nombre, jamais `null`.
-          expect(alone.rowCount, `${target.code}/${measure.name}`).toBe(1);
-          const value = alone.rows[0]![measure.name];
-          if (measure.aggregate === 'AVG' || measure.aggregate === 'MAX') {
-            expect(
-              value === null || typeof value === 'number',
-              `${target.code}/${measure.name}`,
-            ).toBe(true);
-          } else {
-            expect(typeof value, `${target.code}/${measure.name}`).toBe('number');
+  // Une requête par mesure et par dimension de chaque jeu, sur toute la base : le coût suit le volume de la base d'essai
+  // partagée (les vues des lignes de vente et des mouvements de stock coûtent plusieurs secondes chacune une fois la base
+  // chargée par des mois d'essais) ; le délai par défaut de 20 s ne suffit plus, sans qu'aucune requête soit en défaut.
+  it(
+    'chaque mesure, seule, puis chaque dimension avec la première mesure, s’exécute et rend des valeurs typées',
+    { timeout: 180_000 },
+    async () => {
+      await snapshot(async (trx) => {
+        let queries = 0;
+        for (const target of ANALYTICS_DATASETS) {
+          for (const measure of target.measures) {
+            const alone = await explore(
+              trx,
+              planOf(definitionOf(target, { measures: [measure.name] })),
+            );
+            queries += 1;
+            // Sans dimension : une seule ligne ; une somme ou un compte vaut un nombre, jamais `null`.
+            expect(alone.rowCount, `${target.code}/${measure.name}`).toBe(1);
+            const value = alone.rows[0]![measure.name];
+            if (measure.aggregate === 'AVG' || measure.aggregate === 'MAX') {
+              expect(
+                value === null || typeof value === 'number',
+                `${target.code}/${measure.name}`,
+              ).toBe(true);
+            } else {
+              expect(typeof value, `${target.code}/${measure.name}`).toBe('number');
+            }
           }
-        }
-        const first = target.measures[0]!;
-        for (const dimension of target.dimensions) {
-          const result = await explore(
-            trx,
-            planOf(
-              definitionOf(target, {
-                measures: [first.name],
-                dimensions: [dimension.name],
-                limit: 25,
-              }),
-            ),
-          );
-          queries += 1;
-          for (const row of result.rows) {
-            const cell = row[dimension.name];
-            const label = `${target.code}/${dimension.name}`;
-            if (cell === null) continue;
-            switch (dimension.type) {
-              case 'id':
-                expect(typeof cell === 'string' && UUID.test(cell), label).toBe(true);
-                break;
-              case 'date':
-                expect(typeof cell === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cell), label).toBe(
-                  true,
-                );
-                break;
-              case 'boolean':
-                expect(typeof cell, label).toBe('boolean');
-                break;
-              case 'number':
-                expect(typeof cell, label).toBe('number');
-                break;
-              default:
-                expect(typeof cell, label).toBe('string');
+          const first = target.measures[0]!;
+          for (const dimension of target.dimensions) {
+            const result = await explore(
+              trx,
+              planOf(
+                definitionOf(target, {
+                  measures: [first.name],
+                  dimensions: [dimension.name],
+                  limit: 25,
+                }),
+              ),
+            );
+            queries += 1;
+            for (const row of result.rows) {
+              const cell = row[dimension.name];
+              const label = `${target.code}/${dimension.name}`;
+              if (cell === null) continue;
+              switch (dimension.type) {
+                case 'id':
+                  expect(typeof cell === 'string' && UUID.test(cell), label).toBe(true);
+                  break;
+                case 'date':
+                  expect(typeof cell === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cell), label).toBe(
+                    true,
+                  );
+                  break;
+                case 'boolean':
+                  expect(typeof cell, label).toBe('boolean');
+                  break;
+                case 'number':
+                  expect(typeof cell, label).toBe('number');
+                  break;
+                default:
+                  expect(typeof cell, label).toBe('string');
+              }
             }
           }
         }
-      }
-      expect(queries).toBeGreaterThan(100);
-    });
-  });
+        expect(queries).toBeGreaterThan(100);
+      });
+    },
+  );
 
   it('les colonnes rendues suivent la requête : dimensions puis mesures, libellés du catalogue', async () => {
     await snapshot(async (trx) => {
