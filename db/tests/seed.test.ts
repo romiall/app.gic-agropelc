@@ -78,7 +78,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 12 rôles, 130 permissions et 561 octrois attendus', async () => {
+  it('crée exactement les 12 rôles, 130 permissions et 563 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -111,7 +111,9 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
     // + 3 octrois sync.backdate.exceed (Direction, Administrateur, Finance : ALL, chargement de l'historique, AV-528).
     // + 38 octrois consultatifs ALL de SUPERVISION (AV-529, aucune permission d'approbation ni d'écriture).
-    expect(ROLE_PERMISSIONS.length).toBe(561);
+    // + 2 octrois sync.backdate.exceed (Resp. production, Resp. ferme : ALL, report de la fiche de la semaine, AV-528,
+    // réponse du porteur du 08/11/2026 à la question 23, solution B).
+    expect(ROLE_PERMISSIONS.length).toBe(563);
     const approvalCodes = new Set(PERMISSIONS.filter((p) => p.isApproval).map((p) => p.code));
     expect(
       ROLE_PERMISSIONS.filter(
@@ -375,7 +377,8 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'sync.pull_record_grain_seconds',
     ]) {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
+        // « En vigueur » : les versions datées du futur (lignes d'essai du serveur, an 2100) ne comptent pas.
+        "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL AND valid_from <= UTC_TIMESTAMP(6) ORDER BY valid_from DESC LIMIT 1",
         [key],
       );
       expect(rows, key).toHaveLength(1);

@@ -1595,8 +1595,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 49 (dont identity.device.read SITE, AV-261, MP-06, et la présence du personnel, PP-E)
+  // RESP_PRODUCTION — 50 (dont identity.device.read SITE, AV-261, MP-06, la présence du personnel, PP-E, et le report
+  // de la fiche de suivi de lot de la semaine au-delà de 72 h, sync.backdate.exceed : AV-528, réponse du porteur Q23 B)
   ...grants('RESP_PRODUCTION', [
+    ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'SITE'],
     ['fieldwork.presence.read', 'SITE'],
     ['identity.user.read', 'SITE'],
@@ -1649,8 +1651,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 56 (dont la présence du personnel, PP-E)
+  // RESP_FERME — 57 (dont la présence du personnel, PP-E, et le report de la fiche de suivi de lot de la semaine
+  // au-delà de 72 h, sync.backdate.exceed : AV-528, réponse du porteur Q23 B)
   ...grants('RESP_FERME', [
+    ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'SITE'],
     ['fieldwork.presence.read', 'SITE'],
     ['identity.user.read', 'SITE'],
