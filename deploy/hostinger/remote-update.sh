@@ -16,7 +16,7 @@ cd "$APP"
 PREV="releases/$RELEASE/previous"
 NEW="releases/$RELEASE/new"
 DUMP="$HOME/backups_db/gic-$RELEASE.sql.gz"
-ITEMS="dist pwa seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs approve-device.mjs grant-test-access.mjs package.json node_modules/@gic/domain node_modules/@gic/contracts"
+ITEMS="dist pwa seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs check-sql-corpus.mjs sql-corpus.json sql-corpus-known.json approve-device.mjs grant-test-access.mjs package.json node_modules/@gic/domain node_modules/@gic/contracts"
 mkdir -p "$PREV" "$NEW" "$HOME/backups_db" node_modules/@gic tmp
 
 restart() {
@@ -41,7 +41,7 @@ trap rollback ERR
 
 echo "== 1/8 Extraction du paquet"
 tar -xzf "$BUNDLE" -C "$NEW"
-for f in dist pwa pkg-domain pkg-contracts seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs approve-device.mjs grant-test-access.mjs package.json; do
+for f in dist pwa pkg-domain pkg-contracts seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs check-sql-corpus.mjs approve-device.mjs grant-test-access.mjs package.json; do
   [ -e "$NEW/$f" ] || fail "$f absent du paquet"
 done
 
@@ -86,6 +86,10 @@ mv "$NEW/server.js" server.js
 mv "$NEW/migrate.mjs" migrate.mjs
 mv "$NEW/mariadb-compat.mjs" mariadb-compat.mjs
 mv "$NEW/compat-check.mjs" compat-check.mjs
+mv "$NEW/check-sql-corpus.mjs" check-sql-corpus.mjs
+for optional in sql-corpus.json sql-corpus-known.json; do
+  [ ! -e "$NEW/$optional" ] || mv "$NEW/$optional" "$optional"
+done
 mv "$NEW/approve-device.mjs" approve-device.mjs
 mv "$NEW/grant-test-access.mjs" grant-test-access.mjs
 mv "$NEW/package.json" package.json
@@ -106,6 +110,16 @@ node --env-file=.env migrate.mjs --dir ./db/migrations
 
 echo "== 6/8 Semis (reglages, regles d'alerte, droits)"
 node --env-file=.env seeds-dist/run.js
+
+echo "== 6b/8 Controle des requetes du serveur sur la base reelle (analyse seule, rien n'est execute)"
+# sql-corpus.json = les requetes SQL que les essais du serveur emettent (AV-540). La base les ANALYSE (PREPARE), elle n'en
+# execute aucune ; apres les migrations, car le code livre peut employer une table ou une colonne nouvelle. Un refus est un
+# avertissement (la livraison continue) ; -StrictSql de deploy.ps1 (SQL_CORPUS_STRICT=1) le rend bloquant.
+if [ "${SQL_CORPUS_STRICT:-0}" = "1" ]; then
+  node --env-file=.env check-sql-corpus.mjs --strict || fail "controle des requetes du serveur (mode strict)"
+else
+  node --env-file=.env check-sql-corpus.mjs || echo "  AVERTISSEMENT : le controle des requetes n'a pas pu aller au bout ; la livraison continue"
+fi
 
 echo "== 7/8 Redemarrage"
 ERR_LINES="$(wc -l < stderr.log 2>/dev/null || echo 0)"

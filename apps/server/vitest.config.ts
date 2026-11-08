@@ -17,6 +17,9 @@ export default defineConfig({
     },
   },
   test: {
+    // Captation des requêtes SQL du produit pour le filet MariaDB (AV-540) : sans effet sauf si
+    // `GIC_SQL_CORPUS_DIR` est défini (voir ce fichier).
+    setupFiles: ['./test/sql-corpus-setup.ts'],
     // Tests d'intégration contre une vraie base MySQL partagée et persistante (aucun rollback
     // entre fichiers) : plusieurs fichiers agissent sur un état global — politiques de contrôle
     // actives d'un type d'opération (retirées puis restaurées par certains tests), positions des

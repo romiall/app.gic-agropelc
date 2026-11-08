@@ -20,7 +20,7 @@
     "typecheck": "pnpm -r run typecheck",
     "check:boundaries": "depcruise apps/server/src packages/domain/src packages/contracts/src --config .dependency-cruiser.cjs",
     "check:docs": "python3 docs/_tools/check_refs.py",
-    "check:deploy-kit": "node deploy/hostinger/test-backup-rotate.mjs && node deploy/hostinger/test-restore-check.mjs && node deploy/hostinger/test-mariadb-portability.mjs",
+    "check:deploy-kit": "node deploy/hostinger/test-backup-rotate.mjs && node deploy/hostinger/test-restore-check.mjs && node deploy/hostinger/test-mariadb-portability.mjs && node deploy/hostinger/test-sql-corpus.mjs && node deploy/hostinger/test-diag-jobs.mjs && node deploy/hostinger/test-diag-logs.mjs",
     "db:migrate": "pnpm --filter @gic/db run migrate",
     "db:migrate:test": "pnpm --filter @gic/db run migrate:test",
     "db:seed": "pnpm --filter @gic/db run seed",

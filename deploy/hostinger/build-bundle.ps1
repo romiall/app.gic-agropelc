@@ -61,6 +61,12 @@ Copy-Item "$PSScriptRoot\compat-check.mjs" "$stage\compat-check.mjs" -Force
 Copy-Item "$PSScriptRoot\approve-device.mjs" "$stage\approve-device.mjs" -Force
 # Acces de test temporaire d'un compte (roles globaux du systeme, avec date de fin) : voir README.md.
 Copy-Item "$PSScriptRoot\grant-test-access.mjs" "$stage\grant-test-access.mjs" -Force
+# Filet de compatibilite MariaDB (AV-540) : le controleur et le corpus des requetes du serveur, que la base ANALYSE avant
+# le redemarrage (rien n'est execute). Le corpus et la liste des refus acceptes sont facultatifs.
+Copy-Item "$PSScriptRoot\check-sql-corpus.mjs" "$stage\check-sql-corpus.mjs" -Force
+foreach ($optional in @('sql-corpus.json', 'sql-corpus-known.json')) {
+  if (Test-Path "$PSScriptRoot\$optional") { Copy-Item "$PSScriptRoot\$optional" "$stage\$optional" -Force }
+}
 
 # Dependances d'execution du serveur : celles de apps\server\package.json, sans les paquets de l'espace de travail.
 $serverPackage = [System.IO.File]::ReadAllText("$repo\apps\server\package.json") | ConvertFrom-Json

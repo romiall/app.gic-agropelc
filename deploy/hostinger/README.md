@@ -111,6 +111,31 @@ Contrôles sans serveur (`pnpm run check:deploy-kit`, aussi dans `pnpm run ci`) 
 
 Le compteur du semis « N nouvelles règles sur 37 » (règles d'alerte) est exact depuis le 05/11/2026 (`db/seeds/run.ts` compte les lignes avant et après) ; la livraison du 05/11 affichait « 37 nouvelles règles sur 37 » à tort.
 
+## Filet de compatibilité MariaDB : les requêtes du serveur analysées sur la vraie base (AV-540)
+
+Les essais du serveur tournent sur MySQL 8.4, l'hébergement est une MariaDB 11.8 : un défaut propre à MariaDB ne se voit qu'en production, le jour où le parcours est utilisé (`sync.devices.seq_gap_check` a échoué toutes les heures du 06 au 08/11/2026 sur `LAG(x, 1, 0)` sans qu'aucun essai ne le voie). Le filet fait **analyser par la vraie base toutes les requêtes que les essais exercent** :
+
+| Pièce | Rôle |
+|---|---|
+| `apps/server/test/sql-corpus-setup.ts` | Fichier d'initialisation de vitest, **inactif sauf si `GIC_SQL_CORPUS_DIR` désigne un dossier** : chaque requête que Kysely compile pour le code du produit (la pile d'appel passe par `apps/server/src` ; les insertions de décor des essais sont ignorées) est ajoutée, une fois par processus, à un fichier NDJSON. Rien n'est exécuté ni modifié. |
+| `build-sql-corpus.mjs` | Fusionne ces fichiers en `sql-corpus.json` : forme canonique (espaces compactés, `IN (?, ?, ?)` ramené à `IN (?)`, insertions de plusieurs lignes ramenées à une), sans doublon, trié, une requête par ligne. Par défaut il **complète** le corpus existant ; `--replace` repart de la seule captation. |
+| `check-sql-corpus.mjs` | Lancé par `remote-update.sh` à l'étape 6b (après les migrations, avant le redémarrage, car le code livré peut employer une colonne nouvelle). Pour chaque requête : les deux réécritures de `mariadb-compat.mjs` (`CAST(? AS JSON)` et `FOR SHARE`) sont appliquées au texte, puis la base **analyse** la requête (protocole `PREPARE` : jamais exécutée, aucune donnée lue ni écrite) ; les refus sont regroupés par erreur avec un exemple. Les requêtes que `PREPARE` ne sait pas analyser (erreur 1295) sont comptées à part. |
+| `sql-corpus-known.json` | Facultatif : liste de `{ "sha": "<empreinte affichée avec le refus>", "why": "<raison>" }` pour les refus acceptés. |
+| `test-sql-corpus.mjs` | Essais de la forme canonique, des réécritures, du classement des refus et de la fusion (dans `pnpm run check:deploy-kit`). |
+
+**Mode** : un refus est un **avertissement** (la livraison continue) ; `deploy.ps1 -StrictSql` (`SQL_CORPUS_STRICT=1`) le rend bloquant (retour automatique à la version précédente). Un corpus absent est ignoré. À passer en mode strict une fois le premier passage en ligne propre.
+
+**Régénérer le corpus** (après des changements importants de requêtes, et à chaque fin de phase avec `--replace` pour retirer les requêtes d'un code disparu), depuis `apps/server`, sur la base d'essai :
+
+```powershell
+$env:GIC_SQL_CORPUS_DIR = "$env:TEMP\gic-sql-corpus"; npx vitest run --maxWorkers=2 --minWorkers=1
+node ..\..\deploy\hostinger\build-sql-corpus.mjs "$env:TEMP\gic-sql-corpus"
+```
+
+(la suite complète sature un poste de 8 Go : la lancer par lots de fichiers, la captation s'additionne dans le même dossier ; le premier corpus du 08/11/2026 a été capté lot par lot).
+
+**Limites** : le filet n'analyse que ce que les essais exercent ; il ne voit ni les erreurs d'exécution (donnée, contrainte), ni les différences de comportement entre moteurs (collations, arrondis, ordre des lignes), ni ce que MariaDB accepte mais interprète autrement ; il ne remplace ni `compat-check.mjs` (essai d'écriture et de lecture JSON sur la vraie base) ni `test-mariadb-portability.mjs` (règles statiques), il les complète. Un corpus ancien peut porter des requêtes d'un code disparu : régénérer avec `--replace`.
+
 ## Points d'attention
 
 - Les mots de passe de base de données et de messagerie qui ont circulé dans les journaux d'Anti-Gravity (`~/.gemini/antigravity/brain/*/.system_generated/`) sont à changer **par le porteur lui-même** (le site n'est pas encore utilisé) ; aucun agent n'y touche, et aucun script de ce dossier n'en contient.
