@@ -7,6 +7,10 @@
  *   - ecriture d'une colonne JSON (audit, evenements, commandes, taches) et relecture ;
  *   - lecture verrouillante en partage (`.forShare()`) et en ecriture (`.forUpdate()`) ;
  *   - ecriture JSON dans un ON DUPLICATE KEY UPDATE ;
+ *   - la requete a fonction de fenetre de sync.devices.seq_gap_check (LAG, fenetre nommee, MIN OVER) : la vraie, rejouee
+ *     en LECTURE SEULE sur la table reelle sync_command_inbox avec un identifiant d'appareil fictif (aucune ligne n'est
+ *     attendue, rien n'est ecrit) ; MariaDB refuse LAG a trois arguments, et la tache a echoue toutes les heures apres
+ *     la livraison du 06/11/2026 sans qu'aucun controle ne le voie ;
  *   - JSON_OVERLAPS (avertissement seulement : n'est utilise que par les vues enregistrees de l'analyse).
  * Le 30/10/2026, la mise en ligne a casse la connexion et l'ordonnanceur faute de ce controle : MariaDB refuse
  * CAST(? AS JSON) et FOR SHARE (voir README.md, section sur la compatibilite MariaDB).
@@ -16,6 +20,7 @@ import { createPool } from 'mysql2';
 import { Kysely, MysqlDialect, DefaultQueryCompiler, sql } from 'kysely';
 import { installMariaDbCompat } from './mariadb-compat.mjs';
 import { jsonValue } from './dist/platform/kysely/json-value.js';
+import { sequenceGapQuery } from './dist/sync/jobs/device-seq-gap-query.js';
 
 const url = process.env.SERVER_DATABASE_URL || process.env.DATABASE_URL;
 if (!url) throw new Error('SERVER_DATABASE_URL (ou DATABASE_URL) absent du .env.');
@@ -80,6 +85,15 @@ try {
         .onDuplicateKeyUpdate({ j: jsonValue(['ADMIN', 'DIRECTION']) })
         .execute();
     });
+    await step(
+      'requete a fonction de fenetre de sync.devices.seq_gap_check (LAG, fenetre nommee)',
+      async () => {
+        // Identifiant d'appareil fictif (seize octets a zero) : aucune plage attendue, mais la vraie requete de la tache
+        // est analysee et executee par la base reelle.
+        const result = await sequenceGapQuery([Buffer.alloc(16)]).execute(c);
+        assert.equal(result.rows.length, 0, 'aucune plage attendue pour un appareil fictif');
+      },
+    );
     await step(
       "JSON_OVERLAPS (vues enregistrees de l'analyse)",
       async () => {
