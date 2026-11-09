@@ -165,9 +165,10 @@ describe('demande de validation en attente depuis longtemps (AV-358, AV-416)', (
     expect(approvalPendingHours(created, new Date('2026-10-19T07:00:00.000Z'))).toBe(0);
   });
 
-  it('libellés français : un type inconnu retombe sur son code, les 22 types connus sont libellés', () => {
-    expect(Object.keys(APPROVAL_OPERATION_LABELS)).toHaveLength(22);
+  it('libellés français : un type inconnu retombe sur son code, les 23 types connus sont libellés', () => {
+    expect(Object.keys(APPROVAL_OPERATION_LABELS)).toHaveLength(23);
     expect(approvalOperationLabel('MORTALITY')).toBe('Mortalité');
+    expect(approvalOperationLabel('LOT_OPENING')).toBe('Reprise d’un lot en cours');
     expect(approvalOperationLabel('INCONNU')).toBe('INCONNU');
   });
 });
