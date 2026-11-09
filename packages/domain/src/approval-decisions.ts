@@ -74,6 +74,8 @@ export const APPROVAL_DECISION_SPECS: Readonly<Record<string, ApprovalDecisionSp
   MORTALITY: { rejectable: true, rejectOptions: LOSS_REJECT, amountIsCost: true },
   INVENTORY_ADJUSTMENT: { rejectable: true, amountIsCost: true },
   ANIMAL_COUNT_ADJUSTMENT: { rejectable: true, amountIsCost: true },
+  // ADR-069 : la reprise d'un lot en cours s'approuve ou se refuse ; son montant est la valeur déclarée du lot.
+  LOT_OPENING: { rejectable: true, amountIsCost: true },
   TRANSFER_DISCREPANCY: { rejectable: true, amountIsCost: true },
   SALE_CANCELLATION: {
     rejectable: true,

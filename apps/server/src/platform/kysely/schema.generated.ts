@@ -2395,6 +2395,39 @@ export interface ProductionLotObservations {
   text: string;
 }
 
+export interface ProductionLotOpenings {
+  approval_request_id: Buffer | null;
+  avg_weight_g: Decimal | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  decided_at: Date | null;
+  decided_by: Buffer | null;
+  entry_id: Buffer | null;
+  id: Buffer;
+  lot_type: string;
+  main_location_id: Buffer;
+  notes: string | null;
+  occurred_at: Date;
+  placed_on: Date;
+  product_id: Buffer;
+  quantity_base: Decimal;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  status: Generated<string>;
+  strain: string | null;
+  supplier_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  value_xaf: number;
+  version: Generated<number>;
+}
+
 export interface ProductionLotWeighings {
   avg_weight_g: Decimal;
   backdated_reason: string | null;
@@ -3021,6 +3054,7 @@ export interface DB {
   production_incubation_events: ProductionIncubationEvents;
   production_lot_entries: ProductionLotEntries;
   production_lot_observations: ProductionLotObservations;
+  production_lot_openings: ProductionLotOpenings;
   production_lot_weighings: ProductionLotWeighings;
   production_overhead_allocation_lines: ProductionOverheadAllocationLines;
   production_overhead_allocations: ProductionOverheadAllocations;

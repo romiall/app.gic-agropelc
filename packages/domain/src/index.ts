@@ -280,6 +280,16 @@ export {
   slaughterYield,
 } from './production.js';
 
+// Reprise d'un lot en cours (ADR-069, BR-PRD-016 ; AV-541 à AV-544) : bornes, contrôles et résumé de la demande.
+export {
+  LOT_OPENING_MAX_AGE_DAYS,
+  LOT_OPENING_MAX_HEADCOUNT,
+  LOT_OPENING_MAX_UNIT_VALUE_XAF,
+  lotOpeningIssues,
+  lotOpeningSummary,
+} from './lot-opening.js';
+export type { LotOpeningDeclaration, LotOpeningIssue } from './lot-opening.js';
+
 export type {
   PricingMode,
   SaleLineAmounts,

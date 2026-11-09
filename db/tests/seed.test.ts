@@ -78,7 +78,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 12 rôles, 130 permissions et 563 octrois attendus', async () => {
+  it('crée exactement les 12 rôles, 131 permissions et 566 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -89,7 +89,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(130); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E), sync.backdate.exceed (AV-078, AV-528)
+    expect(PERMISSIONS.length).toBe(131); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E), sync.backdate.exceed (AV-078, AV-528), production.lot_opening.post (ADR-069, AV-541)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -113,7 +113,8 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // + 38 octrois consultatifs ALL de SUPERVISION (AV-529, aucune permission d'approbation ni d'écriture).
     // + 2 octrois sync.backdate.exceed (Resp. production, Resp. ferme : ALL, report de la fiche de la semaine, AV-528,
     // réponse du porteur du 08/11/2026 à la question 23, solution B).
-    expect(ROLE_PERMISSIONS.length).toBe(563);
+    // + 3 octrois production.lot_opening.post (Administrateur, Resp. production : ALL ; Resp. ferme : SITE ; ADR-069, AV-541).
+    expect(ROLE_PERMISSIONS.length).toBe(566);
     const approvalCodes = new Set(PERMISSIONS.filter((p) => p.isApproval).map((p) => p.code));
     expect(
       ROLE_PERMISSIONS.filter(

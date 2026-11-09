@@ -36,6 +36,9 @@ export const OPERATION_TYPES = [
   // P8-03 : écart de rapprochement d'une facture fournisseur (BR-FIN-031, SM-SUPPLIER-INVOICE),
   // décidé par la Finance ou la Direction (ADR-043 §2).
   'INVOICE_MISMATCH',
+  // ADR-069 (AV-541) : reprise d'un lot en cours à la date d'arrêt, validée comme le stock d'ouverture
+  // (BR-STK-046) ; le lot et son stock n'existent qu'à l'approbation.
+  'LOT_OPENING',
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];

@@ -5,6 +5,7 @@
 ```mermaid
 stateDiagram-v2
   [*] --> PLANNED : production.lot.create
+  [*] --> ACTIVE : reprise d'un lot en cours (approbation, ADR-069)
   PLANNED --> ACTIVE : première entrée (mise en place)
   PLANNED --> CANCELLED : annulation sans entrée
   ACTIVE --> SELLING : déclaré prêt à la vente
@@ -18,6 +19,7 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | `production.lot.create` | Type, site et bâtiment principal valides | `PLANNED` | Lot de traçabilité créé ; `ProductionLotCreated` | — | Objet de coût créé | `production.lot.manage` |
+| `[*]` | `production.lot_opening.post` puis **approbation** de la demande `LOT_OPENING` (ADR-069, BR-PRD-016) | Déclaration valide (effectif repris, mise en place réelle ≤ aujourd'hui, valeur totale, ferme) ; aucun doublon du même lot réel ; approbateur ≠ demandeur (sauf Direction explicite) | `ACTIVE` (le lot n'existe pas avant l'approbation ; un refus ne crée rien) | Lot créé `ACTIVE` avec `start_date` = mise en place réelle et `initial_quantity` = effectif repris ; entrée `OPENING` ; `LotEntryRecorded` | `OPENING_BALANCE` depuis `V_OPENING` à la valeur déclarée, sur le lot de traçabilité (rang FIFO = jour de mise en place) | Écriture de coût `ANIMAUX` du montant déclaré | `production.lot_opening.post` ; approbation : `inventory.count.approve` |
 | `PLANNED` | `production.lot.record_entry` (`PLACEMENT`) | Quantité > 0 ; source disponible (poussins en stock) ou achat | `ACTIVE` | `effectif initial` = quantité de mise en place ; `LotEntryRecorded` | Reclassement : `PRODUCTION_INPUT` (poussins) + `PRODUCTION_OUTPUT` (produit du lot, vers le bâtiment) ; ou réception + reclassement | Écriture de coût `ANIMAUX` = valeur des animaux d'origine | `production.daily.record` |
 | `PLANNED`, `ACTIVE`, `SELLING` | `production.lot.record_entry` (`BIRTH`, `TRANSFER_IN`) | Quantité > 0 ; naissance : lot lié au lot de truies ; transfert ou sevrage : lot d'origine de la même espèce | `ACTIVE` (première entrée), sinon inchangé | `LotEntryRecorded` | `PRODUCTION_OUTPUT` (naissance) ou réception de transfert | Coût des animaux entrants (transfert : coût porté) | `production.daily.record` |
 | `PLANNED` | `production.lot.cancel` | Aucune entrée | `CANCELLED` | — | — | — | `production.lot.manage` |

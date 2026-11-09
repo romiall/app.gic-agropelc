@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -724,5 +724,128 @@ describe('Nouveau lot : règles du domaine', () => {
       'INTERNAL_STOCK',
       'PURCHASE',
     ]);
+  });
+});
+
+describe('Reprise d’un lot en cours (ADR-069, BR-PRD-016)', () => {
+  beforeEach(async () => {
+    const db = getDb();
+    await db.projections.clear();
+    await db.outbox.clear();
+    await seedSalesFixtures(db);
+    await db.projections.bulkPut([
+      projection('site', 'SITE', FARM, {
+        code: 'FERME-1',
+        name: 'Ferme de Mfou',
+        site_type: 'FERME',
+        zone_id: IDS.zone,
+        status: 'ACTIVE',
+      }),
+      location(BUILDING, 'Bâtiment 1', 'BUILDING'),
+      location(BUILDING_2, 'Bâtiment 2', 'BUILDING'),
+      product(BROILER, 'PC', 'Poulets de chair'),
+      lot(LOT_A, 'LOT-MFO-2026-001', 'ACTIVE', STOCK_LOT_A),
+    ]);
+  });
+
+  afterEach(async () => {
+    cleanup();
+    vi.restoreAllMocks();
+    await getDb().projections.clear();
+    await getDb().outbox.clear();
+  });
+
+  const openSection = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('radio', { name: 'Reprise d’un lot' }));
+    return within(screen.getByRole('region', { name: 'Reprise d’un lot' }));
+  };
+
+  it('hors ligne : la déclaration (effectif, mise en place, valeur) est enregistrée, aucun lot n’est créé', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderScreen();
+    const opening = await openSection(user);
+    const submit = opening.getByRole('button', { name: 'Déclarer la reprise' });
+    expect(submit).toBeDisabled();
+
+    await user.selectOptions(opening.getByLabelText('Animaux du lot'), BROILER);
+    await user.selectOptions(opening.getByLabelText('Bâtiment ou case principal'), BUILDING_2);
+    fireEvent.change(opening.getByLabelText('Date de mise en place'), {
+      target: { value: '2026-10-05' },
+    });
+    await user.type(opening.getByLabelText('Effectif repris (têtes)'), '4 800');
+    await user.type(opening.getByLabelText('Valeur totale du lot (F)'), '5 760 000');
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    expect(await screen.findByText(/Reprise enregistrée sur ce téléphone/)).toBeInTheDocument();
+
+    const commands = await getDb().outbox.toArray();
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({
+      command_type: 'production.lot_opening.post',
+      aggregate_type: 'PRODUCTION_LOT_OPENING',
+      captured_offline: true,
+      payload: {
+        lotType: 'POULET_CHAIR',
+        productId: BROILER,
+        mainLocationId: BUILDING_2,
+        placedOn: '2026-10-05',
+        quantity: 4800,
+        valueXaf: 5_760_000,
+      },
+    });
+    // Le formulaire est vidé ; la déclaration ne crée aucun lot (il naît à la validation de la Direction).
+    expect(opening.getByLabelText('Effectif repris (têtes)')).toHaveValue('');
+  });
+
+  it('refuse d’avance ce que le serveur refuserait : date future, valeur par tête démesurée, effectif illisible', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const opening = await openSection(user);
+    const submit = opening.getByRole('button', { name: 'Déclarer la reprise' });
+    await user.selectOptions(opening.getByLabelText('Animaux du lot'), BROILER);
+    await user.type(opening.getByLabelText('Effectif repris (têtes)'), '100');
+    await user.type(opening.getByLabelText('Valeur totale du lot (F)'), '120000');
+
+    // L'horloge de l'essai est au 10/10/2026.
+    fireEvent.change(opening.getByLabelText('Date de mise en place'), {
+      target: { value: '2026-10-11' },
+    });
+    expect(
+      await opening.findByText(/ne peut pas être postérieure à la déclaration/),
+    ).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(opening.getByLabelText('Date de mise en place'), {
+      target: { value: '2026-10-05' },
+    });
+    await waitFor(() => expect(submit).toBeEnabled());
+
+    await user.clear(opening.getByLabelText('Valeur totale du lot (F)'));
+    await user.type(opening.getByLabelText('Valeur totale du lot (F)'), '2000000000');
+    expect(await opening.findByText(/dépasse 10000000 F par tête/)).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+
+    await user.clear(opening.getByLabelText('Valeur totale du lot (F)'));
+    await user.type(opening.getByLabelText('Valeur totale du lot (F)'), '120000');
+    await user.clear(opening.getByLabelText('Effectif repris (têtes)'));
+    await user.type(opening.getByLabelText('Effectif repris (têtes)'), '12,5');
+    expect(await opening.findByText('Effectif : un nombre entier de têtes.')).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+  });
+
+  it('signale le lot réel déjà connu (même bâtiment, même produit, même mise en place) et ne l’envoie pas', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const opening = await openSection(user);
+    await user.selectOptions(opening.getByLabelText('Animaux du lot'), BROILER);
+    fireEvent.change(opening.getByLabelText('Date de mise en place'), {
+      target: { value: '2026-09-20' },
+    });
+    await user.type(opening.getByLabelText('Effectif repris (têtes)'), '500');
+    await user.type(opening.getByLabelText('Valeur totale du lot (F)'), '600000');
+    expect(await opening.findByText(/Le lot LOT-MFO-2026-001/)).toBeInTheDocument();
+    expect(opening.getByRole('button', { name: 'Déclarer la reprise' })).toBeDisabled();
+    expect(await getDb().outbox.count()).toBe(0);
   });
 });

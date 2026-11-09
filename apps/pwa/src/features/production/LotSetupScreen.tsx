@@ -9,7 +9,14 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { LotEntrySourceKind, ProductionLotType } from '@gic/domain';
+import { LOT_OPENING_AGGREGATE_TYPE } from '@gic/contracts';
+import {
+  LOT_OPENING_MAX_AGE_DAYS,
+  addBusinessDays,
+  businessDayOf,
+  type LotEntrySourceKind,
+  type ProductionLotType,
+} from '@gic/domain';
 import { ROUTES } from '../../app/screens.js';
 import {
   ActionBar,
@@ -24,6 +31,7 @@ import {
   SkeletonRows,
   Textarea,
 } from '../../components/ui/index.js';
+import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -31,6 +39,15 @@ import { formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import { rearingLocations } from './daily.js';
+import {
+  checkLotOpeningDraft,
+  EMPTY_LOT_OPENING,
+  knownOpening,
+  lotOpeningPayload,
+  MAX_OPENING_STRAIN,
+  OPENING_COMMAND_TYPE,
+  type LotOpeningDraft,
+} from './lot-opening.js';
 import {
   allowedKinds,
   birthParentActive,
@@ -60,7 +77,7 @@ import {
 import { SelectField } from './SelectField.js';
 import './production.css';
 
-type Section = 'CREATE' | 'ENTRY';
+type Section = 'CREATE' | 'ENTRY' | 'OPENING';
 
 interface SectionProps {
   readonly refs: SalesReferences;
@@ -255,6 +272,206 @@ function CreateLot({
           onClick={submit}
         >
           {t('lot_setup.create')}
+        </Button>
+      </ActionBar>
+    </>
+  );
+}
+
+/**
+ * Reprise d’un lot en cours (ADR-069, BR-PRD-016) : une déclaration — effectif repris, mise en place réelle, valeur
+ * totale — que la Direction valide ; le lot n’existe qu’à sa validation. Utilisable hors ligne.
+ */
+function OpenLot({ refs, userId, blocked, send }: SectionProps) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState<LotOpeningDraft>(EMPTY_LOT_OPENING);
+  const farmList = farms(refs.sites.values());
+  const siteId = draft.siteId || farmList[0]?.id || '';
+  const products = lotProducts(refs.products, draft.lotType);
+  const locations = siteId ? rearingLocations(refs.locations, { site_id: siteId }) : [];
+  const effective: LotOpeningDraft = {
+    ...draft,
+    siteId,
+    productId: products.some((product) => product.id === draft.productId) ? draft.productId : '',
+    mainLocationId: locations.some((location) => location.id === draft.mainLocationId)
+      ? draft.mainLocationId
+      : (locations[0]?.id ?? ''),
+  };
+  const now = clock.now();
+  const today = businessDayOf(now);
+  const issues = checkLotOpeningDraft(
+    effective,
+    products.find((product) => product.id === effective.productId),
+    now,
+  );
+  const known =
+    effective.mainLocationId && effective.productId && effective.placedOn
+      ? knownOpening(refs, {
+          locationId: effective.mainLocationId,
+          productId: effective.productId,
+          placedOn: effective.placedOn,
+        })
+      : null;
+  const shown = (field: (typeof issues)[number]['field']) =>
+    issues.find((issue) => issue.field === field && issue.kind === 'INVALID')?.message;
+  const update = (patch: Partial<LotOpeningDraft>) =>
+    setDraft((current) => ({ ...current, ...patch }));
+
+  const payload = lotOpeningPayload(effective);
+  const ready = payload !== null && issues.length === 0 && known === null && !blocked;
+  const submit = () => {
+    if (!ready || !payload) return;
+    void send('OPENING', {
+      authorUserId: userId,
+      commandType: OPENING_COMMAND_TYPE,
+      aggregateType: LOT_OPENING_AGGREGATE_TYPE,
+      payload,
+    }).then((openingId) => {
+      if (openingId) setDraft(EMPTY_LOT_OPENING);
+    });
+  };
+
+  if (farmList.length === 0) {
+    return <p className="prd-note">{t('lot_setup.no_farm')}</p>;
+  }
+
+  return (
+    <>
+      <div className="prd-form">
+        <Banner tone="info">{t('lot_setup.opening_hint')}</Banner>
+        <SelectField
+          label={t('lot_setup.farm_label')}
+          value={siteId}
+          onChange={(value) => update({ siteId: value, mainLocationId: '' })}
+          options={farmList.map((site) => ({ value: site.id, label: site.name }))}
+        />
+        <SelectField
+          label={t('lot_setup.type_label')}
+          value={draft.lotType}
+          onChange={(value) => update({ lotType: value as ProductionLotType, productId: '' })}
+          options={PRODUCTION_LOT_TYPES.map((type) => ({
+            value: type,
+            label: t(`production.lot_type.${type}`),
+          }))}
+        />
+        {products.length === 0 ? (
+          <Banner tone="bad">{t('lot_setup.no_product')}</Banner>
+        ) : (
+          <SelectField
+            label={t('lot_setup.product_label')}
+            value={effective.productId}
+            onChange={(value) => update({ productId: value })}
+            options={products.map((product) => ({ value: product.id, label: product.name }))}
+            placeholder={t('lot_setup.choose')}
+          />
+        )}
+        {locations.length === 0 ? (
+          <Banner tone="bad">{t('production.no_rearing_location')}</Banner>
+        ) : (
+          <SelectField
+            label={t('lot_setup.location_label')}
+            value={effective.mainLocationId}
+            onChange={(value) => update({ mainLocationId: value })}
+            options={locations.map((location) => ({ value: location.id, label: location.name }))}
+          />
+        )}
+        <Field label={t('lot_setup.opening.placed_label')} error={shown('placedOn')}>
+          {(control) => (
+            <Input
+              {...control}
+              type="date"
+              min={addBusinessDays(today, -LOT_OPENING_MAX_AGE_DAYS)}
+              max={today}
+              value={draft.placedOn}
+              onChange={(event) => update({ placedOn: event.target.value })}
+            />
+          )}
+        </Field>
+        <div className="prd-pair">
+          <Field label={t('lot_setup.opening.quantity_label')} error={shown('quantity')}>
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                value={draft.quantityText}
+                onChange={(event) => update({ quantityText: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field
+            label={t('lot_setup.opening.value_label')}
+            hint={t('lot_setup.opening.value_hint')}
+            error={shown('value')}
+          >
+            {(control) => (
+              <Input
+                {...control}
+                inputMode="numeric"
+                value={draft.valueText}
+                onChange={(event) => update({ valueText: event.target.value })}
+              />
+            )}
+          </Field>
+        </div>
+        <details className="prd-more">
+          <summary>
+            {t('lot_setup.more_title')}
+            <Icon name="chevron-down" size={18} />
+          </summary>
+          <div className="prd-form">
+            <SelectField
+              label={t('lot_setup.supplier_label')}
+              value={draft.supplierId}
+              onChange={(value) => update({ supplierId: value })}
+              options={[...refs.suppliers.values()]
+                .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                .map((supplier) => ({ value: supplier.id, label: supplier.name }))}
+              placeholder={t('lot_setup.no_supplier')}
+            />
+            <Field label={t('lot_setup.strain_label')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  maxLength={MAX_OPENING_STRAIN}
+                  value={draft.strain}
+                  onChange={(event) => update({ strain: event.target.value })}
+                />
+              )}
+            </Field>
+            <Field label={t('lot_setup.weight_label')} error={shown('weight')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  inputMode="decimal"
+                  value={draft.avgWeightText}
+                  onChange={(event) => update({ avgWeightText: event.target.value })}
+                />
+              )}
+            </Field>
+            <Field label={t('lot_setup.notes_label')}>
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={2}
+                  maxLength={MAX_LOT_NOTES}
+                  value={draft.notes}
+                  onChange={(event) => update({ notes: event.target.value })}
+                />
+              )}
+            </Field>
+          </div>
+        </details>
+        {known ? (
+          <p className="prd-note is-bad">
+            {known.kind === 'LOT'
+              ? t('lot_setup.opening.known_lot', { code: known.lotCode })
+              : t('lot_setup.opening.known_unsent')}
+          </p>
+        ) : null}
+      </div>
+      <ActionBar>
+        <Button size="lg" className="submit-sale" disabled={!ready} onClick={submit}>
+          {t('lot_setup.opening.submit')}
         </Button>
       </ActionBar>
     </>
@@ -654,7 +871,11 @@ export function LotSetupScreen() {
           <CommandResult
             commandId={last.commandId}
             messages={
-              last.section === 'CREATE' ? 'lot_setup.create_result' : 'lot_setup.entry_result'
+              last.section === 'CREATE'
+                ? 'lot_setup.create_result'
+                : last.section === 'OPENING'
+                  ? 'lot_setup.opening_result'
+                  : 'lot_setup.entry_result'
             }
           />
         ) : null}
@@ -662,7 +883,7 @@ export function LotSetupScreen() {
           label={t('lot_setup.section_label')}
           value={section}
           onChange={setSection}
-          options={(['CREATE', 'ENTRY'] as const).map((value) => ({
+          options={(['CREATE', 'ENTRY', 'OPENING'] as const).map((value) => ({
             value,
             label: t(`lot_setup.section.${value}`),
           }))}
@@ -677,6 +898,8 @@ export function LotSetupScreen() {
                 setSection('ENTRY');
               }}
             />
+          ) : section === 'OPENING' ? (
+            <OpenLot {...props} />
           ) : (
             <RecordEntry {...props} lotChoice={lotChoice} setLotChoice={setLotChoice} />
           )}

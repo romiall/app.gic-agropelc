@@ -50,6 +50,7 @@ export const APPROVAL_OPERATION_LABELS: Readonly<Record<string, string>> = {
   PAYMENT_DUPLICATE: 'Encaissement en double',
   CASH_TRANSFER_DISCREPANCY: 'Écart de remise de fonds',
   INVOICE_MISMATCH: 'Écart de facture fournisseur',
+  LOT_OPENING: 'Reprise d’un lot en cours',
 };
 
 export function approvalOperationLabel(operationType: string): string {

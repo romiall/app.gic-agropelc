@@ -1698,6 +1698,7 @@ export const fr = {
     section: {
       CREATE: 'Nouveau lot',
       ENTRY: 'Entrée dans un lot',
+      OPENING: 'Reprise d’un lot',
     },
     choose: 'Choisir…',
     no_farm: 'Aucune ferme connue : synchronisez avant de créer un lot.',
@@ -1784,6 +1785,27 @@ export const fr = {
       WARNING: 'Entrée enregistrée, avec un signalement.',
       CONFLICT: 'Entrée mise en attente d’examen (conflit).',
       REJECTED: 'Entrée refusée : {{reason}}',
+    },
+    opening_hint:
+      'Un lot déjà en élevage à la date d’arrêt se reprend en une déclaration : l’effectif réellement présent, la date de mise en place et la valeur totale du lot (animaux, aliments, soins déjà engagés). La Direction la valide ; le lot n’apparaît qu’après sa validation.',
+    opening: {
+      placed_label: 'Date de mise en place',
+      quantity_label: 'Effectif repris (têtes)',
+      value_label: 'Valeur totale du lot (F)',
+      value_hint: 'Elle devient le coût de départ du lot.',
+      known_lot:
+        'Le lot {{code}}, du même produit, dans cet emplacement, mis en place ce jour-là, existe déjà.',
+      known_unsent: 'Une reprise identique attend déjà son envoi sur ce téléphone.',
+      submit: 'Déclarer la reprise',
+    },
+    opening_result: {
+      WAITING_offline:
+        'Reprise enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau, puis validée par la Direction.',
+      WAITING_online: 'Reprise en cours d’envoi…',
+      DONE: 'Reprise déclarée : elle attend la validation de la Direction. Le lot apparaîtra après sa validation.',
+      WARNING: 'Reprise déclarée, avec un signalement. Elle attend la validation de la Direction.',
+      CONFLICT: 'Reprise mise en attente d’examen (conflit).',
+      REJECTED: 'Reprise refusée : {{reason}}',
     },
   },
   output: {
@@ -3007,6 +3029,7 @@ export const fr = {
       PAYMENT_DUPLICATE: 'Encaissement en double',
       CASH_TRANSFER_DISCREPANCY: 'Écart de remise de fonds',
       INVOICE_MISMATCH: 'Écart de facture fournisseur',
+      LOT_OPENING: 'Reprise d’un lot en cours',
     },
     requested: 'Demandé par {{name}} le {{date}}',
     unknown_user: 'utilisateur inconnu',
