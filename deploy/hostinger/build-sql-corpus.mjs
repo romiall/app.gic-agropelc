@@ -35,10 +35,23 @@ export function parseCaptureLines(text) {
   return out;
 }
 
-/** Union canonique, triee et sans doublon. */
+/**
+ * Commande de controle de transaction (SAVEPOINT x, RELEASE SAVEPOINT x, ROLLBACK [TO x], COMMIT, BEGIN, START
+ * TRANSACTION) : PREPARE ne la prend pas en charge (il n'y a donc rien a analyser), MariaDB la connait telle quelle,
+ * et le nom d'un point de sauvegarde change a chaque appel (`escalate_<uuid>`) : la garder ferait grossir le corpus a
+ * chaque suite d'essais sans rien controler de plus. Les requetes captees ne sont conservees qu'hors de ce lot.
+ */
+export function isTransactionControl(sql) {
+  return /^\s*(savepoint|release\s+savepoint|rollback|commit|begin|start\s+transaction)\b/i.test(
+    sql,
+  );
+}
+
+/** Union canonique, triee et sans doublon, sans les commandes de controle de transaction. */
 export function mergeStatements(...lists) {
   const all = new Set();
-  for (const list of lists) for (const sql of list) all.add(normalizeStatement(sql));
+  for (const list of lists)
+    for (const sql of list) if (!isTransactionControl(sql)) all.add(normalizeStatement(sql));
   return [...all].sort();
 }
 

@@ -319,7 +319,10 @@ describe(`archive des photos jointes (AV-539, ADR-070) — année d'essai ${YEAR
     return id;
   }
 
-  async function invoice(status: 'PAID' | 'APPROVED'): Promise<string> {
+  // Une facture fermée pour l'archive est payée ou annulée. Une facture « payée » insérée sans paiement ni affectation
+  // violerait INV-FIN-07 (payé = Σ affectations actives) dans la base d'essai partagée, où `p8-invariants` balaie toute
+  // la base : la fermeture se joue donc par l'annulation, qui ne porte aucun paiement.
+  async function invoice(status: 'CANCELLED' | 'APPROVED'): Promise<string> {
     const id = freshUuid();
     await db
       .insertInto('finance_supplier_invoices')
@@ -331,10 +334,17 @@ describe(`archive des photos jointes (AV-539, ADR-070) — année d'essai ${YEAR
         invoice_date: at(8, 1),
         due_date: at(9, 1),
         total_xaf: 10_000,
-        paid_xaf: status === 'PAID' ? 10_000 : 0,
+        paid_xaf: 0,
         status,
         approved_by: toBin(admin),
         approved_at: new Date(NOW.getTime() - 50 * DAY_MS),
+        ...(status === 'CANCELLED'
+          ? {
+              cancelled_by: toBin(admin),
+              cancelled_at: new Date(NOW.getTime() - 45 * DAY_MS),
+              cancel_reason: 'Essai de l’archive : facture annulée',
+            }
+          : {}),
         occurred_at: new Date(NOW.getTime() - 50 * DAY_MS),
         created_by: toBin(admin),
       })
@@ -566,7 +576,7 @@ describe(`archive des photos jointes (AV-539, ADR-070) — année d'essai ${YEAR
       const e1 = await expense('REJECTED', 'DEP papier 7');
       const l1 = await loss('CASSE', 'RECORDED');
       const l2 = await loss('MORTALITE', 'APPROVED');
-      const i1 = await invoice('PAID');
+      const i1 = await invoice('CANCELLED');
       photos.r1 = await photo('GOODS_RECEIPT', r1, at(9, 10, 9, 15, 30), { kind: 'DELIVERY_NOTE' });
       photos.r1b = await photo('GOODS_RECEIPT', r1, at(9, 10, 9, 15, 30), {
         kind: 'DELIVERY_NOTE',

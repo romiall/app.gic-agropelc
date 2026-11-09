@@ -65,6 +65,8 @@ describe('FL : fiche de suivi de lot reportée, saisies du jour dans le vrai pip
   let pipeline: CommandPipelineService;
   let farmManager: Actor;
   let productionManager: Actor;
+  /** Saisit le jour sans le droit `sync.backdate.exceed` (accordé aux responsables de ferme et de production depuis Q23 B). */
+  let plainRecorder: Actor;
   let buildingId: string;
   let farmStoreId: string;
   let feedId: string;
@@ -188,6 +190,10 @@ describe('FL : fiche de suivi de lot reportée, saisies du jour dans le vrai pip
       };
       farmManager = await actor(roles.rfe, { scopeType: 'SITE', scopeSiteId: farmId });
       productionManager = await actor(roles.rpr);
+      // Un rôle d'essai réduit à la saisie du jour : la fenêtre d'antidatage de 72 h s'y applique.
+      const plainRole = await insertTestRole(trx, adminId, { allowedScopeTypes: ['SITE'] });
+      await grantTestPermission(trx, plainRole, 'production.daily.record', adminId);
+      plainRecorder = await actor(plainRole, { scopeType: 'SITE', scopeSiteId: farmId });
 
       for (const [unit, name, isCount] of [
         ['TETE', 'Tête', 1],
@@ -503,7 +509,11 @@ describe('FL : fiche de suivi de lot reportée, saisies du jour dans le vrai pip
         },
       ],
     };
-    const { results } = await replay(stale, { reason: 'Fiche de la semaine passée' });
+    // Le responsable de ferme (Q23 B) peut dépasser la fenêtre : le refus se joue avec un acteur qui n'a pas ce droit.
+    const { results } = await replay(stale, {
+      actor: plainRecorder,
+      reason: 'Fiche de la semaine passée',
+    });
     expect(code(results[0]!)).toBe('BACKDATE_EXCEEDED');
     expect(results[1]!.status, JSON.stringify(results[1])).toBe('APPLIED');
   });

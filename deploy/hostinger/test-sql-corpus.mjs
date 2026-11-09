@@ -17,7 +17,8 @@ const {
   normalizeStatement,
   statementSha,
 } = await import('./check-sql-corpus.mjs');
-const { corpusText, mergeStatements, parseCaptureLines } = await import('./build-sql-corpus.mjs');
+const { corpusText, isTransactionControl, mergeStatements, parseCaptureLines } =
+  await import('./build-sql-corpus.mjs');
 
 // -- Espaces compactes hors des chaines : un litteral SQL n'est jamais altere ---------------------------------------
 assert.equal(compactSql('select  a ,\n  b\tfrom   t'), 'select a , b from t');
@@ -188,6 +189,21 @@ assert.deepEqual(
   ),
   ['select 1', 'select 2', 'select 3 where id in (?)'],
 );
+// Les commandes de controle de transaction (noms de points de sauvegarde changeant a chaque appel) n'entrent pas au corpus.
+assert.deepEqual(
+  mergeStatements(
+    [
+      'select 1',
+      'savepoint `escalate_01a1`',
+      'RELEASE SAVEPOINT `escalate_01a1`',
+      'rollback to `x`',
+    ],
+    ['commit', ' begin', 'START TRANSACTION', 'rollback', 'select 2 -- rollback'],
+  ),
+  ['select 1', 'select 2 -- rollback'],
+);
+assert.equal(isTransactionControl('select * from savepoints'), false);
+assert.equal(isTransactionControl('insert into begin_log (a) values (?)'), false);
 const text = corpusText(['select 1', 'select "a,b"'], '2026-11-08T00:00:00.000Z');
 const parsed = JSON.parse(text);
 assert.equal(parsed.count, 2);

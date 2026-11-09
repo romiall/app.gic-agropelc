@@ -2,5 +2,9 @@
   {
     "sha": "0b4de571fbca",
     "why": "Requete volontairement fausse d'un essai de l'explorateur (une vue d'analyse qui n'existe pas, refus attendu) : elle echoue sur toute base."
+  },
+  {
+    "sha": "eec1f9bc47b3",
+    "why": "Purge des alertes closes (purge-alerts.ts) : elle s'execute sous le role de maintenance (MAINTENANCE_DATABASE_URL), jamais sous le compte de l'application, qui n'a pas DELETE sur communication_alerts (une alerte est une trace immuable). Refus de droit (1142), pas une incompatibilite avec MariaDB."
   }
 ]
