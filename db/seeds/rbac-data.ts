@@ -274,12 +274,29 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // attachments (1)
+  // attachments (3)
   {
     code: 'attachments.attachment.manage',
     module: 'attachments',
     description: 'Joindre une pièce justificative à une opération (AV-093)',
     supportedScopes: ['OWN'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  // AV-539, ADR-070 : archive des photos jointes, Admin seulement ; « sensible » attend AV-092.
+  {
+    code: 'attachments.archive.export',
+    module: 'attachments',
+    description: 'Préparer, télécharger et vérifier l’archive des photos jointes (AV-539)',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'attachments.archive.purge',
+    module: 'attachments',
+    description: 'Vider du serveur les photos jointes déjà archivées (AV-539)',
+    supportedScopes: ['ALL'],
     isApproval: false,
     isSensitive: false,
   },
@@ -1367,6 +1384,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
   // ADMIN — 32, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
   // + finance.expense_category.manage, P8-03 ; + production.lot_opening.post, ADR-069)
   ...grants('ADMIN', [
+    ['attachments.archive.export', 'ALL'],
+    ['attachments.archive.purge', 'ALL'],
     ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'ALL'],
     ['fieldwork.presence.read', 'ALL'],

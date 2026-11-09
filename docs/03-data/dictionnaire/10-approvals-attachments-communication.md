@@ -103,6 +103,74 @@
 - **PK** `id`. **UQ** `storage_key`. **IX** `(owner_type, owner_id)`, `(upload_status)` partiel.
 - **Suppr.** `IMMUABLE` (remplacement par une nouvelle pièce) ; purge des fichiers après 5 ans (AV-074), avec conservation des métadonnées.
 - **Offline** CR : fichier conservé localement jusqu'à `AVAILABLE`.
+- **Archive** (AV-539, [ADR-070](../../decisions/ADR-070-archive-des-photos-jointes.md)) : une pièce archivée **reste `AVAILABLE`** et sa ligne n'est jamais modifiée ni supprimée ; seul le fichier du disque du serveur est supprimé, après un téléchargement complet et une confirmation de l'Admin. La trace est dans `attachments.archive_items` ; la lecture d'une pièce vidée répond `410 ATTACHMENT_ARCHIVED`.
+
+## attachments.archives
+
+**Responsabilité** : plan figé d'une archive des photos jointes pour une période (un mois ou un trimestre du calendrier, fuseau Africa/Douala) ; Admin seulement (AV-539, ADR-070). Migration `20261206090000`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | |
+| `granularity` | enum(`MONTH`,`QUARTER`) | Non | — | |
+| `period_start`, `period_end` | date | Non | — | Jours locaux, début inclus, fin exclue |
+| `cutoff_at` | ts | Non | — | Seules les pièces reçues avant cet instant sont archivables (maintenant moins `min_age_days`) |
+| `min_age_days` | int | Non | — | ≥ 30 (CHECK : les images de moins de 30 jours restent toujours sur le serveur) |
+| `volume_max_bytes` | bigint | Non | — | Taille maximale des photos d'un volume au moment du plan |
+| `retention_years` | int | Non | — | ≥ 1 ; conservation de l'archive de l'entreprise, rappelée dans `LISEZMOI.txt` (figée : le volume reste identique) |
+| `file_count`, `files_bytes` | int, bigint | Non | — | Photos du plan |
+| `kept_open_count`, `absent_count` | int | Non | 0 | Photos de la période écartées : opération encore ouverte, fichier absent du disque |
+| `status` | enum(`READY`,`COMPLETED`,`CANCELLED`) | Non | `READY` | |
+| `live_key` | généré | Oui | — | `granularity:period_start` tant que `READY` : **UQ** (un seul plan vivant par période) |
+| `completed_at`, `cancelled_at`, `cancelled_by` | | Oui | — | |
+| `created_at`, `created_by` | | | | |
+
+- **PK** `id`. **UQ** `live_key`. **IX** `(period_start, created_at)`.
+- **Suppr.** `IMMUABLE` : seuls le statut et ses dates changent ; un plan terminé ou annulé ne change plus ; aucune suppression physique (déclencheurs).
+
+## attachments.archive_volumes
+
+**Responsabilité** : un fichier ZIP du plan — les photos d'**un mois et d'une catégorie** (`RECEPTION`, `MORTALITE`, `PERTE`, `DEPENSE`, `FACTURE_FOURNISSEUR`), au plus `volume_max_bytes` et 10 000 photos —, avec la preuve de sa livraison.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | |
+| `archive_id` | uuid → archives | Non | — | |
+| `seq` | int | Non | — | Rang dans le plan (**UQ** avec `archive_id`) |
+| `category` | enum | Non | — | Dossier de l'archive |
+| `month_start` | date | Non | — | Premier jour du mois local |
+| `part` | int | Non | 1 | Partie, si le mois et la catégorie dépassent la borne |
+| `file_name` | varchar(160) | Non | — | `GIC-photos_AAAA-MM_CATÉGORIE_AAAAMMJJ[_pNN].zip` (**UQ** avec `archive_id`) |
+| `file_count`, `files_bytes` | int, bigint | Non | — | Photos du volume |
+| `zip_bytes` | bigint | Non | — | Longueur exacte du ZIP (`Content-Length`), calculée au plan |
+| `zip_sha256` | char(64) | Oui | — | Empreinte des octets envoyés à la dernière livraison complète |
+| `deliveries`, `aborted_deliveries` | int | Non | 0 | Livraisons complètes, réponses interrompues |
+| `first_delivered_at`, `last_delivered_at`, `last_delivered_by` | | Oui | — | |
+| `verified_at`, `verified_by` | | Oui | — | Fichier rangé dont l'empreinte a été comparée (facultatif) |
+| `resolved_at`, `resolved_by` | | Oui | — | Toutes les photos du volume sont vidées ou libérées |
+
+- **PK** `id`. **Suppr.** `IMMUABLE` hors livraison, vérification et résolution ; aucune suppression physique.
+
+## attachments.archive_items
+
+**Responsabilité** : une photo du plan — la trace qui reste après le vidage du serveur (référence, chemin dans l'archive, empreinte, taille, date de soumission).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `archive_id`, `attachment_id` | uuid | Non | — | **PK** ; `attachment_id` → `attachments.attachments` |
+| `volume_id` | uuid → archive_volumes | Non | — | |
+| `entry_path` | varchar(300) | Non | — | `CATÉGORIE/AAAA-MM/NUMÉRO[_RÉFÉRENCE…]_AAAAMMJJ-HHMMSS_ID8.ext` (caractères sûrs seulement) |
+| `category` | enum | Non | — | |
+| `owner_type`, `owner_id` | | Non | — | Document propriétaire |
+| `reference`, `secondary_reference` | varchar | Non, Oui | — | Numéro du document ; pièce papier, bon de livraison ou numéro de facture du fournisseur |
+| `kind`, `mime_type`, `size_bytes`, `sha256` | | Non | — | Recopiés de la pièce |
+| `captured_at`, `submitted_at` | ts | Non | — | Prise de vue ; soumission (réception par le serveur) |
+| `state` | enum(`PLANNED`,`PURGED`,`RELEASED`) | Non | `PLANNED` | Prévue, vidée du serveur, libérée (restée sur le serveur) |
+| `resolved_at`, `release_reason` | | Oui | — | `OPEN_OPERATION`, `CHANGED`, `TOO_RECENT`, `ARCHIVE_CANCELLED` |
+| `held_attachment_id` | généré | Oui | — | `attachment_id` tant que `PLANNED` ou `PURGED` : **UQ** (une pièce n'est couverte que par un élément à la fois) |
+
+- **PK** `(archive_id, attachment_id)`. **IX** `(volume_id, state)`, `(attachment_id)`.
+- **Suppr.** `IMMUABLE` hors résolution ; une photo résolue ne change plus ; aucune suppression physique.
 
 ## communication.alert_rules
 

@@ -51,3 +51,6 @@ export { OPERATION_TYPES } from '../commands/operation-types.js';
 export type { OperationType } from '../commands/operation-types.js';
 export { countPendingApprovalsFor } from './pending-count.js';
 export type { PendingApprovalsCount } from './pending-count.js';
+
+// AV-539 (ADR-070) : documents qui ont une demande de validation en attente (une photo preuve ne quitte pas le serveur).
+export { subjectsWithPendingApproval } from './pending-subjects.js';
