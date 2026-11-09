@@ -106,7 +106,7 @@
 - **IX** `(user_id, valid_from, valid_to)`, `(role_id)`.
 - **Suppr.** `IMMUABLE` sauf fermeture (`valid_to`, `revoked_*`) (INV-ADM-04).
 - **Hist.** La table **est** l'historique des droits.
-- **Audit** Octroi, révocation. **Offline** DL (ses propres affectations).
+- **Audit** Octroi, révocation. **Offline** DL (ses propres affectations) : jeu `role_assignment`, une ligne `USER` par affectation dont la portée est le titulaire — publiée à l'octroi et à la révocation par `identity`, jamais en `GLOBAL` (ADR-071, AV-533, Q24 du 08/11/2026) ; l'appareil juge la validité (`valid_to`, `revoked_at`) à son heure, sans ligne à l'échéance.
 - **Intégrité** Droits effectifs à `t` = affectations avec `valid_from ≤ t < coalesce(revoked_at, valid_to, ∞)` (BR-ADM-004).
 
 ## identity.devices

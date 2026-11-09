@@ -206,10 +206,15 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
-  // Ligne en portée GLOBAL (repli du pipeline, création d'un compte) : tous les appareils reçoivent toutes les affectations.
-  // Le code du rôle (ADMIN, DIRECTION, FINANCE…) n'y est donc **pas** servi (S-41 (a), AV-533) : il désignerait à chaque
-  // appareil les comptes qui détiennent ces rôles ; l'appareil lit le code de ses propres rôles dans `me` / `GET /auth/me`.
-  ROLE_ASSIGNMENT: async (executor, entityId) => {
+  // ADR-071 (AV-533, Q24 du 08/11/2026) : une affectation n'est servie qu'à son utilisateur — ligne `USER` dont la portée est le
+  // titulaire de l'affectation (`emitRoleAssignmentChange`). Jamais la ligne `GLOBAL` du repli du pipeline (insérée à chaque
+  // octroi et révocation) ni les anciennes lignes `GLOBAL` d'avant la migration 20261207090000, qui servaient chaque affectation
+  // à tous les appareils : un téléphone perdu désignait qui détient quel rôle, sur quel périmètre. La portée de la ligne doit
+  // être le titulaire : une ligne mal émise ne sert à personne.
+  // Le code du rôle (ADMIN, DIRECTION, FINANCE…) n'est pas servi (S-41 (a), AV-552) : l'appareil lit le code de ses propres
+  // rôles dans `me` / `GET /auth/me`.
+  ROLE_ASSIGNMENT: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
     const row = await executor
       .selectFrom('identity_user_role_assignments as a')
       .select([
@@ -225,6 +230,7 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'a.revoked_at as revoked_at',
       ])
       .where('a.id', '=', toBin(entityId))
+      .where('a.user_id', '=', toBin(context.scopeId))
       .executeTakeFirst();
     if (!row) return undefined;
     return {

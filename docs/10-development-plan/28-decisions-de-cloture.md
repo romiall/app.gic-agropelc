@@ -580,7 +580,9 @@ Aujourd’hui, chaque appareil reçoit la liste de toutes les affectations de r�
 
 ★ **Pourquoi cette recommandation** : L’appareil n’utilise déjà que les affectations de son propre utilisateur : le reste est exposé sans servir.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : ☒ A  ☐ B  ☐ C  ☐ autre : ____________ *(08/11/2026)*
+
+**Suite donnée** : mis en œuvre le 08/11/2026 par une session de développement — le jeu `role_assignment` ne va plus qu’à l’utilisateur de l’affectation ([ADR-071](../decisions/ADR-071-jeu-role-assignment-restreint-a-l-utilisateur.md), migration `20261207090000`, AV-533 point S-41 tranché, AV-550 à AV-552 pour les points restés ouverts). Rien à faire de votre côté ; à consigner au journal de `A-VALIDER.md` § 3 avec les autres réponses.
 
 ### Q25 — La Direction peut-elle approuver ses propres demandes ?
 
