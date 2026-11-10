@@ -11,8 +11,10 @@
     base      MySQL 8.4 (demarre s'il est arrete), migrations et semis sur la base jetable gic_agropelc_rp,
               types Kysely compares a la base migree, filet SQL MariaDB (corpus analyse par la base)
     essais    domaine, contrats, base, PWA, serveur : tous les fichiers (liste de `vitest list`), par lots, rapport
-              JSON par lot ; un lot interrompu est rejoue en lots plus petits ; un fichier en echec est rejoue seul,
-              a froid ("instable" s'il passe seul, "en delai" s'il expire)
+              JSON par lot ; un lot interrompu est rejoue en lots plus petits, de meme qu'un fichier inacheve (essais
+              'pending' d'un worker arrete en cours de lot : jamais comptes comme ignores) ; un fichier en echec est
+              rejoue seul, a froid ("instable" s'il passe seul, "en delai" s'il expire) ; une erreur non geree du
+              lot (autre qu'un arret de worker) est un constat
     en ligne  sondes publiques en lecture seule (sante, service worker, accueil, routes protegees en 401)
   A la fin : un tableau par etape, les CONSTATS a analyser (fichier, essai, premiere erreur, journal), un verdict,
   code de sortie 0 (aucun echec) ou 1. Journaux dans %TEMP%\gic-verify-<horodatage> : resume.txt, progression.txt.
@@ -72,6 +74,9 @@ $results = New-Object System.Collections.ArrayList
 $findings = New-Object System.Collections.ArrayList
 $script:dbReady = $false
 $script:dbMessage = 'base non preparee'
+$script:unfinished = @{}   # par etape : fichiers dont un lot s'est arrete avant la fin de leurs essais (rejoues)
+$script:workerExits = @{}  # par etape : lots dont un worker de vitest s'est arrete en cours de route
+$script:unhandled = @{}    # par etape : erreurs non gerees des lots, autres qu'un arret de worker
 
 function Write-Line([string]$text) {
   $stamped = '[' + (Get-Date -Format 'HH:mm:ss') + '] ' + $text
@@ -312,7 +317,7 @@ function Invoke-CorpusStep {
 }
 
 # --- essais : lots, rapport JSON, reprise des lots interrompus, rejeu a froid des echecs -----------------------------
-function Read-VitestJson([string]$jsonFile, [string]$prefix, [hashtable]$state, [string]$logFile) {
+function Read-VitestJson([string]$jsonFile, [string]$prefix, [hashtable]$state, [string]$logFile, [string]$name) {
   if (-not (Test-Path $jsonFile)) { return 0 }
   try { $doc = Get-Content -Raw -Path $jsonFile | ConvertFrom-Json } catch { return 0 }
   $count = 0
@@ -323,6 +328,7 @@ function Read-VitestJson([string]$jsonFile, [string]$prefix, [hashtable]$state, 
     $passed = 0
     $failed = 0
     $skipped = 0
+    $unfinished = 0
     $message = ''
     $failedTest = ''
     foreach ($a in $tr.assertionResults) {
@@ -335,13 +341,38 @@ function Read-VitestJson([string]$jsonFile, [string]$prefix, [hashtable]$state, 
           if ($a.failureMessages) { $message = [string]($a.failureMessages | Select-Object -First 1) }
         }
       }
-      else { $skipped++ }
+      elseif ($st -eq 'skipped' -or $st -eq 'todo' -or $st -eq 'disabled') { $skipped++ }
+      else { $unfinished++ }
+    }
+    # Essais 'pending' : jamais termines (worker arrete en cours de lot, 10/11/2026 : 17 essais du stock comptes comme
+    # ignores). Le fichier n'entre pas dans l'etat : le tour suivant le rejoue (lot de 5, puis seul).
+    if ($unfinished -gt 0) {
+      if (-not $script:unfinished.ContainsKey($name)) { $script:unfinished[$name] = @() }
+      if ($script:unfinished[$name] -notcontains $rel) { $script:unfinished[$name] += $rel }
+      continue
     }
     if ([string]$tr.status -eq 'failed' -and -not $message) { $message = [string]$tr.message }
     $state[$rel] = [pscustomobject]@{ Status = [string]$tr.status; Passed = $passed; Failed = $failed; Skipped = $skipped; Test = $failedTest; Message = $message; Log = $logFile }
     $count++
   }
   return $count
+}
+
+# Erreurs non gerees d'un lot (sections "Unhandled Error" et "Unhandled Rejection" du journal de vitest) : premiere
+# ligne de chacune. Un arret de worker y figure aussi ("Worker exited unexpectedly").
+function Get-UnhandledErrors([string]$log) {
+  if (-not (Test-Path $log)) { return @() }
+  $lines = @(Get-Content -Path $log -Encoding UTF8)
+  $found = @()
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ([string]$lines[$i] -cmatch '^\W+ Unhandled (Error|Rejection) \W+$') {
+      for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+        $text = ([string]$lines[$j]).Trim()
+        if ($text -ne '') { $found += $text; break }
+      }
+    }
+  }
+  return $found
 }
 
 function Invoke-VitestBatch([string]$name, [string]$pkgDir, [string]$prefix, [string]$tag, [string[]]$chunk, [string[]]$extra, [hashtable]$state) {
@@ -351,7 +382,16 @@ function Invoke-VitestBatch([string]$name, [string]$pkgDir, [string]$prefix, [st
   $vitestArgs = @('vitest', 'run', '--reporter=default', '--reporter=json', ('--outputFile.json=' + $json.Replace('\', '/'))) + $extra + $chunk
   Push-Location $pkgDir
   try { [void](Invoke-Logged $log 'npx' $vitestArgs) } finally { Pop-Location }
-  return (Read-VitestJson $json $prefix $state $log)
+  foreach ($err in @(Get-UnhandledErrors $log)) {
+    if ($err -match 'Worker exited unexpectedly|vitest-pool') {
+      if (-not $script:workerExits.ContainsKey($name)) { $script:workerExits[$name] = @() }
+      $script:workerExits[$name] += $tag
+    } else {
+      if (-not $script:unhandled.ContainsKey($name)) { $script:unhandled[$name] = @() }
+      $script:unhandled[$name] += ('lot ' + $tag + ' : ' + $err + ' -> ' + $log)
+    }
+  }
+  return (Read-VitestJson $json $prefix $state $log $name)
 }
 
 function Join-Names([string[]]$names, [int]$max) {
@@ -441,15 +481,25 @@ function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [st
   foreach ($file in $unstable) {
     Add-Finding $name ('INSTABLE ' + $file + ' (echoue en lot, passe seul) > ' + $firstRuns[$file].Test + ' : ' + (Get-FirstLine $firstRuns[$file].Message) + ' -> ' + $firstRuns[$file].Log)
   }
-  foreach ($file in $missing) { Add-Finding $name ('NON EXECUTE ' + $file + ' (aucun rapport, meme seul)') }
+  foreach ($file in $missing) { Add-Finding $name ('NON EXECUTE ' + $file + ' (inacheve ou sans rapport, meme seul)') }
+  $errors = @()
+  if ($script:unhandled.ContainsKey($name)) { $errors = @($script:unhandled[$name]) }
+  foreach ($err in $errors) { Add-Finding $name ('ERREUR NON GEREE ' + $err) }
+  $exits = @()
+  if ($script:workerExits.ContainsKey($name)) { $exits = @($script:workerExits[$name]) }
+  $rerun = @()
+  if ($script:unfinished.ContainsKey($name)) { $rerun = @($script:unfinished[$name] | Where-Object { $state.ContainsKey($_) }) }
 
   $detail = ('{0} fichiers, {1} essais passes, {2} echoues, {3} ignores' -f $all.Count, $passedSum, $failedSum, $skippedSum)
   if ($unstable.Count -gt 0) { $detail += ' ; instables : ' + (Join-Names $unstable 4) }
   if ($timeouts.Count -gt 0) { $detail += ' ; en delai : ' + (Join-Names $timeouts 4) }
   if ($other.Count -gt 0) { $detail += ' ; en echec : ' + (Join-Names $other 4) }
   if ($missing.Count -gt 0) { $detail += ' ; non executes : ' + (Join-Names $missing 4) }
+  if ($exits.Count -gt 0) { $detail += ' ; worker arrete en cours de lot (' + (Join-Names $exits 3) + ')' }
+  if ($rerun.Count -gt 0) { $detail += ' ; fichiers inacheves rejoues : ' + (Join-Names $rerun 4) }
+  if ($errors.Count -gt 0) { $detail += ' ; erreurs non gerees : ' + $errors.Count }
   $status = 'OK'
-  if ($unstable.Count -gt 0) { $status = 'ATTENTION' }
+  if ($unstable.Count -gt 0 -or $errors.Count -gt 0) { $status = 'ATTENTION' }
   if ($bad.Count -gt 0 -or $missing.Count -gt 0) { $status = 'ECHEC' }
   Add-Result $name $status $watch.Elapsed.TotalSeconds $detail
 }

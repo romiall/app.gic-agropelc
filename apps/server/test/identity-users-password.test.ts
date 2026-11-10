@@ -109,9 +109,15 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
       headers: { authorization: `Bearer ${accessToken}` },
       payload: { current_password: current, new_password: next },
     });
-  /** Comptes du test visibles par l'acteur (toutes les pages). */
+  /**
+   * Comptes du test visibles par l'acteur. La liste va du plus récent au plus ancien (UUIDv7, `id < curseur`) : la
+   * lecture s'arrête dès que tous les comptes attendus sont vus ou que le curseur passe sous le plus ancien d'entre eux,
+   * sans parcourir toute la base (10/11/2026 : 58 s sur la base jetable lourde, où le responsable de ferme, qui ne voit
+   * qu'un des comptes attendus, suivait les pages jusqu'au dernier compte).
+   */
   const visibleOf = async (actor: Actor, ours: readonly string[]) => {
     const wanted = new Set(ours);
+    const oldest = [...wanted].map((id) => id.toLowerCase()).sort()[0]!;
     const seen = new Map<string, UserEntry>();
     let cursor: string | null = null;
     for (let page = 0; page < 500; page++) {
@@ -123,7 +129,7 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
       const body = response.json() as { users: UserEntry[]; next_cursor: string | null };
       for (const user of body.users) if (wanted.has(user.id)) seen.set(user.id, user);
       cursor = body.next_cursor;
-      if (cursor === null || seen.size === wanted.size) break;
+      if (cursor === null || seen.size === wanted.size || cursor.toLowerCase() <= oldest) break;
     }
     return seen;
   };
