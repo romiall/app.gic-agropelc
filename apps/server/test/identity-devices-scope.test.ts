@@ -108,9 +108,16 @@ describe(
         url,
         headers: { authorization: `Bearer ${await tokenOf(actor)}` },
       });
-    /** Tous les appareils visibles (pages suivies jusqu'au bout), restreints à ceux du test. */
+    /**
+     * Tous les appareils visibles, restreints à ceux du test. La liste va du plus récent au plus ancien (identifiants
+     * décroissants) et chaque page reprend sous `next_cursor` : une fois le curseur au niveau du plus ancien des
+     * appareils du test, aucune page suivante ne peut plus en contenir, et la lecture s'arrête là. Suivre les pages
+     * jusqu'au bout parcourait toute la base partagée, si bien que la durée de l'essai suivait le nombre d'appareils
+     * laissés par les exécutions précédentes (délai de 120 s dépassé à 15 000 appareils, 09/11/2026).
+     */
     const visibleOf = async (actor: Actor) => {
       const ours = new Set(Object.values(devices));
+      const oldest = [...ours].map((id) => id.toLowerCase()).sort()[0]!;
       const seen = new Map<string, { actions: Record<string, boolean> }>();
       let cursor: string | null = null;
       for (let page = 0; page < 200; page++) {
@@ -125,7 +132,7 @@ describe(
         };
         for (const device of body.devices) if (ours.has(device.id)) seen.set(device.id, device);
         cursor = body.next_cursor;
-        if (cursor === null) break;
+        if (cursor === null || cursor.toLowerCase() <= oldest) break;
       }
       return seen;
     };

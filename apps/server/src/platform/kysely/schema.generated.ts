@@ -154,7 +154,7 @@ export interface AnalyticsFProspecting {
   contact_customer_id: Buffer | null;
   converted_customer_id: Buffer | null;
   created_customer_id: Buffer | null;
-  event_kind: string | null;
+  event_kind: Generated<string>;
   result: string | null;
   source: Generated<string>;
   stage: Generated<string>;
@@ -177,19 +177,6 @@ export interface AnalyticsFPurchases {
   rejected_quantity: Decimal | null;
   site_id: Generated<Buffer>;
   supplier_id: Generated<Buffer>;
-}
-
-export interface AnalyticsFStaffPresence {
-  absence_code: string | null;
-  absent_count: Generated<number>;
-  business_day: Date | null;
-  day_status: Generated<string>;
-  present_count: Generated<number>;
-  presence_id: Buffer;
-  role_label: string | null;
-  sheet_id: Buffer;
-  site_id: Buffer;
-  worked_minutes: number | null;
 }
 
 export interface AnalyticsFSalesLine {
@@ -217,6 +204,19 @@ export interface AnalyticsFSalesLine {
   seller_user_id: Generated<Buffer>;
   site_id: Generated<Buffer>;
   zone_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFStaffPresence {
+  absence_code: string | null;
+  absent_count: Generated<number>;
+  business_day: Date;
+  day_status: string | null;
+  presence_id: Buffer;
+  present_count: Generated<number>;
+  role_label: string | null;
+  sheet_id: Buffer;
+  site_id: Buffer;
+  worked_minutes: number | null;
 }
 
 export interface AnalyticsFStockBalance {
@@ -1473,17 +1473,6 @@ export interface IdentityUserRoleAssignments {
   version: Generated<number>;
 }
 
-export interface IdentityUserStatusPeriods {
-  closed_by: Buffer;
-  command_id: Buffer;
-  created_at: Generated<Date>;
-  reason: string | null;
-  status: string;
-  user_id: Buffer;
-  valid_from: Date;
-  valid_to: Date;
-}
-
 export interface IdentityUsers {
   active_phone: string | null;
   created_at: Generated<Date>;
@@ -1504,6 +1493,17 @@ export interface IdentityUsers {
   updated_at: Generated<Date>;
   updated_by: Buffer | null;
   version: Generated<number>;
+}
+
+export interface IdentityUserStatusPeriods {
+  closed_by: Buffer;
+  command_id: Buffer;
+  created_at: Generated<Date>;
+  reason: string | null;
+  status: string;
+  user_id: Buffer;
+  valid_from: Date;
+  valid_to: Date;
 }
 
 export interface InventoryConsumptions {

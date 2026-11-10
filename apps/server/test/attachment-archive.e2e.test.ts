@@ -3,15 +3,17 @@
  * (réceptions, dépenses, pertes, mortalité, factures), vrai stockage de fichiers (dossier temporaire), câblage HTTP
  * réel (NestJS + Fastify, `app.inject`).
  *
- * La base d'essai est partagée et persistante : chaque exécution choisit une **année lointaine au hasard** pour son
- * horloge figée et ses périodes, si bien que ni les photos d'un autre essai ni celles d'une exécution précédente de
- * celui-ci ne tombent dans ses périodes. Les assertions ne portent que sur les identifiants créés ici.
+ * La base d'essai est partagée et persistante : chaque exécution prend pour son horloge figée et ses périodes une
+ * **année libre, postérieure à toutes celles déjà employées** (`freeYear`), si bien que ni les photos d'un autre essai ni
+ * celles d'une exécution précédente de celui-ci ne tombent dans ses périodes, et que ses plans sont les plus récents de la
+ * base. Les assertions ne portent que sur les identifiants créés ici.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'kysely';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FixedClock, isSafeArchivePath } from '@gic/domain';
@@ -53,8 +55,37 @@ import {
 } from './helpers.js';
 import { readStoredZip } from './zip-reader.js';
 
-/** Année de cette exécution (périodes uniques dans la base partagée). */
-const YEAR = 2100 + Math.floor(Math.random() * 7000);
+/** Dernière année d'essai possible : l'échéance de conservation (5 ans plus tard) reste avant l'an 10 000. */
+const LAST_YEAR = 9994;
+
+/**
+ * Année de cette exécution, choisie dans la base partagée et persistante. Deux conditions :
+ * - aucune photo de l'année n'existe déjà (une archive porte sur toutes les photos d'une période, quel que soit le site) ;
+ * - l'année suit celle de toute archive déjà préparée : les plans de l'essai sont alors les plus récents de la base, comme
+ *   des plans préparés pour de bon, et la liste des archives récentes (les 20 dernières par date de préparation) les montre
+ *   toujours. Une année tirée au hasard ne le garantissait pas : chaque exécution laisse 7 archives, et après une dizaine
+ *   d'exécutions une année basse laissait le plan hors des 20 dernières (vérification complète du 10/11/2026).
+ * Une base neuve offre ainsi près de 7 900 exécutions (années 2100 à `LAST_YEAR`) ; au-delà, le message demande de la
+ * recréer.
+ */
+async function freeYear(): Promise<number> {
+  const archived = await sql<{ year: number | null }>`
+    SELECT MAX(YEAR(created_at)) AS year FROM attachments_archives`.execute(db);
+  const start = Math.max(2100, Number(archived.rows[0]?.year ?? 0) + 1);
+  const taken = await sql<{ year: number }>`
+    SELECT DISTINCT YEAR(COALESCE(received_at, created_at)) AS year
+    FROM attachments_attachments
+    WHERE COALESCE(received_at, created_at) >= ${new Date(Date.UTC(start, 0, 1))}`.execute(db);
+  const used = new Set(taken.rows.map((row) => Number(row.year)));
+  for (let year = start; year <= LAST_YEAR; year += 1) {
+    if (!used.has(year)) return year;
+  }
+  throw new Error(
+    `Base d'essai saturée : aucune année libre de ${start} à ${LAST_YEAR} pour l'archive des photos ; recréer la base jetable.`,
+  );
+}
+
+const YEAR = await freeYear();
 const DAY_MS = 86_400_000;
 /** Instant de l'année de l'essai : mois 1 à 12, jour, heure, minute, seconde, milliseconde (UTC). */
 const at = (month: number, day: number, hour = 0, minute = 0, second = 0, ms = 0): Date =>
