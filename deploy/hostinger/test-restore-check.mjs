@@ -111,7 +111,11 @@ assert.deepEqual(autoVersionProblems(repo, ['20261201090600', '20261202090000'])
   missing: [],
 });
 // Sauvegarde a jour avec le depot.
-assert.deepEqual(autoVersionProblems(repo, repo), { latest: '20261203100000', known: true, missing: [] });
+assert.deepEqual(autoVersionProblems(repo, repo), {
+  latest: '20261203100000',
+  known: true,
+  missing: [],
+});
 // Une migration du depot absente de la sauvegarde, anterieure a sa derniere version : manque signale.
 assert.deepEqual(autoVersionProblems(repo, ['20261201090600', '20261203090000']), {
   latest: '20261203090000',

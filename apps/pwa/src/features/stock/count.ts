@@ -178,9 +178,7 @@ export function deviceCounts(
  * Les lignes d'un inventaire que des faits arrivés après la comptabilisation ont rapprochées (BR-STK-044), avec le
  * cumul signé de chacune. Vide pour un inventaire sans rapprochement.
  */
-export function reconciledLinesOf(
-  count: Pick<CountView, 'lines'>,
-): readonly {
+export function reconciledLinesOf(count: Pick<CountView, 'lines'>): readonly {
   readonly productId: string;
   readonly lotId: string | null;
   readonly quantity: number;
