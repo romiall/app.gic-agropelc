@@ -15,7 +15,7 @@ import {
   validateSettingValue,
 } from '@gic/contracts';
 import { ROLE_DISCOUNT_SETTINGS } from '../../../db/seeds/rbac-data.js';
-import { SYSTEM_SETTINGS } from '../../../db/seeds/system-settings.js';
+import { SYSTEM_SETTING_REVISIONS, SYSTEM_SETTINGS } from '../../../db/seeds/system-settings.js';
 import { DEFAULT_FINANCE_AUDIT_ENTITY_TYPES } from '../src/audit-api/audit-scope.js';
 
 const seeded = [
@@ -71,6 +71,35 @@ describe('catalogue des paramètres système (ECR-ADM-07)', () => {
       value: '',
       isClientVisible: true,
     });
+  });
+
+  it('chaque révision de valeur par défaut vise une clé semée et finit sur la valeur du semis : une base ancienne rejoint une base neuve (BR-ADM-015)', () => {
+    const lastByKey = new Map(
+      SYSTEM_SETTING_REVISIONS.map((revision) => [revision.key, revision] as const),
+    );
+    for (const [key, revision] of lastByKey) {
+      const seededSetting = SYSTEM_SETTINGS.find((setting) => setting.key === key);
+      expect(seededSetting, key).toBeDefined();
+      expect(revision.value, key).toEqual(seededSetting!.value);
+      expect(revision.isClientVisible, key).toBe(seededSetting!.isClientVisible);
+      expect(validateSettingValue(settingDefOf(key)!, revision.value), key).toBeNull();
+    }
+  });
+
+  it('la révision AV-555 pose l’adresse du siège d’identite.json sur une base semée avec l’ancien défaut vide', () => {
+    const json = JSON.parse(
+      readFileSync(new URL('../../../pieces-papier/charte/identite.json', import.meta.url), 'utf8'),
+    ) as { siege: string };
+    const revision = SYSTEM_SETTING_REVISIONS.find(
+      (entry) => entry.key === COMPANY_IDENTITY_SETTINGS.siege,
+    );
+    expect(revision).toEqual({
+      revision: 'AV-555 (11/11/2026)',
+      key: 'company.head_office',
+      value: json.siege,
+      isClientVisible: true,
+    });
+    expect(json.siege).toBe('Douala Bonabéri, en face Stade Dikolo');
   });
 
   it('le défaut du serveur pour la Finance égale la liste semée (AV-493)', () => {

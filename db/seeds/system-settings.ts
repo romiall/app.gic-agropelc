@@ -731,4 +731,15 @@ export const SYSTEM_SETTING_REVISIONS: readonly SystemSettingRevision[] = [
     value: 0,
     isClientVisible: false,
   },
+  {
+    // AV-555 tranché le 11/11/2026 (pièces papier retenues) : l'adresse du local s'imprime dans la rubrique
+    // « Siège » de toutes les pièces et le défaut du semis la porte. La base en ligne, semée le 06/11/2026 avec
+    // le défaut vide (que l'appareil imprime en ligne pointillée), reçoit une version datée au premier semis qui
+    // suit. Une adresse posée ensuite par l'Admin n'est jamais écrasée ; une adresse posée avant la livraison
+    // l'est, sa version restant lisible dans l'historique.
+    revision: 'AV-555 (11/11/2026)',
+    key: 'company.head_office',
+    value: 'Douala Bonabéri, en face Stade Dikolo',
+    isClientVisible: true,
+  },
 ];
