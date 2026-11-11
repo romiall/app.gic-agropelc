@@ -670,6 +670,12 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     const own = await get(comA, '/api/v1/cash-accounts');
     expect(own.statusCode, own.body).toBe(200);
     expect(idsOf(own.json().cash_accounts)).toEqual([cashA]);
+    // AV-487 (a), Q30 A : le total servi est celui des comptes actifs vus, même définition que la vue des coûts.
+    const [ownAccount] = own.json().cash_accounts as { balanceXaf: number; status: string }[];
+    expect(own.json()).toMatchObject({
+      total_xaf: ownAccount!.status === 'ACTIVE' ? ownAccount!.balanceXaf : 0,
+      active_count: ownAccount!.status === 'ACTIVE' ? 1 : 0,
+    });
 
     const site = await get(venA, `/api/v1/cash-accounts?site_id=${siteA}`);
     expect(site.statusCode, site.body).toBe(200);

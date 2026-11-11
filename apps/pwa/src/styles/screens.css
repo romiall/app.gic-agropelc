@@ -711,6 +711,11 @@ a.doc-row:hover {
 
 /* Pièce papier (lot PP) : l'aperçu tient dans la largeur de l'écran, la feuille garde ses mm. */
 
+/* AV-488 (b) : le bouton « Voir la pièce » garde sa largeur partout ; l'aperçu, lui, occupe toute la largeur. */
+.piece-action > .btn {
+  justify-self: start;
+}
+
 .piece-action {
   display: grid;
   gap: 8px;

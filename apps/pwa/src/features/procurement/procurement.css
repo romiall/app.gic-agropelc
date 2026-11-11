@@ -183,10 +183,10 @@
   border-top: 1px solid var(--line);
 }
 
-/* « Voir la pièce » (composant des pièces papier) : un bouton de sa largeur, pas une barre pleine. */
+/* « Voir la pièce » (composant des pièces papier) : sans marge dans le corps d'une commande ; le bouton garde sa
+   largeur par la règle commune (`.piece-action > .btn`, AV-488). */
 .proc-order-body .piece-action,
 .proc-extras .piece-action {
-  justify-items: start;
   margin: 0;
 }
 

@@ -8,11 +8,39 @@ import {
   sessionReasonRequired,
   sessionValidationBlock,
   transferDecisionBlock,
+  treasuryTotalOf,
   userLabel,
   validatePayload,
 } from './treasury.js';
 
 const ME = 'finance-1';
+
+describe('total de trésorerie (AV-487 (a), Q30 A)', () => {
+  const account = (id: string, balanceXaf: number, status: string) => ({
+    id,
+    code: id,
+    name: id,
+    accountType: 'CAISSE_PDV',
+    siteId: null,
+    holderUserId: null,
+    balanceXaf,
+    status,
+  });
+  const accounts = [account('a', 10_000, 'ACTIVE'), account('b', 5_000, 'INACTIVE')];
+
+  it('le total du serveur fait foi : même chiffre que la vue d’ensemble des coûts', () => {
+    expect(treasuryTotalOf({ cash_accounts: accounts, total_xaf: 9_000, active_count: 1 })).toEqual(
+      { totalXaf: 9_000, activeCount: 1 },
+    );
+  });
+
+  it('sans total du serveur, même définition : les comptes actifs seulement, jamais un inactif', () => {
+    expect(treasuryTotalOf({ cash_accounts: accounts })).toEqual({
+      totalXaf: 10_000,
+      activeCount: 1,
+    });
+  });
+});
 
 describe('Trésorerie (ECR-FIN-05)', () => {
   it('écart courant, motif exigé et valideur admis, comme le serveur', () => {

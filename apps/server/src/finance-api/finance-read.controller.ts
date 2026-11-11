@@ -31,6 +31,7 @@ import {
   listCashMovements,
   type CashAccountSummary,
 } from '../modules/finance/application/public/index.js';
+import { activeAccountCount, treasuryTotalXaf } from './treasury-total.js';
 
 const CASH_READ = 'finance.cash.read';
 
@@ -142,7 +143,12 @@ export class FinanceReadController {
     for (const account of accounts) {
       if (await this.visible(request, now, account)) kept.push(account);
     }
-    return { cash_accounts: kept };
+    // AV-487 (a), Q30 A : le total des comptes vus par le lecteur, même définition que la vue d'ensemble des coûts.
+    return {
+      cash_accounts: kept,
+      total_xaf: treasuryTotalXaf(kept),
+      active_count: activeAccountCount(kept),
+    };
   }
 
   @Get('cash-accounts/:id/movements')

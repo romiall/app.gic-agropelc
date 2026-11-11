@@ -367,11 +367,6 @@ a.data-row.prd-link-row:hover {
   font-weight: 700;
 }
 
-/* Le bouton de la pièce papier (module des pièces) ne s'étire pas sur toute la largeur. */
-.prd-after .piece-action > button {
-  justify-self: start;
-}
-
 /* Retour d'une opération : ramené sous la barre du haut quand une nouvelle saisie vient d'être faite. */
 .prd-result {
   scroll-margin-top: calc(var(--bar-h) + var(--space-3));

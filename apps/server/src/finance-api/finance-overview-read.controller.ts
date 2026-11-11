@@ -51,6 +51,7 @@ import {
   receivablesSummary,
   summarizeReceivables,
 } from '../modules/sales/application/public/index.js';
+import { treasuryTotalXaf } from './treasury-total.js';
 
 const PAYABLE_READ = 'finance.payable.read';
 const DASHBOARD_FINANCE = 'analytics.dashboard.finance';
@@ -139,11 +140,13 @@ export class FinanceOverviewReadController {
 
   private async cash() {
     const byType = new Map<string, number>();
-    for (const account of await listCashAccounts(this.db, { status: 'ACTIVE' })) {
+    const accounts = await listCashAccounts(this.db, { status: 'ACTIVE' });
+    for (const account of accounts) {
       byType.set(account.accountType, (byType.get(account.accountType) ?? 0) + account.balanceXaf);
     }
     return {
-      totalXaf: [...byType.values()].reduce((sum, value) => sum + value, 0),
+      // AV-487 (a), Q30 A : même définition que la liste des comptes de trésorerie (comptes actifs).
+      totalXaf: treasuryTotalXaf(accounts),
       byAccountType: Object.fromEntries([...byType].sort(([a], [b]) => a.localeCompare(b))),
     };
   }

@@ -63,6 +63,7 @@ import {
   imputationOptions,
   MAX_DECISION_REASON,
   transferDecisionBlock,
+  treasuryTotalOf,
   userLabel,
   validatePayload,
   type CashAccountItem,
@@ -94,6 +95,9 @@ const MAX_PAGES = 5;
 
 interface TreasuryRead {
   readonly accounts: readonly CashAccountItem[];
+  /** AV-487 (a) : total et nombre des comptes actifs, servis par le serveur (`treasuryTotalOf`). */
+  readonly totalXaf: number;
+  readonly activeCount: number;
   readonly sessions: readonly CashSessionItem[];
   readonly sessionsMore: boolean;
   readonly discrepancies: readonly CashTransferItem[];
@@ -127,6 +131,7 @@ async function readTreasury(): Promise<ReadResult<TreasuryRead>> {
     ok: true,
     data: {
       accounts: accounts.data.cash_accounts,
+      ...treasuryTotalOf(accounts.data),
       sessions: sessions.data.items,
       sessionsMore: sessions.data.more,
       discrepancies: discrepancies.data.items,
@@ -360,10 +365,8 @@ export function TreasuryScreen() {
             <KpiTile
               icon="cash"
               label={t('treasury.tile_balance')}
-              value={formatMoney(
-                data.accounts.reduce((sum, account) => sum + account.balanceXaf, 0),
-              )}
-              detail={t('treasury.tile_balance_detail', { count: data.accounts.length })}
+              value={formatMoney(data.totalXaf)}
+              detail={t('treasury.tile_balance_detail', { count: data.activeCount })}
             />
             <KpiTile
               icon="clipboard"

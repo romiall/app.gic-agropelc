@@ -117,6 +117,27 @@ export interface CashAccountItem {
 
 export interface CashAccountsResponse {
   readonly cash_accounts: readonly CashAccountItem[];
+  /**
+   * AV-487 (a), Q30 A : total de trésorerie des comptes listés, calculé par le serveur (comptes actifs seulement),
+   * même définition que la vue d'ensemble des coûts et marges. Absent d'un serveur antérieur à la décision.
+   */
+  readonly total_xaf?: number;
+  readonly active_count?: number;
+}
+
+/**
+ * Total de trésorerie d'une liste de comptes : celui du serveur s'il le sert, sinon la même définition (somme des
+ * comptes actifs) calculée sur l'appareil — jamais la somme de tous les comptes listés (AV-487).
+ */
+export function treasuryTotalOf(response: CashAccountsResponse): {
+  readonly totalXaf: number;
+  readonly activeCount: number;
+} {
+  const active = response.cash_accounts.filter((account) => account.status === 'ACTIVE');
+  return {
+    totalXaf: response.total_xaf ?? active.reduce((sum, account) => sum + account.balanceXaf, 0),
+    activeCount: response.active_count ?? active.length,
+  };
 }
 
 export interface CashMovementItem {

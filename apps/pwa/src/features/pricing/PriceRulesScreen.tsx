@@ -154,6 +154,34 @@ interface EditorProps {
   readonly blocked: boolean;
 }
 
+/**
+ * AV-486 (b) : groupe de champs de chaque anomalie de `checkRule` (une anomalie hors de ces groupes se montre
+ * toujours), et groupe qu'ouvre la saisie de chaque champ du formulaire.
+ */
+const ISSUE_GROUP: Readonly<Partial<Record<string, string>>> = {
+  CODE_REQUIRED: 'code',
+  CODE_TAKEN: 'code',
+  PRICE_INVALID: 'price',
+  MIN_QUANTITY_INVALID: 'min',
+  PRIORITY_INVALID: 'priority',
+  VALID_FROM_INVALID: 'dates',
+  VALID_FROM_PAST: 'dates',
+  OUTSIDE_SUPERSEDED: 'dates',
+  VALID_TO_INVALID: 'dates',
+  SITE_NOT_IN_ZONE: 'scope',
+};
+const FIELD_GROUP: Readonly<Partial<Record<keyof RuleForm, string>>> = {
+  code: 'code',
+  unitPriceText: 'price',
+  pricingUnitCode: 'price',
+  minQuantityText: 'min',
+  priorityText: 'priority',
+  validFrom: 'dates',
+  validTo: 'dates',
+  siteId: 'scope',
+  zoneId: 'scope',
+};
+
 function RuleEditor({
   refs,
   product,
@@ -175,6 +203,11 @@ function RuleEditor({
         ? formFrom(superseded, supersedeValidFrom(superseded, clock.now()))
         : emptyForm(product)),
   );
+  // AV-486 (b), Q30 A (08/11/2026) : une anomalie ne se montre qu'après une saisie du champ concerné ou une
+  // tentative d'envoi — un formulaire neuf ne s'ouvre plus en rouge. Un formulaire rouvert après un envoi
+  // (`editing.form`) a déjà été saisi : ses anomalies se montrent d'emblée.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
+  const [attempted, setAttempted] = useState(() => editing.form !== undefined);
   // Préfixes des messages d'anomalie reliés aux champs (`aria-describedby`).
   const ids = {
     code: useId(),
@@ -211,7 +244,11 @@ function RuleEditor({
     dates: `${ids.from}-issue`,
     scope: `${ids.site}-issue`,
   };
-  const has = (...codes: string[]) => codes.some((code) => check.issues.includes(code as never));
+  const shownIssues = check.issues.filter((issue) => {
+    const group = ISSUE_GROUP[issue];
+    return attempted || group === undefined || touched.has(group);
+  });
+  const has = (...codes: string[]) => codes.some((code) => shownIssues.includes(code as never));
   const issueField: Readonly<Record<string, string>> = {
     CODE_REQUIRED: issueIds.code,
     CODE_TAKEN: issueIds.code,
@@ -224,7 +261,14 @@ function RuleEditor({
     VALID_TO_INVALID: issueIds.dates,
     SITE_NOT_IN_ZONE: issueIds.scope,
   };
-  const update = (patch: Partial<RuleForm>) => setForm((current) => ({ ...current, ...patch }));
+  const update = (patch: Partial<RuleForm>) => {
+    setForm((current) => ({ ...current, ...patch }));
+    const groups = Object.keys(patch).flatMap((key) => {
+      const group = FIELD_GROUP[key as keyof RuleForm];
+      return group === undefined ? [] : [group];
+    });
+    if (groups.length > 0) setTouched((current) => new Set([...current, ...groups]));
+  };
   const candidate: RuleView | null =
     check.issues.length === 0
       ? {
@@ -256,7 +300,11 @@ function RuleEditor({
   const ready = check.issues.length === 0 && codesReady && !supersededStale && !blocked;
 
   const submit = () => {
-    if (!ready) return;
+    if (!ready) {
+      // Tentative d'envoi d'un formulaire incomplet : toutes ses anomalies se montrent, rien ne part.
+      setAttempted(true);
+      return;
+    }
     const dimensions = ruleDimensions(product.id, form, check);
     onSubmit(
       superseded
@@ -531,9 +579,9 @@ function RuleEditor({
           )}
         </Field>
         <div role="status" aria-live="polite">
-          {[...new Set(check.issues.map((issue) => issueField[issue] ?? issue))].map((fieldId) => (
+          {[...new Set(shownIssues.map((issue) => issueField[issue] ?? issue))].map((fieldId) => (
             <p key={fieldId} id={fieldId} className="field-error">
-              {check.issues
+              {shownIssues
                 .filter((issue) => (issueField[issue] ?? issue) === fieldId)
                 .map((issue) => t(`price_rules.issue.${issue}`))
                 .join(' ')}
@@ -550,7 +598,12 @@ function RuleEditor({
         <Button variant="outline" onClick={onCancel}>
           {t('price_rules.cancel')}
         </Button>
-        <Button size="lg" className="submit-sale" disabled={!ready} onClick={submit}>
+        <Button
+          size="lg"
+          className="submit-sale"
+          disabled={!codesReady || supersededStale || blocked}
+          onClick={submit}
+        >
           {superseded ? t('price_rules.submit_supersede') : t('price_rules.submit_draft')}
         </Button>
       </ActionBar>

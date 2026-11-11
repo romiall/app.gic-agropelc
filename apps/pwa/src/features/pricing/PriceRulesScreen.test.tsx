@@ -704,7 +704,32 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     fireEvent.change(from, { target: { value: '2026-10-09T08:00' } });
     expect(await screen.findByText(/La date d’effet doit être à venir/)).toBeInTheDocument();
     expect(from).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByRole('button', { name: 'Enregistrer le brouillon' })).toBeDisabled();
+    // AV-486 (b) : le bouton reste actif ; l'envoi d'un formulaire en anomalie ne met rien en file.
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
+    expect(await getDb().outbox.count()).toBe(0);
+    expect(screen.getByText(/La date d’effet doit être à venir/)).toBeInTheDocument();
+  });
+
+  it('AV-486 (b) : un formulaire neuf ne s’ouvre pas en rouge ; une saisie montre l’anomalie de son champ, une tentative d’envoi toutes', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle règle' }));
+    const code = screen.getByLabelText('Code de la règle');
+    const price = screen.getByLabelText('Prix par U (F)');
+    // À l'ouverture : aucun champ en anomalie, aucun message, bien que le code et le prix soient vides.
+    expect(code).not.toHaveAttribute('aria-invalid');
+    expect(price).not.toHaveAttribute('aria-invalid');
+    expect(document.querySelectorAll('.pr-form .field-error')).toHaveLength(0);
+    // Une saisie du prix (invalide) ne montre que l'anomalie du prix.
+    await user.type(price, '0');
+    await waitFor(() => expect(price).toHaveAttribute('aria-invalid', 'true'));
+    expect(code).not.toHaveAttribute('aria-invalid');
+    // La tentative d'envoi montre toutes les anomalies et ne met rien en file.
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
+    await waitFor(() => expect(code).toHaveAttribute('aria-invalid', 'true'));
+    expect(await getDb().outbox.count()).toBe(0);
   });
 
   it('rôles inconnus : aucune action de la Direction proposée', async () => {

@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Button } from '../../components/ui/index.js';
 import type { DemandePiece } from './demande.js';
 import { PieceImprimable } from './PieceImprimable.js';
 
@@ -38,9 +39,10 @@ export function PieceAction({ demande, cle, annulee = false, libelle }: PieceAct
 
   return (
     <div className="piece-action no-print">
-      <button type="button" className="secondary" aria-expanded={ouverte} onClick={basculer}>
+      {/* AV-488 (b), Q30 A : le bouton de la refonte (ADR-049), de sa largeur ; la pièce elle-même ne change pas. */}
+      <Button variant="outline" aria-expanded={ouverte} onClick={basculer}>
         {ouverte ? t('piece.hide') : (libelle ?? t('piece.show'))}
-      </button>
+      </Button>
       {ouverte ? (
         preparee ? (
           <PieceImprimable demande={preparee} cle={cle} annulee={annulee} />
