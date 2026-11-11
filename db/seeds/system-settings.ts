@@ -663,7 +663,12 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'company.po_box', value: '7633 Douala', isClientVisible: true, ref: 'AV-324' },
   { key: 'company.city', value: 'Douala', isClientVisible: true, ref: 'AV-324' },
-  { key: 'company.phones', value: '+237 699 348 371', isClientVisible: true, ref: 'AV-324' },
+  {
+    key: 'company.phones',
+    value: '+237 6 81 12 16 44 / +237 6 94 41 82 47',
+    isClientVisible: true,
+    ref: 'AV-324',
+  },
   { key: 'company.email', value: '', isClientVisible: true, ref: 'AV-324' },
   { key: 'company.website', value: '', isClientVisible: true, ref: 'AV-324' },
   {
@@ -740,6 +745,16 @@ export const SYSTEM_SETTING_REVISIONS: readonly SystemSettingRevision[] = [
     revision: 'AV-555 (11/11/2026)',
     key: 'company.head_office',
     value: 'Douala Bonabéri, en face Stade Dikolo',
+    isClientVisible: true,
+  },
+  {
+    // Décision du porteur du 11/11/2026 (AV-324 (a)) : deux numéros remplacent le numéro unique de l'en-tête de
+    // toutes les pièces. La base en ligne, semée le 06/11/2026 avec l'ancien numéro, reçoit une version datée au
+    // premier semis qui suit. Un numéro posé ensuite par l'Admin n'est jamais écrasé ; une valeur posée avant la
+    // livraison l'est, sa version restant lisible dans l'historique.
+    revision: 'AV-324 (11/11/2026)',
+    key: 'company.phones',
+    value: '+237 6 81 12 16 44 / +237 6 94 41 82 47',
     isClientVisible: true,
   },
 ];

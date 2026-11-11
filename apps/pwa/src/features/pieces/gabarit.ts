@@ -24,6 +24,8 @@ const val = (v: string, cls = '') =>
   v ? `<span class="val">${esc(v)}</span>` : `<span class="blanc ${cls}"></span>`;
 
 // ---- en-tête ------------------------------------------------------------
+// Siège et BP partagent la première ligne ; le téléphone a la sienne : deux numéros ne tiennent pas à côté d'eux sur
+// une pièce étroite (A5). Le même découpage est dans pieces-papier/_generation/lib.mjs.
 export function entete({
   numero = true,
   numLib = 'N°',
@@ -47,7 +49,8 @@ export function entete({
   <img class="logo" src="${esc(logo)}" alt="GIC AGROPELC">
   <div class="identite">
     <div class="raison">${id.raison_sociale ? esc(id.raison_sociale) : '<span class="blanc l"></span>'}</div>${forme}
-    <div class="coord"><b>Siège</b>${val(id.siege, 'l')}<b>BP</b>${val(id.bp, 's')}<b>Tél</b>${val(id.telephones)}</div>
+    <div class="coord"><b>Siège</b>${val(id.siege, 'l')}<b>BP</b>${val(id.bp, 's')}</div>
+    <div class="coord"><b>Tél</b>${val(id.telephones, 'l')}</div>
     <div class="coord"><b>RCCM / Autorisation</b>${val(id.rccm, 'l')}</div>
     <div class="coord"><b>NIU</b>${val(id.niu)}${id.regime_fiscal ? `<b>Régime</b>${esc(id.regime_fiscal)}` : ''}</div>
   </div>

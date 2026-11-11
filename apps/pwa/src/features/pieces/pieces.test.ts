@@ -91,6 +91,20 @@ describe('rendu des pièces', () => {
     },
   );
 
+  it('l’en-tête imprime le téléphone sur sa propre ligne : deux numéros ne tiennent pas à côté du siège et de la boîte postale', () => {
+    const page = rendrePiece({ code: 'BV', donnees: X.EXEMPLE_BV }, CTX).pages[0]!;
+    const [siege, telephone] = page
+      .split('\n')
+      .map((ligne) => ligne.trim())
+      .filter((ligne) => ligne.startsWith('<div class="coord">'));
+    expect(siege).toContain('<b>Siège</b>');
+    expect(siege).toContain('<b>BP</b>');
+    expect(siege).not.toContain('<b>Tél</b>');
+    expect(telephone).toBe(
+      `<div class="coord"><b>Tél</b><span class="val">${esc(IDENTITE.telephones)}</span></div>`,
+    );
+  });
+
   it('marques : tampon « Annulée » et case cochée, « Duplicata » avec sa date', () => {
     const piece = rendrePiece(
       { code: 'BV', donnees: X.EXEMPLE_BV },

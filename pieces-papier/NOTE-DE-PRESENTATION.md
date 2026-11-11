@@ -119,7 +119,7 @@ Les nombres de jeux, de feuilles et de pages sont des **usages courants** de l'i
 |---|---|---|
 | Raison sociale | GIC AGROPELC | fournie |
 | Boîte postale | 7633 Douala | fournie |
-| Téléphone | +237 699 348 371 | fournie |
+| Téléphones | +237 6 81 12 16 44 / +237 6 94 41 82 47 | fournis ; deux numéros depuis le 11/11/2026, ils remplacent l'ancien numéro unique ; ligne « Tél » de l'en-tête |
 | NIU | M032416655486P | fournie |
 | N° RCCM / autorisation | 24/034CMR/LT/01/GIC/004000/004000002 | fournie ; **à confirmer** : s'agit-il du numéro de RCCM ou de l'autorisation d'exercer du GIC ? |
 | Siège (adresse) | Douala Bonabéri, en face Stade Dikolo | fournie le 11/11/2026 par le porteur |

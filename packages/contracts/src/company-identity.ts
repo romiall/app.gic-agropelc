@@ -33,8 +33,9 @@ export type CompanyIdentityField = keyof typeof COMPANY_IDENTITY_SETTINGS;
 
 /**
  * Longueur maximale de chaque rubrique, en caractères : l'en-tête d'une pièce a des dimensions fixes (la ligne « Siège,
- * BP, Tél » d'une pièce A5 n'offre qu'une soixantaine de millimètres), un texte plus long déborderait sur la case du
- * numéro. Valeurs prudentes, à ajuster après un premier essai d'impression ; les valeurs semées les respectent.
+ * BP » d'une pièce A5 n'offre qu'une soixantaine de millimètres, la ligne « Tél » autant, pour deux numéros au
+ * plus), un texte plus long déborderait sur la case du numéro. Valeurs prudentes, à ajuster après un premier essai
+ * d'impression ; les valeurs semées les respectent.
  */
 export const COMPANY_IDENTITY_MAX_LENGTH: Readonly<Record<CompanyIdentityField, number>> = {
   raison_sociale: 40,
@@ -42,7 +43,7 @@ export const COMPANY_IDENTITY_MAX_LENGTH: Readonly<Record<CompanyIdentityField, 
   siege: 40,
   bp: 20,
   ville: 30,
-  telephones: 28,
+  telephones: 44,
   email: 50,
   site_web: 50,
   rccm: 44,

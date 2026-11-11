@@ -13,13 +13,16 @@ export const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '
 const val = (v, cls = '') => (v ? `<span class="val">${esc(v)}</span>` : `<span class="blanc ${cls}"></span>`)
 
 // ---- en-tête ----------------------------------------------------------
+// Siège et BP partagent la première ligne ; le téléphone a la sienne : deux numéros ne tiennent pas à côté d'eux sur
+// une pièce étroite (A5). Le même découpage est dans apps/pwa/src/features/pieces/gabarit.ts.
 export function entete({ numero = true, numLib = 'N°' } = {}) {
   const forme = ID.forme_juridique ? `<div class="forme">${esc(ID.forme_juridique)}</div>` : ''
   return `<header class="entete">
   <img class="logo" src="{{LOGO}}" alt="GIC AGROPELC">
   <div class="identite">
     <div class="raison">${esc(ID.raison_sociale)}</div>${forme}
-    <div class="coord"><b>Siège</b>${val(ID.siege, 'l')}<b>BP</b>${val(ID.bp, 's')}<b>Tél</b>${val(ID.telephones)}</div>
+    <div class="coord"><b>Siège</b>${val(ID.siege, 'l')}<b>BP</b>${val(ID.bp, 's')}</div>
+    <div class="coord"><b>Tél</b>${val(ID.telephones, 'l')}</div>
     <div class="coord"><b>RCCM / Autorisation</b>${val(ID.rccm, 'l')}</div>
     <div class="coord"><b>NIU</b>${val(ID.niu)}${ID.regime_fiscal ? `<b>Régime</b>${esc(ID.regime_fiscal)}` : ''}</div>
   </div>

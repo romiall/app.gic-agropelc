@@ -102,6 +102,22 @@ describe('catalogue des paramètres système (ECR-ADM-07)', () => {
     expect(json.siege).toBe('Douala Bonabéri, en face Stade Dikolo');
   });
 
+  it('la révision AV-324 pose les deux numéros d’identite.json sur une base semée avec l’ancien numéro unique', () => {
+    const json = JSON.parse(
+      readFileSync(new URL('../../../pieces-papier/charte/identite.json', import.meta.url), 'utf8'),
+    ) as { telephones: string };
+    const revision = SYSTEM_SETTING_REVISIONS.find(
+      (entry) => entry.key === COMPANY_IDENTITY_SETTINGS.telephones,
+    );
+    expect(revision).toEqual({
+      revision: 'AV-324 (11/11/2026)',
+      key: 'company.phones',
+      value: json.telephones,
+      isClientVisible: true,
+    });
+    expect(json.telephones.split(' / ')).toEqual(['+237 6 81 12 16 44', '+237 6 94 41 82 47']);
+  });
+
   it('le défaut du serveur pour la Finance égale la liste semée (AV-493)', () => {
     const seededList = SYSTEM_SETTINGS.find(
       (setting) => setting.key === 'audit.finance_entity_types',
