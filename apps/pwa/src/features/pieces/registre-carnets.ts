@@ -3,6 +3,7 @@
  * Logique PURE sans dépendance UI : testable unitairement et réutilisable dans l'écran de report
  * et dans la consultation du registre des carnets.
  */
+import { backdatingWindowFrom, evaluateBackdatingGap, type BackdatingWindow } from '@gic/domain';
 
 export interface ContinuityReport {
   readonly totalCount: number;
@@ -202,11 +203,14 @@ export function checkInputContinuity(
 }
 
 /**
- * Évalue la fenêtre d'antidatage selon les règles AV-078 (24 h conseillées, max 72 h).
+ * Évalue la fenêtre d'antidatage (AV-078, BR-SYN-012) : l'écart entre l'heure de la pièce et maintenant, contre la fenêtre
+ * des paramètres `sync.justification_after_hours` et `sync.backdate_max_hours` (24 h et 72 h par défaut). Même
+ * calcul que le serveur (`@gic/domain`).
  */
 export function evaluateBackdating(
   occurredAtIso: string,
   now: Date = new Date(),
+  window: BackdatingWindow = backdatingWindowFrom(undefined, undefined),
 ): BackdatingEvaluation {
   const occurredMs = Date.parse(occurredAtIso);
   if (Number.isNaN(occurredMs)) {
@@ -219,20 +223,12 @@ export function evaluateBackdating(
     };
   }
 
-  const nowMs = now.getTime();
-  const diffMs = nowMs - occurredMs;
-  const diffHours = diffMs / (1000 * 60 * 60);
-
-  const isFuture = diffHours < -0.25; // 15 min de tolérance horloge
-  const isBackdated = diffHours > 24;
-  const isCriticalDelay = diffHours > 72;
-  const requiresReason = isBackdated;
-
+  const evaluation = evaluateBackdatingGap(now.getTime() - occurredMs, window);
   return {
-    diffHours: Math.round(diffHours * 10) / 10,
-    isBackdated,
-    isCriticalDelay,
-    isFuture,
-    requiresReason,
+    diffHours: evaluation.gapHours,
+    isBackdated: evaluation.requiresReason,
+    isCriticalDelay: evaluation.exceedsWindow,
+    isFuture: evaluation.gapHours < -0.25, // 15 min de tolérance d'horloge
+    requiresReason: evaluation.requiresReason,
   };
 }

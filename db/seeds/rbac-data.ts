@@ -55,7 +55,7 @@ export interface RoleDiscountSetting {
 }
 
 // ---------------------------------------------------------------------------------------
-// 11 rôles (docs/01-functional/04-acteurs-et-roles.md §2). Tous is_system=true (livrés
+// 12 rôles (docs/01-functional/04-acteurs-et-roles.md §2). Tous is_system=true (livrés
 // avec le système, non supprimables), is_active=true.
 // ---------------------------------------------------------------------------------------
 export const ROLES: readonly RoleSeed[] = [
@@ -64,6 +64,13 @@ export const ROLES: readonly RoleSeed[] = [
     name: 'Direction',
     description:
       'Pilotage global et contrôle : tour de contrôle, anomalies, validations au-dessus des seuils, activation des tarifs, notes de direction (CM §53).',
+    allowedScopeTypes: ['GLOBAL'],
+  },
+  {
+    code: 'SUPERVISION',
+    name: 'Supervision consultative',
+    description:
+      'Suivi global consultatif (direction de projet hors opérations) : tour de contrôle, tableaux de bord, explorateur analytique, créances, coûts et marges, stocks, lots, achats et audit en lecture seule, sans aucune validation ni saisie.',
     allowedScopeTypes: ['GLOBAL'],
   },
   {
@@ -267,12 +274,29 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // attachments (1)
+  // attachments (3)
   {
     code: 'attachments.attachment.manage',
     module: 'attachments',
     description: 'Joindre une pièce justificative à une opération (AV-093)',
     supportedScopes: ['OWN'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  // AV-539, ADR-070 : archive des photos jointes, Admin seulement ; « sensible » attend AV-092.
+  {
+    code: 'attachments.archive.export',
+    module: 'attachments',
+    description: 'Préparer, télécharger et vérifier l’archive des photos jointes (AV-539)',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'attachments.archive.purge',
+    module: 'attachments',
+    description: 'Vider du serveur les photos jointes déjà archivées (AV-539)',
+    supportedScopes: ['ALL'],
     isApproval: false,
     isSensitive: false,
   },
@@ -329,6 +353,14 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     supportedScopes: ['ALL', 'TEAM', 'SITE'],
     isApproval: false,
     isSensitive: false,
+  },
+  {
+    code: 'sync.backdate.exceed',
+    module: 'sync',
+    description: 'Saisir au-delà de la fenêtre rétroactive : chargement de l’historique (AV-078)',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: true,
   },
 
   // integrations (2)
@@ -902,7 +934,7 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // production (6)
+  // production (7)
   {
     code: 'production.lot.read',
     module: 'production',
@@ -916,6 +948,14 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     module: 'production',
     description: 'Créer et clôturer un lot de production',
     supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'production.lot_opening.post',
+    module: 'production',
+    description: 'Reprendre un lot en cours à la date d’arrêt (déclaration soumise à validation)',
+    supportedScopes: ['ALL', 'SITE'],
     isApproval: false,
     isSensitive: false,
   },
@@ -1256,6 +1296,7 @@ function grants(
 export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
   // DIRECTION — 82, toujours ALL
   ...grants('DIRECTION', [
+    ['sync.backdate.exceed', 'ALL'],
     ['identity.user.read', 'ALL'],
     ['identity.device.read', 'ALL'],
     ['identity.device.block', 'ALL'],
@@ -1340,9 +1381,13 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // ADMIN — 53, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
-  // + finance.expense_category.manage, P8-03 ; + 22 octrois de la ferme et du stock, AV-524, 06/11/2026)
+  // ADMIN — 57, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
+  // + finance.expense_category.manage, P8-03 ; + production.lot_opening.post, ADR-069 ; + 22 octrois de la ferme
+  // et du stock, AV-524, 06/11/2026)
   ...grants('ADMIN', [
+    ['attachments.archive.export', 'ALL'],
+    ['attachments.archive.purge', 'ALL'],
+    ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'ALL'],
     ['fieldwork.presence.read', 'ALL'],
     ['identity.user.read', 'ALL'],
@@ -1373,6 +1418,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.customer.merge', 'ALL'],
     ['crm.pipeline.configure', 'ALL'],
     ['inventory.opening.post', 'ALL'],
+    ['production.lot_opening.post', 'ALL'], // ADR-069 (AV-541) : chargement des lots en cours
     ['finance.expense_category.manage', 'ALL'],
     // Décision du porteur du 06/11/2026 (AV-524, ADR-057) : l'Administrateur exerce lui-même la gestion de la
     // ferme et du stock, partout (portée `ALL`) — créer et suivre les lots, saisie du jour, collectes d'œufs,
@@ -1606,8 +1652,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 49 (dont identity.device.read SITE, AV-261, MP-06, et la présence du personnel, PP-E)
+  // RESP_PRODUCTION — 50 (dont identity.device.read SITE, AV-261, MP-06, la présence du personnel, PP-E, et le report
+  // de la fiche de suivi de lot de la semaine au-delà de 72 h, sync.backdate.exceed : AV-528, réponse du porteur Q23 B)
   ...grants('RESP_PRODUCTION', [
+    ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'SITE'],
     ['fieldwork.presence.read', 'SITE'],
     ['identity.user.read', 'SITE'],
@@ -1642,6 +1690,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.threshold.manage', 'ALL'],
     ['production.lot.read', 'ALL'],
     ['production.lot.manage', 'ALL'],
+    ['production.lot_opening.post', 'ALL'], // ADR-069 (AV-541)
     ['production.daily.record', 'ALL'],
     ['production.mortality.approve', 'ALL'],
     ['production.incubation.record', 'ALL'],
@@ -1660,8 +1709,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 56 (dont la présence du personnel, PP-E)
+  // RESP_FERME — 57 (dont la présence du personnel, PP-E, et le report de la fiche de suivi de lot de la semaine
+  // au-delà de 72 h, sync.backdate.exceed : AV-528, réponse du porteur Q23 B)
   ...grants('RESP_FERME', [
+    ['sync.backdate.exceed', 'ALL'],
     ['fieldwork.presence.record', 'SITE'],
     ['fieldwork.presence.read', 'SITE'],
     ['identity.user.read', 'SITE'],
@@ -1706,6 +1757,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.consumption.record', 'SITE'],
     ['inventory.threshold.manage', 'SITE'],
     ['production.lot.read', 'SITE'],
+    ['production.lot_opening.post', 'SITE'], // ADR-069 (AV-541)
     ['production.daily.record', 'SITE'],
     ['production.incubation.record', 'SITE'],
     ['procurement.supplier.read', 'SITE'],
@@ -1791,6 +1843,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
 
   // FINANCE — 58 (+ finance.expense_category.manage, P8-03)
   ...grants('FINANCE', [
+    ['sync.backdate.exceed', 'ALL'],
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'ALL'],
@@ -1848,6 +1901,48 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.finance', 'ALL'],
     ['analytics.explore', 'ALL'],
     ['analytics.view.share', 'ALL'],
+    ['analytics.export', 'ALL'],
+  ]),
+
+  // SUPERVISION — 38, toujours ALL, strictement consultatif (aucune écriture ni approbation)
+  ...grants('SUPERVISION', [
+    ['identity.user.read', 'ALL'],
+    ['identity.device.read', 'ALL'],
+    ['org.structure.read', 'ALL'],
+    ['catalog.product.read', 'ALL'],
+    ['audit.log.read', 'ALL'],
+    ['sync.monitor.read', 'ALL'],
+    ['integrations.kommo.monitor', 'ALL'],
+    ['comm.alert.read', 'ALL'],
+    ['comm.note.read', 'ALL'],
+    ['crm.customer.read', 'ALL'],
+    ['crm.visit.read', 'ALL'],
+    ['crm.target.read', 'ALL'],
+    ['crm.weekly_report.read', 'ALL'],
+    ['fieldwork.presence.read', 'ALL'],
+    ['fieldwork.session.read', 'ALL'],
+    ['pricing.price.read', 'ALL'],
+    ['sales.order.read', 'ALL'],
+    ['sales.sale.read', 'ALL'],
+    ['sales.payment.read', 'ALL'],
+    ['sales.receivable.read', 'ALL'],
+    ['inventory.stock.read', 'ALL'],
+    ['inventory.valuation.read', 'ALL'],
+    ['inventory.ledger.read', 'ALL'],
+    ['inventory.loss.read', 'ALL'],
+    ['production.lot.read', 'ALL'],
+    ['procurement.supplier.read', 'ALL'],
+    ['procurement.order.read', 'ALL'],
+    ['finance.cash.read', 'ALL'],
+    ['finance.expense.read', 'ALL'],
+    ['finance.payable.read', 'ALL'],
+    ['analytics.dashboard.direction', 'ALL'],
+    ['analytics.dashboard.commercial', 'ALL'],
+    ['analytics.dashboard.distribution', 'ALL'],
+    ['analytics.dashboard.stock', 'ALL'],
+    ['analytics.dashboard.production', 'ALL'],
+    ['analytics.dashboard.finance', 'ALL'],
+    ['analytics.explore', 'ALL'],
     ['analytics.export', 'ALL'],
   ]),
 ];

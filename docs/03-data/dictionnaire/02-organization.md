@@ -193,6 +193,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 
 | Clé | Défaut | Réf. |
 |---|---|---|
+| `fieldwork.checkin_enabled` | faux (pointage désactivé pour le pilote ; valeur absente = vrai ; global, visible de l'appareil ; ne masque que la présentation) | AV-537 |
 | `fieldwork.geofence_radius_m` | 500 | CM §10, AV-022 |
 | `fieldwork.max_gps_accuracy_m` | 150 | AV-022 |
 | `fieldwork.override_min_attempts` / `override_min_minutes` | 3 / 2 | AV-021 |
@@ -279,11 +280,15 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `analytics.export_file_retention_days` | 30 | AV-387 (P9-22, ADR-068 §8) : le fichier d'un export est supprimé du stockage ce nombre de jours après la demande (la ligne est conservée) ; entier > 0, sinon 30 |
 | `analytics.query_log_retention_days` | 90 | AV-387 (P9-22, ADR-068 §8) : les lignes du journal des requêtes de l'explorateur de plus de ce nombre de jours sont supprimées ; entier > 0, sinon 90 |
 | `communication.push_group_minutes` | 15 | AV-366, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
-| `communication.direct_notification_disabled_types` | `[]` | AV-431 (P9-11) : types d'événements dont la notification directe est désactivée (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferRequested`, `StockTransferDispatched`) ; une valeur qui n'est pas une liste de types connus ne désactive rien |
+| `communication.direct_notification_disabled_types` | `[]` | AV-431 (P9-11) : types d'événements dont la notification directe est désactivée (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferRequested`, `StockTransferDispatched`, `AnalyticsExportCompleted`, `DeviceEnrollmentRequested`) ; une valeur qui n'est pas une liste de types connus ne désactive rien |
 | `communication.consumer_lag_alert_seconds` | 300 | AV-362, AV-388 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 ; sert aussi de seuil au retard en secondes de `GET /health/ready` (AV-469) |
 | `communication.consumer_failure_window_hours` | 24 | AV-362, AV-425 (P9-10) : fenêtre glissante dans laquelle un événement sauté après échecs persistants maintient `CONSUMER_FAILED` ouverte ; nombre > 0 plafonné à 87 600, sinon 24 |
 | `platform.job_lag_alert_seconds` | 600 | AV-469 (P9-25, PF-6) : âge, en secondes, de la plus ancienne tâche due non traitée au-delà duquel `GET /health/ready` répond `503 WORKER_LAG` ; nombre > 0 plafonné à dix ans, sinon 600 |
 | `platform.failed_jobs_window_hours` | 24 | AV-469 (P9-25, PF-6) : fenêtre, en heures, sur laquelle `GET /health/ready` compte les tâches passées `FAILED` (information, jamais un refus) ; nombre > 0 plafonné à 87 600, sinon 24 |
+| `attachments.archive.min_age_days` | 30 | AV-539, AV-545 (ADR-070) : ancienneté, en jours depuis la réception par le serveur, qu'une photo jointe doit avoir pour être archivée ; entier ≥ 30 ; **plancher de 30 jours** en code (`ARCHIVE_MIN_AGE_FLOOR_DAYS`), dans le catalogue des paramètres et dans la base (CHECK `ck_attachments_archives_min_age`) : le réglage ne peut qu'augmenter |
+| `attachments.archive.volume_max_mb` | 512 | AV-545 : taille maximale, en Mo, des photos d'un fichier d'archive (entier de 16 à 2 048) ; au-delà, le mois et la catégorie se coupent en parties |
+| `attachments.archive.default_granularity` | `QUARTER` | AV-539, AV-545 : période proposée à l'écran de l'archive des photos (`MONTH` ou `QUARTER`) |
+| `attachments.archive.retention_years` | 5 | AV-074, AV-549 : années de conservation de l'archive gardée par l'entreprise, rappelées à l'écran et dans `LISEZMOI.txt` de chaque fichier (entier de 1 à 30) |
 | `communication.alert_retention_days` | 730 | AV-387 (P9-03) : conservation d'une alerte résolue, en jours ; entier ≥ 730 ; en deçà, 730 s'applique (plancher du déclencheur `trg_communication_alerts_purge_guard`) ; purge par le script `db:purge-alerts` |
 | `communication.notification_retention_days` | 90 | AV-387 (P9-03) : une notification lue (ou une ligne d'envoi `WEB_PUSH`) de plus de ce nombre de jours est supprimée par `communication.maintenance.purge_daily`, sauf notification d'une note encore publiée ; entier > 0, sinon 90 |
 | `platform.job_retention_days` | 30 | AV-472 (P9-25, PF-7 ; ADR-068 §8, 03-historisation-suppression.md §3) : une tâche terminée (`DONE` ou `FAILED`) de `platform_jobs` dont la dernière échéance (`run_at`) a plus de ce nombre de jours est supprimée par `communication.maintenance.purge_daily`, jamais une tâche `PENDING` ; entier > 0 (plafonné à 36 500), sinon 30 |

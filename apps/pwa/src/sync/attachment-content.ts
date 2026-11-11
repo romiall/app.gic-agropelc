@@ -8,13 +8,54 @@ import type { GicDatabase } from '../storage/db.js';
 import { ensureAccessToken, expireAccessToken } from '../features/auth/session-runtime.js';
 import { apiUrl } from '../platform/env.js';
 
+/** Où retrouver une photo vidée du serveur après l'archive (AV-539, ADR-070 §9). */
+export interface ArchivedPhoto {
+  readonly archivedAt: string;
+  readonly reference: string;
+  readonly volumeFileName: string;
+  readonly entryPath: string;
+}
+
 export type AttachmentContentResult =
   | { readonly ok: true; readonly blob: Blob }
   | {
       readonly ok: false;
-      /** `FORBIDDEN` : hors périmètre ; `NOT_AVAILABLE` : pas encore reçue ou refusée. */
-      readonly reason: 'OFFLINE' | 'SESSION_INVALID' | 'FORBIDDEN' | 'NOT_AVAILABLE' | 'ERROR';
+      /**
+       * `FORBIDDEN` : hors périmètre ; `NOT_AVAILABLE` : pas encore reçue ou refusée ; `ARCHIVED` : vidée du serveur
+       * (410), archivée par l'entreprise.
+       */
+      readonly reason:
+        'OFFLINE' | 'SESSION_INVALID' | 'FORBIDDEN' | 'NOT_AVAILABLE' | 'ARCHIVED' | 'ERROR';
+      /** Pour `ARCHIVED` : date, référence, fichier et chemin dans l'archive, si le serveur les a donnés. */
+      readonly archived?: ArchivedPhoto;
     };
+
+/** Détails du `410 ATTACHMENT_ARCHIVED` (absents ou malformés : la raison seule suffit à l'affichage). */
+async function archivedDetails(response: Response): Promise<ArchivedPhoto | undefined> {
+  try {
+    const body = (await response.json()) as {
+      error?: { details?: Record<string, unknown> };
+    };
+    const details = body.error?.details;
+    if (
+      details &&
+      typeof details.archived_at === 'string' &&
+      typeof details.reference === 'string' &&
+      typeof details.volume_file_name === 'string' &&
+      typeof details.entry_path === 'string'
+    ) {
+      return {
+        archivedAt: details.archived_at,
+        reference: details.reference,
+        volumeFileName: details.volume_file_name,
+        entryPath: details.entry_path,
+      };
+    }
+  } catch {
+    // Corps absent ou illisible.
+  }
+  return undefined;
+}
 
 const TIMEOUT_MS = 60_000;
 
@@ -52,6 +93,12 @@ export async function fetchAttachmentContent(
   if (response.status === 401) return { ok: false, reason: 'SESSION_INVALID' };
   if (response.status === 403 || response.status === 404) return { ok: false, reason: 'FORBIDDEN' };
   if (response.status === 409) return { ok: false, reason: 'NOT_AVAILABLE' };
+  if (response.status === 410) {
+    const archived = await archivedDetails(response);
+    return archived
+      ? { ok: false, reason: 'ARCHIVED', archived }
+      : { ok: false, reason: 'ARCHIVED' };
+  }
   if (response.status >= 502 && response.status <= 504) return { ok: false, reason: 'OFFLINE' };
   return { ok: false, reason: 'ERROR' };
 }

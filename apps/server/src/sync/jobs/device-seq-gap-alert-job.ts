@@ -31,6 +31,9 @@
  *   en mémoire. Le coût n'est pas borné dans le temps : l'agrégat parcourt l'index entier et la fenêtre relit
  *   tous les numéros de chaque appareil actif incomplet, y compris celui dont le trou est définitif (refus
  *   avant l'écriture de la boîte) ; à mesurer en P9-22 (AV-423).
+ * - **Portabilité MariaDB** : la requête à fenêtre vit dans `device-seq-gap-query.ts` (`LAG` sans valeur par
+ *   défaut, que MariaDB refuse) pour que le contrôle de compatibilité du kit d'hébergement la rejoue sur la
+ *   vraie base avant chaque redémarrage (correctif du 08/11/2026).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';
@@ -65,6 +68,7 @@ import { jsonValue } from '../../platform/kysely/json-value.js';
 import { fromBin, toBin } from '../../platform/kysely/uuid-columns.js';
 import type { UnitOfWork } from '../../platform/unit-of-work.js';
 import { DEVICE_DATASET } from '../sync-state-datasets.js';
+import { sequenceGapQuery } from './device-seq-gap-query.js';
 import { globalSetting, loadAlertDevices, type SyncAlertDeps } from './sync-alert-support.js';
 
 export const DEVICE_SEQ_GAP_JOB_TYPE = 'sync.devices.seq_gap_check';
@@ -81,13 +85,6 @@ export interface DeviceSeqGapOutcome {
   readonly unexplained: number;
   readonly published: number;
   readonly hours: number;
-}
-
-interface GapRow {
-  readonly device_id: Buffer;
-  readonly from_seq: string | number;
-  readonly to_seq: string | number;
-  readonly opened_at: Date | string;
 }
 
 export async function runDeviceSeqGapCheck(
@@ -150,25 +147,7 @@ export async function runDeviceSeqGapCheck(
   }
 
   // 2. Plages manquantes de ces appareils seulement, avec la date d'ouverture de chacune.
-  const rows = (
-    await sql<GapRow>`
-      SELECT device_id, from_seq, to_seq, opened_at FROM (
-        SELECT device_id,
-               LAG(device_seq, 1, 0) OVER w + 1 AS from_seq,
-               device_seq - 1 AS to_seq,
-               device_seq - LAG(device_seq, 1, 0) OVER w AS step,
-               MIN(received_at) OVER (
-                 PARTITION BY device_id ORDER BY device_seq
-                 ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-               ) AS opened_at
-          FROM sync_command_inbox
-         WHERE device_seq IS NOT NULL AND device_id IN (${sql.join(activeIds)})
-        WINDOW w AS (PARTITION BY device_id ORDER BY device_seq)
-      ) gaps
-       WHERE step > 1
-       ORDER BY device_id, from_seq
-    `.execute(uow)
-  ).rows;
+  const rows = (await sequenceGapQuery(activeIds).execute(uow)).rows;
   const gapsOf = new Map<string, SequenceGap[]>();
   for (const row of rows) {
     const key = fromBin(row.device_id);

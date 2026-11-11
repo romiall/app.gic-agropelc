@@ -127,6 +127,44 @@ describe('authorizedRequest : 401 (MP-11)', () => {
   });
 });
 
+describe('fetchAttachmentContent : 410 pièce archivée (AV-539)', () => {
+  it('rend ARCHIVED avec la date, la référence et l’emplacement dans l’archive', async () => {
+    stubFetch({
+      '/api/v1/attachments/p1/content': [
+        () =>
+          json(410, {
+            error: {
+              code: 'ATTACHMENT_ARCHIVED',
+              details: {
+                archived_at: '2026-11-08T10:00:00.000Z',
+                reference: 'RC-2026-000123',
+                volume_file_name: 'GIC-photos_2026-09_RECEPTION_20261108.zip',
+                entry_path: 'RECEPTION/2026-09/RC-2026-000123_20260910-101530_0000a1b2.jpg',
+              },
+            },
+          }),
+      ],
+    });
+    expect(await fetchAttachmentContent(db, 'p1')).toEqual({
+      ok: false,
+      reason: 'ARCHIVED',
+      archived: {
+        archivedAt: '2026-11-08T10:00:00.000Z',
+        reference: 'RC-2026-000123',
+        volumeFileName: 'GIC-photos_2026-09_RECEPTION_20261108.zip',
+        entryPath: 'RECEPTION/2026-09/RC-2026-000123_20260910-101530_0000a1b2.jpg',
+      },
+    });
+  });
+
+  it('sans détails lisibles : ARCHIVED seul', async () => {
+    stubFetch({
+      '/api/v1/attachments/p1/content': [() => new Response('pas du JSON', { status: 410 })],
+    });
+    expect(await fetchAttachmentContent(db, 'p1')).toEqual({ ok: false, reason: 'ARCHIVED' });
+  });
+});
+
 describe('fetchAttachmentContent : 401 (MP-11)', () => {
   it('jeton refusé : renouvelé une fois, la lecture est rejouée', async () => {
     const seen = stubFetch({

@@ -428,6 +428,43 @@ describe('Bilan hebdomadaire (ECR-CRM-08)', () => {
     expect(vi.mocked(authorizedRequest)).not.toHaveBeenCalled();
   });
 
+  it('hors ligne : le bilan que l’appareil connaît (jeu weekly_reports) remplit le formulaire ; un bilan déjà vu est figé', async () => {
+    const known = (id: string, overrides: Record<string, unknown>) => ({
+      key: `weekly_reports:WEEKLY_REPORT:${id}`,
+      dataset: 'weekly_reports',
+      entity_type: 'WEEKLY_REPORT',
+      entity_id: id,
+      scope_type: 'USER',
+      scope_id: IDS.user,
+      seq: 1,
+      row_version: 1,
+      data: serverReport({ id, ...overrides }),
+    });
+    await getDb().projections.bulkPut([
+      known('r-known', {
+        successes: 'Trois nouveaux clients',
+        status: 'REVIEWED',
+        reviewedAt: '2026-11-04T08:30:00.000Z',
+        reviewedBy: OTHER_USER,
+        managerComment: 'Bien',
+        version: 2,
+      }),
+      // Le bilan d'une autre semaine n'est pas celui de la semaine affichée.
+      known('r-old', { weekStart: '2026-10-26', successes: 'Semaine passée' }),
+    ]);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    render(
+      <MemoryRouter>
+        <WeeklyReportScreen />
+      </MemoryRouter>,
+    );
+    const successes = await screen.findByLabelText('Réussites de la semaine (facultatif)');
+    await waitFor(() => expect(successes).toHaveValue('Trois nouveaux clients'));
+    expect(successes).toBeDisabled();
+    expect(screen.queryByDisplayValue('Semaine passée')).not.toBeInTheDocument();
+    expect(vi.mocked(authorizedRequest)).not.toHaveBeenCalled();
+  });
+
   it('semaines voisines : la semaine suivante n’est pas proposée au-delà de la semaine en cours', async () => {
     serve();
     const user = userEvent.setup();

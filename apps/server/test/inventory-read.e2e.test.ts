@@ -409,6 +409,63 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     expect(afterDispatch.json().balances[0].ledgerValueXaf).toBeNull();
   });
 
+  it('S-33 : recorded_before rend l’état tel que le serveur le connaissait ; read_at dit quand la lecture a été faite', async () => {
+    // Le solde d’ouverture est enregistré avant l’expédition du transfert : un instant entre les deux sépare leurs états.
+    const stamps = await db
+      .selectFrom('inventory_stock_moves')
+      .select(['move_type', 'recorded_at'])
+      .where('move_type', 'in', ['OPENING_BALANCE', 'TRANSFER_DISPATCH'])
+      .where((eb) =>
+        eb.or([
+          eb('to_location_id', '=', toBin(storeA)),
+          eb('from_location_id', '=', toBin(storeA)),
+        ]),
+      )
+      .execute();
+    const recordedAt = (type: string) =>
+      stamps.find((stamp) => stamp.move_type === type)!.recorded_at.getTime();
+    const opened = recordedAt('OPENING_BALANCE');
+    const dispatched = recordedAt('TRANSFER_DISPATCH');
+    expect(dispatched - opened).toBeGreaterThan(5);
+    const between = new Date(opened + 2).toISOString();
+
+    // Avec l’expédition connue : 8 ; telle que le serveur la connaissait entre les deux enregistrements : 10.
+    const current = await get(
+      admin,
+      `/api/v1/stock/at?location_id=${storeA}&at=2026-06-11T00:00:00.000Z`,
+    );
+    expect(current.json().balances[0].qtyOnHand).toBe(8);
+    expect(current.json().read_at).toEqual(expect.any(String));
+    const known = await get(
+      admin,
+      `/api/v1/stock/at?location_id=${storeA}&at=2026-06-11T00:00:00.000Z&recorded_before=${between}`,
+    );
+    expect(known.statusCode).toBe(200);
+    expect(known.json().balances[0].qtyOnHand).toBe(10);
+    // Avant tout enregistrement : rien.
+    const nothing = await get(
+      admin,
+      `/api/v1/stock/at?location_id=${storeA}&at=2026-06-11T00:00:00.000Z&recorded_before=2000-01-01T00:00:00.000Z`,
+    );
+    expect(nothing.json().balances).toEqual([]);
+
+    // Le registre : l’expédition n’y figure pas encore à cet instant.
+    const moves = await get(
+      admin,
+      `/api/v1/stock-moves?location_id=${storeA}&recorded_before=${between}`,
+    );
+    expect(moves.statusCode).toBe(200);
+    const types = (moves.json().moves as { moveType: string }[]).map((m) => m.moveType);
+    expect(types).toContain('OPENING_BALANCE');
+    expect(types).not.toContain('TRANSFER_DISPATCH');
+    expect(moves.json().read_at).toEqual(expect.any(String));
+    const bad = await get(
+      admin,
+      `/api/v1/stock/at?location_id=${storeA}&at=2026-06-11T00:00:00.000Z&recorded_before=hier`,
+    );
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('GET /stock/availability — Direction : toute la zone ; magasinier : son seul site', async () => {
     const all = await get(
       admin,

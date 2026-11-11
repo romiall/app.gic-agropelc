@@ -38,6 +38,7 @@ import { openWorkSession } from '../sales/pricing.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
+import { useCheckinEnabled } from './checkin-setting.js';
 import {
   checkinPayload,
   DEFAULT_MAX_GPS_ACCURACY_M,
@@ -62,7 +63,35 @@ const numberSetting = (value: unknown, fallback: number): number => {
 const meters = (value: number | null | undefined): string | number =>
   value === null || value === undefined ? '?' : Math.round(value);
 
+/**
+ * ECR-TER-01. Pointage désactivé (`fieldwork.checkin_enabled`, AV-537) : l'écran le dit et ne relève pas la position
+ * (aucune demande d'autorisation de localisation) ; les visites et les ventes se font sans prise de service.
+ */
 export function ServiceScreen() {
+  const { t } = useTranslation();
+  const enabled = useCheckinEnabled();
+  if (enabled === undefined) {
+    return (
+      <section className="sale fw-screen" aria-busy="true">
+        <PageHeader title={t('nav.screens.service')} />
+        <SkeletonRows rows={3} />
+      </section>
+    );
+  }
+  if (!enabled) {
+    return (
+      <section className="sale fw-screen">
+        <PageHeader title={t('nav.screens.service')} />
+        <Banner tone="info" role="status">
+          {t('service.disabled')}
+        </Banner>
+      </section>
+    );
+  }
+  return <ActiveServiceScreen />;
+}
+
+function ActiveServiceScreen() {
   const { t } = useTranslation();
   const { state } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;

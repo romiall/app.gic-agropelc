@@ -6,6 +6,7 @@
  *   responsable ne l'a pas vu (identifiant propre au couple commercial, semaine).
  * - Chiffres (visites, nouveaux prospects et clients, CA, encaissé, casses et pertes) : lus en ligne, jamais saisis.
  * - Lecture et « vu » du responsable : en ligne (`GET /weekly-reports`, `crm.weekly_report.review`).
+ * - Hors ligne, le commercial relit son propre bilan d'après le jeu `weekly_reports` de l'appareil (AV-514 (4)).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -26,6 +27,7 @@ import { holdsAnyRole } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
+import { useProjected } from '../../storage/projections.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
@@ -337,6 +339,7 @@ export function WeeklyReportScreen() {
   const aggregateId =
     userId && identified?.key === `${userId}:${weekStart}` ? identified.id : undefined;
 
+  const knownReports = useProjected<ServerWeeklyReport>('weekly_reports', 'WEEKLY_REPORT');
   const own = useServerRead<{ reports: readonly ServerWeeklyReport[] }>(
     isWriter && userId ? `/api/v1/weekly-reports?user_id=me&week_start=${weekStart}` : null,
     online,
@@ -357,7 +360,13 @@ export function WeeklyReportScreen() {
     [],
   );
 
-  const ownReport = own.state.status === 'OK' ? own.state.data.reports[0] : undefined;
+  // Sans réseau, le bilan que l'appareil connaît (jeu `weekly_reports`) tient lieu de lecture (AV-514 (4)).
+  const ownReport =
+    own.state.status === 'OK'
+      ? own.state.data.reports[0]
+      : own.state.status === 'OFFLINE'
+        ? knownReports?.find((report) => report.userId === userId && report.weekStart === weekStart)
+        : undefined;
   const base = useMemo<ReportDraft>(() => {
     const pending =
       aggregateId && outbox ? pendingReportDraft(outbox, aggregateId, ownReport) : undefined;

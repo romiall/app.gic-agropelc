@@ -106,7 +106,7 @@
 - **IX** `(user_id, valid_from, valid_to)`, `(role_id)`.
 - **Suppr.** `IMMUABLE` sauf fermeture (`valid_to`, `revoked_*`) (INV-ADM-04).
 - **Hist.** La table **est** l'historique des droits.
-- **Audit** Octroi, révocation. **Offline** DL (ses propres affectations).
+- **Audit** Octroi, révocation. **Offline** DL (ses propres affectations) : jeu `role_assignment`, une ligne `USER` par affectation dont la portée est le titulaire — publiée à l'octroi et à la révocation par `identity`, jamais en `GLOBAL` (ADR-071, AV-533, Q24 du 08/11/2026) ; l'appareil juge la validité (`valid_to`, `revoked_at`) à son heure, sans ligne à l'échéance.
 - **Intégrité** Droits effectifs à `t` = affectations avec `valid_from ≤ t < coalesce(revoked_at, valid_to, ∞)` (BR-ADM-004).
 
 ## identity.devices
@@ -158,6 +158,26 @@
 - **Suppr.** `IMMUABLE` : ni modification ni suppression (déclencheurs). Amorçage : aucune ligne (les périodes antérieures à P5-23 n'étaient pas conservées).
 - **Lecture** : `checkDeviceActive` (une instruction avec la ligne vivante) — fait daté dans `[valid_from, valid_to)` → `CONFLICT DEVICE_REVOKED`, quel que soit le statut courant. Ni jeu hors ligne ni flux de changements.
 - **Intégrité** INV-ADM-03.
+
+## identity.user_status_periods
+
+**Responsabilité** : périodes hors service **closes** d'un utilisateur (AV-229, suite d'AV-212 ; BR-ADM-002, AT-034). La ligne `identity.users` porte la période ouverte ; `reactivate` (depuis `SUSPENDED` ou `DEACTIVATED`) et `deactivate` (depuis `SUSPENDED`) consignent ici la période qu'elles ferment, dans leur transaction, avant de réécrire `status_changed_at`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `command_id` | uuid | Non | — | Commande de fermeture (`reactivate` ou `deactivate`) ; une période par commande |
+| `user_id` | uuid → users | Non | — | |
+| `status` | enum(`SUSPENDED`,`DEACTIVATED`) | Non | — | Statut de la période close |
+| `valid_from` | ts | Non | — | Début inclus : `status_changed_at` de la période |
+| `valid_to` | ts | Non | — | Fin exclue : `occurred_at` de la commande de fermeture |
+| `reason` | text | Oui | — | Motif du statut (copie de `status_reason`, que la réactivation efface) |
+| `closed_by` | uuid → users | Non | — | Auteur de la fermeture |
+| `created_at` | ts | Non | `now()` | |
+
+- **PK** `command_id`. **CK** `status` ∈ {`SUSPENDED`, `DEACTIVATED`} ; `valid_to > valid_from` (une fermeture sans durée n'écrit rien). **IX** `(user_id, valid_from)`.
+- **Suppr.** `IMMUABLE` : ni modification ni suppression (déclencheurs). Amorçage : aucune ligne (les périodes antérieures à AV-229 n'étaient pas conservées).
+- **Lecture** : `checkUserActive` (une instruction avec la ligne vivante) — fait daté dans `[valid_from, valid_to)` → `CONFLICT USER_DEACTIVATED`, quel que soit le statut courant. Ni jeu hors ligne ni flux de changements.
+- **Intégrité** BR-ADM-002, AT-034.
 
 ## identity.auth_sessions
 

@@ -414,6 +414,10 @@ export interface InventoryCountData {
     readonly counted_qty_base: string;
     readonly theoretical_qty_base: string | null;
     readonly variance_qty_base: string | null;
+    /** Cumul des rapprochements tardifs de la ligne (BR-STK-044), signé ; absent d'un jeu d'avant la livraison. */
+    readonly reconciled_adjustment_qty_base?: string;
+    /** La ligne, sans lot, porte sur tous les lots du produit (BR-STK-045). */
+    readonly all_lots?: boolean;
     readonly variance_reason_code_id: string | null;
     readonly comment: string | null;
   }[];

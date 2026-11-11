@@ -47,6 +47,27 @@ describe('loadEnv (01-architecture-logicielle.md §7 « Configuration »)', () =
     ).not.toThrow();
   });
 
+  it('VAPID_* : absentes par défaut (Web Push désactivé), lues et nettoyées quand elles sont posées (AV-536)', () => {
+    const absent = loadEnv(BASE);
+    expect(absent.VAPID_PUBLIC_KEY).toBeUndefined();
+    expect(absent.VAPID_PRIVATE_KEY).toBeUndefined();
+    expect(absent.VAPID_SUBJECT).toBeUndefined();
+    expect(
+      loadEnv({
+        ...BASE,
+        VAPID_PUBLIC_KEY: ' pub ',
+        VAPID_PRIVATE_KEY: ' priv ',
+        VAPID_SUBJECT: ' mailto:porteur@example.org ',
+      }),
+    ).toMatchObject({
+      VAPID_PUBLIC_KEY: 'pub',
+      VAPID_PRIVATE_KEY: 'priv',
+      VAPID_SUBJECT: 'mailto:porteur@example.org',
+    });
+    // Posées mais vides (modèle d’environnement non rempli) : pas d’erreur de démarrage, canal désactivé.
+    expect(() => loadEnv({ ...BASE, VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' })).not.toThrow();
+  });
+
   it('ATTACHMENTS_STORAGE_DIR : répertoire temporaire système par défaut (AV-091), surchargeable', () => {
     expect(loadEnv(BASE).ATTACHMENTS_STORAGE_DIR).toMatch(/gic-attachments$/);
     expect(

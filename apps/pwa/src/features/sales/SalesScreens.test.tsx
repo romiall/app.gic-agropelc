@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
-import { IDS, SALE_ID, saleRow, seedSalesFixtures } from './fixtures.js';
+import { IDS, SALE_ID, meSettingRow, saleRow, seedSalesFixtures } from './fixtures.js';
 import { SaleDetailScreen } from './SaleDetailScreen.js';
 import { SalesListScreen } from './SalesListScreen.js';
 
@@ -158,6 +158,44 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     expect(screen.getByRole('link', { name: 'Ouvrir la vente VTE-2026-000120' })).toHaveTextContent(
       'Signalé : Prix différent du catalogue',
     );
+  });
+
+  it('pointage désactivé (AV-537) : « hors prise de service » ne signale plus une vente, ni à la liste, ni au détail', async () => {
+    const db = getDb();
+    await db.projections.put(meSettingRow('fieldwork.checkin_enabled', false));
+    // La seule anomalie est l'absence de prise de service : plus une vente signalée.
+    await db.projections.put(saleRow({ flags: ['OUT_OF_SESSION'] }));
+    renderAt('/ventes?anomalies=1');
+    expect(
+      await screen.findByText('Aucune vente du jour signalée sur cet appareil.'),
+    ).toBeInTheDocument();
+  });
+
+  it('pointage désactivé (AV-537) : les autres indicateurs restent présentés, « hors prise de service » disparaît', async () => {
+    const db = getDb();
+    await db.projections.put(meSettingRow('fieldwork.checkin_enabled', false));
+    await db.projections.put(saleRow({ flags: ['STOCK_NEGATIVE', 'OUT_OF_SESSION'] }));
+    const { unmount } = renderAt('/ventes?anomalies=1');
+    const rows = await screen.findAllByRole('link', { name: /Ouvrir la vente/ });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Signalé : Stock devenu négatif');
+    expect(rows[0]).not.toHaveTextContent('hors prise de service');
+    unmount();
+
+    renderAt(`/ventes/${SALE_ID}`);
+    expect(await screen.findByText(/Points signalés par le serveur/)).toHaveTextContent(
+      'Stock devenu négatif',
+    );
+    expect(screen.queryByText(/hors prise de service/)).not.toBeInTheDocument();
+  });
+
+  it('pointage en service (réglage vrai) : « hors prise de service » reste présenté', async () => {
+    const db = getDb();
+    await db.projections.put(meSettingRow('fieldwork.checkin_enabled', true));
+    await db.projections.put(saleRow({ flags: ['OUT_OF_SESSION'] }));
+    renderAt('/ventes?anomalies=1');
+    const rows = await screen.findAllByRole('link', { name: /Ouvrir la vente/ });
+    expect(rows[0]).toHaveTextContent('Signalé : Vente hors prise de service');
   });
 
   it('depuis le signal, aucune vente signalée sur l’appareil : message explicite', async () => {

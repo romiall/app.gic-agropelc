@@ -81,6 +81,13 @@ export const RULES = [
     good: 'SELECT 1 FROM t LOCK IN SHARE MODE',
   },
   {
+    id: 'window-lag-lead-default',
+    re: /\b(?:LAG|LEAD)\s*\(\s*[^(),]+,\s*[^(),]+,\s*[^()]+\)/i,
+    why: "LAG() / LEAD() a trois arguments (valeur par defaut) : MariaDB n'en accepte que deux (utiliser COALESCE(LAG(x) OVER w, valeur)) ; la mise en ligne du 06/11/2026 a laisse sync.devices.seq_gap_check echouer toutes les heures",
+    bad: 'SELECT LAG(n, 1, 0) OVER w FROM t WINDOW w AS (ORDER BY n)',
+    good: 'SELECT COALESCE(LAG(n) OVER w, 0) FROM t WINDOW w AS (ORDER BY n)',
+  },
+  {
     id: 'cast-json-operand',
     re: /CAST\s*\(\s*(?!\?|\$\{)[^)]*?\s+AS\s+JSON\s*\)/i,
     why: "CAST(x AS JSON) dont l'operande n'est pas un parametre : seul CAST(? AS JSON) / CAST(${...} AS JSON) est reecrit (mariadb-compat.mjs)",

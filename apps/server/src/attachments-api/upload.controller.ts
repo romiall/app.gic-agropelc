@@ -46,6 +46,7 @@ import { CHUNK_STORAGE } from '../platform/storage/chunk-storage.provider.js';
 import { ChunkOffsetMismatchError, type ChunkStorage } from '../platform/storage/chunk-storage.js';
 import { ATTACHMENT_CHUNK_SIZE_BYTES } from '@gic/contracts';
 import { regularizeReceiptPhoto } from '../modules/procurement/application/public/index.js';
+import { archivedItemOfAttachment } from '../modules/attachments/application/public/index.js';
 import { canRegularizeReceiptPhoto, canViewAttachment } from './attachment-access.js';
 
 /** Identifiant de pièce bien formé (sinon 404, jamais une erreur de conversion). */
@@ -83,6 +84,33 @@ interface AttachmentRow {
   readonly owner_type: string;
   readonly owner_id: Buffer;
   readonly kind: string;
+}
+
+/**
+ * Pièce vidée du serveur après l'archive des photos (AV-539, ADR-070 §9) : `410`, avec de quoi la retrouver dans
+ * l'archive de l'entreprise (date, référence, volume et chemin) — jamais une image cassée.
+ */
+function archivedError(item: {
+  readonly archivedAt: Date;
+  readonly reference: string;
+  readonly volumeFileName: string;
+  readonly entryPath: string;
+}): ApiError {
+  return new ApiError(
+    410,
+    'ATTACHMENT_ARCHIVED',
+    'Photo archivée : elle n’est plus sur le serveur, cherchez-la dans l’archive de l’entreprise.',
+    {
+      archived_at: item.archivedAt.toISOString(),
+      reference: item.reference,
+      volume_file_name: item.volumeFileName,
+      entry_path: item.entryPath,
+    },
+  );
+}
+
+function isFileMissing(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === 'ENOENT';
 }
 
 /** ADR-012 point 3 : « morceaux de 256 Ko ». Communiqué au client, pas imposé côté serveur
@@ -279,6 +307,17 @@ export class AttachmentUploadController {
       );
       throw new ApiError(403, 'FORBIDDEN', 'Cette pièce jointe n’est pas dans votre périmètre.');
     }
+    // Pièce vidée du serveur après l'archive des photos : où la retrouver, jamais une image cassée (AV-539).
+    const archived = await archivedItemOfAttachment(this.db, id);
+    const archivedWhere = archived
+      ? {
+          archivedAt: archived.resolvedAt ?? archived.archiveCreatedAt,
+          reference: archived.reference,
+          volumeFileName: archived.volumeFileName,
+          entryPath: archived.entryPath,
+        }
+      : undefined;
+    if (archived?.state === 'PURGED' && archivedWhere) throw archivedError(archivedWhere);
     if (row.upload_status !== 'AVAILABLE') {
       throw new ApiError(
         409,
@@ -287,7 +326,14 @@ export class AttachmentUploadController {
         { upload_status: row.upload_status },
       );
     }
-    const content = await this.storage.readAll(row.storage_key!);
+    let content: Buffer;
+    try {
+      content = await this.storage.readAll(row.storage_key!);
+    } catch (error) {
+      // Fichier déjà parti (vidage interrompu avant l'écriture de l'état) mais couvert par un plan : même réponse.
+      if (isFileMissing(error) && archivedWhere) throw archivedError(archivedWhere);
+      throw error;
+    }
     reply
       .header('Content-Type', row.mime_type)
       .header('Content-Length', String(content.length))

@@ -154,7 +154,7 @@ export interface AnalyticsFProspecting {
   contact_customer_id: Buffer | null;
   converted_customer_id: Buffer | null;
   created_customer_id: Buffer | null;
-  event_kind: string | null;
+  event_kind: Generated<string>;
   result: string | null;
   source: Generated<string>;
   stage: Generated<string>;
@@ -204,6 +204,19 @@ export interface AnalyticsFSalesLine {
   seller_user_id: Generated<Buffer>;
   site_id: Generated<Buffer>;
   zone_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFStaffPresence {
+  absence_code: string | null;
+  absent_count: Generated<number>;
+  business_day: Date;
+  day_status: string | null;
+  presence_id: Buffer;
+  present_count: Generated<number>;
+  role_label: string | null;
+  sheet_id: Buffer;
+  site_id: Buffer;
+  worked_minutes: number | null;
 }
 
 export interface AnalyticsFStockBalance {
@@ -320,6 +333,75 @@ export interface ApprovalsControlPolicies {
   valid_from: Date;
   valid_to: Date | null;
   version: Generated<number>;
+}
+
+export interface AttachmentsArchiveItems {
+  archive_id: Buffer;
+  attachment_id: Buffer;
+  captured_at: Date;
+  category: string;
+  created_at: Generated<Date>;
+  entry_path: string;
+  held_attachment_id: Buffer | null;
+  kind: string;
+  mime_type: string;
+  owner_id: Buffer;
+  owner_type: string;
+  reference: string;
+  release_reason: string | null;
+  resolved_at: Date | null;
+  secondary_reference: string | null;
+  sha256: string;
+  size_bytes: number;
+  state: Generated<string>;
+  submitted_at: Date;
+  volume_id: Buffer;
+}
+
+export interface AttachmentsArchives {
+  absent_count: Generated<number>;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  cutoff_at: Date;
+  file_count: number;
+  files_bytes: number;
+  granularity: string;
+  id: Buffer;
+  kept_open_count: Generated<number>;
+  live_key: string | null;
+  min_age_days: number;
+  period_end: Date;
+  period_start: Date;
+  retention_years: number;
+  status: Generated<string>;
+  volume_max_bytes: number;
+}
+
+export interface AttachmentsArchiveVolumes {
+  aborted_deliveries: Generated<number>;
+  archive_id: Buffer;
+  category: string;
+  created_at: Generated<Date>;
+  deliveries: Generated<number>;
+  file_count: number;
+  file_name: string;
+  files_bytes: number;
+  first_delivered_at: Date | null;
+  id: Buffer;
+  last_delivered_at: Date | null;
+  last_delivered_by: Buffer | null;
+  month_start: Date;
+  part: Generated<number>;
+  resolved_at: Date | null;
+  resolved_by: Buffer | null;
+  seq: number;
+  verified_at: Date | null;
+  verified_by: Buffer | null;
+  zip_bytes: number;
+  zip_sha256: string | null;
 }
 
 export interface AttachmentsAttachments {
@@ -1413,6 +1495,17 @@ export interface IdentityUsers {
   version: Generated<number>;
 }
 
+export interface IdentityUserStatusPeriods {
+  closed_by: Buffer;
+  command_id: Buffer;
+  created_at: Generated<Date>;
+  reason: string | null;
+  status: string;
+  user_id: Buffer;
+  valid_from: Date;
+  valid_to: Date;
+}
+
 export interface InventoryConsumptions {
   backdated_reason: string | null;
   cancel_approval_request_id: Buffer | null;
@@ -1465,6 +1558,7 @@ export interface InventoryCostEntries {
 }
 
 export interface InventoryInventoryCountLines {
+  all_lots: Generated<number>;
   command_id: Buffer | null;
   comment: string | null;
   count_id: Buffer;
@@ -2370,6 +2464,39 @@ export interface ProductionLotObservations {
   text: string;
 }
 
+export interface ProductionLotOpenings {
+  approval_request_id: Buffer | null;
+  avg_weight_g: Decimal | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  decided_at: Date | null;
+  decided_by: Buffer | null;
+  entry_id: Buffer | null;
+  id: Buffer;
+  lot_type: string;
+  main_location_id: Buffer;
+  notes: string | null;
+  occurred_at: Date;
+  placed_on: Date;
+  product_id: Buffer;
+  quantity_base: Decimal;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  status: Generated<string>;
+  strain: string | null;
+  supplier_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  value_xaf: number;
+  version: Generated<number>;
+}
+
 export interface ProductionLotWeighings {
   avg_weight_g: Decimal;
   backdated_reason: string | null;
@@ -2883,6 +3010,7 @@ export interface DB {
   analytics_f_prospecting: AnalyticsFProspecting;
   analytics_f_purchases: AnalyticsFPurchases;
   analytics_f_sales_line: AnalyticsFSalesLine;
+  analytics_f_staff_presence: AnalyticsFStaffPresence;
   analytics_f_stock_balance: AnalyticsFStockBalance;
   analytics_f_stock_moves: AnalyticsFStockMoves;
   analytics_kpi_snapshots: AnalyticsKpiSnapshots;
@@ -2890,6 +3018,9 @@ export interface DB {
   analytics_saved_views: AnalyticsSavedViews;
   approvals_approval_requests: ApprovalsApprovalRequests;
   approvals_control_policies: ApprovalsControlPolicies;
+  attachments_archive_items: AttachmentsArchiveItems;
+  attachments_archive_volumes: AttachmentsArchiveVolumes;
+  attachments_archives: AttachmentsArchives;
   attachments_attachments: AttachmentsAttachments;
   audit_audit_log: AuditAuditLog;
   audit_chain_head: AuditChainHead;
@@ -2944,6 +3075,7 @@ export interface DB {
   identity_role_permissions: IdentityRolePermissions;
   identity_roles: IdentityRoles;
   identity_user_role_assignments: IdentityUserRoleAssignments;
+  identity_user_status_periods: IdentityUserStatusPeriods;
   identity_users: IdentityUsers;
   inventory_consumptions: InventoryConsumptions;
   inventory_cost_entries: InventoryCostEntries;
@@ -2994,6 +3126,7 @@ export interface DB {
   production_incubation_events: ProductionIncubationEvents;
   production_lot_entries: ProductionLotEntries;
   production_lot_observations: ProductionLotObservations;
+  production_lot_openings: ProductionLotOpenings;
   production_lot_weighings: ProductionLotWeighings;
   production_overhead_allocation_lines: ProductionOverheadAllocationLines;
   production_overhead_allocations: ProductionOverheadAllocations;

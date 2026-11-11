@@ -46,6 +46,7 @@ import {
   type RowOutcome,
 } from './model.js';
 import { customersByPhone } from './phones.js';
+import { LOT_OPENING_ENTITY } from './lot-opening-entity.js';
 import { PRESENCE_ENTITY } from './presence-entity.js';
 import { RP2_ENTITIES } from './rp2-entities.js';
 import { SLIPS_ENTITY } from './slips.js';
@@ -757,5 +758,6 @@ export const IMPORT_ENTITIES: readonly ImportEntity[] = [
   CUSTOMERS_ENTITY,
   SLIPS_ENTITY,
   PRESENCE_ENTITY,
+  LOT_OPENING_ENTITY,
   ...RP2_ENTITIES,
 ].sort((a, b) => a.order - b.order);

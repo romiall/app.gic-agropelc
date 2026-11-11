@@ -9,9 +9,17 @@
 import { describe, expect, it } from 'vitest';
 import { cashTransferSendPayloadSchema, expenseRecordPayloadSchema } from '@gic/contracts';
 import {
+  inputPayload,
+  mortalityPayload,
+  observationPayload,
+  weighingPayload,
+} from '../production/daily.js';
+import {
   MAX_SLIP_REF_LENGTH,
   REPORTABLE_SLIP_TYPES,
+  NON_REPORTABLE_SLIP_CODES,
   buildReportCommand,
+  buildReportCommands,
   carriesLocalRef,
   paperRefPlace,
   slipPhotoTarget,
@@ -111,6 +119,68 @@ const SLIPS: Readonly<Record<ReportableSlipType, ResolvedSlip>> = {
     category: 'CASSE',
     comment: 'Cageots tombés',
   },
+  DA: {
+    type: 'DA',
+    siteId: id(70),
+    neededByDate: '2026-11-12',
+    justification: 'Aliment démarrage à renouveler',
+    lines: [
+      {
+        productId: id(1),
+        unitCode: 'SAC',
+        quantity: 20,
+        quantityBase: 20,
+        estimatedUnitPriceXaf: 18500,
+      },
+      { productId: id(3), unitCode: 'U', quantity: 5, quantityBase: 5 },
+    ],
+  },
+  BC: {
+    type: 'BC',
+    supplierId: id(71),
+    deliveryLocationId: id(60),
+    expectedDeliveryDate: '2026-11-10',
+    lines: [{ productId: id(1), unitCode: 'SAC', orderedQtyBase: 20, unitPriceXaf: 18000 }],
+    totalXaf: 360000,
+  },
+  VC: {
+    type: 'VC',
+    customerId: id(11),
+    outcomeReasonCodeId: id(72),
+    notes: 'Intéressé par 30 plateaux par semaine',
+    nextActionAt: '2026-11-17',
+    nextActionNote: 'Apporter un échantillon',
+  },
+  FI: {
+    type: 'FI',
+    locationId: id(60),
+    countType: 'PARTIAL',
+    lines: [
+      { productId: id(1), countedQtyBase: 118 },
+      { productId: id(3), countedQtyBase: 0 },
+    ],
+  },
+  FL: {
+    type: 'FL',
+    lotId: id(80),
+    locationId: id(81),
+    feedLocationId: id(60),
+    days: [
+      {
+        date: '2026-11-02',
+        occurredAt: '2026-11-02T11:00:00.000Z',
+        mortality: { quantity: 3, reasonCodeId: id(82) },
+        input: { productId: id(83), unitCode: 'KG', quantity: 45, quantityBase: 45 },
+        weighing: { sampleSize: 20, avgWeightG: 1250 },
+        observation: 'Vaccin Newcastle',
+      },
+      {
+        date: '2026-11-03',
+        occurredAt: '2026-11-03T11:00:00.000Z',
+        input: { productId: id(83), unitCode: 'KG', quantity: 46, quantityBase: 46 },
+      },
+    ],
+  },
 };
 
 /** Commandes enregistrées par le serveur pour chaque pièce (voir le tableau de `report-commands.ts`). */
@@ -124,6 +194,11 @@ const EXPECTED: Readonly<Record<ReportableSlipType, readonly [string, string]>> 
   BR: ['procurement.receipt.record', 'GOODS_RECEIPT'],
   BT: ['inventory.transfer.dispatch', 'STOCK_TRANSFER'],
   FP: ['inventory.loss.declare', 'STOCK_LOSS'],
+  DA: ['procurement.request.submit', 'PURCHASE_REQUEST'],
+  BC: ['procurement.order.create', 'PURCHASE_ORDER'],
+  VC: ['crm.visit.record', 'VISIT'],
+  FI: ['inventory.count.open', 'INVENTORY_COUNT'],
+  FL: ['production.mortality.record', 'STOCK_LOSS'],
 };
 
 /** Clés que l'ancienne correspondance inventait : le serveur ne les connaît dans aucune charge. */
@@ -194,7 +269,9 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
         else if (value !== null && typeof value === 'object') {
           for (const [key, entry] of Object.entries(value)) {
             expect(entry, `${type}.${key}`).not.toBeUndefined();
-            expect(entry, `${type}.${key}`).not.toBeNull();
+            // Seule exception : `position` d'une visite, clé obligatoire du schéma du serveur, nulle sans GPS.
+            if (!(type === 'VC' && key === 'position'))
+              expect(entry, `${type}.${key}`).not.toBeNull();
             walk(entry);
           }
         }
@@ -217,6 +294,11 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       RE: 'LOCAL_REF',
       BT: 'FREE_TEXT',
       FP: 'FREE_TEXT',
+      DA: 'LOCAL_REF',
+      BC: 'LOCAL_REF',
+      VC: 'FREE_TEXT',
+      FI: 'LOCAL_REF',
+      FL: 'FREE_TEXT',
     });
     for (const type of REPORTABLE_SLIP_TYPES) {
       const { payload } = buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` }));
@@ -228,6 +310,9 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       buildReportCommand(SLIPS[type], meta({ paperRef: `${type}-000042` })).payload[key];
     expect(mention('BT', 'notes')).toBe('Pièce papier BT-000042 — Réapprovisionnement');
     expect(mention('FP', 'comment')).toBe('Pièce papier FP-000042 — Cageots tombés');
+    expect(mention('VC', 'notes')).toBe(
+      'Pièce papier VC-000042 — Intéressé par 30 plateaux par semaine',
+    );
     // Le texte libre des autres commandes reste celui de l'utilisateur, sans mention.
     expect(mention('BL', 'notes')).toBeUndefined();
     expect(mention('BR', 'observations')).toBeUndefined();
@@ -283,8 +368,240 @@ describe('buildReportCommand : une pièce, la commande réelle du serveur', () =
       cited: true,
     });
     expect(slipPhotoTarget('FP')).toEqual({ kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: false });
-    for (const type of ['BV', 'CC', 'BL', 'RE', 'RF', 'BT'] as const) {
+    for (const type of [
+      'BV',
+      'CC',
+      'BL',
+      'RE',
+      'RF',
+      'BT',
+      'DA',
+      'BC',
+      'VC',
+      'FI',
+      'FL',
+    ] as const) {
       expect(slipPhotoTarget(type), type).toBeNull();
+    }
+  });
+
+  it('DA : charge de procurement.request.submit (site, besoin, justification, lignes en unité de base)', () => {
+    const { payload } = buildReportCommand(SLIPS.DA, meta({ paperRef: 'DA-000009' }));
+    expect(payload).toEqual({
+      siteId: id(70),
+      neededByDate: '2026-11-12',
+      justification: 'Aliment démarrage à renouveler',
+      lines: [
+        {
+          productId: id(1),
+          quantityBase: 20,
+          unitCode: 'SAC',
+          quantity: 20,
+          estimatedUnitPriceXaf: 18500,
+        },
+        { productId: id(3), quantityBase: 5, unitCode: 'U', quantity: 5 },
+      ],
+      localRef: 'DA-000009',
+    });
+  });
+
+  it('BC : create puis submit du même bon, le second attend le premier ; les indices ne sont que sur le premier', () => {
+    const commands = buildReportCommands(
+      SLIPS.BC,
+      meta({ paperRef: 'BC-000031', dependsOn: [id(77)] }),
+    );
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'procurement.order.create',
+      'procurement.order.submit',
+    ]);
+    expect(commands.map((c) => c.aggregateType)).toEqual(['PURCHASE_ORDER', 'PURCHASE_ORDER']);
+    expect(commands.map((c) => c.aggregateId)).toEqual([id(99), id(99)]);
+    expect(commands.map((c) => c.dependsOnPrevious)).toEqual([false, true]);
+    expect(commands[0]!.dependsOn).toEqual([id(77)]);
+    expect(commands[1]!.dependsOn).toEqual([]);
+    expect(commands[0]!.payload).toEqual({
+      supplierId: id(71),
+      deliveryLocationId: id(60),
+      expectedDeliveryDate: '2026-11-10',
+      lines: [{ productId: id(1), unitCode: 'SAC', orderedQtyBase: 20, unitPriceXaf: 18000 }],
+      localRef: 'BC-000031',
+    });
+    expect(commands[1]!.payload).toEqual({});
+    expect(commands[0]!.localFlags).toEqual([
+      'PAPER_SLIP',
+      'SLIP_TYPE:BC',
+      'PAPER_REF:BC-000031',
+      'SLIP_AMOUNT:360000',
+      `SLIP_GROUP:${id(99)}`,
+    ]);
+    // Toutes les commandes portent le groupe de la pièce (le registre juge la pièce sur l'ensemble) ; la seconde, rien d'autre.
+    expect(commands[0]!.localFlags).toContain(`SLIP_GROUP:${id(99)}`);
+    expect(commands[1]!.localFlags).toEqual([`SLIP_GROUP:${id(99)}`]);
+    expect(commands.every((c) => c.occurredAt === '2026-11-03T09:00:00.000Z')).toBe(true);
+  });
+
+  it('VC : visite sans position, numéro dans les notes, prochaine action', () => {
+    const { payload } = buildReportCommand(SLIPS.VC, meta({ paperRef: 'VC-000018' }));
+    expect(payload).toEqual({
+      customerId: id(11),
+      position: null,
+      outcomeReasonCodeId: id(72),
+      notes: 'Pièce papier VC-000018 — Intéressé par 30 plateaux par semaine',
+      nextActionAt: '2026-11-17',
+      nextActionNote: 'Apporter un échantillon',
+    });
+  });
+
+  it('FI : open, record_lines puis submit du même inventaire, lignes datées de l’heure de la pièce', () => {
+    const commands = buildReportCommands(SLIPS.FI, meta({ paperRef: 'FI-000004' }));
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'inventory.count.open',
+      'inventory.count.record_lines',
+      'inventory.count.submit',
+    ]);
+    expect(commands.map((c) => c.dependsOnPrevious)).toEqual([false, true, true]);
+    expect(commands[0]!.payload).toEqual({
+      locationId: id(60),
+      countType: 'PARTIAL',
+      localRef: 'FI-000004',
+    });
+    expect(commands[1]!.payload).toEqual({
+      countId: id(99),
+      lines: [
+        { productId: id(1), countedAt: '2026-11-03T09:00:00.000Z', countedQtyBase: 118 },
+        { productId: id(3), countedAt: '2026-11-03T09:00:00.000Z', countedQtyBase: 0 },
+      ],
+    });
+    expect(commands[2]!.payload).toEqual({ countId: id(99) });
+    expect(
+      commands
+        .slice(1)
+        .every((c) => c.localFlags.join() === `SLIP_GROUP:${id(99)}` && c.photo === null),
+    ).toBe(true);
+  });
+
+  it('FL : les agrégats des saisies sont distincts quel que soit l’octet final de celui de la pièce (aucune saisie prise pour un rejeu)', () => {
+    // Un agrégat repris par deux saisies ferait prendre la seconde pour un rejeu de la première : elle ne serait jamais
+    // enregistrée, sans le moindre signalement. L'octet final de l'identifiant d'une pièce est tiré au hasard.
+    for (let last = 0; last < 256; last += 1) {
+      const aggregateId = `${id(99).slice(0, -2)}${last.toString(16).padStart(2, '0')}`;
+      const commands = buildReportCommands(SLIPS.FL, meta({ aggregateId }));
+      expect(new Set(commands.map((c) => c.aggregateId)).size, aggregateId).toBe(commands.length);
+      expect(commands[0]!.aggregateId).toBe(aggregateId);
+    }
+  });
+
+  it('FL : une saisie du jour par mesure renseignée, indépendantes, chacune avec son agrégat et l’heure de son jour', () => {
+    const commands = buildReportCommands(SLIPS.FL, meta({ paperRef: 'FL-000012' }));
+    expect(commands.map((c) => c.commandType)).toEqual([
+      'production.mortality.record',
+      'production.input.record',
+      'production.weighing.record',
+      'production.observation.record',
+      'production.input.record',
+    ]);
+    expect(commands.map((c) => c.aggregateType)).toEqual([
+      'STOCK_LOSS',
+      'CONSUMPTION',
+      'LOT_WEIGHING',
+      'LOT_OBSERVATION',
+      'CONSUMPTION',
+    ]);
+    // Chaque mesure écrit sa propre ligne : un agrégat par commande, le premier est celui de la pièce.
+    const aggregates = commands.map((c) => c.aggregateId);
+    expect(aggregates[0]).toBe(id(99));
+    expect(new Set(aggregates).size).toBe(commands.length);
+    for (const aggregate of aggregates) expect(aggregate).toMatch(/^[0-9a-f-]{36}$/);
+    expect(aggregates.slice(1).map((value) => value.slice(0, -2))).toEqual(
+      Array(commands.length - 1).fill(id(99).slice(0, -2)),
+    );
+    // Heure de la ligne, indépendance, indices du registre sur la seule première commande.
+    expect(commands.map((c) => c.occurredAt)).toEqual([
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-02T11:00:00.000Z',
+      '2026-11-03T11:00:00.000Z',
+    ]);
+    expect(commands.every((c) => !c.dependsOnPrevious && c.capturedOffline)).toBe(true);
+    expect(commands[0]!.localFlags).toEqual([
+      'PAPER_SLIP',
+      'SLIP_TYPE:FL',
+      'PAPER_REF:FL-000012',
+      `SLIP_GROUP:${id(99)}`,
+    ]);
+    expect(
+      commands
+        .slice(1)
+        .every((c) => c.localFlags.join() === `SLIP_GROUP:${id(99)}` && c.photo === null),
+    ).toBe(true);
+    // Charges : celles des écrans de saisie du jour (`production/daily.ts`), plus la mention de la pièce.
+    expect(commands[0]!.payload).toEqual({
+      ...mortalityPayload({
+        lotId: id(80),
+        locationId: id(81),
+        quantity: 3,
+        reasonCodeId: id(82),
+        comment: '',
+      }),
+      comment: 'Pièce papier FL-000012',
+    });
+    expect(commands[1]!.payload).toEqual(
+      inputPayload({
+        lotId: id(80),
+        locationId: id(60),
+        line: {
+          draft: { key: 'k', productId: id(83), unitCode: 'KG', quantityText: '45' },
+          quantity: 45,
+          quantityBase: 45,
+          issue: null,
+        },
+        costType: 'ALIMENT',
+      }),
+    );
+    expect(commands[2]!.payload).toEqual(
+      weighingPayload({
+        lotId: id(80),
+        locationId: id(81),
+        sampleSize: 20,
+        avgWeightG: 1250,
+        totalWeightKg: null,
+      }),
+    );
+    expect(commands[3]!.payload).toEqual(
+      observationPayload({
+        lotId: id(80),
+        type: 'AUTRE',
+        severity: 'INFO',
+        text: 'Pièce papier FL-000012 — Vaccin Newcastle',
+      }),
+    );
+  });
+
+  it('les types à une seule commande n’en produisent qu’une, sans dépendance sur la précédente', () => {
+    for (const type of [
+      'BV',
+      'CC',
+      'BL',
+      'RE',
+      'BD',
+      'RF',
+      'BR',
+      'BT',
+      'FP',
+      'DA',
+      'VC',
+    ] as const) {
+      const commands = buildReportCommands(SLIPS[type], meta({ paperRef: `${type}-1` }));
+      expect(commands, type).toHaveLength(1);
+      expect(commands[0]!.dependsOnPrevious, type).toBe(false);
+    }
+  });
+
+  it('FA, FJC et JE ne se reportent pas : documents imprimés d’après des faits déjà enregistrés', () => {
+    expect([...NON_REPORTABLE_SLIP_CODES].sort()).toEqual(['FA', 'FJC', 'JE']);
+    for (const code of NON_REPORTABLE_SLIP_CODES) {
+      expect(REPORTABLE_SLIP_TYPES as readonly string[]).not.toContain(code);
     }
   });
 

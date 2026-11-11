@@ -99,6 +99,74 @@ assert.deepEqual(
   [at('2026-10-30T02:00:00Z'), at('2026-10-31T02:00:00Z')].sort(),
 );
 
+// -- mode par nombre (--keep-last, decision du porteur du 07/11/2026) : au plus N copies, la nouvelle ecrase la plus ancienne ----
+{
+  const everyOtherDay = [];
+  for (let n = 0; n < 8; n += 1)
+    everyOtherDay.push(stamp(new Date(Date.UTC(2026, 10, 1, 2, 0, 0) + n * 2 * DAY)));
+  // Huit sauvegardes (une tous les deux jours), cinq gardees : les trois plus anciennes sont supprimees.
+  assert.deepEqual(
+    selectBackupsToDelete(everyOtherDay, { keepLast: 5 }).sort(),
+    everyOtherDay.slice(0, 3).sort(),
+  );
+  // Moins de cinq (ou exactement cinq) : rien n'est supprime.
+  assert.deepEqual(selectBackupsToDelete(everyOtherDay.slice(0, 5), { keepLast: 5 }), []);
+  assert.deepEqual(selectBackupsToDelete(everyOtherDay.slice(0, 2), { keepLast: 5 }), []);
+  assert.deepEqual(selectBackupsToDelete([], { keepLast: 5 }), []);
+  // L'age ne compte pas : une sauvegarde de 2025 reste tant qu'elle est parmi les cinq plus recentes.
+  assert.deepEqual(
+    selectBackupsToDelete([at('2025-01-01T02:00:00Z'), at('2025-01-03T02:00:00Z')], {
+      now: NOW,
+      keepLast: 5,
+    }),
+    [],
+  );
+  // N = 1 : seule la plus recente est gardee ; les autres fichiers du dossier ne sont jamais rendus.
+  assert.deepEqual(
+    selectBackupsToDelete(
+      [...everyOtherDay.slice(0, 3), 'gic-20260101-000000.sql.gz', 'LISEZMOI.txt'],
+      {
+        keepLast: 1,
+      },
+    ).sort(),
+    everyOtherDay.slice(0, 2).sort(),
+  );
+  // Deux sauvegardes le meme jour : la plus tardive est la plus recente.
+  const sameDay = [
+    at('2026-11-05T02:00:00Z'),
+    at('2026-11-05T23:00:00Z'),
+    at('2026-11-04T02:00:00Z'),
+  ];
+  assert.deepEqual(selectBackupsToDelete(sameDay, { keepLast: 2 }), [at('2026-11-04T02:00:00Z')]);
+  // Valeurs refusees.
+  for (const bad of [0, -1, 1.5, Number.NaN])
+    assert.throws(
+      () => selectBackupsToDelete(everyOtherDay, { keepLast: bad }),
+      RangeError,
+      String(bad),
+    );
+
+  // Un an de sauvegardes tous les deux jours, rotation apres chaque ajout : jamais plus de cinq fichiers, huit jours
+  // d'ecart entre la plus ancienne et la plus recente (cinq sauvegardes = dix jours d'historique).
+  let present = [];
+  let peakAfterRotation = 0;
+  for (let n = 0; n < 183; n += 1) {
+    present.push(stamp(new Date(Date.UTC(2026, 10, 1, 2, 0, 0) + n * 2 * DAY)));
+    const gone = new Set(selectBackupsToDelete(present, { keepLast: 5 }));
+    present = present.filter((name) => !gone.has(name));
+    peakAfterRotation = Math.max(peakAfterRotation, present.length);
+    assert.ok(present.length <= 5, `jamais plus de cinq fichiers (jour ${n * 2})`);
+  }
+  assert.equal(present.length, 5);
+  assert.equal(peakAfterRotation, 5);
+  const spanDays = (parseBackupName(present[4]).date - parseBackupName(present[0]).date) / DAY;
+  assert.equal(
+    spanDays,
+    8,
+    'cinq sauvegardes espacees de deux jours couvrent huit jours entre la premiere et la derniere',
+  );
+}
+
 // -- ligne de commande : suppression reelle dans un dossier temporaire, rien d'autre n'est touche -------------------------
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gic-rotate-'));
 try {
@@ -137,10 +205,54 @@ try {
     code = error.status;
   }
   assert.equal(code, 2, 'dossier introuvable : code 2');
+
+  // --keep-last en ligne de commande : quatre sauvegardes, deux gardees ; les autres fichiers ne bougent pas.
+  const byCount = fs.mkdtempSync(path.join(os.tmpdir(), 'gic-rotate-last-'));
+  try {
+    const four = [
+      at('2026-11-01T02:00:00Z'),
+      at('2026-11-03T02:00:00Z'),
+      at('2026-11-05T02:00:00Z'),
+      at('2026-11-07T02:00:00Z'),
+    ];
+    for (const name of [...four, 'gic-20260101-000000.sql.gz', 'LISEZMOI.txt'])
+      fs.writeFileSync(path.join(byCount, name), 'x');
+    const dryCount = execFileSync(
+      process.execPath,
+      [path.join(here, 'backup-rotate.mjs'), byCount, '--keep-last', '2', '--dry-run'],
+      { encoding: 'utf8' },
+    );
+    assert.match(dryCount, /rotation : 2 sauvegarde\(s\) gardee\(s\), 2 a supprimer/);
+    assert.equal(fs.readdirSync(byCount).length, 6, 'avec --dry-run rien n est supprime');
+    const realCount = execFileSync(
+      process.execPath,
+      [path.join(here, 'backup-rotate.mjs'), byCount, '--keep-last', '2'],
+      { encoding: 'utf8' },
+    );
+    assert.match(realCount, /rotation : 2 sauvegarde\(s\) gardee\(s\), 2 supprimee\(s\)/);
+    assert.deepEqual(
+      fs.readdirSync(byCount).sort(),
+      [four[2], four[3], 'LISEZMOI.txt', 'gic-20260101-000000.sql.gz'].sort(),
+    );
+    for (const bad of [['--keep-last', '0'], ['--keep-last', 'x'], ['--keep-last']]) {
+      let badCode = 0;
+      try {
+        execFileSync(process.execPath, [path.join(here, 'backup-rotate.mjs'), byCount, ...bad], {
+          stdio: 'pipe',
+        });
+      } catch (error) {
+        badCode = error.status;
+      }
+      assert.equal(badCode, 2, `${bad.join(' ')} : code 2, rien de supprime`);
+    }
+    assert.equal(fs.readdirSync(byCount).length, 4, 'les valeurs refusees ne suppriment rien');
+  } finally {
+    fs.rmSync(byCount, { recursive: true, force: true });
+  }
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log(
-  'OK : rotation des sauvegardes quotidiennes (nommage, 14 jours, fins de mois, derniere gardee, ligne de commande)',
+  'OK : rotation des sauvegardes (nommage, 14 jours, fins de mois, cinq copies, derniere gardee, ligne de commande)',
 );

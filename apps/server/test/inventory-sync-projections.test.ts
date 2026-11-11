@@ -285,6 +285,10 @@ describe('projections /sync/pull du stock (P2-06)', () => {
     expect(balance.entity_id).toBe(productId);
     expect(Number(balance.data!.qty_on_hand)).toBe(8); // 10 − 2 expédiés (état courant)
     expect(balance.data!.lots).toHaveLength(1);
+    // S-42 : chaque ligne de solde porte le rang FIFO et le statut de son lot (vides pour la ligne sans lot).
+    expect(Object.keys((balance.data!.lots as object[])[0]!)).toEqual(
+      expect.arrayContaining(['fifo_rank_at', 'lot_status']),
+    );
     expect(JSON.stringify(balance.data)).not.toMatch(/value_xaf|unit_cost/);
 
     const threshold = latest(changes, 'STOCK_THRESHOLD', storeA)!;

@@ -13,6 +13,7 @@ export {
   SessionRejectedListenerRegistry,
 } from '../session-rejection.js';
 export type { SessionRejectedListener } from '../session-rejection.js';
+export { CHECKIN_ENABLED_SETTING, isCheckinEnabled } from './checkin-setting.js';
 export { attendanceDays } from './attendance-indicators.js';
 export type { AttendanceDays } from './attendance-indicators.js';
 export {

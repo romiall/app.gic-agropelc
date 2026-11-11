@@ -6,7 +6,8 @@ Usage, a la racine du depot :
   powershell -ExecutionPolicy Bypass -File deploy\hostinger\deploy.ps1
 Options : -SkipBuild (reutilise la construction existante), -NoDbBackup (ignore la sauvegarde de la base),
           -HostName, -Port, -User, -KeyPath (valeurs par defaut ci-dessous), -BuildOnly (construit le paquet et s'arrete),
-          -AllowDirty (livre malgre des fichiers suivis modifies : voir build-bundle.ps1, deconseille).
+          -AllowDirty (livre malgre des fichiers suivis modifies : voir build-bundle.ps1, deconseille),
+          -StrictSql (une requete du corpus refusee par la base fait echouer la livraison au lieu de l'avertir : AV-540).
 
 Aucun secret dans ce fichier : la cle SSH reste dans %USERPROFILE%\.ssh et le .env reste sur le serveur.
 Fichier ASCII volontairement : Windows PowerShell 5.1 lit mal l'UTF-8 sans BOM.
@@ -20,7 +21,8 @@ param(
   [switch]$SkipBuild,
   [switch]$NoDbBackup,
   [switch]$BuildOnly,
-  [switch]$AllowDirty
+  [switch]$AllowDirty,
+  [switch]$StrictSql
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $KeyPath)) { throw "Cle SSH introuvable : $KeyPath" }
@@ -43,9 +45,12 @@ Write-Host '== Mise a jour sur le serveur'
 $script = ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'remote-update.sh'))) -replace "`r`n", "`n"
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $noBackup = if ($NoDbBackup) { '1' } else { '0' }
+# Pas de variable nommee comme un parametre ($strictSql = $StrictSql, sans distinction de casse : PowerShell refuse d'y ranger
+# '0' ou '1', l'option etant un [switch]) ; test-ps-scripts.mjs le verifie pour tous les scripts du kit.
+$sqlStrictFlag = if ($StrictSql) { '1' } else { '0' }
 # PowerShell ajoute un retour chariot a la fin du texte envoye : tr le retire (sinon bash l'executerait comme une commande
 # et renverrait 127 meme si la mise a jour a reussi), sed retire l'eventuel BOM de la premiere ligne.
-$command = "tr -d '\r' | sed '1s/^\xEF\xBB\xBF//' | APP_DIR=$remoteHome/$AppDir NO_DB_BACKUP=$noBackup bash -s -- '$remoteBundle' '$release'"
+$command = "tr -d '\r' | sed '1s/^\xEF\xBB\xBF//' | APP_DIR=$remoteHome/$AppDir NO_DB_BACKUP=$noBackup SQL_CORPUS_STRICT=$sqlStrictFlag bash -s -- '$remoteBundle' '$release'"
 $script | & ssh @sshOptions -p $Port $target $command
 if ($LASTEXITCODE -ne 0) { throw 'La mise a jour a signale une erreur (voir ci-dessus ; en cas d''echec du script distant, l''ancienne version est remise en place par lui).' }
 Write-Host 'Termine.'

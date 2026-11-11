@@ -9,7 +9,7 @@
 | [STD-ID] | | | | |
 | `code` | code | Non | — | Lignée de la politique |
 | `version` | int | Non | 1 | |
-| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`,`CASH_TRANSFER_DISCREPANCY`,`INVOICE_MISMATCH`) | Non | — | `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `CASH_TRANSFER_DISCREPANCY` (écart d'une remise de fonds) en P5-03 ; `INVOICE_MISMATCH` (écart de rapprochement d'une facture fournisseur, ADR-043) en P8-03 ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
+| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`,`CASH_TRANSFER_DISCREPANCY`,`INVOICE_MISMATCH`,`LOT_OPENING`) | Non | — | `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `CASH_TRANSFER_DISCREPANCY` (écart d'une remise de fonds) en P5-03 ; `INVOICE_MISMATCH` (écart de rapprochement d'une facture fournisseur, ADR-043) en P8-03 ; `LOT_OPENING` (reprise d'un lot en cours à la date d'arrêt, ADR-069, gestionnaire de `production`) ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
 | `condition` | json | Non | `{}` | Conditions déclaratives : catégorie, quantité ≥, valeur ≥, pourcentage de l'effectif ≥, site ou zone |
 | `requires_photo` | boolean | Non | false | |
 | `requires_comment` | boolean | Non | false | |
@@ -22,7 +22,7 @@
 | `created_at`, `created_by` | | | | |
 
 - **PK** `id`. **UQ** `(code, version)`.
-- **CK** `requires_approval` ⇒ `approver_permission` non nul. `operation_type` ∈ catalogue ci-dessus (`ck_approvals_control_policies_operation_type`, recréé à chaque ajout de type : la dernière fois en P8-03 pour `INVOICE_MISMATCH`, migration `20261101090000`). C'est la **seule** des deux tables à porter ce `CHECK` (voir `approval_requests`).
+- **CK** `requires_approval` ⇒ `approver_permission` non nul. `operation_type` ∈ catalogue ci-dessus (`ck_approvals_control_policies_operation_type`, recréé à chaque ajout de type : la dernière fois pour `LOT_OPENING`, migration `20261205090000` ; avant, en P8-03 pour `INVOICE_MISMATCH`, migration `20261101090000`). C'est la **seule** des deux tables à porter ce `CHECK` (voir `approval_requests`).
 - **Suppr.** `VERSIONNEMENT` (INV : la version en vigueur à `occurred_at` est figée sur l'opération, BR-ADM-016).
 - **Audit** Chaque version. **Offline** DL (politiques actives, pour l'évaluation indicative sur l'appareil) — jeu `policies`, ligne `GLOBAL` (P5-18, AV-196) : la nouvelle version active est publiée et la version retirée supprimée (`DELETE`) ; politiques semées publiées par le seed.
 - Le schéma de `condition` est validé par l'application (JSON Schema versionné) ; il n'est **jamais** interrogé comme donnée métier.
@@ -42,6 +42,7 @@
   |---|---|---|---|
   | `EXPENSE_DEFAULT` | `EXPENSE` | `finance.expense.approve` | AV-058, AV-264, BR-FIN-021 |
   | `INVOICE_MISMATCH_DEFAULT` | `INVOICE_MISMATCH` | `finance.supplier_invoice.approve` | AV-053, BR-FIN-031 |
+  | `LOT_OPENING_DEFAULT` | `LOT_OPENING` | `inventory.count.approve` | AV-541, BR-PRD-016 (seed `db/seeds/production-references.ts`) |
   | `SUPPLIER_PAYMENT_DEFAULT` | `SUPPLIER_PAYMENT` | `finance.supplier_payment.approve` | AV-055, BR-FIN-033 |
 
 ## approvals.approval_requests
@@ -102,6 +103,74 @@
 - **PK** `id`. **UQ** `storage_key`. **IX** `(owner_type, owner_id)`, `(upload_status)` partiel.
 - **Suppr.** `IMMUABLE` (remplacement par une nouvelle pièce) ; purge des fichiers après 5 ans (AV-074), avec conservation des métadonnées.
 - **Offline** CR : fichier conservé localement jusqu'à `AVAILABLE`.
+- **Archive** (AV-539, [ADR-070](../../decisions/ADR-070-archive-des-photos-jointes.md)) : une pièce archivée **reste `AVAILABLE`** et sa ligne n'est jamais modifiée ni supprimée ; seul le fichier du disque du serveur est supprimé, après un téléchargement complet et une confirmation de l'Admin. La trace est dans `attachments.archive_items` ; la lecture d'une pièce vidée répond `410 ATTACHMENT_ARCHIVED`.
+
+## attachments.archives
+
+**Responsabilité** : plan figé d'une archive des photos jointes pour une période (un mois ou un trimestre du calendrier, fuseau Africa/Douala) ; Admin seulement (AV-539, ADR-070). Migration `20261206090000`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | |
+| `granularity` | enum(`MONTH`,`QUARTER`) | Non | — | |
+| `period_start`, `period_end` | date | Non | — | Jours locaux, début inclus, fin exclue |
+| `cutoff_at` | ts | Non | — | Seules les pièces reçues avant cet instant sont archivables (maintenant moins `min_age_days`) |
+| `min_age_days` | int | Non | — | ≥ 30 (CHECK : les images de moins de 30 jours restent toujours sur le serveur) |
+| `volume_max_bytes` | bigint | Non | — | Taille maximale des photos d'un volume au moment du plan |
+| `retention_years` | int | Non | — | ≥ 1 ; conservation de l'archive de l'entreprise, rappelée dans `LISEZMOI.txt` (figée : le volume reste identique) |
+| `file_count`, `files_bytes` | int, bigint | Non | — | Photos du plan |
+| `kept_open_count`, `absent_count` | int | Non | 0 | Photos de la période écartées : opération encore ouverte, fichier absent du disque |
+| `status` | enum(`READY`,`COMPLETED`,`CANCELLED`) | Non | `READY` | |
+| `live_key` | généré | Oui | — | `granularity:period_start` tant que `READY` : **UQ** (un seul plan vivant par période) |
+| `completed_at`, `cancelled_at`, `cancelled_by` | | Oui | — | |
+| `created_at`, `created_by` | | | | |
+
+- **PK** `id`. **UQ** `live_key`. **IX** `(period_start, created_at)`.
+- **Suppr.** `IMMUABLE` : seuls le statut et ses dates changent ; un plan terminé ou annulé ne change plus ; aucune suppression physique (déclencheurs).
+
+## attachments.archive_volumes
+
+**Responsabilité** : un fichier ZIP du plan — les photos d'**un mois et d'une catégorie** (`RECEPTION`, `MORTALITE`, `PERTE`, `DEPENSE`, `FACTURE_FOURNISSEUR`), au plus `volume_max_bytes` et 10 000 photos —, avec la preuve de sa livraison.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | |
+| `archive_id` | uuid → archives | Non | — | |
+| `seq` | int | Non | — | Rang dans le plan (**UQ** avec `archive_id`) |
+| `category` | enum | Non | — | Dossier de l'archive |
+| `month_start` | date | Non | — | Premier jour du mois local |
+| `part` | int | Non | 1 | Partie, si le mois et la catégorie dépassent la borne |
+| `file_name` | varchar(160) | Non | — | `GIC-photos_AAAA-MM_CATÉGORIE_AAAAMMJJ[_pNN].zip` (**UQ** avec `archive_id`) |
+| `file_count`, `files_bytes` | int, bigint | Non | — | Photos du volume |
+| `zip_bytes` | bigint | Non | — | Longueur exacte du ZIP (`Content-Length`), calculée au plan |
+| `zip_sha256` | char(64) | Oui | — | Empreinte des octets envoyés à la dernière livraison complète |
+| `deliveries`, `aborted_deliveries` | int | Non | 0 | Livraisons complètes, réponses interrompues |
+| `first_delivered_at`, `last_delivered_at`, `last_delivered_by` | | Oui | — | |
+| `verified_at`, `verified_by` | | Oui | — | Fichier rangé dont l'empreinte a été comparée (facultatif) |
+| `resolved_at`, `resolved_by` | | Oui | — | Toutes les photos du volume sont vidées ou libérées |
+
+- **PK** `id`. **Suppr.** `IMMUABLE` hors livraison, vérification et résolution ; aucune suppression physique.
+
+## attachments.archive_items
+
+**Responsabilité** : une photo du plan — la trace qui reste après le vidage du serveur (référence, chemin dans l'archive, empreinte, taille, date de soumission).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `archive_id`, `attachment_id` | uuid | Non | — | **PK** ; `attachment_id` → `attachments.attachments` |
+| `volume_id` | uuid → archive_volumes | Non | — | |
+| `entry_path` | varchar(300) | Non | — | `CATÉGORIE/AAAA-MM/NUMÉRO[_RÉFÉRENCE…]_AAAAMMJJ-HHMMSS_ID8.ext` (caractères sûrs seulement) |
+| `category` | enum | Non | — | |
+| `owner_type`, `owner_id` | | Non | — | Document propriétaire |
+| `reference`, `secondary_reference` | varchar | Non, Oui | — | Numéro du document ; pièce papier, bon de livraison ou numéro de facture du fournisseur |
+| `kind`, `mime_type`, `size_bytes`, `sha256` | | Non | — | Recopiés de la pièce |
+| `captured_at`, `submitted_at` | ts | Non | — | Prise de vue ; soumission (réception par le serveur) |
+| `state` | enum(`PLANNED`,`PURGED`,`RELEASED`) | Non | `PLANNED` | Prévue, vidée du serveur, libérée (restée sur le serveur) |
+| `resolved_at`, `release_reason` | | Oui | — | `OPEN_OPERATION`, `CHANGED`, `TOO_RECENT`, `ARCHIVE_CANCELLED` |
+| `held_attachment_id` | généré | Oui | — | `attachment_id` tant que `PLANNED` ou `PURGED` : **UQ** (une pièce n'est couverte que par un élément à la fois) |
+
+- **PK** `(archive_id, attachment_id)`. **IX** `(volume_id, state)`, `(attachment_id)`.
+- **Suppr.** `IMMUABLE` hors résolution ; une photo résolue ne change plus ; aucune suppression physique.
 
 ## communication.alert_rules
 
@@ -182,7 +251,7 @@
 | `alert_id` | uuid → alerts | Oui | — | Mis à `NULL` à la purge de l'alerte |
 | `alert_type` | code | Oui | — | Type de l'alerte (regroupement des push par couple utilisateur et type) ; exigé si `kind = ALERT` |
 | `note_id` | uuid → internal_notes | Oui | — | Exigé si `kind = NOTE` |
-| `source_type`, `source_id` | code, uuid | Oui | — | Objet source. Pour `kind = ALERT` : `source_type` vaut `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` (escalade, jamais regroupée) et `source_id` l'alerte ; sinon la notification directe ou l'export. Pour `kind = NOTE` : `source_type` vaut `NOTE` et `source_id` la note. Pour `kind = DIRECT` (P9-11, AV-430) : `source_type` vaut `APPROVAL_REQUEST` (demande de validation ou sa décision) ou `STOCK_TRANSFER` (transfert demandé ou expédié) et `source_id` l'objet |
+| `source_type`, `source_id` | code, uuid | Oui | — | Objet source. Pour `kind = ALERT` : `source_type` vaut `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` (escalade, jamais regroupée) et `source_id` l'alerte ; sinon la notification directe ou l'export. Pour `kind = NOTE` : `source_type` vaut `NOTE` et `source_id` la note. Pour `kind = DIRECT` (P9-11, AV-430) : `source_type` vaut `APPROVAL_REQUEST` (demande de validation ou sa décision) `STOCK_TRANSFER` (transfert demandé ou expédié) ou `DEVICE` (appareil en attente d'approbation, AV-432) et `source_id` l'objet |
 | `source_event_id` | uuid | Oui | — | Événement qui l'a produite ; unique avec (utilisateur, canal) : un consommateur rejoué ne la double pas |
 | `created_at` | ts | Non | `now()` | |
 | `delivered_at`, `read_at` | ts | Oui | — | Seuls champs qui évoluent, chacun une fois. `delivered_at` : posé à la création pour `IN_APP` ; pour `WEB_PUSH`, à l'envoi accepté par au moins un abonnement (tâche `communication.push.dispatch`) ; une ligne jamais livrée est abandonnée après la fenêtre de reprise ; une ligne dont le destinataire n'a plus d'abonnement vivant n'est plus reprise ; elle est abandonnée après la fenêtre de reprise (P9-25, NT-5) |

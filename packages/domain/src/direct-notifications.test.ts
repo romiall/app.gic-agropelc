@@ -39,7 +39,7 @@ const plan = (eventType: DirectNotificationEventType, payload: unknown, aggregat
   planDirectNotification({ eventType, aggregateId, payload });
 
 describe('types directs', () => {
-  it('les six événements retenus, et eux seulement', () => {
+  it('les sept événements retenus, et eux seulement', () => {
     expect([...DIRECT_NOTIFICATION_EVENT_TYPES]).toEqual([
       'ApprovalRequested',
       'ApprovalGranted',
@@ -47,6 +47,7 @@ describe('types directs', () => {
       'StockTransferRequested',
       'StockTransferDispatched',
       'AnalyticsExportCompleted',
+      'DeviceEnrollmentRequested',
     ]);
     for (const type of DIRECT_NOTIFICATION_EVENT_TYPES) {
       expect(isDirectNotificationEventType(type)).toBe(true);
@@ -342,5 +343,41 @@ describe('fin d’un export (P9-20 ; ADR-067 §7)', () => {
 
   it('les autres plans ne portent pas de nature particulière (DIRECT par défaut)', () => {
     expect(plan('ApprovalRequested', requested()).kind).toBeUndefined();
+  });
+});
+
+describe('appareil à approuver (DeviceEnrollmentRequested ; AV-432)', () => {
+  const DEVICE = '01900000-0000-7000-8000-0000000000d1';
+  const device = (extra: Record<string, unknown> = {}) => ({
+    device_id: DEVICE,
+    short_code: 'K7QZ',
+    enrolled_by_user_id: REQUESTER,
+    ...extra,
+  });
+
+  it('prévient les titulaires de identity.device.approve, l’enrôleur propriétaire mais jamais destinataire', () => {
+    expect(plan('DeviceEnrollmentRequested', device(), DEVICE)).toEqual({
+      eventType: 'DeviceEnrollmentRequested',
+      audience: {
+        kind: 'PERMISSION_HOLDERS',
+        permission: 'identity.device.approve',
+        perimeter: { siteId: null, zoneId: null, ownerUserIds: [REQUESTER] },
+        excludeUserIds: [REQUESTER],
+        fallbackToDirection: true,
+      },
+      title: 'Appareil à approuver',
+      body: 'Un appareil attend votre approbation (code K7QZ).',
+      sourceType: 'DEVICE',
+      sourceId: DEVICE,
+    });
+  });
+
+  it('sans code court, le message reste complet ; une charge sans enrôleur lève', () => {
+    expect(plan('DeviceEnrollmentRequested', device({ short_code: null }), DEVICE).body).toBe(
+      'Un appareil attend votre approbation.',
+    );
+    expect(() =>
+      plan('DeviceEnrollmentRequested', { device_id: DEVICE, short_code: 'K7QZ' }, DEVICE),
+    ).toThrow(DirectNotificationPayloadError);
   });
 });

@@ -131,6 +131,7 @@ export const fr = {
       eggs: 'Collecte',
       lots: 'Lots',
       approvals: 'Validations',
+      control_tower: 'Pilotage',
       treasury: 'Trésorerie',
       receivables: 'Créances',
       requests: 'Demandes',
@@ -865,6 +866,8 @@ export const fr = {
   service: {
     offline_banner:
       'Hors ligne : la tentative est évaluée sur ce téléphone et enregistrée ; elle sera envoyée au retour du réseau.',
+    disabled:
+      'Le pointage n’est pas activé pour l’instant : vous n’avez rien à faire ici. Vos prospects, vos visites et vos ventes s’enregistrent normalement, avec votre position quand le téléphone la donne.',
     start_title: 'Prendre service',
     zone_label: 'Zone de travail',
     zone_placeholder: 'Choisir la zone',
@@ -1852,6 +1855,7 @@ export const fr = {
     section: {
       CREATE: 'Nouveau lot',
       ENTRY: 'Entrée dans un lot',
+      OPENING: 'Reprise d’un lot',
     },
     choose: 'Choisir…',
     no_farm: 'Aucune ferme connue : synchronisez avant de créer un lot.',
@@ -1939,6 +1943,27 @@ export const fr = {
       WARNING: 'Entrée enregistrée, avec un signalement.',
       CONFLICT: 'Entrée mise en attente d’examen (conflit).',
       REJECTED: 'Entrée refusée : {{reason}}',
+    },
+    opening_hint:
+      'Un lot déjà en élevage à la date d’arrêt se reprend en une déclaration : l’effectif réellement présent, la date de mise en place et la valeur totale du lot (animaux, aliments, soins déjà engagés). La Direction la valide ; le lot n’apparaît qu’après sa validation.',
+    opening: {
+      placed_label: 'Date de mise en place',
+      quantity_label: 'Effectif repris (têtes)',
+      value_label: 'Valeur totale du lot (F)',
+      value_hint: 'Elle devient le coût de départ du lot.',
+      known_lot:
+        'Le lot {{code}}, du même produit, dans cet emplacement, mis en place ce jour-là, existe déjà.',
+      known_unsent: 'Une reprise identique attend déjà son envoi sur ce téléphone.',
+      submit: 'Déclarer la reprise',
+    },
+    opening_result: {
+      WAITING_offline:
+        'Reprise enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau, puis validée par la Direction.',
+      WAITING_online: 'Reprise en cours d’envoi…',
+      DONE: 'Reprise déclarée : elle attend la validation de la Direction. Le lot apparaîtra après sa validation.',
+      WARNING: 'Reprise déclarée, avec un signalement. Elle attend la validation de la Direction.',
+      CONFLICT: 'Reprise mise en attente d’examen (conflit).',
+      REJECTED: 'Reprise refusée : {{reason}}',
     },
   },
   output: {
@@ -2489,6 +2514,9 @@ export const fr = {
     history_title: 'Inventaires de l’emplacement',
     lines_count_one: '{{count}} ligne',
     lines_count_other: '{{count}} lignes',
+    // BR-STK-044 : des faits datés d'avant le comptage sont arrivés après sa comptabilisation.
+    reconciled_one: 'Rapproché de faits tardifs : {{count}} ligne',
+    reconciled_other: 'Rapproché de faits tardifs : {{count}} lignes',
     status: {
       IN_PROGRESS: 'En cours',
       SUBMITTING: 'Fin envoyée, en attente',
@@ -3159,6 +3187,7 @@ export const fr = {
       PAYMENT_DUPLICATE: 'Encaissement en double',
       CASH_TRANSFER_DISCREPANCY: 'Écart de remise de fonds',
       INVOICE_MISMATCH: 'Écart de facture fournisseur',
+      LOT_OPENING: 'Reprise d’un lot en cours',
     },
     requested: 'Demandé par {{name}} le {{date}}',
     unknown_user: 'utilisateur inconnu',
@@ -4781,6 +4810,10 @@ export const fr = {
       SESSION_INVALID: 'Reconnectez-vous pour voir la photo.',
       FORBIDDEN: 'Cette photo n’est pas dans votre périmètre.',
       NOT_AVAILABLE: 'Photo pas encore reçue par le serveur.',
+      ARCHIVED:
+        'Photo archivée le {{date}} : elle n’est plus sur le serveur. Cherchez-la dans l’archive de l’entreprise, par sa référence {{reference}}.',
+      ARCHIVED_UNKNOWN:
+        'Photo archivée : elle n’est plus sur le serveur. Cherchez-la dans l’archive de l’entreprise.',
       ERROR: 'Photo indisponible pour le moment.',
     },
     receipt_label: 'Photo du bon de livraison',
@@ -5067,7 +5100,7 @@ export const fr = {
     slip_ref_hint: 'Ex. BV-000142, RE-0045, BD-012…',
     occurred_at: 'Date et heure manuscrite de la pièce',
     backdated_reason: 'Motif de report / antidatage',
-    backdated_reason_hint: 'Requis car la pièce a été signée il y a plus de 24 h.',
+    backdated_reason_hint: 'Requis car la pièce a été signée il y a plus de {{hours}} h.',
     photo_label: 'Preuve photo de la souche',
     photo_hint:
       'Recommandé : prenez en photo la souche ou le feuillet du carnet comme justificatif.',
@@ -5076,7 +5109,7 @@ export const fr = {
     gap_warning:
       'Saut détecté : la dernière pièce enregistrée était le n° {{last}}. Pièces manquantes : {{missing}}.',
     critical_delay_warning:
-      'Attention : le délai de report dépasse 72 h. Cette pièce fera l’objet d’une vérification comptable a posteriori.',
+      'Attention : la pièce date de plus de {{hours}} h. Le serveur refuse un report aussi ancien, sauf à qui a le droit de charger l’historique (Direction, Admin, Finance).',
     future_date_error: 'La date de la pièce ne peut pas être dans le futur.',
     submit_report: 'Enregistrer le report',
     report_success: 'Pièce {{ref}} enregistrée dans la file d’attente locale (outbox).',
@@ -5300,12 +5333,144 @@ export const fr = {
       REJECTED: 'Opération refusée : {{reason}}',
     },
   },
+  archive: {
+    help_title: 'À quoi sert l’archive des photos ?',
+    intro:
+      'Télécharge les photos jointes de plus de {{days}} jours, rangées par type d’opération, pour les garder dans le stockage de l’entreprise ; puis libère l’espace du serveur. Les photos plus récentes, et celles d’une opération encore ouverte, restent sur le serveur.',
+    steps:
+      '1. Choisissez la période et préparez l’archive. 2. Téléchargez les fichiers et rangez-les dans le stockage de l’entreprise. 3. Vérifiez-les si vous le souhaitez, puis videz l’espace du serveur.',
+    retention:
+      'Ces photos sont des preuves : l’archive est à conserver {{years}} ans, en deux exemplaires. Après le vidage, ce sont les seules copies.',
+    server_summary: 'Sur le serveur : {{files}} photo(s), {{size}}.',
+    loading: 'Chargement de l’archive…',
+    unavailable: 'Archive indisponible pour le moment : réessayez quand le serveur répond.',
+    denied: 'Lecture refusée : droit insuffisant.',
+    retry: 'Réessayer',
+    granularity_label: 'Période de l’archive',
+    granularity: { MONTH: 'Mois', QUARTER: 'Trimestre' },
+    period: {
+      month: '{{month}} {{year}}',
+      quarter: '{{rank}} trimestre {{year}}',
+      first: '1er',
+      nth: '{{n}}e',
+    },
+    category: {
+      RECEPTION: 'Réceptions',
+      MORTALITE: 'Mortalités',
+      PERTE: 'Pertes',
+      DEPENSE: 'Dépenses',
+      FACTURE_FOURNISSEUR: 'Factures fournisseur',
+    },
+    periods_title: 'Périodes',
+    periods_none: 'Aucune photo jointe sur le serveur.',
+    period_card: 'Période {{label}}',
+    period_archivable: 'À archiver : {{files}} photo(s), {{size}}',
+    period_recent: 'Gardées (moins de {{days}} jours) : {{files}}',
+    period_archived: 'Déjà vidées du serveur : {{files}}',
+    period_nothing: 'Rien d’assez ancien à archiver.',
+    period_in_progress: 'Archive en cours',
+    prepare: 'Préparer l’archive',
+    preparing: 'Préparation…',
+    active_title: 'Archives en cours',
+    active_none: 'Aucune archive en cours : choisissez une période ci-dessous.',
+    history_title: 'Archives terminées',
+    history_line: '{{period}} : {{files}} photo(s) vidées le {{date}}',
+    history_cancelled: '{{period}} : annulée le {{date}}',
+    card: 'Archive {{label}}',
+    status: { READY: 'À télécharger', COMPLETED: 'Terminée', CANCELLED: 'Annulée' },
+    summary: '{{files}} photo(s), {{size}} · {{volumes}} fichier(s)',
+    cutoff: 'Photos reçues avant le {{date}}',
+    kept_open: '{{count}} photo(s) gardées : opération encore ouverte.',
+    absent: '{{count}} photo(s) absentes du disque, écartées.',
+    volume: {
+      line: '{{files}} photo(s), {{size}} · fichier de {{zip}}',
+      PENDING: 'À télécharger',
+      DELIVERED: 'Téléchargé',
+      VERIFIED: 'Vérifié',
+      RESOLVED: 'Vidé',
+      aborted: '{{count}} téléchargement(s) interrompu(s)',
+      hash_label: 'Empreinte SHA-256',
+      hash_help: 'Sous Windows (PowerShell) : Get-FileHash .\\{{name}} -Algorithm SHA256',
+      download: 'Télécharger',
+      download_label: 'Télécharger {{name}}',
+      verified_at: 'Vérifié le {{date}}',
+      delivered_at: 'Téléchargé le {{date}}',
+      released: '{{count}} photo(s) restées sur le serveur',
+    },
+    download_all: 'Tout télécharger',
+    download_stop: 'Arrêter',
+    download_progress: 'Téléchargement du fichier {{current}} sur {{total}}…',
+    download_waiting:
+      'Le navigateur télécharge le fichier : attendez sa fin avant de passer au suivant.',
+    download_done: 'Tous les fichiers sont téléchargés.',
+    download_stopped: 'Téléchargement arrêté.',
+    download_failed:
+      'Un téléchargement n’a pas abouti : réessayez ce fichier (il se recommence en entier).',
+    verify_title: 'Vérifier les fichiers rangés',
+    verify_help:
+      'Choisissez les fichiers rangés dans le stockage de l’entreprise : l’application en calcule l’empreinte sur cet appareil (seule l’empreinte est envoyée) et la compare à celle du serveur. Facultatif, recommandé.',
+    verify_choose: 'Choisir les fichiers',
+    verify_progress: 'Lecture de {{name}} : {{percent}} %',
+    verify_ok: '{{name}} : identique au fichier {{volume}} de l’archive.',
+    verify_unknown:
+      '{{name}} : ne correspond à aucun fichier de cette archive (incomplet ou abîmé ?).',
+    verify_error: '{{name}} : vérification impossible ({{error}}).',
+    purge: 'Vider l’espace',
+    purge_blocked: 'Disponible quand tous les fichiers sont téléchargés en entier.',
+    purge_title: 'Vider l’espace du serveur',
+    purge_summary:
+      'Vous allez supprimer du serveur {{files}} photo(s) ({{size}}) déjà téléchargées en {{volumes}} fichier(s). Cette opération est définitive : après elle, la seule copie de ces photos est l’archive de l’entreprise.',
+    purge_kept:
+      'Resteront sur le serveur : les photos de moins de {{days}} jours, celles d’une opération encore ouverte, et celles des autres périodes.',
+    purge_unverified: '{{count}} fichier(s) ne sont pas vérifiés par leur empreinte (facultatif).',
+    purge_ack: 'J’ai rangé ces {{volumes}} fichier(s) dans le stockage de l’entreprise.',
+    purge_confirm: 'Vider l’espace du serveur',
+    purge_cancel: 'Garder les photos',
+    purge_running: 'Vidage en cours…',
+    purge_done: '{{purged}} photo(s) supprimées du serveur ({{size}} libérés).',
+    purge_released: '{{count}} photo(s) sont restées sur le serveur : {{reasons}}.',
+    released_reason: {
+      OPEN_OPERATION: 'opération rouverte',
+      CHANGED: 'pièce modifiée',
+      TOO_RECENT: 'trop récentes',
+    },
+    cancel: 'Annuler cette archive',
+    cancel_confirm: 'Annuler cette archive ? Les photos restent sur le serveur.',
+    cancel_yes: 'Oui, annuler',
+    cancel_no: 'Non',
+    created: 'Archive préparée : {{volumes}} fichier(s) à télécharger.',
+    cancelled: 'Archive annulée : les photos restent sur le serveur.',
+    error: {
+      GENERIC: 'L’opération a échoué : réessayez.',
+      OFFLINE:
+        'Pas de réponse du serveur. Si l’opération était longue, vérifiez la liste avant de la recommencer.',
+      SESSION: 'Reconnectez-vous pour continuer.',
+      FORBIDDEN: 'Droit insuffisant pour cette action.',
+      ARCHIVE_NOTHING_TO_ARCHIVE:
+        'Rien à archiver pour cette période : aucune photo assez ancienne dont l’opération soit fermée.',
+      ARCHIVE_PERIOD_IN_PROGRESS:
+        'Une archive de cette période est déjà préparée : téléchargez-la, ou annulez-la.',
+      ARCHIVE_NOT_DOWNLOADED:
+        'Des fichiers n’ont pas été téléchargés en entier : le vidage est refusé.',
+      ARCHIVE_HASH_MISMATCH:
+        'L’empreinte de ce fichier n’est pas celle du volume : retéléchargez-le.',
+      ARCHIVE_BUSY: 'Un autre fichier est en cours de téléchargement : attendez sa fin.',
+      ARCHIVE_NOT_READY: 'Cette archive est déjà terminée ou annulée.',
+      ARCHIVE_VOLUME_RESOLVED: 'Les photos de ce fichier sont déjà vidées du serveur.',
+      ARCHIVE_VOLUME_INCOMPLETE:
+        'Des photos de ce fichier manquent sur le serveur : il ne peut pas être fabriqué.',
+    },
+  },
   settings: {
     help_title: 'À quoi sert cet écran ?',
     intro:
       'Réglez les seuils et les règles de l’application. Chaque changement crée une nouvelle version datée : l’ancienne valeur reste consultable dans l’historique. Les politiques de contrôle décident quelles opérations exigent une photo, un commentaire ou la validation d’un responsable.',
     tabs_label: 'Paramètres et politiques',
-    tab: { settings: 'Paramètres', policies: 'Politiques de contrôle' },
+    tab: {
+      settings: 'Paramètres',
+      policies: 'Politiques de contrôle',
+      archive: 'Archive des photos',
+    },
     denied: 'Lecture refusée : droit insuffisant.',
     unavailable: 'Paramètres indisponibles : réessayez quand le serveur répond.',
     search_label: 'Rechercher un paramètre',
@@ -5345,6 +5510,8 @@ export const fr = {
       VAT_APPLICABLE:
         'TVA applicable (case cochée ; les montants restent sans TVA tant que le taux n’est pas décidé)',
       VAT_EXEMPT: 'Opération exonérée de TVA',
+      MONTH: 'Mois',
+      QUARTER: 'Trimestre',
     },
     weekday: {
       '1': 'lun.',
@@ -5527,6 +5694,8 @@ export const fr = {
       production_high_mortality_alert_heads: 'Seuil d’alerte de mortalité (nombre de têtes)',
       production_daily_entry_working_days: 'Jours de saisie attendue d’un lot',
       production_standard_cost_alert_lookback_days: 'Fenêtre de contrôle du coût standard',
+      fieldwork_checkin_enabled:
+        'Pointage de prise de service en service (désactivé : masqué à l’écran, rien n’est supprimé)',
       fieldwork_geofence_radius_m: 'Rayon du géorepère par défaut',
       fieldwork_max_gps_accuracy_m: 'Précision GPS maximale acceptée',
       fieldwork_override_min_attempts: 'Tentatives de pointage avant une dérogation',
@@ -5540,6 +5709,11 @@ export const fr = {
       approvals_pending_long_hours: 'Heures avant l’alerte d’une validation en attente',
       attachments_missing_alert_days: 'Jours avant l’alerte d’une pièce manquante',
       attachments_missing_alert_horizon_days: 'Historique contrôlé pour les pièces manquantes',
+      attachments_archive_min_age_days:
+        'Jours qu’une photo reste sur le serveur avant d’être archivable',
+      attachments_archive_volume_max_mb: 'Taille maximale d’un fichier d’archive des photos (Mo)',
+      attachments_archive_default_granularity: 'Période proposée pour l’archive des photos',
+      attachments_archive_retention_years: 'Années de conservation de l’archive des photos',
       audit_finance_entity_types: 'Entités du journal d’audit lisibles par la Finance',
       sync_clock_skew_flag_minutes: 'Écart d’horloge signalé',
       sync_occurred_at_future_tolerance_minutes: 'Tolérance d’une date de fait dans le futur',
@@ -5658,6 +5832,7 @@ export const fr = {
       ANALYTICS_EXPORT: 'Export d’analyse',
       APPROVAL_REQUEST: 'Demande de validation',
       ATTACHMENT: 'Pièce jointe',
+      ATTACHMENT_ARCHIVE: 'Archive des photos',
       AUDIT_LOG: 'Journal d’audit',
       AUDIT_PARTITION: 'Partition du journal',
       CASH_ACCOUNT: 'Compte de caisse',
@@ -6207,7 +6382,7 @@ export const fr = {
     reason_apply: 'Appliquer le motif',
     reason_label: 'Motif d’antidatage commun',
     reason_hint:
-      'Pour les pièces de plus de 24 h dont le fichier ne donne pas de motif (colonne « Motif d’antidatage »).',
+      'Pour les pièces de plus de 24 h dont le fichier ne donne pas de motif (colonne « Motif d’antidatage »). Au-delà de 72 h, le serveur ne charge une pièce que pour qui a le droit de charger l’historique (Direction, Admin, Finance).',
     file_label: 'Fichier CSV',
     file_hint:
       'Le fichier est lu sur cet appareil. Rien n’est envoyé tant que vous ne touchez pas « Charger ».',

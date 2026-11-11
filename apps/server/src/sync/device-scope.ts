@@ -52,6 +52,8 @@ const SITE_DATASET_PERMISSIONS: Readonly<
   production: { permission: 'production.lot.read', siteType: 'FERME' },
   sales_recent: { permission: 'sales.sale.read' },
   cash: { permission: 'finance.cash.read' },
+  // AV-514 (4) : feuilles de présence du personnel, aux seuls sites où l'utilisateur lit la présence.
+  presence: { permission: 'fieldwork.presence.read' },
 };
 
 /**

@@ -80,6 +80,9 @@ describe('nom d’une personne sur une feuille', () => {
   it('compare sans tenir compte des espaces de bord ni de la casse', () => {
     expect(personNameKey('  Paul ESSOMBA ')).toBe(personNameKey('paul essomba'));
     expect(personNameKey('Éric')).toBe(personNameKey('éric'));
+    // Les accents ne comptent pas non plus : la fiche papier et le compte ne s'écrivent pas toujours pareil.
+    expect(personNameKey('Élise Ngô')).toBe(personNameKey('elise ngo'));
+    expect(personNameKey('René')).toBe(personNameKey('Rene'));
     expect(personNameKey('Paul Essomba')).not.toBe(personNameKey('Paul Essomba II'));
   });
 });

@@ -173,6 +173,8 @@ stateDiagram-v2
 | `PENDING_UPLOAD` | Délai de 7 jours | — | `MISSING` | Alerte `ATTACHMENT_MISSING` | — | — | `system` |
 | `AVAILABLE` | Remplacement | Nouvelle pièce `AVAILABLE` | `SUPERSEDED` | L'ancienne reste consultable | — | — | Auteur ou responsable |
 
+> **Archivage (AV-539, [ADR-070](../../decisions/ADR-070-archive-des-photos-jointes.md))** : l'archive des photos n'ajoute aucun état. Une pièce téléchargée puis vidée du serveur reste `AVAILABLE` (les contrôles de « photo présente » la jugent toujours reçue) ; sa trace est dans `attachments.archive_items` (`PLANNED`, `PURGED`, `RELEASED`) et la lecture de son contenu répond `410 ATTACHMENT_ARCHIVED`. Seul le fichier du disque disparaît ; la ligne n'est jamais modifiée ni supprimée (INV-GLO-03).
+
 ---
 
 ## SM-ALERT — Alerte

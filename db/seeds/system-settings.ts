@@ -73,6 +73,12 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-121',
   },
+  // AV-537 (décision du porteur du 08/11/2026, questionnaire Q44) : le pointage est désactivé pour le pilote
+  // (effectif nombreux, frictions internes redoutées) ; le dispositif reste en réserve et se rétablit en
+  // remettant ce réglage à vrai. Il ne masque que la présentation (action et signal de l'accueil, indicateurs
+  // « hors prise de service ») : la prise de service, les sessions et les dérogations restent possibles et les
+  // indicateurs restent écrits (INV-TER).
+  { key: 'fieldwork.checkin_enabled', value: false, isClientVisible: true, ref: 'AV-537' },
   { key: 'fieldwork.geofence_radius_m', value: 500, isClientVisible: true, ref: 'CM §10, AV-022' },
   { key: 'fieldwork.max_gps_accuracy_m', value: 150, isClientVisible: true, ref: 'AV-022' },
   { key: 'fieldwork.override_min_attempts', value: 3, isClientVisible: true, ref: 'AV-021' },
@@ -515,6 +521,27 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     value: 90,
     isClientVisible: false,
     ref: 'D13 §7.1, AV-399',
+  },
+  // AV-539, ADR-070 (archive des photos jointes) : ancienneté minimale d'une photo archivable (plancher de 30 jours en
+  // code et en base : ce réglage ne peut qu'augmenter), taille d'un fichier d'archive, période proposée, conservation.
+  {
+    key: 'attachments.archive.min_age_days',
+    value: 30,
+    isClientVisible: false,
+    ref: 'AV-539, AV-545',
+  },
+  { key: 'attachments.archive.volume_max_mb', value: 512, isClientVisible: false, ref: 'AV-545' },
+  {
+    key: 'attachments.archive.default_granularity',
+    value: 'QUARTER',
+    isClientVisible: false,
+    ref: 'AV-539, AV-545',
+  },
+  {
+    key: 'attachments.archive.retention_years',
+    value: 5,
+    isClientVisible: false,
+    ref: 'AV-074, AV-549',
   },
   {
     key: 'procurement.receipt_incomplete_alert_days',

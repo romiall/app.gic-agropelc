@@ -7,10 +7,13 @@
  * `CommunicationRecipientsModule` (global) — pour être importé aussi par le processus worker sans tirer
  * les gestionnaires de commande.
  *
- * Le canal Web Push par défaut est désactivé : aucune bibliothèque ni clé VAPID tant que le porteur n'a
- * pas tranché AV-365. Un adaptateur réel remplace le jeton sans autre changement.
+ * Le canal Web Push est **désactivé tant que le porteur n'a pas posé ses clés VAPID** (`VAPID_PUBLIC_KEY`,
+ * `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, AV-365 et AV-536) : l'adaptateur est alors `DisabledWebPushSender` et
+ * les notifications restent `IN_APP`. Avec des clés valides, c'est `VapidWebPushSender` (RFC 8291 et 8292).
  */
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
+import type { Env } from '../../platform/env.js';
+import { ENV } from '../../platform/env.provider.js';
 import { AlertsConsumerRegistrar } from './application/events/register-alerts-consumer.js';
 import { DirectNotificationsConsumerRegistrar } from './application/events/register-direct-notifications-consumer.js';
 import { AlertEscalationJob } from './application/jobs/alert-escalation-job.js';
@@ -19,11 +22,27 @@ import { CommunicationRecurringJobs } from './application/jobs/communication-rec
 import { ConsumerFailureJob } from './application/jobs/consumer-failure-job.js';
 import { JobFailureJob } from './application/jobs/job-failure-job.js';
 import { PushDispatchJob } from './application/jobs/push-dispatch-job.js';
-import { DisabledWebPushSender, WEB_PUSH_SENDER } from './application/notifications/web-push.js';
+import { webPushSenderFromEnv } from './application/notifications/vapid-web-push.js';
+import { WEB_PUSH_SENDER, type WebPushSender } from './application/notifications/web-push.js';
 
 @Module({
   providers: [
-    { provide: WEB_PUSH_SENDER, useValue: new DisabledWebPushSender() },
+    {
+      provide: WEB_PUSH_SENDER,
+      useFactory: (env: Env): WebPushSender => {
+        const logger = new Logger('communication.push');
+        const sender = webPushSenderFromEnv(env, (issues) =>
+          logger.warn(`Configuration VAPID invalide, Web Push désactivé : ${issues.join(' ; ')}.`),
+        );
+        logger.log(
+          sender.enabled
+            ? 'Web Push activé (clés VAPID posées).'
+            : 'Web Push désactivé (aucune clé VAPID valide) : notifications dans l’application seulement.',
+        );
+        return sender;
+      },
+      inject: [ENV],
+    },
     AlertsConsumerRegistrar,
     DirectNotificationsConsumerRegistrar,
     AlertEscalationJob,

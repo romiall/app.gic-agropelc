@@ -384,6 +384,51 @@ describe('P9-11 (3/3) : consommateur des notifications directes', () => {
       }));
   });
 
+  describe('appareil en attente (AV-432)', () => {
+    const device = (enrolledBy: string) => {
+      const deviceId = freshUuid();
+      return eventOf('DeviceEnrollmentRequested', deviceId, {
+        device_id: deviceId,
+        short_code: 'K7QZ',
+        enrolled_by_user_id: enrolledBy,
+      });
+    };
+
+    it('les titulaires du droit d’approbation sont prévenus, l’enrôleur propriétaire mais exclu', () =>
+      rolledBack(async (uow) => {
+        const resolver = new StubResolver([approverA, requester]);
+        const event = device(requester);
+        expect(await handle(resolver)(uow, event)).toBe(1);
+
+        expect(resolver.holderCalls).toEqual([
+          {
+            permission: 'identity.device.approve',
+            excludeUserIds: [requester],
+            perimeter: { siteId: null, zoneId: null, ownerUserIds: [requester] },
+            at: NOW,
+          },
+        ]);
+        const rows = await notificationsOf(uow, approverA);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          kind: 'DIRECT',
+          title: 'Appareil à approuver',
+          body: 'Un appareil attend votre approbation (code K7QZ).',
+          source_type: 'DEVICE',
+        });
+        expect(fromBin(rows[0]!.source_id!)).toBe(event.aggregateId);
+        expect(await notificationsOf(uow, requester)).toEqual([]);
+      }));
+
+    it('personne n’a le droit sur ce périmètre : la Direction reçoit à leur place', () =>
+      rolledBack(async (uow) => {
+        const resolver = new StubResolver([], [direction]);
+        expect(await handle(resolver)(uow, device(requester))).toBe(1);
+        expect(resolver.roleCalls).toHaveLength(1);
+        expect(await notificationsOf(uow, direction)).toHaveLength(1);
+      }));
+  });
+
   describe('rejeu, désactivation et charges fautives', () => {
     it('un événement rejoué ne double rien ; un autre événement du même objet notifie à nouveau', () =>
       rolledBack(async (uow) => {

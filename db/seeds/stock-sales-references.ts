@@ -29,6 +29,13 @@ export const STOCK_SALES_REASON_CODES: readonly ReasonCodeSeed[] = [
   { category: 'INVENTORY_ADJUSTMENT', code: 'CASSE', label: 'Casse constatée' },
   { category: 'INVENTORY_ADJUSTMENT', code: 'PEREMPTION', label: 'Produit périmé retiré' },
   { category: 'INVENTORY_ADJUSTMENT', code: 'AUTRE', label: 'Autre', requiresComment: true },
+  // Motif du système (BR-STK-044) : posé par le serveur sur l'ajustement qui rapproche un inventaire d'un mouvement
+  // tardif. Jamais proposé au choix à l'écran de comptage (l'écran l'écarte par son code, `SYSTEM_COUNT_REASON_CODES`).
+  {
+    category: 'INVENTORY_ADJUSTMENT',
+    code: 'RAPPROCHEMENT_INVENTAIRE',
+    label: 'Rapprochement tardif d’inventaire (automatique)',
+  },
 
   { category: 'TRANSFER_DISCREPANCY', code: 'MANQUANT_TRANSPORT', label: 'Manquant au transport' },
   {

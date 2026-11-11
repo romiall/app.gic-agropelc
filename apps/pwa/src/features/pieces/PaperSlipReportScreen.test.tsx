@@ -8,7 +8,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getDb } from '../../storage/db.js';
+import { getDb, type Projection } from '../../storage/db.js';
 import {
   DEVICE_ID,
   EXPENSE_IDS,
@@ -54,6 +54,95 @@ const meta = (paperRef: string, occurredAt: string) => ({
   backdatedReason: null,
   dependsOn: [],
 });
+
+const SUPPLIER = '01900000-0000-7000-8000-000000000120';
+
+/** Une ligne de référentiel telle que le serveur la sert. */
+const projection = (
+  dataset: string,
+  entityType: string,
+  entityId: string,
+  data: Record<string, unknown>,
+): Projection => ({
+  key: `${dataset}:${entityType}:${entityId}`,
+  dataset,
+  entity_type: entityType,
+  entity_id: entityId,
+  scope_type: 'GLOBAL',
+  scope_id: null,
+  seq: 1,
+  row_version: 1,
+  data,
+});
+
+/** Œufs achetables et un fournisseur : de quoi reporter un bon de commande. */
+const purchasingRows = (): Projection[] => [
+  projection('procurement', 'SUPPLIER', SUPPLIER, {
+    id: SUPPLIER,
+    code: 'F-LIT',
+    name: 'Provenderie',
+  }),
+  projection('product', 'PRODUCT', IDS.eggs, {
+    id: IDS.eggs,
+    code: 'OEUF',
+    name: 'Œufs de table',
+    category_id: IDS.zone,
+    base_unit_code: 'U',
+    stock_family: 'MARCHANDISE',
+    is_sellable: true,
+    is_purchasable: true,
+    pricing_mode: 'PER_UNIT',
+    status: 'ACTIVE',
+  }),
+];
+
+const LOT = '01900000-0000-7000-8000-000000000140';
+const BUILDING = '01900000-0000-7000-8000-000000000141';
+const FEED = '01900000-0000-7000-8000-000000000142';
+
+/** Un lot actif, son bâtiment et un aliment consommable : de quoi reporter une fiche de suivi de lot. */
+const lotSheetRows = (): Projection[] => [
+  projection('location', 'LOCATION', BUILDING, {
+    id: BUILDING,
+    site_id: IDS.site,
+    code: 'FERME-B1',
+    name: 'Bâtiment 1',
+    location_type: 'BUILDING',
+    is_virtual: false,
+    custody_mode: null,
+    custodian_user_id: null,
+    designated_device_id: null,
+    status: 'ACTIVE',
+  }),
+  projection('production', 'PRODUCTION_LOT', LOT, {
+    id: LOT,
+    lot_code: 'LOT-CH-001',
+    lot_type: 'POULET_CHAIR',
+    product_id: IDS.chicken,
+    stock_lot_id: '01900000-0000-7000-8000-000000000146',
+    site_id: IDS.site,
+    main_location_id: BUILDING,
+    strain: null,
+    status: 'ACTIVE',
+    start_date: '2026-10-01',
+    planned_end_date: null,
+    initial_quantity: 500,
+    occurred_at: '2026-10-01T08:00:00.000Z',
+  }),
+  projection('product', 'PRODUCT', FEED, {
+    id: FEED,
+    code: 'PROV-CH',
+    name: 'Provende chair',
+    category_id: IDS.zone,
+    base_unit_code: 'KG',
+    stock_family: 'INTRANT',
+    is_sellable: false,
+    is_purchasable: true,
+    is_consumable: true,
+    pricing_mode: 'PER_UNIT',
+    status: 'ACTIVE',
+  }),
+];
 
 const renderScreen = () =>
   render(
@@ -276,6 +365,157 @@ describe('PaperSlipReportScreen (PP-B)', () => {
         localRef: 'BD-000055',
       },
     });
+  });
+
+  it('les quatorze types sont proposés, FA, FJC et JE ne le sont pas (documents dérivés)', async () => {
+    renderScreen();
+    const select = await screen.findByLabelText('Type de pièce');
+    const labels = Array.from(select.querySelectorAll('option')).map(
+      (option) => option.textContent,
+    );
+    expect(labels).toHaveLength(14);
+    for (const code of ['DA', 'BC', 'VC', 'FI', 'FL']) {
+      expect(
+        labels.some((label) => label?.startsWith(`${code} —`)),
+        code,
+      ).toBe(true);
+    }
+    for (const code of ['FA', 'FJC', 'JE']) {
+      expect(
+        labels.some((label) => label?.startsWith(`${code} —`)),
+        code,
+      ).toBe(false);
+    }
+  });
+
+  it('BC : le bon de commande est mis en file en deux commandes, création puis soumission, la seconde attend la première', async () => {
+    await getDb().projections.bulkPut(purchasingRows());
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Type de pièce'), 'BC');
+    await user.type(screen.getByLabelText(/Numéro de la pièce/i), 'BC-000031');
+    await user.selectOptions(screen.getByLabelText('Fournisseur'), SUPPLIER);
+    await user.selectOptions(screen.getByLabelText('Emplacement de livraison'), IDS.pos);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText(/^Quantité/), '300');
+    await user.type(screen.getByLabelText('Prix unitaire du bon (XAF)'), '85');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le report' }));
+
+    expect(await screen.findByText(/BC-000031 enregistrée/)).toBeInTheDocument();
+    const rows = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(rows.map((row) => row.command_type)).toEqual([
+      'procurement.order.create',
+      'procurement.order.submit',
+    ]);
+    expect(rows[0]).toMatchObject({
+      aggregate_type: 'PURCHASE_ORDER',
+      captured_offline: true,
+      payload: {
+        supplierId: SUPPLIER,
+        deliveryLocationId: IDS.pos,
+        lines: [{ productId: IDS.eggs, unitCode: 'U', orderedQtyBase: 300, unitPriceXaf: 85 }],
+        localRef: 'BC-000031',
+      },
+    });
+    expect(rows[1]!.aggregate_id).toBe(rows[0]!.aggregate_id);
+    expect(rows[1]!.depends_on).toEqual([rows[0]!.command_id]);
+    // Seule la première commande porte les indices du registre des carnets ; toutes portent le groupe de la pièce.
+    expect(rows[0]!.local_flags).toContain('PAPER_SLIP');
+    expect(rows[1]!.local_flags ?? []).toEqual([`SLIP_GROUP:${rows[0]!.aggregate_id}`]);
+  });
+
+  it('FI : la fiche d’inventaire est mise en file en trois commandes, chacune dépendant de la précédente', async () => {
+    await getDb().projections.bulkPut(purchasingRows());
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Type de pièce'), 'FI');
+    await user.type(screen.getByLabelText(/Numéro de la pièce/i), 'FI-000004');
+    await user.selectOptions(screen.getByLabelText('Emplacement compté'), IDS.pos);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText(/^Quantité/), '118');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le report' }));
+
+    expect(await screen.findByText(/FI-000004 enregistrée/)).toBeInTheDocument();
+    const rows = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(rows.map((row) => row.command_type)).toEqual([
+      'inventory.count.open',
+      'inventory.count.record_lines',
+      'inventory.count.submit',
+    ]);
+    expect(rows[0]).toMatchObject({
+      aggregate_type: 'INVENTORY_COUNT',
+      payload: { locationId: IDS.pos, countType: 'PARTIAL', localRef: 'FI-000004' },
+    });
+    expect(rows[1]!.depends_on).toEqual([rows[0]!.command_id]);
+    expect(rows[2]!.depends_on).toEqual([rows[1]!.command_id]);
+    expect(rows[1]).toMatchObject({
+      payload: {
+        countId: rows[0]!.aggregate_id,
+        lines: [{ productId: IDS.eggs, countedQtyBase: 118 }],
+      },
+    });
+  });
+
+  it('FL : chaque mesure d’une ligne est une saisie du jour du lot, indépendante des autres', async () => {
+    await getDb().projections.bulkPut(lotSheetRows());
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Type de pièce'), 'FL');
+    await user.type(screen.getByLabelText(/Numéro de la pièce/i), 'FL-000012');
+    await user.selectOptions(await screen.findByLabelText('Lot de production'), LOT);
+    // Le bâtiment est celui du lot ; le magasin d'aliment se choisit.
+    expect(screen.getByLabelText(/Bâtiment \/ case/)).toHaveValue(BUILDING);
+    await user.selectOptions(screen.getByLabelText(/Magasin d’aliment/), IDS.pos);
+    await user.type(screen.getByLabelText(/Mortalité : nombre/), '3');
+    await user.selectOptions(screen.getByLabelText(/Aliment : produit/), FEED);
+    await user.type(screen.getByLabelText(/Aliment : quantité/), '45');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le report' }));
+
+    expect(await screen.findByText(/FL-000012 enregistrée/)).toBeInTheDocument();
+    const rows = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(rows.map((row) => row.command_type)).toEqual([
+      'production.mortality.record',
+      'production.input.record',
+    ]);
+    expect(rows[0]).toMatchObject({
+      aggregate_type: 'STOCK_LOSS',
+      captured_offline: true,
+      payload: { productionLotId: LOT, locationId: BUILDING, quantity: 3 },
+    });
+    expect(rows[1]).toMatchObject({
+      aggregate_type: 'CONSUMPTION',
+      payload: {
+        productionLotId: LOT,
+        locationId: IDS.pos,
+        productId: FEED,
+        quantityBase: 45,
+        unitCode: 'KG',
+        costType: 'ALIMENT',
+      },
+    });
+    // Deux écritures distinctes, sans dépendance de l'une envers l'autre ; seule la première porte les indices.
+    expect(new Set(rows.map((row) => row.aggregate_id)).size).toBe(2);
+    expect(rows.every((row) => (row.depends_on ?? []).length === 0)).toBe(true);
+    expect(rows[0]!.local_flags).toContain('SLIP_TYPE:FL');
+    expect(rows[1]!.local_flags ?? []).toEqual([`SLIP_GROUP:${rows[0]!.aggregate_id}`]);
+  });
+
+  it('FL : une ligne se retire, un jour se rajoute (sept au plus), le jour proposé suit le précédent', async () => {
+    await getDb().projections.bulkPut(lotSheetRows());
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Type de pièce'), 'FL');
+    expect(screen.getAllByLabelText('Jour')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retirer la ligne' })).toBeNull();
+    for (let i = 0; i < 6; i++) {
+      await user.click(screen.getByRole('button', { name: 'Ajouter un jour' }));
+    }
+    expect(screen.getAllByLabelText('Jour')).toHaveLength(7);
+    expect(screen.queryByRole('button', { name: 'Ajouter un jour' })).toBeNull();
+    await user.click(screen.getAllByRole('button', { name: 'Retirer la ligne' })[0]!);
+    expect(screen.getAllByLabelText('Jour')).toHaveLength(6);
+    // Les œufs ne sont pas sur cette fiche : l'écran renvoie vers la collecte d'œufs.
+    expect(screen.getByText(/Collecte d’œufs/)).toBeInTheDocument();
   });
 
   it('la photo de la souche n’est proposée que là où le serveur la rattache (AV-504)', async () => {

@@ -8,7 +8,9 @@
  *   jamais antérieur à la création.
  * - **Abonnement** : lié à l'appareil authentifié de la commande ; un point de terminaison déjà connu
  *   (autre utilisateur ou autre appareil) est repris par la session courante : l'ancienne ligne, qui ne
- *   peut plus évoluer, est supprimée puis recréée.
+ *   peut plus évoluer, est supprimée puis recréée. Refusé (`PUSH_SUBSCRIPTION_INVALID`, AV-536) quand le
+ *   point de terminaison n'est pas appelable (http, réseau interne, autre port) ou que les clés ne sont pas
+ *   celles d'un navigateur : un tel abonnement ne servirait jamais.
  * - Tous ces actes sont à la portée de tout titulaire de `comm.alert.read` (tous les rôles).
  */
 import type { IdGenerator } from '@gic/domain';
@@ -28,6 +30,7 @@ import type {
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { recordNotificationChanges } from '../sync-changes.js';
+import { isSafePushEndpoint, isWellFormedPushKeys } from '../notifications/vapid-web-push.js';
 
 const READ_PERMISSION = 'comm.alert.read';
 
@@ -85,6 +88,17 @@ function subscribe(idGenerator: IdGenerator): CommandHandler<PushSubscribePayloa
       };
     }
     const { endpoint, keys } = envelope.payload;
+    // AV-536 : un point de terminaison que l'adaptateur d'envoi refuserait d'appeler (http, réseau interne, autre port) ou
+    // des clés qui ne sont pas celles d'un navigateur ne serviront jamais : mieux vaut le dire à l'abonnement que
+    // l'essuyer à chaque passe d'envoi de la minute qui suit.
+    if (!isSafePushEndpoint(endpoint) || !isWellFormedPushKeys(keys)) {
+      return {
+        status: 'REJECTED',
+        errorCode: 'PUSH_SUBSCRIPTION_INVALID',
+        messageFr:
+          'Abonnement refusé : le point de terminaison ou les clés ne sont pas ceux d’un navigateur.',
+      };
+    }
     const existing = await uow
       .selectFrom('communication_push_subscriptions')
       .select(['id', 'user_id', 'device_id', 'p256dh', 'auth', 'revoked_at'])

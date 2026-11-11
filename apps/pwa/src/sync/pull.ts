@@ -65,6 +65,9 @@ export const KNOWN_DATASETS = [
   // P3 : activité commerciale, pointage.
   'crm_activity',
   'fieldwork',
+  // PP-E (AV-514 (4)) : feuilles de présence du personnel des sites lus, bilans hebdomadaires de l'utilisateur.
+  'presence',
+  'weekly_reports',
   // P6 et P7 : achats et réceptions du site, production des fermes.
   'procurement',
   'production',

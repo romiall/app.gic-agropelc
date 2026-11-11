@@ -124,6 +124,20 @@ function serve({ denied = false }: { denied?: boolean } = {}) {
     if (target === '/api/v1/sites') {
       return ok({ sites: [{ id: SITE, code: 'PDV1', name: 'Point de vente Akwa' }] });
     }
+    if (target.startsWith('/api/v1/attachment-archives/catalog')) {
+      return ok({
+        granularity: 'QUARTER',
+        settings: {
+          minAgeDays: 30,
+          volumeMaxMb: 512,
+          defaultGranularity: 'QUARTER',
+          retentionYears: 5,
+        },
+        server: { files: 0, bytes: 0 },
+        periods: [],
+      });
+    }
+    if (target === '/api/v1/attachment-archives') return ok({ archives: [] });
     if (target === '/api/v1/approvals/policies') {
       return ok({ policies: [POLICY], approver_permissions: PERMISSIONS });
     }
@@ -376,6 +390,33 @@ describe('Paramètres et politiques (ECR-ADM-07)', () => {
     const payload = (await lastCommand())!.payload as Record<string, unknown>;
     expect(payload).toMatchObject({ code: 'EXPENSE_DEFAULT', requiresApproval: false });
     expect(payload).not.toHaveProperty('approverPermission');
+  });
+
+  it('l’onglet « Archive des photos » n’est proposé qu’à l’administrateur', async () => {
+    const userId = '01900000-0000-7000-8000-000000000001';
+    const saved = (roles: string[]) => ({
+      user_id: userId,
+      roles,
+      sections: [],
+      saved_at: '2026-11-08T08:00:00.000Z',
+    });
+    serve();
+    const user = userEvent.setup();
+
+    await getDb().navigation.put(saved(['DIRECTION']));
+    const direction = renderScreen();
+    await screen.findByRole('tab', { name: 'Politiques de contrôle' });
+    expect(screen.queryByRole('tab', { name: 'Archive des photos' })).toBeNull();
+    direction.unmount();
+
+    await getDb().navigation.put(saved(['ADMIN']));
+    renderScreen();
+    await user.click(await screen.findByRole('tab', { name: 'Archive des photos' }));
+    expect(await screen.findByText('À quoi sert l’archive des photos ?')).toBeInTheDocument();
+    expect(vi.mocked(authorizedRequest).mock.calls.map((call) => call[1])).toContain(
+      '/api/v1/attachment-archives',
+    );
+    await getDb().navigation.delete(userId);
   });
 
   it('politique : historique des versions', async () => {

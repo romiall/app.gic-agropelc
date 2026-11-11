@@ -37,6 +37,9 @@ function buildEnvelope(
     readonly occurred_at?: string;
   },
 ): Record<string, unknown> {
+  // Saisie à la date du fait (AV-078, BR-SYN-012) : un écart de plus de 24 h entre la date du fait et celle de la saisie
+  // exigerait un motif.
+  const occurredAt = overrides.occurred_at ?? OCCURRED_AT;
   return {
     command_id: freshUuid(),
     device_seq: 1,
@@ -44,8 +47,8 @@ function buildEnvelope(
     author_user_id: authorUserId,
     base_version: null,
     depends_on: [],
-    occurred_at: OCCURRED_AT,
-    client_created_at: OCCURRED_AT,
+    occurred_at: occurredAt,
+    client_created_at: occurredAt,
     captured_offline: false,
     backdated_reason: null,
     attachment_ids: [],

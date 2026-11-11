@@ -6,11 +6,11 @@
  * propriétaires ; aucune valeur n'est stockée ni saisie.
  *
  * Périmètre d'un rôle (DÉDUIT de la matrice acteurs × domaines, D04-acteurs §4) :
- * Direction, Administrateur, Finance, Achats, Production : toute l'entreprise ; Resp. commercial :
- * son équipe et lui-même ; commerciaux : eux-mêmes ; vendeur de PDV, Resp. ferme, magasinier : les
- * sites de leur affectation (un site ou les sites d'une zone). Les montants de valeur (stock) exigent
- * `inventory.valuation.read` (RC-05, BR-ANA-004). Une section vide de données reste affichée : un
- * indicateur à zéro est une information.
+ * Direction, Supervision consultative, Administrateur, Finance, Achats, Production : toute
+ * l'entreprise ; Resp. commercial : son équipe et lui-même ; commerciaux : eux-mêmes ; vendeur de PDV,
+ * Resp. ferme, magasinier : les sites de leur affectation (un site ou les sites d'une zone). Les
+ * montants de valeur (stock) exigent `inventory.valuation.read` (RC-05, BR-ANA-004). Une section vide
+ * de données reste affichée : un indicateur à zéro est une information.
  *
  * Appareils (MP-06, AV-247) : l'Admin voit tous les appareils en attente ; un responsable qui approuve les
  * appareils de sa portée reçoit le même signal, compté dans cette portée et sans ses propres appareils
@@ -30,14 +30,7 @@ import {
   varianceSeverity,
   type Clock,
 } from '@gic/domain';
-import type {
-  HomeAction,
-  HomeActivity,
-  HomeKpi,
-  HomeResponse,
-  HomeSection,
-  HomeSignal,
-} from '@gic/contracts';
+import type { HomeActivity, HomeKpi, HomeResponse, HomeSection, HomeSignal } from '@gic/contracts';
 import type { DB } from '../platform/kysely/database.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
 import {
@@ -60,7 +53,10 @@ import {
   listSiteIdsInZones,
   listManagedTeamMembersAt,
 } from '../modules/organization/application/public/index.js';
-import { findWorkSessionAt } from '../modules/fieldwork/application/public/index.js';
+import {
+  findWorkSessionAt,
+  isCheckinEnabled,
+} from '../modules/fieldwork/application/public/index.js';
 import { pendingApprovalsFor } from '../modules/approvals/application/public/index.js';
 import {
   cashPosition,
@@ -102,6 +98,7 @@ import {
   conflictTypeLabel,
   flaggedSalesSignal,
   formatXaf,
+  homeActionsFor,
   kpi,
   lastDays,
   pendingApprovalsTitle,
@@ -128,6 +125,11 @@ interface Context {
   readonly canReadValuation: boolean;
   /** `analytics.dashboard.distribution` (P5-20) : blocs de distribution de la Finance et du magasinier. */
   readonly canReadDistribution: boolean;
+  /**
+   * Pointage en service (`fieldwork.checkin_enabled`, AV-537) : faux, l'accueil ne propose plus la prise de service
+   * et ne signale plus une vente « hors prise de service ».
+   */
+  readonly checkinEnabled: boolean;
 }
 
 interface Built {
@@ -266,7 +268,12 @@ async function salesBlock(
   }
   if (today.flaggedCount > 0) {
     // Ventilation par cause, gravité et lien (AV-255).
-    const flagged = flaggedSalesSignal(await flaggedSalesOfDay(ctx.executor, scope, ctx.day));
+    const flagged = flaggedSalesSignal(
+      await flaggedSalesOfDay(ctx.executor, scope, ctx.day, {
+        // Pointage désactivé (AV-537) : « hors prise de service » n'est plus une anomalie à montrer.
+        ignoreFlags: ctx.checkinEnabled ? [] : ['OUT_OF_SESSION'],
+      }),
+    );
     if (flagged) built.signals.push(flagged);
   }
   return built;
@@ -831,6 +838,49 @@ async function buildRole(
   resolved: ResolvedScope,
 ): Promise<Built> {
   const { scope } = resolved;
+  // Rôle strictement consultatif (AV-529) : aucun bloc de coordination (ni validations en attente,
+  // ni résolution de conflits de synchronisation).
+  if (role.code === 'SUPERVISION') {
+    const [sales, receivables, stock, production, cash] = await Promise.all([
+      salesBlock(ctx, scope),
+      receivablesBlock(ctx, scope),
+      stockBlock(ctx, scope, { value: true }),
+      productionBlock(ctx, scope),
+      cashPosition(ctx.executor),
+    ]);
+    const extra = empty();
+    extra.kpis.push(
+      kpi({
+        code: 'KPI-FIN-06',
+        label: 'Trésorerie',
+        value: cash.totalXaf,
+        unit: 'XAF',
+        detail: plural(cash.activeAccounts, 'compte actif', 'comptes actifs'),
+        tone: cash.negativeAccounts > 0 ? 'bad' : 'neutral',
+      }),
+    );
+    if (cash.negativeAccounts > 0) {
+      extra.signals.push(
+        signal({
+          code: 'CASH_NEGATIVE',
+          severity: 'CRITICAL',
+          title: plural(
+            cash.negativeAccounts,
+            'compte de trésorerie négatif',
+            'comptes de trésorerie négatifs',
+          ),
+          count: cash.negativeAccounts,
+        }),
+      );
+    }
+    return merge(
+      { ...sales, activity: [await recentSalesActivity(ctx, scope)] },
+      receivables,
+      stock,
+      production,
+      extra,
+    );
+  }
   const coordination = coordinationBlock(ctx, scope, role);
   switch (role.code) {
     case 'DIRECTION': {
@@ -961,7 +1011,7 @@ async function buildRole(
         coordination,
       ]);
       const extra = empty();
-      if (field && !session) {
+      if (field && !session && ctx.checkinEnabled) {
         extra.signals.push(
           signal({
             code: 'SERVICE_NOT_STARTED',
@@ -1094,8 +1144,14 @@ async function buildRole(
   }
 }
 
-function toSection(role: RoleDefinition, resolved: ResolvedScope, built: Built): HomeSection {
-  const actions: HomeAction[] = role.actions.map((action) => ({ ...action }));
+function toSection(
+  role: RoleDefinition,
+  resolved: ResolvedScope,
+  built: Built,
+  checkinEnabled: boolean,
+): HomeSection {
+  // Pointage désactivé (AV-537) : plus de « PRENDRE SERVICE » à l'accueil.
+  const actions = homeActionsFor(role.actions, checkinEnabled);
   return {
     role: role.code,
     roleLabel: role.label,
@@ -1134,6 +1190,7 @@ export async function buildHome(input: BuildHomeInput): Promise<HomeResponse> {
       DISTRIBUTION_READ,
       at,
     ),
+    checkinEnabled: await isCheckinEnabled(input.executor, at),
   };
 
   const sections: HomeSection[] = [];
@@ -1143,7 +1200,7 @@ export async function buildHome(input: BuildHomeInput): Promise<HomeResponse> {
     const role = ROLE_CATALOG[code]!;
     const resolved = await resolveScope(ctx, role);
     const built = await buildRole(ctx, role, resolved);
-    sections.push(toSection(role, resolved, built));
+    sections.push(toSection(role, resolved, built, ctx.checkinEnabled));
     signals.push(...built.signals);
   }
   // L'Admin a déjà le signal de tous les appareils en attente (section ADMIN).

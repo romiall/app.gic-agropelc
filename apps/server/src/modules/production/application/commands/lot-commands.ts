@@ -132,7 +132,7 @@ const entryPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
   sourceKind: z.enum(SOURCE_KINDS),
   /** Têtes (unité de base des produits biologiques, comptée). */
-  quantity: z.number().int().positive(),
+  quantity: z.number().int().positive().max(1_000_000_000),
   /** Emplacement d'élevage de destination ; à défaut, l'emplacement principal du lot. */
   toLocationId: z.string().uuid().optional(),
   /** Stock, transfert, sevrage : emplacement où se trouvent les animaux d'origine. */
@@ -817,6 +817,14 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const author = envelope.author_user_id;
     if (!(await isAllowed(uow, author, MANAGE, at, lot.siteId))) return FORBIDDEN_SCOPE;
     if (entry.status === 'CANCELLED') return { status: 'APPLIED' };
+    // ADR-069 (AV-543) : une reprise comptabilisée ne se contre-passe pas (aucun mouvement n'inverse une ouverture) ;
+    // un effectif faux se corrige par un inventaire d'animaux, validé par le Responsable production.
+    if (entry.entry_type === 'OPENING') {
+      return rejected(
+        'LOT_ENTRY_INVALID',
+        'Une reprise de lot ne s’annule pas : corrigez l’effectif par un inventaire d’animaux.',
+      );
+    }
     if (!acceptsDailyEntries(lot.status)) {
       // Seule exception : une entrée appliquée hors ligne après la fermeture du lot (conflit
       // LOT_CLOSED consigné sur ce lot) s'annule, sinon ses animaux resteraient bloqués dans un

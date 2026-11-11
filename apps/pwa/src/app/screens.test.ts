@@ -212,7 +212,12 @@ describe('app/screens — registre et navigation par rôle', () => {
       });
     }
     expect(ROUTES.supplierPayments).toBe('/finance/paiements');
-    expect([...ROLE_SETS.payableRead]).toEqual(['DIRECTION', 'RESP_ACHATS', 'FINANCE']);
+    expect([...ROLE_SETS.payableRead]).toEqual([
+      'DIRECTION',
+      'SUPERVISION',
+      'RESP_ACHATS',
+      'FINANCE',
+    ]);
     expect([...ROLE_SETS.supplierPaymentRecord]).toEqual(['FINANCE']);
     expect([...ROLE_SETS.supplierPaymentApprove]).toEqual(['DIRECTION']);
     expect(screensForRoles(['RESP_ACHATS']).map((screen) => screen.id)).toEqual(
@@ -227,7 +232,12 @@ describe('app/screens — registre et navigation par rôle', () => {
       actionCodes: ['RECEIPTS'],
       offline: false,
     });
-    expect([...ROLE_SETS.orderMatching]).toEqual(['RESP_ACHATS', 'FINANCE', 'DIRECTION']);
+    expect([...ROLE_SETS.orderMatching]).toEqual([
+      'RESP_ACHATS',
+      'FINANCE',
+      'DIRECTION',
+      'SUPERVISION',
+    ]);
     // P8E-08 (AV-303) : coûts et marges, menu seulement.
     expect(SCREENS.find((screen) => screen.id === 'ECR-FIN-06')).toMatchObject({
       path: '/finance/couts-et-marges',
@@ -237,7 +247,7 @@ describe('app/screens — registre et navigation par rôle', () => {
       actionCodes: [],
       offline: false,
     });
-    expect([...ROLE_SETS.costsMargins]).toEqual(['FINANCE', 'DIRECTION']);
+    expect([...ROLE_SETS.costsMargins]).toEqual(['FINANCE', 'DIRECTION', 'SUPERVISION']);
     expect(screensForRoles(['RESP_ACHATS']).map((screen) => screen.id)).not.toContain('ECR-FIN-06');
     // P8E-09 (AV-304) : créances, action « Créances » de l'accueil de la Finance.
     expect(SCREENS.find((screen) => screen.id === 'ECR-FIN-01')).toMatchObject({
@@ -248,7 +258,12 @@ describe('app/screens — registre et navigation par rôle', () => {
       actionCodes: ['RECEIVABLES'],
       offline: false,
     });
-    expect([...ROLE_SETS.receivables]).toEqual(['FINANCE', 'DIRECTION', 'RESP_COMMERCIAL']);
+    expect([...ROLE_SETS.receivables]).toEqual([
+      'FINANCE',
+      'DIRECTION',
+      'SUPERVISION',
+      'RESP_COMMERCIAL',
+    ]);
     expect(routeOfAction({ code: 'RECEIVABLES', route: null }, 'FINANCE')).toBe(
       '/finance/creances',
     );
@@ -261,11 +276,16 @@ describe('app/screens — registre et navigation par rôle', () => {
     }
   });
 
-  it('écrans d’administration de RP-1 : organisation pour l’Admin, paramètres pour la Direction et l’Admin, journal avec la Finance', () => {
+  it('écrans d’administration de RP-1 : organisation pour l’Admin, paramètres pour la Direction et l’Admin, journal avec Supervision et Finance', () => {
     for (const [id, path, labelKey, roles] of [
       ['ECR-ADM-06', '/administration/organisation', 'organization', ['ADMIN']],
       ['ECR-ADM-07', '/administration/parametres', 'settings', ['DIRECTION', 'ADMIN']],
-      ['ECR-AUD-01', '/administration/audit', 'audit', ['DIRECTION', 'ADMIN', 'FINANCE']],
+      [
+        'ECR-AUD-01',
+        '/administration/audit',
+        'audit',
+        ['DIRECTION', 'SUPERVISION', 'ADMIN', 'FINANCE'],
+      ],
     ] as const) {
       expect(SCREENS.find((screen) => screen.id === id)).toMatchObject({
         path,
@@ -361,11 +381,14 @@ describe('app/screens — registre et navigation par rôle', () => {
       path: '/pilotage/direction',
       labelKey: 'analytics_direction',
       group: 'general',
-      roles: ['DIRECTION'],
+      roles: ['DIRECTION', 'SUPERVISION'],
       actionCodes: ['CONTROL_TOWER'],
       offline: true,
     });
     expect(routeOfAction({ code: 'CONTROL_TOWER', route: null }, 'DIRECTION')).toBe(
+      ROUTES.analyticsDirection,
+    );
+    expect(routeOfAction({ code: 'CONTROL_TOWER', route: null }, 'SUPERVISION')).toBe(
       ROUTES.analyticsDirection,
     );
     expect(routeOfAction({ code: 'CONTROL_TOWER', route: null }, 'ADMIN')).toBeNull();
@@ -380,6 +403,38 @@ describe('app/screens — registre et navigation par rôle', () => {
       roles: ROLE_SETS.analyticsExplorer,
       offline: false,
     });
+  });
+
+  it('SUPERVISION (AV-529) : accès consultatif complet aux tableaux de pilotage et lectures, sans validations ni écritures', () => {
+    const supIds = screensForRoles(['SUPERVISION']).map((s) => s.id);
+    expect(supIds).toEqual(
+      expect.arrayContaining([
+        'ECR-ANA-01',
+        'ECR-ANA-02',
+        'ECR-ANA-03',
+        'ECR-ANA-04',
+        'ECR-ANA-05',
+        'ECR-ANA-06',
+        'ECR-FIN-01',
+        'ECR-FIN-06',
+        'ECR-AUD-01',
+        'ECR-SYN-02',
+      ]),
+    );
+    for (const forbidden of [
+      'ECR-ADM-08',
+      'ECR-PRX-02',
+      'ECR-ADM-07',
+      'ECR-NOT-03',
+      'ECR-SYN-03',
+      'ECR-FIN-05',
+      'ECR-FIN-02',
+      'ECR-PIE-01',
+      'ECR-IMP-01',
+    ]) {
+      expect(supIds).not.toContain(forbidden);
+    }
+    expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'SUPERVISION')).toBeNull();
   });
 
   it('pour un rôle, chaque code d’action ne mène qu’à un seul écran ; chaque chemin est unique', () => {

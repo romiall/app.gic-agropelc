@@ -18,9 +18,10 @@ import {
   FLAG_AMOUNT,
   FLAG_PAPER_REF,
   FLAG_PAPER_SLIP,
+  FLAG_SLIP_GROUP,
   FLAG_SLIP_TYPE,
   REPORTABLE_SLIP_TYPES,
-  buildReportCommand,
+  buildReportCommands,
   type ReportCommand,
   type ReportableSlipType,
   type ResolvedSlip,
@@ -58,21 +59,34 @@ export function toOutboxInput(
   };
 }
 
-/** Enregistre le report de pièce papier dans l'outbox locale (la commande est celle du serveur). */
+/**
+ * Enregistre le report de pièce papier dans l'outbox locale (les commandes sont celles du serveur). Une pièce en plusieurs
+ * commandes (bon de commande, fiche d'inventaire) les met en file dans l'ordre, chacune dépendant de la précédente ; la
+ * commande rendue est la dernière, celle dont le résultat dit si la pièce est entièrement enregistrée.
+ */
 export async function submitPaperSlipReport(
   slip: ResolvedSlip,
   meta: SlipMeta,
   authorUserId: string,
   photo: PreparedPhoto | null = null,
 ): Promise<OutboxCommand> {
-  const command = buildReportCommand(slip, {
+  const commands = buildReportCommands(slip, {
     paperRef: meta.paperRef,
     occurredAt: meta.occurredAt,
     backdatedReason: meta.backdatedReason,
     aggregateId: idGenerator.newId(),
     dependsOn: meta.dependsOn,
   });
-  return submitCommand(toOutboxInput(command, authorUserId, photo));
+  let previous: OutboxCommand | undefined;
+  for (const command of commands) {
+    const input = toOutboxInput(command, authorUserId, photo);
+    previous = await submitCommand(
+      command.dependsOnPrevious && previous
+        ? { ...input, dependsOn: [...(input.dependsOn ?? []), previous.command_id] }
+        : input,
+    );
+  }
+  return previous!;
 }
 
 export interface ReportedSlipRecord {
@@ -84,9 +98,37 @@ export interface ReportedSlipRecord {
   readonly authorUserId: string;
   readonly description: string;
   readonly amountXaf?: number | null;
+  /** État de la pièce : la pire issue de ses commandes (`worstStatus`), non celle de la seule première. */
   readonly status: OutboxCommand['status'];
+  /** Nombre de commandes de la pièce (1 pour la plupart ; plusieurs pour BC, FI, FL). */
+  readonly partCount: number;
+  /** Combien de ces commandes le serveur a refusées (`REJECTED`) : une fiche de suivi de lot peut l'être en partie. */
+  readonly refusedCount: number;
   readonly hasAttachment: boolean;
   readonly backdatedReason?: string | null;
+}
+
+/** Gravité d'un état d'envoi pour juger une pièce en plusieurs commandes (le plus grave l'emporte). */
+const STATUS_SEVERITY: Readonly<Record<OutboxCommand['status'], number>> = {
+  REJECTED: 6,
+  CONFLICT: 5,
+  LOCAL_ONLY: 4,
+  PENDING_SYNC: 3,
+  SYNCING: 2,
+  SYNCED_WITH_WARNING: 1,
+  SYNCED: 0,
+};
+
+/**
+ * L'état d'une pièce d'après ses commandes : une fiche dont une saisie est refusée est « refusée » même si la première est
+ * passée (et inversement), et une pièce n'est « synchronisée » que lorsque toutes ses commandes le sont.
+ */
+export function worstStatus(statuses: readonly OutboxCommand['status'][]): OutboxCommand['status'] {
+  let worst: OutboxCommand['status'] = 'SYNCED';
+  for (const status of statuses) {
+    if (STATUS_SEVERITY[status] > STATUS_SEVERITY[worst]) worst = status;
+  }
+  return worst;
 }
 
 const isSlipType = (value: string): value is ReportableSlipType =>
@@ -139,6 +181,20 @@ export function describeReportedPayload(
       return `Transfert : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
     case 'FP':
       return `Perte (${lossLabel(String(p['category'] ?? ''))})`;
+    case 'DA':
+      return `Demande d'achat : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'BC':
+      return `Bon de commande fournisseur : ${plural(countOf(p['lines']), 'ligne', 'lignes')}`;
+    case 'VC':
+      return 'Visite commerciale';
+    case 'FL':
+      // La première commande porte les indices : la fiche entière tient en plusieurs saisies du jour.
+      return 'Suivi de lot de production';
+    case 'FI':
+      // La première commande de la chaîne (l'ouverture) porte les indices : elle n'a pas encore les lignes.
+      return `Fiche d'inventaire (${
+        p['countType'] === 'FULL' ? 'complet' : p['countType'] === 'SPOT' ? 'ponctuel' : 'partiel'
+      })`;
   }
 }
 
@@ -152,6 +208,16 @@ export async function loadReportedSlipsFromDb(
 ): Promise<ReportedSlipRecord[]> {
   const commands = await db.outbox.toArray();
   const reported: ReportedSlipRecord[] = [];
+
+  // Les commandes d'une pièce en plusieurs commandes (BC, FI, FL), par groupe : seule la première est listée, son état est
+  // celui de l'ensemble.
+  const groupOf = (flags: readonly string[]): string | undefined =>
+    flags.find((flag) => flag.startsWith(FLAG_SLIP_GROUP))?.slice(FLAG_SLIP_GROUP.length);
+  const groups = new Map<string, OutboxCommand[]>();
+  for (const cmd of commands) {
+    const group = groupOf(cmd.local_flags ?? []);
+    if (group !== undefined) groups.set(group, [...(groups.get(group) ?? []), cmd]);
+  }
 
   for (const cmd of commands) {
     const flags = cmd.local_flags ?? [];
@@ -173,6 +239,9 @@ export async function loadReportedSlipsFromDb(
       }
     }
 
+    const group = groupOf(flags);
+    const parts = group !== undefined ? (groups.get(group) ?? [cmd]) : [cmd];
+
     reported.push({
       commandId: cmd.command_id,
       slipType,
@@ -182,7 +251,9 @@ export async function loadReportedSlipsFromDb(
       authorUserId: cmd.author_user_id,
       description: describeReportedPayload(slipType, cmd.payload, labels),
       amountXaf,
-      status: cmd.status,
+      status: worstStatus(parts.map((part) => part.status)),
+      partCount: parts.length,
+      refusedCount: parts.filter((part) => part.status === 'REJECTED').length,
       hasAttachment: (cmd.attachment_ids ?? []).length > 0,
       backdatedReason: cmd.backdated_reason,
     });

@@ -15,8 +15,21 @@ import {
   MAX_SLIP_REF_LENGTH,
   type ReportableSlipType,
   type ResolvedSlip,
+  type SlipCountLine,
+  type SlipCountType,
+  type SlipLotDay,
+  type SlipOrderLine,
   type SlipReceiptLine,
+  type SlipRequestLine,
 } from './report-commands.js';
+import { visitOutcomes } from '../crm/visit.js';
+import {
+  consumableProducts,
+  farmLocations,
+  parseCount as parseHeadcount,
+  parsePositive,
+  rearingLocations,
+} from '../production/daily.js';
 import { ownAccounts, sourceAccounts, targetsFor, transferPairs } from '../cash/transfers.js';
 import {
   paymentIssues,
@@ -27,6 +40,16 @@ import {
 import { openOrders, type OrderView } from '../sales/open-orders.js';
 import { deduceChannel, openWorkSession, saleZoneId } from '../sales/pricing.js';
 import type { SalesReferences } from '../sales/references.js';
+import { settingValue } from '../sales/stock.js';
+import type { SettingData } from '../sales/types.js';
+import {
+  BACKDATE_MAX_HOURS_SETTING,
+  JUSTIFICATION_AFTER_HOURS_SETTING,
+  backdatingWindowFrom,
+  orderAmounts,
+  quantityFromDecimal,
+  type BackdatingWindow,
+} from '@gic/domain';
 import {
   computeLine,
   linePayload,
@@ -48,6 +71,22 @@ import { checkTransferLine, destinations } from '../stock/transfer.js';
 import { receivableOrders } from '../procurement/receipt.js';
 
 // --- État du formulaire ---------------------------------------------------------------------------
+
+/** FL : une ligne (un jour) de la fiche de suivi de lot en cours de saisie. */
+export interface LotDayForm {
+  readonly key: string;
+  /** Jour de la ligne, `AAAA-MM-JJ`. */
+  readonly date: string;
+  readonly deathsText: string;
+  readonly deathReasonId: string;
+  readonly feedProductId: string;
+  /** Aliment distribué, en kg. */
+  readonly feedKgText: string;
+  /** Pesée : effectif de l'échantillon et poids moyen (g). */
+  readonly sampleText: string;
+  readonly avgWeightText: string;
+  readonly observation: string;
+}
 
 export interface SlipForm {
   readonly slipType: ReportableSlipType;
@@ -95,6 +134,17 @@ export interface SlipForm {
   readonly deliveryNoteRef: string;
   readonly lossCategory: LossCategory | '';
   readonly lossReasonId: string;
+  /** VC : résultat de la visite (motif `VISIT_OUTCOME`). */
+  readonly visitOutcomeId: string;
+  /** VC : date de la prochaine action (`AAAA-MM-JJ`) et sa note. */
+  readonly nextActionDate: string;
+  readonly nextActionNote: string;
+  /** FI : nature de l'inventaire. */
+  readonly countType: SlipCountType;
+  /** FL : lot de production (`locationId` : son bâtiment ou sa case), magasin d'aliment et lignes de la fiche. */
+  readonly lotId: string;
+  readonly feedLocationId: string;
+  readonly lotDays: readonly LotDayForm[];
 }
 
 /** Heure locale d'un instant, au format de `<input type="datetime-local">`. */
@@ -132,6 +182,13 @@ export function emptySlipForm(now: Date, slipType: ReportableSlipType = 'BV'): S
     deliveryNoteRef: '',
     lossCategory: '',
     lossReasonId: '',
+    visitOutcomeId: '',
+    nextActionDate: '',
+    nextActionNote: '',
+    countType: 'PARTIAL',
+    lotId: '',
+    feedLocationId: '',
+    lotDays: [],
   };
 }
 
@@ -165,7 +222,14 @@ export type SlipIssue =
   | 'SUPPLIER_REQUIRED'
   | 'COST_REQUIRED'
   | 'LOSS_CATEGORY_REQUIRED'
-  | 'COMMENT_REQUIRED';
+  | 'COMMENT_REQUIRED'
+  | 'OUTCOME_REQUIRED'
+  | 'NEXT_ACTION_INVALID'
+  | 'LOT_REQUIRED'
+  | 'DAYS_REQUIRED'
+  | 'DAY_INVALID'
+  | 'MEASURE_INVALID'
+  | 'FEED_LOCATION_REQUIRED';
 
 export const SLIP_ISSUE_MESSAGES: Readonly<Record<SlipIssue, string>> = {
   REF_REQUIRED: 'Saisissez le numéro de la pièce.',
@@ -198,6 +262,15 @@ export const SLIP_ISSUE_MESSAGES: Readonly<Record<SlipIssue, string>> = {
   COST_REQUIRED: 'Saisissez le prix d’achat de chaque ligne (réception sans bon de commande).',
   LOSS_CATEGORY_REQUIRED: 'Choisissez la catégorie de perte.',
   COMMENT_REQUIRED: 'Un commentaire est requis pour cette catégorie ou ce motif.',
+  OUTCOME_REQUIRED: 'Choisissez le résultat de la visite.',
+  NEXT_ACTION_INVALID: 'La date de la prochaine action est invalide.',
+  LOT_REQUIRED: 'Choisissez le lot de production.',
+  DAYS_REQUIRED:
+    'Renseignez au moins une ligne de la fiche : mortalité, aliment, pesée ou observation.',
+  DAY_INVALID: 'Le jour d’une ligne est invalide, dans le futur ou répété.',
+  MEASURE_INVALID:
+    'Une mesure est incomplète ou invalide : nombre de morts, aliment en kg, effectif de l’échantillon ou poids moyen.',
+  FEED_LOCATION_REQUIRED: 'Choisissez le magasin d’où l’aliment est pris.',
 };
 
 // --- Contexte et choix proposés -------------------------------------------------------------------
@@ -290,8 +363,60 @@ export type SlipResolution =
 
 const refuse = (issues: SlipIssue[]): SlipResolution => ({ ok: false, issues });
 
+/**
+ * La fenêtre de saisie rétroactive des réglages visibles de l'appareil (AV-078) : `sync.justification_after_hours` et
+ * `sync.backdate_max_hours` ; absents, les défauts de 24 h et 72 h. Le serveur la juge de la même façon.
+ */
+export function backdatingWindowOf(settings: readonly SettingData[], now: Date): BackdatingWindow {
+  return backdatingWindowFrom(
+    settingValue(settings, JUSTIFICATION_AFTER_HOURS_SETTING, null, now),
+    settingValue(settings, BACKDATE_MAX_HOURS_SETTING, null, now),
+  );
+}
+
+/** Une ligne dont aucune mesure n'est entamée n'est pas une ligne : le jour seul ne compte pas (FL). */
+export const isBlankLotDay = (day: LotDayForm): boolean =>
+  day.deathsText.trim() === '' &&
+  day.feedProductId === '' &&
+  day.feedKgText.trim() === '' &&
+  day.sampleText.trim() === '' &&
+  day.avgWeightText.trim() === '' &&
+  day.observation.trim() === '';
+
+/** Jour réel du calendrier (`2026-02-31` n'en est pas un), au format `AAAA-MM-JJ`. */
+function isCalendarDay(date: string): boolean {
+  if (!DATE_ONLY.test(date)) return false;
+  const noon = new Date(`${date}T12:00`);
+  return !Number.isNaN(noon.getTime()) && toLocalInput(noon).slice(0, 10) === date;
+}
+
+/** Heure de la saisie du jour d'une ligne de fiche de lot : midi du jour, ou l'instant du contrôle si midi n'est pas venu. */
+export function lotDayInstant(date: string, now: Date): string {
+  const noon = new Date(`${date}T12:00`);
+  return (noon.getTime() > now.getTime() ? now : noon).toISOString();
+}
+
+/**
+ * Date de référence de l'antidatage (AV-078) : l'heure de la pièce, ou, pour une fiche de suivi de lot, celle de sa ligne la plus
+ * ancienne (chaque mesure part avec l'heure de son jour, et le serveur juge l'écart de chacune).
+ */
+export function backdatingBasis(form: SlipForm, now: Date): string {
+  if (form.slipType !== 'FL') return form.occurredAt;
+  const oldest = form.lotDays
+    .filter((day) => !isBlankLotDay(day) && isCalendarDay(day.date))
+    .map((day) => day.date)
+    .sort()[0];
+  return oldest === undefined
+    ? form.occurredAt
+    : toLocalInput(new Date(lotDayInstant(oldest, now)));
+}
+
 /** Défauts communs : numéro de la pièce, date et motif d'antidatage (AV-078, AV-312). */
-function commonIssues(form: SlipForm, now: Date): { issues: SlipIssue[]; meta: SlipMeta | null } {
+function commonIssues(
+  form: SlipForm,
+  now: Date,
+  window: BackdatingWindow,
+): { issues: SlipIssue[]; meta: SlipMeta | null } {
   const issues: SlipIssue[] = [];
   const paperRef = normalizeSlipRef(form.paperRef);
   if (!paperRef) issues.push('REF_REQUIRED');
@@ -303,7 +428,7 @@ function commonIssues(form: SlipForm, now: Date): { issues: SlipIssue[]; meta: S
     issues.push('DATE_INVALID');
   } else {
     occurredAt = when.toISOString();
-    const evaluation = evaluateBackdating(occurredAt, now);
+    const evaluation = evaluateBackdating(occurredAt, now, window);
     if (evaluation.isFuture) issues.push('DATE_FUTURE');
     const typed = form.backdatedReason.trim();
     if (evaluation.requiresReason && !typed) issues.push('BACKDATE_REASON_REQUIRED');
@@ -368,7 +493,11 @@ function customerOf(form: SlipForm, refs: SalesReferences) {
 export function resolveSlip(entered: SlipForm, context: SlipContext): SlipResolution {
   // Une ligne laissée vide n'est pas une ligne : seules les lignes entamées comptent.
   const form: SlipForm = { ...entered, lines: entered.lines.filter((line) => !isBlankLine(line)) };
-  const common = commonIssues(form, context.now);
+  const common = commonIssues(
+    { ...form, occurredAt: backdatingBasis(form, context.now) },
+    context.now,
+    backdatingWindowOf(context.refs.settings, context.now),
+  );
   const issues = [...common.issues];
   const resolved = resolveBody(form, context);
   if (!resolved.ok) issues.push(...resolved.issues);
@@ -417,7 +546,154 @@ function resolveBody(form: SlipForm, context: SlipContext): Body {
       return resolveTransfer(form, context);
     case 'FP':
       return resolveLoss(form, context);
+    case 'DA':
+      return resolveRequest(form, context);
+    case 'BC':
+      return resolvePurchaseOrder(form, context);
+    case 'VC':
+      return resolveVisit(form, context);
+    case 'FI':
+      return resolveCount(form, context);
+    case 'FL':
+      return resolveLotSheet(form, context);
   }
+}
+
+/** Causes de mortalité que propose l'écran de saisie du jour (motifs de perte, sans catégorie ou de mortalité). */
+export function mortalityReasons(refs: Pick<SalesReferences, 'reasonCodes'>) {
+  return refs.reasonCodes.filter(
+    (reason) =>
+      reason.category === 'LOSS' &&
+      (reason.loss_category === null || reason.loss_category === 'MORTALITE'),
+  );
+}
+
+/**
+ * FL : lot, bâtiment, et une saisie du jour par mesure renseignée de chaque ligne (mortalité, aliment en kg, pesée,
+ * observation), contrôlées comme les écrans de saisie du jour (`production/daily.ts`). Les œufs ne se reportent pas ici : le
+ * serveur exige leur répartition par calibre, que la fiche ne porte pas.
+ */
+function resolveLotSheet(form: SlipForm, context: SlipContext): Body {
+  const { refs, now } = context;
+  const issues: SlipIssue[] = [];
+  const lot = refs.productionLots.find((entry) => entry.id === form.lotId);
+  if (!lot) issues.push('LOT_REQUIRED');
+  const building = lot
+    ? rearingLocations(refs.locations, lot).find((entry) => entry.id === form.locationId)
+    : undefined;
+  if (lot && !building) issues.push('LOCATION_REQUIRED');
+
+  const filled = form.lotDays.filter((day) => !isBlankLotDay(day));
+  if (filled.length === 0) issues.push('DAYS_REQUIRED');
+  const today = toLocalInput(now).slice(0, 10);
+  const reasons = mortalityReasons(refs);
+  const feedProducts = consumableProducts(refs.products);
+  const days: SlipLotDay[] = [];
+  const seen = new Set<string>();
+  let hasFeed = false;
+  for (const day of filled) {
+    if (!isCalendarDay(day.date) || day.date > today || seen.has(day.date)) {
+      issues.push('DAY_INVALID');
+      continue;
+    }
+    seen.add(day.date);
+    const observation = day.observation.trim();
+
+    let mortality: SlipLotDay['mortality'];
+    // La fiche papier porte souvent « 0 » les jours sans mortalité : sans cause, c'est l'absence de mortalité (rien à
+    // enregistrer), non une valeur refusée ; avec une cause, une mortalité de 0 n'aurait pas de sens.
+    const deathsText =
+      day.deathsText.trim() === '0' && day.deathReasonId === '' ? '' : day.deathsText;
+    if (deathsText.trim() !== '' || day.deathReasonId !== '') {
+      const quantity = parseHeadcount(deathsText);
+      const reason =
+        day.deathReasonId === ''
+          ? undefined
+          : reasons.find((entry) => entry.id === day.deathReasonId);
+      if (quantity === null || (day.deathReasonId !== '' && !reason)) {
+        issues.push('MEASURE_INVALID');
+      } else if (reason?.requires_comment === true && observation === '') {
+        issues.push('COMMENT_REQUIRED');
+      } else {
+        mortality = {
+          quantity,
+          ...(reason ? { reasonCodeId: reason.id } : {}),
+          ...(reason?.requires_comment === true ? { comment: observation } : {}),
+        };
+      }
+    }
+
+    let input: SlipLotDay['input'];
+    if (day.feedProductId !== '' || day.feedKgText.trim() !== '') {
+      const product = feedProducts.find((entry) => entry.id === day.feedProductId);
+      const kilogram = product
+        ? saleUnitsOf(product, refs).find((unit) => unit.unitCode === 'KG')
+        : undefined;
+      const check = product
+        ? checkTransferLine(
+            { key: day.key, productId: product.id, unitCode: 'KG', quantityText: day.feedKgText },
+            kilogram,
+          )
+        : undefined;
+      if (
+        !product ||
+        !check ||
+        check.issue !== null ||
+        check.quantity === null ||
+        check.quantityBase === null
+      ) {
+        issues.push('MEASURE_INVALID');
+      } else {
+        hasFeed = true;
+        input = {
+          productId: product.id,
+          unitCode: 'KG',
+          quantity: check.quantity,
+          quantityBase: check.quantityBase,
+        };
+      }
+    }
+
+    let weighing: SlipLotDay['weighing'];
+    if (day.sampleText.trim() !== '' || day.avgWeightText.trim() !== '') {
+      const sampleSize = parseHeadcount(day.sampleText);
+      const avgWeightG = parsePositive(day.avgWeightText, 1_000_000, 1);
+      if (sampleSize === null || avgWeightG === null) issues.push('MEASURE_INVALID');
+      else weighing = { sampleSize, avgWeightG };
+    }
+
+    days.push({
+      date: day.date,
+      occurredAt: lotDayInstant(day.date, now),
+      ...(mortality ? { mortality } : {}),
+      ...(input ? { input } : {}),
+      ...(weighing ? { weighing } : {}),
+      ...(observation !== '' ? { observation } : {}),
+    });
+  }
+
+  const feedLocation =
+    hasFeed && lot
+      ? farmLocations(refs.locations, lot).find((entry) => entry.id === form.feedLocationId)
+      : undefined;
+  if (hasFeed && !feedLocation) issues.push('FEED_LOCATION_REQUIRED');
+  // Une fiche qui ne porte aucune mesure (que des « 0 » de mortalité) n'a rien à enregistrer.
+  if (
+    issues.length === 0 &&
+    days.every(
+      (day) => !day.mortality && !day.input && !day.weighing && day.observation === undefined,
+    )
+  ) {
+    issues.push('DAYS_REQUIRED');
+  }
+  if (issues.length > 0 || !lot || !building) return fail(...new Set(issues));
+  return done({
+    type: 'FL',
+    lotId: lot.id,
+    locationId: building.id,
+    ...(feedLocation ? { feedLocationId: feedLocation.id } : {}),
+    days: [...days].sort((a, b) => a.date.localeCompare(b.date)),
+  });
 }
 
 type SaleBase =
@@ -809,6 +1085,166 @@ function resolveTransfer(form: SlipForm, context: SlipContext): Body {
       quantityBase: line.quantityBase as number,
     })),
   });
+}
+
+/** Date `AAAA-MM-JJ` facultative et valide, ou `undefined` (vide) ; `null` si renseignée mais invalide. */
+function dateOnly(text: string): string | undefined | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return undefined;
+  return DATE_ONLY.test(trimmed) && !Number.isNaN(Date.parse(trimmed)) ? trimmed : null;
+}
+
+/** DA : demande d'achat d'un site (`procurement.request.submit`) ; le serveur la fait valider (BR-APP-003). */
+function resolveRequest(form: SlipForm, context: SlipContext): Body {
+  const { refs } = context;
+  const issues: SlipIssue[] = [];
+  if (!refs.sites.has(form.siteId)) issues.push('SITE_REQUIRED');
+  if (!optional(form.description)) issues.push('DESCRIPTION_REQUIRED');
+  const neededBy = dateOnly(form.requestedDeliveryDate);
+  if (neededBy === null) issues.push('DELIVERY_DATE_INVALID');
+  if (form.lines.length === 0) issues.push('LINES_REQUIRED');
+  const lines: SlipRequestLine[] = [];
+  for (const draft of form.lines) {
+    const product = refs.products.find((entry) => entry.id === draft.productId);
+    const quantity = parseQuantity(draft.quantityText);
+    const priceText = (draft.priceText ?? '').trim();
+    const estimated = priceText === '' ? undefined : parseXaf(priceText);
+    // Le serveur refuse un produit non achetable (BR-APP-001).
+    if (
+      !product ||
+      product.is_purchasable !== true ||
+      quantity === null ||
+      (priceText !== '' && estimated === null)
+    ) {
+      issues.push('LINE_INVALID');
+    } else {
+      lines.push({
+        productId: product.id,
+        unitCode: product.base_unit_code,
+        quantity,
+        quantityBase: quantity,
+        ...(estimated !== undefined && estimated !== null
+          ? { estimatedUnitPriceXaf: estimated }
+          : {}),
+      });
+    }
+  }
+  if (issues.length > 0) return fail(...new Set(issues));
+  return done({
+    type: 'DA',
+    siteId: form.siteId,
+    ...(neededBy ? { neededByDate: neededBy } : {}),
+    justification: form.description.trim().slice(0, 4000),
+    lines,
+  });
+}
+
+/** BC : bon de commande fournisseur (`procurement.order.create` puis `.submit`). */
+function resolvePurchaseOrder(form: SlipForm, context: SlipContext): Body {
+  const { refs, userId } = context;
+  const location = slipLocations(refs, userId).find(
+    (entry) => entry.id === form.locationId && entry.site_id !== null,
+  );
+  const issues: SlipIssue[] = [];
+  if (!location) issues.push('LOCATION_REQUIRED');
+  if (!refs.suppliers.has(form.supplierId)) issues.push('SUPPLIER_REQUIRED');
+  const expected = dateOnly(form.requestedDeliveryDate);
+  if (expected === null) issues.push('DELIVERY_DATE_INVALID');
+  if (form.lines.length === 0) issues.push('LINES_REQUIRED');
+  const lines: SlipOrderLine[] = [];
+  for (const draft of form.lines) {
+    const product = refs.products.find((entry) => entry.id === draft.productId);
+    const quantity = parseQuantity(draft.quantityText);
+    const price = draft.priceText === null ? null : parseXaf(draft.priceText);
+    if (!product || product.is_purchasable !== true || quantity === null) {
+      issues.push('LINE_INVALID');
+    } else if (price === null) {
+      issues.push('COST_REQUIRED');
+    } else {
+      lines.push({
+        productId: product.id,
+        unitCode: product.base_unit_code,
+        orderedQtyBase: quantity,
+        unitPriceXaf: price,
+      });
+    }
+  }
+  let totalXaf = 0;
+  if (issues.length === 0) {
+    try {
+      totalXaf = orderAmounts(
+        lines.map((line) => ({
+          quantity: quantityFromDecimal(line.orderedQtyBase),
+          unitPriceXaf: line.unitPriceXaf,
+        })),
+      ).total;
+    } catch {
+      issues.push('AMOUNT_INVALID');
+    }
+  }
+  if (issues.length > 0 || !location) return fail(...new Set(issues));
+  return done({
+    type: 'BC',
+    supplierId: form.supplierId,
+    deliveryLocationId: location.id,
+    ...(expected ? { expectedDeliveryDate: expected } : {}),
+    lines,
+    totalXaf,
+  });
+}
+
+/** VC : fiche de visite d'un client (`crm.visit.record`), sans position (le serveur le signale). */
+function resolveVisit(form: SlipForm, context: SlipContext): Body {
+  const { refs } = context;
+  const customer = customerOf(form, refs);
+  const issues: SlipIssue[] = [];
+  if (form.customerId === null) issues.push('CUSTOMER_REQUIRED');
+  else if (!customer) issues.push('CUSTOMER_UNKNOWN');
+  const outcome = visitOutcomes(refs.reasonCodes).find((entry) => entry.id === form.visitOutcomeId);
+  if (!outcome) issues.push('OUTCOME_REQUIRED');
+  const next = dateOnly(form.nextActionDate);
+  if (next === null) issues.push('NEXT_ACTION_INVALID');
+  if (issues.length > 0 || !customer || !outcome) return fail(...new Set(issues));
+  return done(
+    {
+      type: 'VC',
+      customerId: customer.id,
+      outcomeReasonCodeId: outcome.id,
+      notes: optional(form.notes)?.slice(0, 1900),
+      ...(next ? { nextActionAt: next } : {}),
+      nextActionNote: optional(form.nextActionNote)?.slice(0, 2000),
+    },
+    pendingOf(customer),
+  );
+}
+
+/** FI : fiche d'inventaire (`inventory.count.open`, `.record_lines` puis `.submit`). */
+function resolveCount(form: SlipForm, context: SlipContext): Body {
+  const { refs, userId } = context;
+  const location = slipLocations(refs, userId).find((entry) => entry.id === form.locationId);
+  const issues: SlipIssue[] = [];
+  if (!location) issues.push('LOCATION_REQUIRED');
+  if (form.lines.length === 0) issues.push('LINES_REQUIRED');
+  const lines: SlipCountLine[] = [];
+  const seen = new Set<string>();
+  for (const draft of form.lines) {
+    const product = refs.products.find((entry) => entry.id === draft.productId);
+    // La quantité comptée est obligatoire (zéro compris : « rien en rayon » est un comptage) ; un produit une seule fois.
+    const counted = draft.quantityText.trim() === '' ? null : parseCount(draft.quantityText);
+    if (
+      !product ||
+      product.stock_family === 'SERVICE' ||
+      counted === null ||
+      seen.has(product.id)
+    ) {
+      issues.push('LINE_INVALID');
+    } else {
+      seen.add(product.id);
+      lines.push({ productId: product.id, countedQtyBase: counted });
+    }
+  }
+  if (issues.length > 0 || !location) return fail(...new Set(issues));
+  return done({ type: 'FI', locationId: location.id, countType: form.countType, lines });
 }
 
 function resolveLoss(form: SlipForm, context: SlipContext): Body {

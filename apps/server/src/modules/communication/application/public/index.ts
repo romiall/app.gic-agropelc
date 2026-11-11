@@ -60,6 +60,12 @@ export type {
   NoteAudienceResolver,
 } from '../notes/note-audience-resolver.js';
 export { DisabledWebPushSender, WEB_PUSH_SENDER } from '../notifications/web-push.js';
+export {
+  generateVapidKeyPair,
+  vapidConfigFromEnv,
+  webPushSenderFromEnv,
+} from '../notifications/vapid-web-push.js';
+export type { VapidConfig, VapidEnv } from '../notifications/vapid-web-push.js';
 export type {
   PushMessage,
   PushSendOptions,

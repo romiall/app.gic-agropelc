@@ -9,6 +9,7 @@ import {
   noteItemSchema,
   noteListResponseSchema,
   notificationListResponseSchema,
+  pushKeyResponseSchema,
 } from './communication-reads.js';
 import {
   analyticsQueryResponseSchema,
@@ -149,6 +150,13 @@ describe('lectures de communication', () => {
     expect(list({ ...notification, kind: 'AUTRE' })).toBe(false);
     expect(list({ ...notification, sourceId: 'pas-un-uuid' })).toBe(false);
     expect(list({ ...notification, kind: undefined })).toBe(false);
+    // Clé publique VAPID du Web Push (AV-536) : désactivé = pas de clé ; activé = une clé.
+    expect(pushKeyResponseSchema.safeParse({ enabled: false, publicKey: null }).success).toBe(true);
+    expect(pushKeyResponseSchema.safeParse({ enabled: true, publicKey: 'BKey' }).success).toBe(
+      true,
+    );
+    expect(pushKeyResponseSchema.safeParse({ enabled: true, publicKey: '' }).success).toBe(false);
+    expect(pushKeyResponseSchema.safeParse({ enabled: true }).success).toBe(false);
     const note = {
       id: A,
       title: 'Prix',

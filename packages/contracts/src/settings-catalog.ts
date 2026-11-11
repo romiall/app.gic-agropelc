@@ -195,6 +195,7 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'production.daily_entry_working_days': weekdays('production'),
   'production.standard_cost_alert_lookback_days': days('production'),
   // Terrain et hors ligne
+  'fieldwork.checkin_enabled': flag('field'),
   'fieldwork.geofence_radius_m': int('field', 50, { unit: 'm', max: 5000 }),
   'fieldwork.max_gps_accuracy_m': { kind: 'number', group: 'field', unit: 'm', min: 1 },
   'fieldwork.override_min_attempts': int('field', 1),
@@ -209,6 +210,12 @@ export const SETTING_CATALOG: Readonly<Record<string, SettingDef>> = {
   'approvals.pending_long_hours': hours('control'),
   'attachments.missing_alert_days': days('control'),
   'attachments.missing_alert_horizon_days': days('control'),
+  // AV-539 (ADR-070) : archive des photos jointes. Le plancher de 30 jours est aussi en code (`@gic/domain`) et en
+  // base (CHECK) : le réglage ne peut qu'augmenter l'ancienneté d'une photo archivable.
+  'attachments.archive.min_age_days': days('control', 30),
+  'attachments.archive.volume_max_mb': int('control', 16, { max: 2048 }),
+  'attachments.archive.default_granularity': choice('control', ['MONTH', 'QUARTER']),
+  'attachments.archive.retention_years': int('control', 1, { max: 30 }),
   'audit.finance_entity_types': list('control'),
   // Réglages techniques : synchronisation, plateforme, communication, analyse
   'sync.clock_skew_flag_minutes': minutes('technical', 1),

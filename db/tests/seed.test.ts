@@ -78,18 +78,18 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 11 rôles, 124 permissions et 503 octrois attendus', async () => {
+  it('crée exactement les 12 rôles, 133 permissions et 568 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
     expect((roles as unknown as { c: number }).c).toBe(ROLES.length);
-    expect(ROLES.length).toBe(11);
+    expect(ROLES.length).toBe(12); // + SUPERVISION (AV-529)
 
     const [[permissions]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(129); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E)
+    expect(PERMISSIONS.length).toBe(133); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-270, P8-03), fieldwork.presence.record et .read, crm.weekly_report.submit, .read et .review (AV-313, AV-314, PP-E), sync.backdate.exceed (AV-078, AV-528), production.lot_opening.post (ADR-069, AV-541), attachments.archive.export et .purge (AV-539, ADR-070)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -108,9 +108,21 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // + 1 octroi identity.device.read SITE du Resp. production (AV-261, MP-06) ;
     // + 16 octrois de PP-E (AV-313, AV-314) : fieldwork.presence.record et .read (Direction, Administrateur : ALL ;
     // Resp. production, Resp. ferme : SITE) = 8 ; crm.weekly_report.read et .review (Direction : ALL, Resp. commercial :
-    // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4 ;
+    // TEAM) = 4 ; crm.weekly_report.submit et .read OWN (Commercial terrain, Commercial sédentaire) = 4.
+    // + 3 octrois sync.backdate.exceed (Direction, Administrateur, Finance : ALL, chargement de l'historique, AV-528).
+    // + 38 octrois consultatifs ALL de SUPERVISION (AV-529, aucune permission d'approbation ni d'écriture).
+    // + 2 octrois sync.backdate.exceed (Resp. production, Resp. ferme : ALL, report de la fiche de la semaine, AV-528,
+    // réponse du porteur du 08/11/2026 à la question 23, solution B).
+    // + 3 octrois production.lot_opening.post (Administrateur, Resp. production : ALL ; Resp. ferme : SITE ; ADR-069, AV-541).
+    // + 2 octrois attachments.archive.export et .purge ALL (Administrateur seul : archive des photos jointes, AV-539).
     // + 22 octrois ALL de la ferme et du stock à l'Administrateur (AV-524, 06/11/2026).
-    expect(ROLE_PERMISSIONS.length).toBe(542);
+    expect(ROLE_PERMISSIONS.length).toBe(590);
+    const approvalCodes = new Set(PERMISSIONS.filter((p) => p.isApproval).map((p) => p.code));
+    expect(
+      ROLE_PERMISSIONS.filter(
+        (grant) => grant.roleCode === 'SUPERVISION' && approvalCodes.has(grant.permissionCode),
+      ),
+    ).toHaveLength(0);
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>
@@ -350,7 +362,15 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: 60,
       isClientVisible: false,
     });
+    // AV-537 : le pointage est désactivé pour le pilote (décision du porteur du 08/11/2026) ; un retour accidentel
+    // à `true` rétablirait pour tous les commerciaux le signal « Vous n'avez pas pris service » et l'action « PRENDRE
+    // SERVICE » de l'accueil. L'appareil lit ce réglage : il doit lui être servi.
+    expect(seeded.get('fieldwork.checkin_enabled')).toMatchObject({
+      value: false,
+      isClientVisible: true,
+    });
     for (const key of [
+      'fieldwork.checkin_enabled',
       'finance.cash_sessions_per_day_max',
       'finance.cash_session_required',
       'finance.cash_session_required_for_payouts',
@@ -360,7 +380,8 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'sync.pull_record_grain_seconds',
     ]) {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
+        // « En vigueur » : les versions datées du futur (lignes d'essai du serveur, an 2100) ne comptent pas.
+        "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL AND valid_from <= UTC_TIMESTAMP(6) ORDER BY valid_from DESC LIMIT 1",
         [key],
       );
       expect(rows, key).toHaveLength(1);

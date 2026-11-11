@@ -6,13 +6,14 @@ de l'archive gzip), garde les plus recentes et supprime les plus anciennes du do
 Une sauvegarde qui n'est que sur l'hebergement est perdue avec lui : cette copie est la seconde.
 
 Le script ECHOUE (code de sortie 1, donc le Planificateur de taches le montre) quand les sauvegardes du serveur se sont
-arretees : dossier distant vide, sauvegarde la plus recente plus vieille que -MaxAgeHours (36 h par defaut ; le nom porte la
-date UTC), ou derniere ligne du journal backup.log du serveur en ECHEC. Les copies et la rotation locale sont faites avant.
+arretees : dossier distant vide, sauvegarde la plus recente plus vieille que -MaxAgeHours (72 h par defaut : le serveur
+sauvegarde tous les deux jours, 48 h plus une marge ; le nom porte la date UTC), ou derniere ligne du journal backup.log
+du serveur en ECHEC. Les copies et la rotation locale sont faites avant.
 
 Usage, depuis n'importe quel dossier :
   powershell -ExecutionPolicy Bypass -File deploy\hostinger\pull-backups.ps1
 Options : -LocalDir (defaut %USERPROFILE%\gic-backups), -Keep (nombre de sauvegardes locales gardees, 30 par defaut),
-          -MaxAgeHours (36), -ListOnly (liste sans copier), -HostName, -Port, -User, -KeyPath, -RemoteLog.
+          -MaxAgeHours (72), -ListOnly (liste sans copier), -HostName, -Port, -User, -KeyPath, -RemoteLog.
 A planifier au besoin dans le Planificateur de taches de Windows (une fois par jour, apres 02 h 30 heure du serveur).
 Les sauvegardes contiennent toutes les donnees de GIC (comptes, ventes, clients) : garder le dossier local sur un disque
 du porteur, chiffre si possible ; ne jamais le publier ni le copier dans le depot.
@@ -29,7 +30,7 @@ param(
   [string]$RemoteLog = 'backups_db/backup.log',
   [string]$LocalDir = (Join-Path $env:USERPROFILE 'gic-backups'),
   [int]$Keep = 30,
-  [int]$MaxAgeHours = 36,
+  [int]$MaxAgeHours = 72,
   [switch]$ListOnly
 )
 $ErrorActionPreference = 'Stop'

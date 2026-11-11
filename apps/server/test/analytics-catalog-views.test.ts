@@ -1,5 +1,5 @@
 /**
- * Le catalogue de la couche sémantique et les treize vues `analytics_f_*` (P9-13 ; ADR-064 §1 et §2) : tout
+ * Le catalogue de la couche sémantique et les quatorze vues `analytics_f_*` (P9-13 ; ADR-064 §1 et §2) : tout
  * ce que le catalogue cite — dimensions, mesures, colonnes de portée, colonnes de période — existe dans la
  * vue de son jeu, avec un type qui convient à l'usage déclaré ; chaque permission citée existe ; les vues
  * sont en lecture (`SQL SECURITY INVOKER`, `SELECT` seulement) et n'acceptent aucune écriture.
@@ -44,10 +44,10 @@ const columnOf = (dataset: DatasetDefinition, name: string) =>
   dataset.dimensions.find((dimension) => dimension.name === name)?.column ?? name;
 
 describe('catalogue et vues analytics_f_*', () => {
-  it('chaque jeu a sa vue et chaque vue son jeu : treize', async () => {
+  it('chaque jeu a sa vue et chaque vue son jeu : quatorze', async () => {
     const views = await viewColumns();
     expect([...views.keys()].sort()).toEqual(ANALYTICS_DATASETS.map((d) => d.view).sort());
-    expect(ANALYTICS_DATASETS).toHaveLength(13);
+    expect(ANALYTICS_DATASETS).toHaveLength(14);
   });
 
   it('toute colonne citée par le catalogue existe dans la vue de son jeu', async () => {
@@ -144,7 +144,7 @@ describe('catalogue et vues analytics_f_*', () => {
         FROM INFORMATION_SCHEMA.VIEWS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'analytics\\_f\\_%'
     `.execute(db);
-    expect(rows).toHaveLength(13);
+    expect(rows).toHaveLength(14);
     for (const row of rows) expect(row.security_type, row.table_name).toBe('INVOKER');
   });
 
@@ -157,7 +157,7 @@ describe('catalogue et vues analytics_f_*', () => {
         FROM INFORMATION_SCHEMA.VIEWS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'analytics\\_f\\_%'
     `.execute(db);
-    expect(rows).toHaveLength(13);
+    expect(rows).toHaveLength(14);
     for (const row of rows) expect(row.is_updatable, row.table_name).toBe('NO');
   });
 

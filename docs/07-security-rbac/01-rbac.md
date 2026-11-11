@@ -1,7 +1,7 @@
 # RBAC — rôles, permissions, portées (Livrable n°8)
 
 > Section 21 du format final (PM §48). Décision : ADR-008. Sources : CM §6, §47, §48 ; PM §17, §31.
-> Rôles : les 11 rôles du CM §47 (tension C-01 : la matrice du PM est complétée). Rôle proposé non créé : `OPERATEUR_FERME` (AV-004).
+> Rôles : les 11 rôles du CM §47 (tension C-01 : la matrice du PM est complétée) + `SUPERVISION` (« Supervision consultative », AV-529). Rôle proposé non créé : `OPERATEUR_FERME` (AV-004).
 
 ---
 
@@ -98,12 +98,15 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `approvals.request.read` | ALL | — | TEAM | OWN | OWN | OWN | ALL | SITE | OWN | ALL | ALL |
 | `approvals.policy.manage` | ALL | ALL | — | — | — | — | — | — | — | — | — |
 | `attachments.attachment.manage` | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN |
+| `attachments.archive.export` | — | ALL | — | — | — | — | — | — | — | — | — |
+| `attachments.archive.purge` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `catalog.product.read` | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL |
 | `catalog.product.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `catalog.reference.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `audit.log.read` | ALL | ALL | — | — | — | — | — | — | — | — | ALL |
 | `sync.monitor.read` | ALL | ALL | TEAM | — | — | — | SITE | SITE | SITE | — | — |
 | `sync.conflict.resolve` | ALL | ALL | TEAM | — | — | — | ALL | SITE | SITE | ALL | ALL |
+| `sync.backdate.exceed` (saisir au-delà de la fenêtre rétroactive : chargement de l'historique, report de la fiche de suivi de lot de la semaine, AV-078, AV-528 ; sensible) | ALL | ALL | — | — | — | — | ALL | ALL | — | — | ALL |
 | `integrations.kommo.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `integrations.kommo.monitor` | ALL | ALL | ALL | — | — | — | — | — | — | — | — |
 | `comm.alert.read` | ALL | ALL | TEAM | OWN | OWN | SITE | ALL | SITE | SITE | ALL | ALL |
@@ -190,6 +193,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `inventory.cost_entry.record` (frais généraux d'une ferme, AV-103) | — | — | — | — | — | — | ALL | SITE | — | — | ALL |
 | `production.lot.read` | ALL | ALL | — | — | — | — | ALL | SITE | — | ALL | ALL |
 | `production.lot.manage` | — | ALL | — | — | — | — | ALL | — | — | — | — |
+| `production.lot_opening.post` (ADR-069, AV-541 : reprise d'un lot en cours, validée comme le stock d'ouverture) | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
 | `production.daily.record` | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
 | `production.mortality.approve` | A·ALL | — | — | — | — | — | A·ALL | — | — | — | — |
 | `production.incubation.record` | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
@@ -249,7 +253,8 @@ Remarques :
   - `finance.payable.read` ouvre les factures, paiements et dettes fournisseurs, la vue d'ensemble financière, et le payé d'un BC dans le rapprochement de P6.
   - Dans la vue d'ensemble, chaque bloc garde le droit de sa lecture : `analytics.dashboard.finance` pour le CA, l'encaissé, les créances et la trésorerie ; `finance.expense.read` en portée `ALL` pour les dépenses.
   - La liste des dépenses est pré-filtrée par le périmètre du lecteur (sites, auteurs), puis affinée élément par élément.
-- **Lectures de RP-1 (01/11/2026, ADR-051, AV-493, AV-495)** : aucune permission de lecture nouvelle. `GET /zones` et `GET /teams` réutilisent `org.structure.read` : les zones sont bornées aux affectations `ZONE` (une portée de site n'en voit aucune), les équipes sont toutes visibles en portée `ALL`, sinon seulement celles que le lecteur dirige ou dont il est membre. `GET /organization/settings/current` et l'historique d'une clé relèvent d'`org.settings.manage`, `GET /approvals/policies` d'`approvals.policy.manage` (Direction et Admin). `GET /audit` et `GET /audit/entity-types` relèvent d'`audit.log.read` ; **la Finance et tout autre détenteur que la Direction et l'Admin ne lisent que les types d'entité du paramètre `audit.finance_entity_types`** (03-audit.md §6), jamais l'ensemble du journal. **DÉDUIT** (AV-493 tranché le 01/11/2026 ; AV-495 **À VALIDER**).
+- **Lectures de RP-1 (01/11/2026, ADR-051, AV-493, AV-495)** : aucune permission de lecture nouvelle. `GET /zones` et `GET /teams` réutilisent `org.structure.read` : les zones sont bornées aux affectations `ZONE` (une portée de site n'en voit aucune), les équipes sont toutes visibles en portée `ALL`, sinon seulement celles que le lecteur dirige ou dont il est membre. `GET /organization/settings/current` et l'historique d'une clé relèvent d'`org.settings.manage`, `GET /approvals/policies` d'`approvals.policy.manage` (Direction et Admin). `GET /audit` et `GET /audit/entity-types` relèvent d'`audit.log.read` ; **la Finance et tout autre détenteur que la Direction, la Supervision consultative (AV-529) et l'Admin ne lisent que les types d'entité du paramètre `audit.finance_entity_types`** (03-audit.md §6), jamais l'ensemble du journal. **DÉDUIT** (AV-493 tranché le 01/11/2026 ; AV-495 **À VALIDER**).
+- **Supervision consultative (`SUPERVISION`, 07/11/2026, AV-529)** : douzième rôle système (`allowed_scope_types` : `GLOBAL`), strictement consultatif, créé pour permettre à un membre de la gouvernance à distance de tout contrôler sans jamais bloquer une validation opérationnelle ni modifier de données. Il détient en portée `ALL` les 38 permissions de lecture, de supervision et d'analyse (`identity.user.read`, `identity.device.read`, `org.structure.read`, `catalog.product.read`, `audit.log.read` sans filtre d'entité, `sync.monitor.read`, `integrations.kommo.monitor`, `comm.alert.read`, `comm.note.read`, `crm.customer.read`, `crm.visit.read`, `crm.target.read`, `crm.weekly_report.read`, `fieldwork.presence.read`, `fieldwork.session.read`, `pricing.price.read`, `sales.order.read`, `sales.sale.read`, `sales.payment.read`, `sales.receivable.read`, `inventory.stock.read`, `inventory.valuation.read`, `inventory.ledger.read`, `inventory.loss.read`, `production.lot.read`, `procurement.supplier.read`, `procurement.order.read`, `finance.cash.read`, `finance.expense.read`, `finance.payable.read`, `analytics.dashboard.direction`, `.commercial`, `.distribution`, `.stock`, `.production`, `.finance`, `analytics.explore`, `analytics.export`) et **aucune** permission d'approbation (`is_approval = true`), de saisie ou de paramétrage.
 
 ## 6. Vue condensée par domaine (lecture rapide)
 

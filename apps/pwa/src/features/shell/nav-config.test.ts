@@ -19,6 +19,7 @@ describe('tabsForRoles (onglets du bas, ADR-049)', () => {
     ['MAGASINIER', [ROUTES.receive, ROUTES.stock]],
     ['RESP_FERME', [ROUTES.productionLots, ROUTES.eggCollection]],
     ['DIRECTION', [ROUTES.approvals, ROUTES.treasury]],
+    ['SUPERVISION', [ROUTES.analyticsDirection, ROUTES.receivables]],
     ['FINANCE', [ROUTES.receivables, ROUTES.treasury]],
     ['RESP_ACHATS', [ROUTES.purchaseRequests, ROUTES.purchaseOrders]],
     ['RESP_COMMERCIAL', [ROUTES.portfolio, ROUTES.orders]],
@@ -116,7 +117,7 @@ describe('quickActions (bouton « + »)', () => {
     expect(groups.map((group) => group.role)).toEqual(['VENDEUR_PDV']);
   });
 
-  it('sans création rapide pour l’administrateur ; rien sans navigation mémorisée', () => {
+  it('sans création rapide pour l’administrateur ni la supervision consultative ; rien sans navigation mémorisée', () => {
     expect(
       quickActions(
         record([
@@ -124,6 +125,11 @@ describe('quickActions (bouton « + »)', () => {
             role: 'ADMIN',
             roleLabel: 'Administrateur',
             actions: [action('DEVICES', 'Appareils', null)],
+          },
+          {
+            role: 'SUPERVISION',
+            roleLabel: 'Supervision consultative',
+            actions: [action('CONTROL_TOWER', 'Tour de contrôle', null)],
           },
         ]),
       ),

@@ -34,3 +34,32 @@ export async function emitWorkSessionChanges(
     })),
   );
 }
+
+export const PRESENCE_DATASET = 'presence';
+
+/**
+ * Jeu `presence` (AV-514 (4)) : feuilles de présence du personnel, ligne `SITE` du site de la feuille. Elle va aux appareils
+ * dont l'utilisateur lit la présence sur ce site (`fieldwork.presence.read`, `sync/device-scope.ts`) et leur permet de
+ * relire l'historique sans réseau. L'annulation d'une feuille change sa version : la ligne est réémise.
+ */
+export async function emitPresenceSheetChange(
+  uow: UnitOfWork,
+  sheetId: Buffer | string,
+): Promise<void> {
+  const row = await uow
+    .selectFrom('fieldwork_presence_sheets')
+    .select(['id', 'site_id', 'version'])
+    .where('id', '=', typeof sheetId === 'string' ? toBin(sheetId) : sheetId)
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: PRESENCE_DATASET,
+      entityType: 'PRESENCE_SHEET',
+      entityId: fromBin(row.id),
+      scopeType: 'SITE',
+      scopeId: fromBin(row.site_id),
+      rowVersion: row.version,
+    },
+  ]);
+}

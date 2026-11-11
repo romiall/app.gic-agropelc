@@ -450,6 +450,266 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
     expect(row.status).toBe('CANCELLED');
   });
 
+  it('S-50, S-34, S-21 : le numéro du transfert est rendu à l’appareil, la note de l’expéditeur suit celle du demandeur', async () => {
+    const productId = await insertProduct(admin);
+    await openingBalance(productId, storeA, 100);
+
+    const transferId = freshUuid();
+    const requested = await pipeline.handle(
+      buildEnvelope(admin, {
+        command_type: 'inventory.transfer.request',
+        aggregate_type: 'STOCK_TRANSFER',
+        aggregate_id: transferId,
+        payload: {
+          fromLocationId: storeA,
+          toLocationId: storeB,
+          lines: [{ productId, unitCode: 'TETE', quantityBase: 10 }],
+          notes: 'Pour le point de vente',
+        },
+      }),
+      adminCtx(),
+    );
+    expect(requested).toMatchObject({
+      status: 'APPLIED',
+      server_refs: { docNumber: expect.stringMatching(/^TRF-/) },
+    });
+    const docNumber = (requested as { server_refs: { docNumber: string } }).server_refs.docNumber;
+
+    const line = await db
+      .selectFrom('inventory_stock_transfer_lines')
+      .select('id')
+      .where('transfer_id', '=', toBin(transferId))
+      .executeTakeFirstOrThrow();
+    const dispatched = await pipeline.handle(
+      buildEnvelope(admin, {
+        command_type: 'inventory.transfer.dispatch',
+        aggregate_type: 'STOCK_TRANSFER',
+        aggregate_id: transferId,
+        payload: {
+          transferId,
+          notes: 'Chargé à 7 h',
+          lines: [
+            { transferLineId: fromBin(line.id), productId, unitCode: 'TETE', quantityBase: 10 },
+          ],
+        },
+      }),
+      adminCtx(),
+    );
+    // L’expédition d’une demande rend le numéro de la demande.
+    expect(dispatched).toMatchObject({ status: 'APPLIED', server_refs: { docNumber } });
+    const row = await db
+      .selectFrom('inventory_stock_transfers')
+      .select('notes')
+      .where('id', '=', toBin(transferId))
+      .executeTakeFirstOrThrow();
+    expect(row.notes).toBe('Pour le point de vente\nChargé à 7 h');
+
+    // Une expédition directe rend le numéro qu’elle tire ; sans note d’expédition, la note du demandeur reste seule.
+    const directId = freshUuid();
+    const direct = await pipeline.handle(
+      buildEnvelope(admin, {
+        command_type: 'inventory.transfer.dispatch',
+        aggregate_type: 'STOCK_TRANSFER',
+        aggregate_id: directId,
+        payload: {
+          fromLocationId: storeA,
+          toLocationId: storeB,
+          lines: [{ productId, unitCode: 'TETE', quantityBase: 5 }],
+        },
+      }),
+      adminCtx(),
+    );
+    expect(direct).toMatchObject({
+      status: 'APPLIED',
+      server_refs: { docNumber: expect.stringMatching(/^TRF-/) },
+    });
+    expect((direct as { server_refs: { docNumber: string } }).server_refs.docNumber).not.toBe(
+      docNumber,
+    );
+
+    const quiet = freshUuid();
+    await pipeline.handle(
+      buildEnvelope(admin, {
+        command_type: 'inventory.transfer.request',
+        aggregate_type: 'STOCK_TRANSFER',
+        aggregate_id: quiet,
+        payload: {
+          fromLocationId: storeA,
+          toLocationId: storeB,
+          lines: [{ productId, unitCode: 'TETE', quantityBase: 2 }],
+          notes: 'Note du demandeur',
+        },
+      }),
+      adminCtx(),
+    );
+    const quietLine = await db
+      .selectFrom('inventory_stock_transfer_lines')
+      .select('id')
+      .where('transfer_id', '=', toBin(quiet))
+      .executeTakeFirstOrThrow();
+    await pipeline.handle(
+      buildEnvelope(admin, {
+        command_type: 'inventory.transfer.dispatch',
+        aggregate_type: 'STOCK_TRANSFER',
+        aggregate_id: quiet,
+        payload: {
+          transferId: quiet,
+          lines: [
+            { transferLineId: fromBin(quietLine.id), productId, unitCode: 'TETE', quantityBase: 2 },
+          ],
+        },
+      }),
+      adminCtx(),
+    );
+    const quietRow = await db
+      .selectFrom('inventory_stock_transfers')
+      .select('notes')
+      .where('id', '=', toBin(quiet))
+      .executeTakeFirstOrThrow();
+    expect(quietRow.notes).toBe('Note du demandeur');
+  });
+
+  it('S-36 (a)(b) : un emplacement, un produit ou une unité inconnus sont refusés, jamais rejoués sans fin', async () => {
+    const productId = await insertProduct(admin);
+    await openingBalance(productId, storeA, 30);
+    const transit = await db
+      .selectFrom('organization_locations')
+      .select('id')
+      .where('location_type', '=', 'V_TRANSIT')
+      .executeTakeFirstOrThrow();
+    const code = (result: Awaited<ReturnType<CommandPipelineService['handle']>>) =>
+      result.status === 'REJECTED' ? result.error.code : result.status;
+    const send = (
+      commandType: string,
+      payload: Record<string, unknown>,
+    ): Promise<Awaited<ReturnType<CommandPipelineService['handle']>>> =>
+      pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: commandType,
+          aggregate_type: 'STOCK_TRANSFER',
+          aggregate_id: freshUuid(),
+          payload: {
+            fromLocationId: storeA,
+            toLocationId: storeB,
+            lines: [{ productId, unitCode: 'TETE', quantityBase: 1 }],
+            ...payload,
+          },
+        }),
+        adminCtx(),
+      );
+    const unknownProduct = [{ productId: freshUuid(), unitCode: 'TETE', quantityBase: 1 }];
+    const unknownUnit = [{ productId, unitCode: 'XXX', quantityBase: 1 }];
+
+    // Demande : emplacement inconnu ou virtuel, produit inconnu, unité inconnue.
+    expect(code(await send('inventory.transfer.request', { toLocationId: freshUuid() }))).toBe(
+      'LOCATION_INVALID',
+    );
+    expect(
+      code(await send('inventory.transfer.request', { toLocationId: fromBin(transit.id) })),
+    ).toBe('LOCATION_INVALID');
+    expect(code(await send('inventory.transfer.request', { lines: unknownProduct }))).toBe(
+      'PRODUCT_INVALID',
+    );
+    expect(code(await send('inventory.transfer.request', { lines: unknownUnit }))).toBe(
+      'UNIT_INVALID',
+    );
+    // Expédition directe et déplacement interne : produit et unité contrôlés avant tout mouvement.
+    expect(code(await send('inventory.transfer.dispatch', { lines: unknownUnit }))).toBe(
+      'UNIT_INVALID',
+    );
+    expect(code(await send('inventory.transfer.dispatch', { lines: unknownProduct }))).toBe(
+      'PRODUCT_INVALID',
+    );
+    expect(code(await send('inventory.transfer.move_internal', { lines: unknownUnit }))).toBe(
+      'UNIT_INVALID',
+    );
+    // Rien n’est entré, le stock est intact.
+    expect(await balanceOf(productId, storeA)).toBe(30);
+    // Une demande valide passe toujours.
+    expect((await send('inventory.transfer.request', {})).status).toBe('APPLIED');
+  });
+
+  it('S-36 (c) : une demande est annulée par son demandeur ou par qui expédie depuis le site source, pas par un autre', async () => {
+    const productId = await insertProduct(admin);
+    const actor = async (permissions: readonly string[]) => {
+      const userId = await db.transaction().execute((trx) => insertTestUser(trx));
+      const deviceId = await db
+        .transaction()
+        .execute((trx) => insertTestDevice(trx, userId, { status: 'ACTIVE' }));
+      await db.transaction().execute(async (trx) => {
+        const role = await insertTestRole(trx, admin, { allowedScopeTypes: ['SITE'] });
+        for (const permission of permissions) {
+          await grantTestPermission(trx, role, permission, admin, { maxScope: 'SITE' });
+        }
+        await assignTestRole(trx, userId, role, admin, { scopeType: 'SITE', scopeSiteId: siteId });
+      });
+      return {
+        userId,
+        ctx: {
+          authenticatedUserId: userId,
+          authenticatedDeviceId: deviceId,
+          transport: 'ONLINE_API' as const,
+        },
+      };
+    };
+    const requester = await actor(['inventory.transfer.request']);
+    const storekeeper = await actor(['inventory.transfer.request', 'inventory.transfer.dispatch']);
+    const other = await actor(['inventory.transfer.request']);
+
+    const requestBy = async (who: { userId: string; ctx: ReturnType<typeof adminCtx> }) => {
+      const transferId = freshUuid();
+      const result = await pipeline.handle(
+        buildEnvelope(who.userId, {
+          command_type: 'inventory.transfer.request',
+          aggregate_type: 'STOCK_TRANSFER',
+          aggregate_id: transferId,
+          payload: {
+            fromLocationId: storeA,
+            toLocationId: storeB,
+            lines: [{ productId, unitCode: 'TETE', quantityBase: 1 }],
+          },
+        }),
+        who.ctx,
+      );
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+      return transferId;
+    };
+    const cancelBy = (
+      who: { userId: string; ctx: ReturnType<typeof adminCtx> },
+      transferId: string,
+    ) =>
+      pipeline.handle(
+        buildEnvelope(who.userId, {
+          command_type: 'inventory.transfer.cancel',
+          aggregate_type: 'STOCK_TRANSFER',
+          aggregate_id: transferId,
+          payload: { transferId },
+        }),
+        who.ctx,
+      );
+    const statusOf = async (transferId: string) =>
+      (
+        await db
+          .selectFrom('inventory_stock_transfers')
+          .select('status')
+          .where('id', '=', toBin(transferId))
+          .executeTakeFirstOrThrow()
+      ).status;
+
+    const first = await requestBy(requester);
+    // Un autre utilisateur du site, qui n'a que le droit de demande, n'annule pas la demande d'autrui.
+    const refused = await cancelBy(other, first);
+    expect(refused.status === 'REJECTED' && refused.error.code).toBe('FORBIDDEN');
+    expect(await statusOf(first)).toBe('REQUESTED');
+    // Le magasinier du site source (droit d'expédier) l'annule.
+    expect((await cancelBy(storekeeper, first)).status).toBe('APPLIED');
+    expect(await statusOf(first)).toBe('CANCELLED');
+    // Le demandeur annule la sienne comme avant.
+    const second = await requestBy(requester);
+    expect((await cancelBy(requester, second)).status).toBe('APPLIED');
+    expect(await statusOf(second)).toBe('CANCELLED');
+  });
+
   it('déplacement interne (move_internal) : transfert INTERNAL immédiatement COMPLETED, stock déplacé', async () => {
     const productId = await insertProduct(admin);
     await openingBalance(productId, storeA, 30);

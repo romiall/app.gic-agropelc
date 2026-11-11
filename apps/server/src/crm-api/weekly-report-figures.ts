@@ -4,7 +4,7 @@
  * définition par indicateur, ADR-065 §2) :
  * - **visites sur place**, **nouveaux prospects** (comptes créés) et **nouveaux clients** (conversions) :
  *   `commercialEffort` de `crm` (BR-CRM-019) ;
- * - **CA réalisé** : ventes attribuées au commercial, nettes des annulations (`periodRevenue` de `sales`, BR-VEN-020,
+ * - **CA réalisé** : ventes attribuées au commercial, nettes des annulations (`periodNetRevenue` de `sales`, sans le coût des ventes, BR-VEN-020,
  *   BR-FIN-042) ;
  * - **encaissé** : encaissements qu'il a reçus, nets des annulations (`cashedActivity` de `sales`, AV-244) ;
  * - **casses et pertes** : pertes qu'il a déclarées (`lossesDeclaredBy` d'`inventory`), dont la **valeur est au coût** :
@@ -21,7 +21,7 @@ import {
 import type { Database } from '../platform/kysely/database.provider.js';
 import { commercialEffort } from '../modules/crm/application/public/index.js';
 import { lossesDeclaredBy } from '../modules/inventory/application/public/index.js';
-import { cashedActivity, periodRevenue } from '../modules/sales/application/public/index.js';
+import { cashedActivity, periodNetRevenue } from '../modules/sales/application/public/index.js';
 
 export async function weeklyFigures(
   db: Database,
@@ -39,7 +39,7 @@ export async function weeklyFigures(
   const fromUtc = businessDayStartUtc(fromDay);
   const toUtc = businessDayEndUtc(toDay);
   const effort = await commercialEffort(db, { userId: input.userId, fromUtc, toUtc });
-  const revenue = await periodRevenue(db, {
+  const revenue = await periodNetRevenue(db, {
     fromUtc,
     toUtc,
     commercialUserId: input.userId,

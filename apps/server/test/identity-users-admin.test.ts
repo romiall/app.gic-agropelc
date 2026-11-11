@@ -18,6 +18,7 @@ import { CLOCK } from '../src/platform/clock.provider.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { resolveEntityProjection } from '../src/sync/entity-projections.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { appLogger } from '../src/platform/observability/logger.js';
@@ -274,7 +275,9 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       .execute();
     expect(events).toEqual([]);
 
-    // Flux de changements : les appareils tirent le compte (jeu `user`) et son affectation.
+    // Flux de changements : le compte (nom et statut) va à tous les appareils (jeu `user`, portée GLOBAL) ; son affectation
+    // initiale n'est publiée qu'à lui (jeu `role_assignment`, ligne USER dont la portée est le titulaire, ADR-071) — écrite
+    // avant le compte dans la transaction, donc la première des deux.
     const feed = await db
       .selectFrom('sync_change_feed')
       .select(['dataset', 'entity_type', 'scope_type', 'scope_id', 'change_type'])
@@ -283,20 +286,39 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       .execute();
     expect(feed).toEqual([
       {
+        dataset: 'role_assignment',
+        entity_type: 'ROLE_ASSIGNMENT',
+        scope_type: 'USER',
+        scope_id: row!.id,
+        change_type: 'UPSERT',
+      },
+      {
         dataset: 'user',
         entity_type: 'USER',
         scope_type: 'GLOBAL',
         scope_id: null,
         change_type: 'UPSERT',
       },
-      {
-        dataset: 'role_assignment',
-        entity_type: 'ROLE_ASSIGNMENT',
-        scope_type: 'GLOBAL',
-        scope_id: null,
-        change_type: 'UPSERT',
-      },
     ]);
+
+    // La projection ne sert l'affectation qu'à son titulaire (ligne USER de sa portée) et sans le code du rôle (S-41 (a) :
+    // il désignerait les comptes Admin, Direction, Finance) ; jamais en GLOBAL, jamais à la portée d'un autre utilisateur.
+    const projectAssignment = resolveEntityProjection('ROLE_ASSIGNMENT')!;
+    const projected = await projectAssignment(db, body.role_assignment_id, {
+      scopeType: 'USER',
+      scopeId: fromBin(row!.id),
+    });
+    expect(projected).toMatchObject({ id: body.role_assignment_id, user_id: fromBin(row!.id) });
+    expect(projected).not.toHaveProperty('role_code');
+    expect(
+      await projectAssignment(db, body.role_assignment_id, { scopeType: 'GLOBAL', scopeId: null }),
+    ).toBeUndefined();
+    expect(
+      await projectAssignment(db, body.role_assignment_id, {
+        scopeType: 'USER',
+        scopeId: admin.userId,
+      }),
+    ).toBeUndefined();
 
     // Le provisoire ouvre une session avec le changement imposé (AV-251).
     const session = await login(phone, PROVISIONAL);

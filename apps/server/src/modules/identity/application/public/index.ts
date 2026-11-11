@@ -19,6 +19,10 @@ export { checkDeviceActive } from './device-check.js';
 export type { DeviceCheckResult } from './device-check.js';
 
 export { checkUserActive } from './user-check.js';
+
+// AV-539 (ADR-070) : état d'une session (vivante, compte actif, appareil en service) à la validation d'un billet.
+export { sessionAccessAt } from '../auth/session-state.js';
+export type { SessionAccess } from '../auth/session-state.js';
 export type { UserCheckResult } from './user-check.js';
 
 export {

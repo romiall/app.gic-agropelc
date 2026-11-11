@@ -33,6 +33,8 @@ export interface WeeklyReportSummary {
 }
 
 export interface WeeklyReportFilter {
+  /** Bilans désignés (projection du jeu `weekly_reports`) ; vide : rien à lire ; absent : tous. */
+  readonly ids?: readonly string[];
   /** Commerciaux lus ; vide : rien à lire ; absent : tous. */
   readonly userIds?: readonly string[];
   /** Semaine exacte (lundi). */
@@ -83,6 +85,7 @@ export async function listWeeklyReports(
   filter: WeeklyReportFilter,
 ): Promise<readonly WeeklyReportSummary[]> {
   if (filter.userIds !== undefined && filter.userIds.length === 0) return [];
+  if (filter.ids !== undefined && filter.ids.length === 0) return [];
   const limit = Math.min(
     filter.limit ?? WEEKLY_REPORT_LIST_DEFAULT_LIMIT,
     WEEKLY_REPORT_LIST_MAX_LIMIT,
@@ -95,6 +98,13 @@ export async function listWeeklyReports(
         'user_id',
         'in',
         filter.userIds!.map((id) => toBin(id)),
+      ),
+    )
+    .$if(filter.ids !== undefined, (qb) =>
+      qb.where(
+        'id',
+        'in',
+        filter.ids!.map((id) => toBin(id)),
       ),
     )
     .$if(filter.weekStart !== undefined, (qb) =>

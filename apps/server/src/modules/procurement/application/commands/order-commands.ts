@@ -76,6 +76,8 @@ const createPayloadSchema = z.object({
   deliveryLocationId: z.string().uuid(),
   expectedDeliveryDate: z.string().regex(DATE_ONLY).optional(),
   lines: z.array(lineSchema).min(1).max(200),
+  /** Numéro du bon de commande papier reporté (PP-B, AV-308) ; sans unicité : le registre des carnets le contrôle. */
+  localRef: z.string().trim().min(1).max(20).optional(),
 });
 type CreatePayload = z.infer<typeof createPayloadSchema>;
 
@@ -239,6 +241,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .values({
         id: toBin(orderId),
         doc_number: docNumber,
+        local_ref: p.localRef ?? null,
         site_id: toBin(location.site.id),
         supplier_id: toBin(p.supplierId),
         delivery_location_id: toBin(location.id),

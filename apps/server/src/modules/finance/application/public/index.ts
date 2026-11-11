@@ -112,6 +112,14 @@ export type {
   PendingCashTransfers,
 } from './distribution-metrics.js';
 
+// AV-539 (ADR-070) : numéro, références et état de fermeture d'une dépense ou d'une facture, pour l'archive de leurs photos.
+export {
+  EXPENSE_ARCHIVE_CLOSED_STATUSES,
+  SUPPLIER_INVOICE_ARCHIVE_CLOSED_STATUSES,
+  expenseArchiveFacts,
+  supplierInvoiceArchiveFacts,
+} from './archive-facts.js';
+
 // P8-09 : lectures de la finance opérationnelle (dépenses, factures et paiements fournisseurs, dettes).
 export {
   OPERATIONS_LIST_DEFAULT_LIMIT,

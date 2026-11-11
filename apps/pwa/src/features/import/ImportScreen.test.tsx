@@ -95,6 +95,7 @@ describe('ImportScreen (RP-2, PP-C)', () => {
       'Catégories de produit',
       'Produits',
       'Stock d’ouverture',
+      'Lots en cours (reprise)',
       'Comptes de trésorerie',
       'Pièces papier (historique des carnets)',
       'Présence du personnel (fiche PT)',

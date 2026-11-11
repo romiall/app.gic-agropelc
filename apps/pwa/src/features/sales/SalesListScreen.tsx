@@ -16,15 +16,19 @@ import {
 import { businessDayOf } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { ROUTES } from '../../app/screens.js';
+import { checkinEnabled, presentedFlags } from '../fieldwork/checkin-setting.js';
 import { formatMoment } from '../home/format-home.js';
 import { formatMoney } from './format.js';
 import { recentSales, saleListBadge, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences } from './references.js';
 
-/** Vente du jour, non annulée, signalée par le serveur (définition du signal `SALES_FLAGGED`). */
-function flaggedToday(sale: SaleView, today: string): boolean {
+/**
+ * Vente du jour, non annulée, signalée par le serveur (définition du signal `SALES_FLAGGED`). Pointage désactivé
+ * (AV-537) : « hors prise de service » ne signale plus une vente, comme à l'accueil.
+ */
+function flaggedToday(sale: SaleView, today: string, checkinOn: boolean): boolean {
   return (
-    sale.flags.length > 0 &&
+    presentedFlags(sale.flags, checkinOn).length > 0 &&
     sale.status !== 'CANCELLED' &&
     businessDayOf(new Date(sale.occurredAt)) === today
   );
@@ -46,11 +50,14 @@ export function SalesListScreen() {
   }
 
   const today = businessDayOf(clock.now());
+  const checkinOn = checkinEnabled(refs.settings, clock.now());
   const customers = new Map(refs.customers.map((customer) => [customer.id, customer]));
   const all = recentSales(refs);
-  const sales = flaggedOnly ? all.filter((sale) => flaggedToday(sale, today)) : all;
+  const sales = flaggedOnly ? all.filter((sale) => flaggedToday(sale, today, checkinOn)) : all;
   const flagLabels = (flags: readonly string[]) =>
-    flags.map((flag) => t(`sales.detail.flag.${flag}`, { defaultValue: flag })).join(', ');
+    presentedFlags(flags, checkinOn)
+      .map((flag) => t(`sales.detail.flag.${flag}`, { defaultValue: flag }))
+      .join(', ');
 
   return (
     <section className="sale">
@@ -93,7 +100,7 @@ export function SalesListScreen() {
                     <small>
                       {formatMoment(sale.occurredAt, today)} · {doc}
                     </small>
-                    {sale.flags.length > 0 ? (
+                    {presentedFlags(sale.flags, checkinOn).length > 0 ? (
                       <small className="text-warn">
                         {t('sales.list.flags', { flags: flagLabels(sale.flags) })}
                       </small>

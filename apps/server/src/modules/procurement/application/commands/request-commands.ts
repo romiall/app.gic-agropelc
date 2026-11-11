@@ -43,11 +43,17 @@ import {
 } from './shared.js';
 import { emitPurchaseRequestChange } from '../sync-changes.js';
 
+/**
+ * Borne haute d'une quantité de stock (S-20) : `numeric(14,3)`. Seule la borne est posée au schéma ; le nombre de décimales
+ * reste contrôlé par le gestionnaire (code `TOO_MANY_DECIMALS`), comme avant.
+ */
+const MAX_QUANTITY = 99_999_999_999.999;
+
 const lineSchema = z.object({
   productId: z.string().uuid(),
-  quantityBase: z.number().positive(),
+  quantityBase: z.number().positive().max(MAX_QUANTITY),
   unitCode: z.string().min(1).max(20),
-  quantity: z.number().positive(),
+  quantity: z.number().positive().max(MAX_QUANTITY),
   estimatedUnitPriceXaf: z.number().int().nonnegative().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
@@ -135,6 +141,30 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (!policy) return CONTROL_POLICY_MISSING('PURCHASE_REQUEST');
 
     const origin = await loadCommandOrigin(uow, envelope.command_id);
+    // La référence locale est unique par **appareil** : déjà prise, la demande est refusée en ligne ; hors ligne (une
+    // demande reportée d'une pièce papier est un fait accompli : BR-SYN-007) elle est appliquée sans la référence, avec
+    // l'avertissement `LOCAL_REF_DUPLICATE`. Sans ce contrôle, la clé unique ferait échouer l'écriture et la commande
+    // serait rejouée sans fin.
+    let localRef = p.localRef ?? null;
+    let localRefReused = false;
+    if (localRef !== null && origin.deviceId !== null) {
+      const sameRef = await uow
+        .selectFrom('procurement_purchase_requests')
+        .select('id')
+        .where('created_device_id', '=', toBin(origin.deviceId))
+        .where('local_ref', '=', localRef)
+        .executeTakeFirst();
+      if (sameRef) {
+        if (!envelope.captured_offline) {
+          return rejected(
+            'LOCAL_REF_DUPLICATE',
+            'Référence locale déjà utilisée par cet appareil.',
+          );
+        }
+        localRef = null;
+        localRefReused = true;
+      }
+    }
     const docNumber = await documentSequences.next(uow, {
       docType: 'DA',
       siteId: site.id,
@@ -161,7 +191,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .values({
         id: toBin(requestId),
         doc_number: docNumber,
-        local_ref: p.localRef ?? null,
+        local_ref: localRef,
         site_id: toBin(site.id),
         requested_by: toBin(author),
         needed_by_date: p.neededByDate ? sql<Date>`${p.neededByDate}` : null,
@@ -196,7 +226,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         .execute();
     }
     await emitPurchaseRequestChange(uow, requestId);
-    return { status: 'APPLIED', serverRefs: { docNumber } };
+    return localRefReused
+      ? {
+          status: 'APPLIED_WITH_WARNINGS',
+          warnings: ['LOCAL_REF_DUPLICATE'],
+          serverRefs: { docNumber },
+        }
+      : { status: 'APPLIED', serverRefs: { docNumber } };
   };
 
   /** Retrait (demandeur, `SUBMITTED`) ou abandon (valideur, `APPROVED`, motif). */

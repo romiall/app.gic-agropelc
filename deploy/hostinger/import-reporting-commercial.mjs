@@ -1626,15 +1626,7 @@ async function ensureAssignment(app, db, deps, input) {
       reason: `Reprise du reporting commercial (import-reporting-commercial.mjs) : affectation datee du debut d'usage, ${input.startDay}`,
       result: 'SUCCESS',
     });
-    await app.recordChanges(uow, [
-      {
-        dataset: 'role_assignment',
-        entityType: 'ROLE_ASSIGNMENT',
-        entityId: assignmentId,
-        scopeType: 'GLOBAL',
-        scopeId: null,
-      },
-    ]);
+    // Journal de synchronisation : `insertRoleAssignment` publie l'affectation a son utilisateur seul (ADR-071).
     await uow
       .insertInto('platform_domain_events')
       .values({

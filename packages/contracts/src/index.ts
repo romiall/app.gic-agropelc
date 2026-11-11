@@ -65,6 +65,50 @@ export {
 } from './company-identity.js';
 export type { CompanyIdentityField, CompanyVatRegime } from './company-identity.js';
 
+// Archive des photos jointes (AV-539, ADR-070) : formes de `/api/v1/attachment-archives`.
+export {
+  ARCHIVE_ERROR_CODES,
+  ARCHIVE_ITEM_STATES,
+  ARCHIVE_RELEASE_REASONS,
+  ARCHIVE_STATUSES,
+  ATTACHMENT_ARCHIVES_PATH,
+  archiveCatalogPeriodSchema,
+  archiveCatalogSchema,
+  archiveCountSchema,
+  archiveListSchema,
+  archivePeriodViewSchema,
+  archiveSchema,
+  archiveSettingsSchema,
+  archiveVolumeSchema,
+  attachmentArchivedDetailsSchema,
+  cancelArchiveResponseSchema,
+  createArchiveRequestSchema,
+  createArchiveResponseSchema,
+  downloadTicketSchema,
+  purgeArchiveRequestSchema,
+  purgeArchiveResponseSchema,
+  purgeResultSchema,
+  verifyVolumeRequestSchema,
+  verifyVolumeResponseSchema,
+} from './attachment-archive.js';
+export type {
+  ArchiveCatalog,
+  ArchiveCatalogPeriod,
+  ArchiveCount,
+  ArchiveItemState,
+  ArchivePeriodView,
+  ArchiveReleaseReason,
+  ArchiveSettings,
+  ArchiveStatus,
+  ArchiveView,
+  ArchiveVolumeView,
+  AttachmentArchivedDetails,
+  CreateArchiveRequest,
+  DownloadTicket,
+  PurgeArchiveRequest,
+  PurgeResult,
+} from './attachment-archive.js';
+
 export {
   rawCommandEnvelopeSchema,
   pushRequestSchema,
@@ -187,6 +231,14 @@ export type {
   TransferReturnToSourcePayload,
 } from './stock-transfer-commands.js';
 
+// Reprise d'un lot en cours (ADR-069, BR-PRD-016 ; AV-541 à AV-544).
+export {
+  LOT_OPENING_AGGREGATE_TYPE,
+  LOT_OPENING_POST_COMMAND,
+  lotOpeningPostPayloadSchema,
+} from './lot-opening-commands.js';
+export type { LotOpeningPostPayload } from './lot-opening-commands.js';
+
 // Messages de validation en français (S-37, P5-23).
 export { describeIssueFr, describeIssuesFr } from './validation-messages.js';
 
@@ -269,6 +321,7 @@ export {
   noteListResponseSchema,
   notificationItemSchema,
   notificationListResponseSchema,
+  pushKeyResponseSchema,
 } from './communication-reads.js';
 export type {
   AlertItem,
@@ -281,6 +334,7 @@ export type {
   NoteListResponse,
   NotificationItem,
   NotificationListResponse,
+  PushKeyResponse,
 } from './communication-reads.js';
 export {
   ANALYTICS_COMMAND_TYPES,

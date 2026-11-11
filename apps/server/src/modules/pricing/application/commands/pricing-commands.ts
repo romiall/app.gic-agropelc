@@ -27,6 +27,7 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin, toBinOrNull, fromBin } from '../../../../platform/kysely/uuid-columns.js';
+import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { findProductForPricing } from '../../../catalog/application/public/index.js';
 import { findConflicts, specificityOf, type PriceRule } from '@gic/domain';
 
@@ -444,6 +445,18 @@ const activate: CommandHandler<ActivatePayload> = async (uow, envelope) => {
       .set({ valid_to: rule.valid_from })
       .where('id', '=', rule.supersedes_rule_id)
       .execute();
+    // S-08 : la règle remplacée change de fin sans que sa propre commande passe ici — le flux d'une commande ne porte que
+    // l'agrégat de celle-ci (la règle qui remplace). On réémet donc la remplacée, dans le même jeu et le même type que
+    // le repli générique, pour que l'appareil connaisse sa nouvelle fin.
+    await recordChanges(uow, [
+      {
+        dataset: 'price_rule',
+        entityType: 'PRICE_RULE',
+        entityId: fromBin(rule.supersedes_rule_id),
+        scopeType: 'GLOBAL',
+        scopeId: null,
+      },
+    ]);
   }
   return { status: 'APPLIED' };
 };

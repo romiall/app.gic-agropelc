@@ -19,6 +19,8 @@ import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.j
 import { codeEntityId } from '../platform/sync/code-entity-id.js';
 import { COMMUNICATION_PROJECTIONS } from './communication-projections.js';
 import { KPI_PROJECTIONS } from './kpi-projections.js';
+import { listWeeklyReports } from '../modules/crm/application/public/index.js';
+import { listPresenceSheets } from '../modules/fieldwork/application/public/index.js';
 
 /** Périmètre de la ligne `change_feed` projetée (P2-06) : nécessaire quand la clé réelle de
  * l'entité est composite (`STOCK_BALANCE` : produit × emplacement) ou quand seule une ligne
@@ -204,22 +206,31 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
-  ROLE_ASSIGNMENT: async (executor, entityId) => {
+  // ADR-071 (AV-533, Q24 du 08/11/2026) : une affectation n'est servie qu'à son utilisateur — ligne `USER` dont la portée est le
+  // titulaire de l'affectation (`emitRoleAssignmentChange`). Jamais la ligne `GLOBAL` du repli du pipeline (insérée à chaque
+  // octroi et révocation) ni les anciennes lignes `GLOBAL` d'avant la migration 20261207090000, qui servaient chaque affectation
+  // à tous les appareils : un téléphone perdu désignait qui détient quel rôle, sur quel périmètre. La portée de la ligne doit
+  // être le titulaire : une ligne mal émise ne sert à personne.
+  // Le code du rôle (ADMIN, DIRECTION, FINANCE…) n'est pas servi (S-41 (a), AV-552) : l'appareil lit le code de ses propres
+  // rôles dans `me` / `GET /auth/me`.
+  ROLE_ASSIGNMENT: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
     const row = await executor
-      .selectFrom('identity_user_role_assignments')
+      .selectFrom('identity_user_role_assignments as a')
       .select([
-        'id',
-        'user_id',
-        'role_id',
-        'scope_type',
-        'scope_site_id',
-        'scope_zone_id',
-        'scope_team_id',
-        'valid_from',
-        'valid_to',
-        'revoked_at',
+        'a.id as id',
+        'a.user_id as user_id',
+        'a.role_id as role_id',
+        'a.scope_type as scope_type',
+        'a.scope_site_id as scope_site_id',
+        'a.scope_zone_id as scope_zone_id',
+        'a.scope_team_id as scope_team_id',
+        'a.valid_from as valid_from',
+        'a.valid_to as valid_to',
+        'a.revoked_at as revoked_at',
       ])
-      .where('id', '=', toBin(entityId))
+      .where('a.id', '=', toBin(entityId))
+      .where('a.user_id', '=', toBin(context.scopeId))
       .executeTakeFirst();
     if (!row) return undefined;
     return {
@@ -917,6 +928,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'lot.id as lot_id',
         'lot.lot_code as lot_code',
         'lot.expiry_date as expiry_date',
+        'lot.fifo_rank_at as fifo_rank_at',
+        'lot.status as lot_status',
         'b.qty_on_hand as qty_on_hand',
         'b.qty_reserved as qty_reserved',
         'b.qty_allocated as qty_allocated',
@@ -925,6 +938,10 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       ])
       .where('b.location_id', '=', toBin(locationId))
       .where('b.product_id', '=', toBin(entityId))
+      // S-42 : dans l'ordre de sortie du registre (BR-STK-050) — les lots du plus ancien au plus récent (rang d'entrée), puis
+      // la ligne sans lot, que le registre n'entame que faute de lot en stock.
+      .orderBy(sql`lot.fifo_rank_at IS NULL`)
+      .orderBy('lot.fifo_rank_at', 'asc')
       .orderBy('b.lot_key', 'asc')
       .execute();
     if (rows.length === 0) return undefined;
@@ -932,6 +949,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       lot_id: fromBinOrNull(row.lot_id),
       lot_code: row.lot_code,
       expiry_date: row.expiry_date,
+      fifo_rank_at: row.fifo_rank_at,
+      lot_status: row.lot_status,
       qty_on_hand: row.qty_on_hand,
       qty_reserved: row.qty_reserved,
       qty_allocated: row.qty_allocated,
@@ -1101,6 +1120,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'counted_qty_base',
         'theoretical_qty_base',
         'variance_qty_base',
+        'reconciled_adjustment_qty_base',
+        'all_lots',
         'variance_reason_code_id',
         'comment',
       ])
@@ -1128,6 +1149,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         counted_qty_base: line.counted_qty_base,
         theoretical_qty_base: line.theoretical_qty_base,
         variance_qty_base: line.variance_qty_base,
+        reconciled_adjustment_qty_base: line.reconciled_adjustment_qty_base,
+        all_lots: Boolean(line.all_lots),
         variance_reason_code_id: fromBinOrNull(line.variance_reason_code_id),
         comment: line.comment,
       })),
@@ -1363,6 +1386,23 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       approval_request_id: fromBinOrNull(row.approval_request_id),
       version: row.version,
     };
+  },
+
+  // Jeu `presence` (AV-514 (4)) : feuilles de présence du personnel d'un site, pour relire l'historique sans réseau. La
+  // ligne n'est servie que si la feuille est bien de ce site (une feuille ne change pas de site).
+  PRESENCE_SHEET: async (executor, entityId, context) => {
+    if (context.scopeType !== 'SITE' || context.scopeId === null) return undefined;
+    const [sheet] = await listPresenceSheets(executor, { ids: [entityId], includeCancelled: true });
+    if (!sheet || sheet.siteId !== context.scopeId) return undefined;
+    return { ...sheet };
+  },
+
+  // Jeu `weekly_reports` (AV-514 (4)) : bilans hebdomadaires de l'utilisateur, jamais ceux d'un autre.
+  WEEKLY_REPORT: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
+    const [report] = await listWeeklyReports(executor, { ids: [entityId] });
+    if (!report || report.userId !== context.scopeId) return undefined;
+    return { ...report };
   },
 
   // P6-07 — jeu `procurement` (01-architecture-offline.md §3.1 : « BC livrables sur le site,
@@ -2519,9 +2559,11 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     if (!row || (row.status !== 'SENT' && row.status !== 'DISCREPANCY_PENDING')) return undefined;
     const accounts = await executor
       .selectFrom('finance_cash_accounts')
-      .select(['holder_user_id', 'responsible_user_id', 'site_id'])
+      .select(['id', 'name', 'holder_user_id', 'responsible_user_id', 'site_id'])
       .where('id', 'in', [row.from_account_id, row.to_account_id])
       .execute();
+    const accountName = (accountId: Buffer): string | null =>
+      accounts.find((account) => account.id.equals(accountId))?.name ?? null;
     const inScope = accounts.some((account) =>
       scope.type === 'USER'
         ? fromBin(account.holder_user_id ?? account.responsible_user_id) === scope.id
@@ -2534,6 +2576,9 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       local_ref: row.local_ref,
       from_account_id: fromBin(row.from_account_id),
       to_account_id: fromBin(row.to_account_id),
+      // S-52 : le libellé des comptes (la remise n'est déjà servie qu'aux parties, ce nom n'élargit rien).
+      from_account_name: accountName(row.from_account_id),
+      to_account_name: accountName(row.to_account_id),
       amount_sent_xaf: Number(row.amount_sent_xaf),
       amount_received_xaf:
         row.amount_received_xaf === null ? null : Number(row.amount_received_xaf),

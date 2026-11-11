@@ -30,7 +30,7 @@ const MIME = {
 };
 
 async function initBackend() {
-  // Compatibilite MariaDB (CAST AS JSON, FOR SHARE) : a poser avant la creation de l'application (mariadb-compat.mjs).
+  // Compatibilite MariaDB (CAST AS JSON, FOR SHARE, FOR UPDATE OF) : a poser avant la creation de l'application (mariadb-compat.mjs).
   const { DefaultQueryCompiler } = await import('kysely');
   const { installMariaDbCompat } = await import('./mariadb-compat.mjs');
   installMariaDbCompat(DefaultQueryCompiler);

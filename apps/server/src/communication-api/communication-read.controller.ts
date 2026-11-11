@@ -1,7 +1,8 @@
 /**
  * Lectures de la communication (P9-06 ; D13 §4 UC-NOT-03 ; ADR-062 §3 ; AT-046 en partie) :
  * `GET /api/v1/alerts`, `/alerts/summary`, `/alerts/{id}`, `/notifications` et `/alert-rules`, et (P9-11)
- * `/notes`, `/notes/{id}` et `/notes/{id}/acknowledgements` (ADR-063, AV-429).
+ * `/notes`, `/notes/{id}` et `/notes/{id}/acknowledgements` (ADR-063, AV-429), plus (AV-536)
+ * `/notifications/push-key` (clé publique VAPID pour l'abonnement Web Push).
  *
  * - **Droit** : `comm.alert.read` (tous les rôles) ; `comm.alert_rule.manage` pour les règles (RC-01) ;
  *   `comm.note.read` pour le centre de notes, `comm.note.publish` pour la gestion des notes et le suivi des
@@ -28,8 +29,11 @@ import {
   type NoteItem,
   type NoteListResponse,
   type NotificationListResponse,
+  type PushKeyResponse,
 } from '@gic/contracts';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
+import { ENV } from '../platform/env.provider.js';
+import type { Env } from '../platform/env.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
 import { ApiError } from '../platform/http/api-error.exception.js';
@@ -53,6 +57,7 @@ import {
   noteDetail,
   notePage,
   notificationPage,
+  vapidConfigFromEnv,
   type AlertFilter,
   type AlertReadItem,
   type NoteAudienceResolver,
@@ -162,6 +167,7 @@ export class CommunicationReadController {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(ID_GENERATOR) idGenerator: IdGenerator,
     @Inject(NOTE_AUDIENCE_RESOLVER) private readonly noteAudience: NoteAudienceResolver,
+    @Inject(ENV) private readonly env: Env,
   ) {
     this.alertAccess = new ReadAccess(db, { clock, idGenerator }, ALERT_READ_PERMISSION);
     this.ruleAccess = new ReadAccess(db, { clock, idGenerator }, RULE_PERMISSION);
@@ -274,6 +280,22 @@ export class CommunicationReadController {
       unreadCount: page.unreadCount,
       nextCursor: page.nextCursor,
     };
+  }
+
+  /**
+   * Clé publique VAPID du serveur (AV-536) : la PWA la passe à `pushManager.subscribe` pour s'abonner au Web Push.
+   * Publique par nature (le navigateur la transmet au service de push) ; `enabled` est faux tant que le porteur
+   * n'a pas posé ses clés (ou si elles sont invalides) : la PWA ne propose alors pas l'abonnement. Mêmes droits
+   * que la boîte de notifications.
+   */
+  @Get('notifications/push-key')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @RequiresPermission(ALERT_READ_PERMISSION)
+  async pushKey(@Req() request: AuthenticatedRequest): Promise<PushKeyResponse> {
+    await this.alertAccess.requirePermission(request, this.clock.now(), { type: 'NOTIFICATION' });
+    const config = vapidConfigFromEnv(this.env);
+    return { enabled: config !== null, publicKey: config?.publicKey ?? null };
   }
 
   /**

@@ -29,6 +29,7 @@ import type {
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { DATE_ONLY, dateColumn, formatDateColumn, isAllowed, rejected } from './shared.js';
+import { emitWeeklyReportChange } from '../sync-changes.js';
 
 export const WEEKLY_REPORT_SUBMIT_PERMISSION = 'crm.weekly_report.submit';
 export const WEEKLY_REPORT_REVIEW_PERMISSION = 'crm.weekly_report.review';
@@ -118,6 +119,7 @@ const submitReport: CommandHandler<SubmitPayload> = async (uow, envelope) => {
       })
       .where('id', '=', reportId)
       .execute();
+    await emitWeeklyReportChange(uow, reportId);
     return { status: 'APPLIED', audit: { before, after: texts } };
   }
 
@@ -154,6 +156,7 @@ const submitReport: CommandHandler<SubmitPayload> = async (uow, envelope) => {
       created_by: toBin(author),
     })
     .execute();
+  await emitWeeklyReportChange(uow, reportId);
   return { status: 'APPLIED' };
 };
 
@@ -206,6 +209,7 @@ const reviewReport: CommandHandler<ReviewPayload> = async (uow, envelope) => {
     })
     .where('id', '=', row.id)
     .execute();
+  await emitWeeklyReportChange(uow, row.id);
   return {
     status: 'APPLIED',
     audit: { before: current, after: { status: 'REVIEWED', managerComment: comment } },

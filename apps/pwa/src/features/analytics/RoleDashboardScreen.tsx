@@ -44,6 +44,7 @@ import './analytics.css';
 
 const EXPLORER_ROLES = new Set([
   'DIRECTION',
+  'SUPERVISION',
   'RESP_COMMERCIAL',
   'RESP_PRODUCTION',
   'RESP_ACHATS',

@@ -109,7 +109,7 @@ Aucun AV n'est bloquant. Les 77 points ouverts par P5 (28 importants, 49 seconda
 | AV-241 | Rôles de l'écran de trésorerie (ECR-FIN-05) | SECONDAIRE | Finance et Direction |
 | AV-242 | Lecture seule au-delà de l'autonomie hors connexion (AV-009) | IMPORTANTE | Durée depuis la dernière synchronisation complète ; au-delà, nouvelle opération refusée, consultation et envoi intacts |
 
-**Renvoyé à une phase ultérieure** : AV-229 (Utilisateur suspendu puis réactivé : fenêtre de quarantaine, P10).
+**Renvoyé à une phase ultérieure** : AV-229 (Utilisateur suspendu puis réactivé : fenêtre de quarantaine) — **livré le 07/11/2026**, périodes hors service closes des comptes, comme AV-212 pour les appareils.
 
 Les choix d'implémentation laissés libres par les règles sont **DÉDUITS** et documentés dans [D05 §15](../01-functional/domaines/D05-DIS-distribution-points-de-vente.md), [D06 §15](../01-functional/domaines/D06-STK-stocks.md) et [D09 §15](../01-functional/domaines/D09-FIN-finance.md).
 
@@ -177,7 +177,7 @@ Ordre de verrouillage (ADR-038) : chaque paire de transactions concurrentes rele
 
 - **Vérification dans le navigateur et sur appareil** des écrans de P5 (et de ceux des phases précédentes) : à faire avec le porteur (compte de démonstration local, `pnpm run demo:data`, [`db/README.md`](../../db/README.md) §5).
 - **Changement d'utilisateur sur une même tablette** (sessions multiples de la PWA, changement de vendeur hors ligne avec son code PIN, jeux cloisonnés par utilisateur) : reporté à une phase dédiée (décision du porteur du 13/10/2026, [suivi](15-ecrans-pwa.md) § 9.7) ; le suivi par auteur des opérations et des quotas, livré, reste le périmètre de P5.
-- **Garde de sécurité des comptes** : fenêtre de quarantaine d'un utilisateur suspendu puis réactivé (AV-229), avant la mise en production, sinon en P10.
+- **Garde de sécurité des comptes** : fenêtre de quarantaine d'un utilisateur suspendu puis réactivé (AV-229) — **livrée le 07/11/2026**.
 - **Alertes** (remise non reçue, réception non rapprochée, quotas à régulariser, écart de caisse) : les signaux existent (accueil, conflits) ; la diffusion est en P9.
 - **Finance opérationnelle** (dépenses, factures et paiements fournisseurs, rapprochement) : P8 ; les ajustements tardifs des sessions validées à l'écran de trésorerie attendent S-51.
 - **Besoins serveur des écrans** encore ouverts ([`16-besoins-serveur-des-ecrans.md`](16-besoins-serveur-des-ecrans.md)) : lot transverse à planifier avec le porteur.

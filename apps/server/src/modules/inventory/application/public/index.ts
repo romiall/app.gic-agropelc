@@ -158,6 +158,8 @@ export {
   lossDeclarationLocator,
   lossesAwaitingPhoto,
 } from './loss-declaration.js';
+// AV-539 (ADR-070) : numéro, référence et état de fermeture d'une perte ou d'une mortalité, pour l'archive de ses photos.
+export { LOSS_ARCHIVE_CLOSED_STATUSES, lossArchiveFacts } from './archive-facts.js';
 export type {
   LossCategory,
   DeclareLossInput,

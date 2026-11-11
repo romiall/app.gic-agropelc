@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **321**.
+Nombre total de règles : **324**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -36,6 +36,8 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-023 | L'autonomie hors ligne d'un appareil expire 7 jours après la dernière synchronisation réussie. L'application passe alors en lecture seule j… | AV-009 |
 | BR-ADM-024 | Le PIN local (6 chiffres) n'est jamais transmis au serveur. Après 5 échecs consécutifs, l'utilisateur doit se reconnecter en ligne avec son… | D (sécurité) |
 | BR-ADM-025 | Portée d'un appareil (lecture et décisions) : un décideur voit et décide un appareil si l'utilisateur qui l'a connecté relève de ses équipe… | D (AV-247, AV-254, AV-258 à AV-261 ; MP-06) |
+| BR-ADM-026 | Archive des photos jointes (AV-539, ADR-070) : une photo jointe n'est archivable que si elle est reçue et vérifiée (`AVAILABLE`), reçue par… | D (demande du porteur, Q10) |
+| BR-ADM-027 | Vidage de l'espace (AV-539, ADR-070) : le serveur ne supprime le fichier d'une photo archivée que si le volume qui la porte a été livré en… | D (demande du porteur, Q10 ; ADR-006) |
 
 ## D02 — Commercial / CRM opérationnel (CRM)
 
@@ -191,7 +193,7 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-043 | Si la valeur absolue totale des écarts est sous le seuil, l'inventaire est comptabilisé automatiquement ; sinon il passe `PENDING_APPROVAL`… | C (CM §25) / AV-039 |
 | BR-STK-044 | Rapprochement tardif : si un mouvement de `occurred_at` ≤ `counted_at` est appliqué après la comptabilisation, le serveur crée un ajustemen… | D (offline ; INV-STK-09) |
 | BR-STK-045 | Pour un produit à lot au point de vente, l'écart d'un produit compté sans lot est réparti sur les lots en FIFO inverse (les plus récents d'… | D |
-| BR-STK-046 | Un inventaire d'ouverture (`OPENING`) a un théorique nul ; ses mouvements partent de `V_OPENING`, avec un coût unitaire déclaré. Un emplace… | D (AV-072) |
+| BR-STK-046 | Un inventaire d'ouverture (`OPENING`) a un théorique nul ; ses mouvements partent de `V_OPENING`, avec un coût unitaire déclaré. Un emplace… | D (AV-072, AV-517, AV-541) |
 | BR-STK-050 | Pour un produit à suivi par lot `REQUIRED`, tout mouvement porte un lot. Pour `OPTIONAL`, le lot est porté s'il est connu. Pour `NONE`, jam… | AV-036 |
 | BR-STK-051 | Un seuil (minimum, cible) par emplacement × produit déclenche `STOCK_LOW` si disponible < minimum, et `STOCK_OUT` si disponible ≤ 0. La qua… | C (CM §12, §54) / AV-040 |
 | BR-STK-052 | Tout mouvement porte le coût unitaire en vigueur au moment de son application : CMUP courant du produit ; ou coût du lot par tête pour un p… | AV-042 |
@@ -210,7 +212,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-PRD-001 | Un lot a un type (`POULET_CHAIR`, `PONDEUSE`, `PORC_ENGRAISSEMENT`, `REPRODUCTEUR_VOLAILLE`, `PORC_NAISSAGE` — les cinq dès P7, AV-044, AV-… | C (CM §15, §19) / AV-044, AV-045, AV-099 |
 | BR-PRD-002 | La création d'un lot crée son lot de traçabilité (`inventory.stock_lots`, origine `PRODUCTION_LOT`). Tous les mouvements des animaux du lot… | D (CM §58) |
 | BR-PRD-003 | L'effectif d'un lot n'est jamais saisi : c'est la somme des soldes de son lot de traçabilité. On distingue l'effectif en élevage (emplaceme… | C (CM §15 ; REQ-029) |
-| BR-PRD-004 | Une entrée de lot est une mise en place (`PLACEMENT`), une naissance (`BIRTH`) ou un transfert entrant (`TRANSFER_IN`). Mise en place à par… | C (CM §15) / D / AV-112 |
+| BR-PRD-004 | Une entrée de lot est une mise en place (`PLACEMENT`), une naissance (`BIRTH`), un transfert entrant (`TRANSFER_IN`) ou, pour un lot repris… | C (CM §15) / D / AV-112 |
 | BR-PRD-005 | La mortalité est une déclaration de perte de catégorie `MORTALITE` rattachée au lot et à l'emplacement (D06, BR-STK-030). Elle est saisie d… | C (CM §16) / AV-048 |
 | BR-PRD-006 | Le seuil relatif de mortalité se calcule sur l'effectif en élevage du lot à `occurred_at`, par l'appareil (approximation locale) puis par l… | D (PM §37) |
 | BR-PRD-007 | Une consommation d'intrant pour un lot est une consommation (D06, BR-STK-036) dont l'objet de coût est le lot. Sa valeur (quantité × coût u… | C (CM §4, §15, §33) |
@@ -222,6 +224,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-PRD-013 | La mortalité ne réduit pas le coût du lot : elle le répartit sur un effectif plus faible (hausse du coût par tête). Sa « valeur économique… | C (CM §16) |
 | BR-PRD-014 | Marge d'un lot = CA des ventes portant le lot − coût du lot imputable aux têtes vendues. Pour un lot clôturé : CA total − coût total. | C (CM §33) / D |
 | BR-PRD-015 | Une pesée enregistre la taille d'échantillon, le poids moyen (g) et, optionnellement, le poids total ; elle n'a aucun effet de stock. | C (CM §15, §19) |
+| BR-PRD-016 | Un lot déjà en élevage à la date d'arrêt se reprend par une déclaration unique — effectif repris, date de mise en place réelle, valeur tota… | D (Q42 A, AV-517 (3)(b), AV-541 à AV-544, ADR-069) |
 | BR-VOL-001 | Un lot `POULET_CHAIR` a pour produit « Poulet de chair vif », compté à la tête. Sa mise en place provient de « Poussin d'un jour (chair) »… | C (CM §15) / D |
 | BR-VOL-002 | La sortie vers commercialisation est un transfert du bâtiment vers un magasin, un PDV ou un stock mobile, qui porte le lot et le coût par t… | C (CM §15) |
 | BR-VOL-003 | Le poulet est vendu vif ou abattu : l'abattage est une transformation (consommation des poulets vifs, production de plusieurs produits — po… | AV-032 (décision du 27/09/2026) |

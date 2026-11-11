@@ -34,7 +34,7 @@ export type {
   ToDeliverLine,
 } from './distribution-metrics.js';
 // P4-09 : chiffre d'affaires, coût des ventes et marges (BR-FIN-042, 043).
-export { lotRevenue, periodRevenue, periodProductQuantity } from './revenue.js';
+export { lotRevenue, periodNetRevenue, periodRevenue, periodProductQuantity } from './revenue.js';
 export type { LotRevenue, LotRevenueMonth, PeriodRevenue, RevenueFilter } from './revenue.js';
 // P4-10 : lectures des commandes, ventes, livraisons et encaissements.
 export {
@@ -70,10 +70,17 @@ export {
   cashedActivity,
   saleActivityArms,
   salesActivityByDay,
+  salesByChannel,
+  salesBySeller,
   sumSalesActivity,
   flaggedSalesOfDay,
 } from './period-activity.js';
-export type { ActivityPeriod, CashedActivityRow, SalesActivityDay } from './period-activity.js';
+export type {
+  ActivityPeriod,
+  CashedActivityRow,
+  SalesActivityDay,
+  SalesBreakdownLine,
+} from './period-activity.js';
 export { ordersActivity, repurchaseRate } from './sales-indicators.js';
 export type { OrdersActivity, RepurchaseRate } from './sales-indicators.js';
 // P9-27 (KPI-COM-16, AV-473, AV-474) : atteinte d'objectif et réalisé d'un objectif, définition unique.

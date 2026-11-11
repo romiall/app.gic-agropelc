@@ -59,4 +59,18 @@ describe('Accueil : actions par rôle', () => {
       ).toBeLessThanOrEqual(1);
     }
   });
+
+  it('SUPERVISION (AV-529) : rôle strictement consultatif sans file de validation ni conflits', () => {
+    const sup = ROLE_CATALOG.SUPERVISION!;
+    expect(sup.scopeKind).toBe('ALL');
+    expect(sup.conflictRoles).toEqual([]);
+    expect(codesOf('SUPERVISION')).toEqual([
+      'CONTROL_TOWER',
+      'RECEIVABLES',
+      'COSTS_MARGINS',
+      'SYNC_STATUS',
+    ]);
+    expect(codesOf('SUPERVISION')).not.toContain('VALIDATIONS');
+    expect(codesOf('SUPERVISION')).not.toContain('PRICES');
+  });
 });

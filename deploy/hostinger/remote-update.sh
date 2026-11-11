@@ -16,7 +16,7 @@ cd "$APP"
 PREV="releases/$RELEASE/previous"
 NEW="releases/$RELEASE/new"
 DUMP="$HOME/backups_db/gic-$RELEASE.sql.gz"
-ITEMS="dist pwa seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs approve-device.mjs grant-test-access.mjs package.json node_modules/@gic/domain node_modules/@gic/contracts"
+ITEMS="dist pwa seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs check-sql-corpus.mjs sql-corpus.json sql-corpus-known.json approve-device.mjs grant-test-access.mjs package.json node_modules/@gic/domain node_modules/@gic/contracts"
 mkdir -p "$PREV" "$NEW" "$HOME/backups_db" node_modules/@gic tmp
 
 restart() {
@@ -41,7 +41,7 @@ trap rollback ERR
 
 echo "== 1/8 Extraction du paquet"
 tar -xzf "$BUNDLE" -C "$NEW"
-for f in dist pwa pkg-domain pkg-contracts seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs approve-device.mjs grant-test-access.mjs package.json; do
+for f in dist pwa pkg-domain pkg-contracts seeds-dist db server.js migrate.mjs mariadb-compat.mjs compat-check.mjs check-sql-corpus.mjs approve-device.mjs grant-test-access.mjs package.json; do
   [ -e "$NEW/$f" ] || fail "$f absent du paquet"
 done
 
@@ -64,6 +64,14 @@ console.log(decodeURIComponent(u.pathname.slice(1)));
   rm -f "$CNF"
   [ -s "$DUMP" ] || fail "sauvegarde vide ($DUMP)"
   echo "  $DUMP ($(du -h "$DUMP" | cut -f1))"
+  # Les sauvegardes d'avant livraison ne s'accumulent pas (decision du porteur du 07/11/2026) : les cinq plus recentes
+  # sont gardees, la nouvelle comprise. Seuls les noms gic-AAAAMMJJ-HHMMSS.sql.gz de ~/backups_db sont concernes : ni
+  # daily/ (backup-db.sh, qui a sa propre rotation), ni les copies faites a la main. Jamais d'echec de livraison ici.
+  OLD_DUMPS="$(ls -1 "$HOME/backups_db" 2>/dev/null | grep -E '^gic-[0-9]{8}-[0-9]{6}\.sql\.gz$' | sort | head -n -5 || true)"
+  if [ -n "$OLD_DUMPS" ]; then
+    for old in $OLD_DUMPS; do rm -f "$HOME/backups_db/$old" || true; done
+    echo "  sauvegardes d'avant livraison les plus anciennes supprimees (cinq gardees) : $(printf '%s\n' "$OLD_DUMPS" | wc -l | tr -d ' ')"
+  fi
 fi
 
 echo "== 3/8 Mise en place des nouveaux fichiers (ancienne version gardee dans $APP/$PREV)"
@@ -78,6 +86,10 @@ mv "$NEW/server.js" server.js
 mv "$NEW/migrate.mjs" migrate.mjs
 mv "$NEW/mariadb-compat.mjs" mariadb-compat.mjs
 mv "$NEW/compat-check.mjs" compat-check.mjs
+mv "$NEW/check-sql-corpus.mjs" check-sql-corpus.mjs
+for optional in sql-corpus.json sql-corpus-known.json; do
+  [ ! -e "$NEW/$optional" ] || mv "$NEW/$optional" "$optional"
+done
 mv "$NEW/approve-device.mjs" approve-device.mjs
 mv "$NEW/grant-test-access.mjs" grant-test-access.mjs
 mv "$NEW/package.json" package.json
@@ -98,6 +110,16 @@ node --env-file=.env migrate.mjs --dir ./db/migrations
 
 echo "== 6/8 Semis (reglages, regles d'alerte, droits)"
 node --env-file=.env seeds-dist/run.js
+
+echo "== 6b/8 Controle des requetes du serveur sur la base reelle (analyse seule, rien n'est execute)"
+# sql-corpus.json = les requetes SQL que les essais du serveur emettent (AV-540). La base les ANALYSE (PREPARE), elle n'en
+# execute aucune ; apres les migrations, car le code livre peut employer une table ou une colonne nouvelle. Un refus est un
+# avertissement (la livraison continue) ; -StrictSql de deploy.ps1 (SQL_CORPUS_STRICT=1) le rend bloquant.
+if [ "${SQL_CORPUS_STRICT:-0}" = "1" ]; then
+  node --env-file=.env check-sql-corpus.mjs --strict || fail "controle des requetes du serveur (mode strict)"
+else
+  node --env-file=.env check-sql-corpus.mjs || echo "  AVERTISSEMENT : le controle des requetes n'a pas pu aller au bout ; la livraison continue"
+fi
 
 echo "== 7/8 Redemarrage"
 ERR_LINES="$(wc -l < stderr.log 2>/dev/null || echo 0)"
@@ -135,6 +157,12 @@ fi
 
 trap - ERR
 rm -f "$BUNDLE"
+# Paquets envoyes par une livraison qui s'est arretee avant cette mise a jour (jamais utilises, quelques Mo chacun) : supprimes.
+STALE="$(find . -maxdepth 1 -name 'incoming-*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${STALE:-0}" != "0" ]; then
+  find . -maxdepth 1 -name 'incoming-*.tar.gz' -delete 2>/dev/null || true
+  echo "  paquets d'une livraison interrompue supprimes : $STALE"
+fi
 ls -1dt releases/* 2>/dev/null | tail -n +6 | xargs -r rm -rf
 echo "OK : livraison $RELEASE en ligne ($URL)."
 echo "Ancienne version : $APP/$PREV"

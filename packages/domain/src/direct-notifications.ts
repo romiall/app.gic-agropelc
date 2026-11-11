@@ -23,12 +23,16 @@ export const DIRECT_NOTIFICATION_EVENT_TYPES = [
   'StockTransferRequested',
   'StockTransferDispatched',
   'AnalyticsExportCompleted',
+  'DeviceEnrollmentRequested',
 ] as const;
 export type DirectNotificationEventType = (typeof DIRECT_NOTIFICATION_EVENT_TYPES)[number];
 
 export function isDirectNotificationEventType(value: string): value is DirectNotificationEventType {
   return (DIRECT_NOTIFICATION_EVENT_TYPES as readonly string[]).includes(value);
 }
+
+/** Permission d'approbation d'un appareil enrôlé (AV-432). */
+export const DEVICE_APPROVE_PERMISSION = 'identity.device.approve';
 
 /** Permission d'expédition (site source) et de réception (site destinataire) d'un transfert. */
 export const TRANSFER_DISPATCH_PERMISSION = 'inventory.transfer.dispatch';
@@ -68,7 +72,7 @@ export type DirectAudience =
 
 /** Type de l'objet source de la notification (colonne `source_type`). */
 export type DirectNotificationSourceType =
-  'APPROVAL_REQUEST' | 'STOCK_TRANSFER' | 'ANALYTICS_EXPORT';
+  'APPROVAL_REQUEST' | 'STOCK_TRANSFER' | 'ANALYTICS_EXPORT' | 'DEVICE';
 
 export interface DirectNotificationPlan {
   readonly eventType: DirectNotificationEventType;
@@ -232,6 +236,36 @@ function exportPlan(aggregateId: string, payload: Payload): DirectNotificationPl
 }
 
 /**
+ * Appareil enrôlé, en attente d'approbation (AV-432) : les titulaires de `identity.device.approve` sont prévenus. Le
+ * compte qui a connecté l'appareil est le propriétaire de la ressource (portées `TEAM` et `OWN` de l'approbateur : le
+ * responsable de son équipe) sans devenir destinataire : nul ne s'approuve soi-même (AV-258). Le périmètre n'a pas de
+ * site : un approbateur désigné par les sites d'affectation de l'utilisateur n'est pas atteint par ce périmètre
+ * (AV-432 (b), besoin B1 du résolveur) ; la Direction est le repli quand personne n'est trouvé.
+ */
+function devicePlan(aggregateId: string, payload: Payload): DirectNotificationPlan {
+  const eventType = 'DeviceEnrollmentRequested';
+  const enrolledBy = requiredString(eventType, payload, 'enrolled_by_user_id');
+  const shortCode = optionalString(eventType, payload, 'short_code');
+  return {
+    eventType,
+    audience: {
+      kind: 'PERMISSION_HOLDERS',
+      permission: DEVICE_APPROVE_PERMISSION,
+      perimeter: { siteId: null, zoneId: null, ownerUserIds: [enrolledBy] },
+      excludeUserIds: [enrolledBy],
+      fallbackToDirection: true,
+    },
+    title: 'Appareil à approuver',
+    body:
+      shortCode === null
+        ? 'Un appareil attend votre approbation.'
+        : `Un appareil attend votre approbation (code ${truncated(shortCode, 12)}).`,
+    sourceType: 'DEVICE',
+    sourceId: aggregateId,
+  };
+}
+
+/**
  * Plan de notification d'un événement d'un type direct (`isDirectNotificationEventType` le décide, avant).
  * Lève `DirectNotificationPayloadError` si la charge ne tient pas son contrat.
  */
@@ -251,6 +285,8 @@ export function planDirectNotification(event: {
       return transferPlan(event.eventType, event.aggregateId, payload);
     case 'AnalyticsExportCompleted':
       return exportPlan(event.aggregateId, payload);
+    case 'DeviceEnrollmentRequested':
+      return devicePlan(event.aggregateId, payload);
   }
 }
 

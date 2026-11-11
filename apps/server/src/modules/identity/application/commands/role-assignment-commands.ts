@@ -26,6 +26,7 @@ import type {
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { hasOtherActiveAdminAssignment } from './admin-guard.js';
 import { insertRoleAssignment } from '../role-assignment-writer.js';
+import { emitRoleAssignmentChange } from '../sync-changes.js';
 
 const scopeTypeSchema = z.enum(['GLOBAL', 'SITE', 'ZONE', 'TEAM']);
 
@@ -146,6 +147,9 @@ const revoke: CommandHandler<RevokePayload> = async (uow, envelope) => {
     })
     .where('id', '=', toBin(assignmentId))
     .execute();
+  // L'affectation révoquée est republiée à son utilisateur seul, avec `revoked_at` (ADR-071) : l'appareil la garde,
+  // elle n'est plus en vigueur. La ligne `GLOBAL` du repli du pipeline n'est servie à personne.
+  await emitRoleAssignmentChange(uow, assignmentId);
   return { status: 'APPLIED' };
 };
 

@@ -14,6 +14,7 @@ import { clock } from '../../platform/composition.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { checkinEnabled, presentedFlags } from '../fieldwork/checkin-setting.js';
 import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
@@ -233,6 +234,8 @@ export function SaleDetailScreen() {
   // Vente d'un autre utilisateur de la tablette, pas encore envoyée : l'annulation en dépendrait et
   // ne partirait qu'à sa reconnexion (ADR-039) ; elle attend son envoi.
   const foreignPending = waitsForOtherUser(refs.outbox, [sale.commandId], userId);
+  // Pointage désactivé (AV-537) : « hors prise de service » n'est plus présenté (le serveur l'écrit toujours).
+  const shownFlags = presentedFlags(sale.flags, checkinEnabled(refs.settings, clock.now()));
 
   return (
     <section className="sale">
@@ -297,10 +300,10 @@ export function SaleDetailScreen() {
       {sale.cancellationPending ? (
         <p className="home-banner">{t('sales.detail.cancellation_pending')}</p>
       ) : null}
-      {sale.flags.length > 0 ? (
+      {shownFlags.length > 0 ? (
         <p className="text-warn">
           {t('sales.detail.flag_hint', {
-            flags: sale.flags
+            flags: shownFlags
               .map((flag) => t(`sales.detail.flag.${flag}`, { defaultValue: flag }))
               .join(', '),
           })}

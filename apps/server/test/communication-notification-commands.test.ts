@@ -4,6 +4,7 @@
  * `communication.push.subscribe` (lié à l'appareil authentifié, point de terminaison repris par la session
  * courante) et `communication.push.unsubscribe`. Passage par le vrai pipeline de commandes.
  */
+import { createECDH, randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
@@ -70,7 +71,17 @@ const subscriptionOf = (endpoint: string) =>
     .where('endpoint', '=', endpoint)
     .executeTakeFirst();
 
-const keys = { p256dh: 'BPublicKeyForTests', auth: 'secretAuth' };
+/** Clés d'abonnement de la forme d'un navigateur : point P-256 non compressé (65 octets) et secret de 16 octets (AV-536). */
+function newKeys(): { p256dh: string; auth: string } {
+  const ecdh = createECDH('prime256v1');
+  ecdh.generateKeys();
+  return {
+    p256dh: ecdh.getPublicKey().toString('base64url'),
+    auth: randomBytes(16).toString('base64url'),
+  };
+}
+
+const keys = newKeys();
 
 beforeAll(async () => {
   const clock = new FixedClock(new Date(AT));
@@ -186,15 +197,13 @@ describe('P9-05 : abonnements Web Push', () => {
 
   it('un point de terminaison déjà connu est repris par la session courante', async () => {
     const endpoint = `https://push.test/${freshUuid()}`;
+    const otherKeys = newKeys();
     await run(alice, 'communication.push.subscribe', { endpoint, keys });
-    await run(bob, 'communication.push.subscribe', {
-      endpoint,
-      keys: { p256dh: 'BOtherKey', auth: 'otherAuth' },
-    });
+    await run(bob, 'communication.push.subscribe', { endpoint, keys: otherKeys });
     const row = await subscriptionOf(endpoint);
     expect(row!.user_id.equals(toBin(bob.userId))).toBe(true);
     expect(row!.device_id.equals(toBin(bob.deviceId))).toBe(true);
-    expect(row!.p256dh).toBe('BOtherKey');
+    expect(row!.p256dh).toBe(otherKeys.p256dh);
     expect(row!.revoked_at).toBeNull();
   });
 
@@ -224,13 +233,11 @@ describe('P9-05 : abonnements Web Push', () => {
     const endpoint = `https://push.test/${freshUuid()}`;
     await run(alice, 'communication.push.subscribe', { endpoint, keys });
     const first = await subscriptionOf(endpoint);
-    await run(alice, 'communication.push.subscribe', {
-      endpoint,
-      keys: { p256dh: 'BRotatedKey', auth: 'rotatedAuth' },
-    });
+    const rotated = newKeys();
+    await run(alice, 'communication.push.subscribe', { endpoint, keys: rotated });
     const second = await subscriptionOf(endpoint);
     expect(second!.id.equals(first!.id)).toBe(false);
-    expect(second!.p256dh).toBe('BRotatedKey');
+    expect(second!.p256dh).toBe(rotated.p256dh);
     expect(second!.revoked_at).toBeNull();
   });
 
@@ -272,6 +279,39 @@ describe('P9-05 : abonnements Web Push', () => {
       .where('endpoint', '=', endpoint)
       .execute();
     expect(rows).toHaveLength(1);
+  });
+
+  it('point de terminaison non appelable ou clés qui ne sont pas celles d’un navigateur : refusé, rien n’est écrit (AV-536)', async () => {
+    const refused = async (endpoint: string, withKeys: { p256dh: string; auth: string }) => {
+      const result = await run(alice, 'communication.push.subscribe', {
+        endpoint,
+        keys: withKeys,
+      });
+      expect(codeOf(result)).toBe('PUSH_SUBSCRIPTION_INVALID');
+      expect(await subscriptionOf(endpoint)).toBeUndefined();
+    };
+    const id = freshUuid();
+    // Point de terminaison : http, réseau interne, hôte local, autre port, identifiants.
+    for (const endpoint of [
+      `http://push.test/${id}`,
+      `https://127.0.0.1/${id}`,
+      `https://10.0.0.5/${id}`,
+      `https://localhost/${id}`,
+      `https://push.test:8443/${id}`,
+      `https://user:secret@push.test/${id}`,
+    ]) {
+      await refused(endpoint, keys);
+    }
+    // Clés : trop courtes, clé publique compressée, secret d'authentification de 32 octets.
+    const compressed = createECDH('prime256v1');
+    compressed.generateKeys();
+    const endpoint = `https://push.test/${id}`;
+    await refused(endpoint, { p256dh: 'BPk', auth: 'sec' });
+    await refused(endpoint, {
+      p256dh: compressed.getPublicKey(null, 'compressed').toString('base64url'),
+      auth: keys.auth,
+    });
+    await refused(endpoint, { p256dh: keys.p256dh, auth: randomBytes(32).toString('base64url') });
   });
 
   it('point de terminaison invalide ou clés absentes : rejeté par le schéma', async () => {

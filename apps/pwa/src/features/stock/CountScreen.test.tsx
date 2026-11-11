@@ -6,7 +6,7 @@ import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import type { InventoryCountData, LocationData, ProductData } from '../sales/types.js';
 import { CountScreen } from './CountScreen.js';
-import { activeCount, countEntries, deviceCounts } from './count.js';
+import { activeCount, countEntries, deviceCounts, reconciledLinesOf } from './count.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../platform/composition.js', async () => {
@@ -106,6 +106,43 @@ describe('Inventaire (ECR-STK-05, logique)', () => {
     const submit = command('inventory.count.submit', 'cnt-1', { countId: 'cnt-1' }, 2);
     const after = deviceCounts([projected], [record, submit], undefined);
     expect(activeCount(after, 'loc')).toBeUndefined();
+  });
+
+  it('BR-STK-044 : le rapprochement tardif d’une ligne vient du jeu ; absent d’un jeu d’avant, il vaut 0', () => {
+    const posted: InventoryCountData = {
+      ...projected,
+      id: 'cnt-2',
+      status: 'POSTED',
+      lines: [
+        {
+          ...projected.lines[0]!,
+          id: 'l2',
+          theoretical_qty_base: '100.000',
+          variance_qty_base: '-3.000',
+          reconciled_adjustment_qty_base: '1.000',
+        },
+        {
+          ...projected.lines[0]!,
+          id: 'l3',
+          product_id: 'p-sacs',
+          theoretical_qty_base: '5.000',
+          variance_qty_base: '0.000',
+        },
+      ],
+    };
+    const [view] = deviceCounts([posted], [], undefined);
+    expect(view?.lines.get('p-oeufs:')?.reconciledQtyBase).toBe(1);
+    expect(view?.lines.get('p-sacs:')?.reconciledQtyBase).toBe(0);
+    expect(reconciledLinesOf(view!)).toEqual([{ productId: 'p-oeufs', lotId: null, quantity: 1 }]);
+    // Une saisie de l'appareil pas encore retéléchargée n'a jamais de rapprochement.
+    const record = command(
+      'inventory.count.record_lines',
+      'cnt-1',
+      { countId: 'cnt-1', lines: [{ productId: 'p-oeufs', countedQtyBase: 118 }] },
+      1,
+    );
+    const [pending] = deviceCounts([projected], [record], undefined);
+    expect(reconciledLinesOf(pending!)).toEqual([]);
   });
 
   it('lignes à compter : partiel = produits comptés ou ajoutés ; lot obligatoire = une ligne par lot', () => {
@@ -303,6 +340,39 @@ describe('Inventaire (ECR-STK-05, écran)', () => {
       depends_on: [open?.command_id, record?.command_id],
       payload: { countId: open?.aggregate_id },
     });
+  });
+
+  it('le motif du système (rapprochement tardif) n’est jamais proposé au compteur', async () => {
+    await getDb().projections.put({
+      key: 'reason_code:REASON_CODE:r-systeme',
+      dataset: 'reason_code',
+      entity_type: 'REASON_CODE',
+      entity_id: 'r-systeme',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 2,
+      data: {
+        id: 'r-systeme',
+        category: 'INVENTORY_ADJUSTMENT',
+        code: 'RAPPROCHEMENT_INVENTAIRE',
+        label: 'Rapprochement tardif d’inventaire (automatique)',
+        loss_category: null,
+        requires_comment: false,
+        is_active: true,
+      },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('button', { name: 'Ouvrir l’inventaire' }));
+    const eggs = await screen.findByRole('listitem', { name: 'Œufs de table' });
+    await user.type(within(eggs).getByLabelText('Compté (U)'), '290');
+    const picker = within(eggs).getByLabelText('Motif de l’écart');
+    const options = within(picker)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(options).toContain('Casse non déclarée');
+    expect(options.join(' ')).not.toMatch(/Rapprochement tardif/);
   });
 
   it('saisie effacée : plus de modification, la fin reste possible ; motif qui exige un commentaire', async () => {

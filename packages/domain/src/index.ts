@@ -110,6 +110,31 @@ export {
   evaluateStockThreshold,
 } from './stock-engine.js';
 
+export type { BackdatingEvaluation, BackdatingRefusal, BackdatingWindow } from './backdating.js';
+export {
+  BACKDATE_EXCEED_PERMISSION,
+  BACKDATE_MAX_HOURS_SETTING,
+  DEFAULT_BACKDATE_MAX_HOURS,
+  DEFAULT_JUSTIFICATION_AFTER_HOURS,
+  JUSTIFICATION_AFTER_HOURS_SETTING,
+  backdatingRefusal,
+  backdatingWindowFrom,
+  evaluateBackdatingGap,
+} from './backdating.js';
+
+export type {
+  CountAdjustmentPart,
+  CountLineScope,
+  CountLotBalance,
+  LateMoveFootprint,
+} from './inventory-count-reconciliation.js';
+export {
+  distributeLateMoveCompensation,
+  distributeLotLessVariance,
+  reconciliationDelta,
+  resolveCountLineScope,
+} from './inventory-count-reconciliation.js';
+
 export type {
   GeoPoint,
   CheckinResult,
@@ -254,6 +279,16 @@ export {
   feedConversionRatio,
   slaughterYield,
 } from './production.js';
+
+// Reprise d'un lot en cours (ADR-069, BR-PRD-016 ; AV-541 à AV-544) : bornes, contrôles et résumé de la demande.
+export {
+  LOT_OPENING_MAX_AGE_DAYS,
+  LOT_OPENING_MAX_HEADCOUNT,
+  LOT_OPENING_MAX_UNIT_VALUE_XAF,
+  lotOpeningIssues,
+  lotOpeningSummary,
+} from './lot-opening.js';
+export type { LotOpeningDeclaration, LotOpeningIssue } from './lot-opening.js';
 
 export type {
   PricingMode,
@@ -500,6 +535,64 @@ export {
   attachmentScanWindow,
   wholeDaysOrDefault,
 } from './attachment-alerts.js';
+// Archive des photos jointes (AV-539, ADR-070) : périodes, seuil d'ancienneté, noms, volumes, manifeste.
+export {
+  ARCHIVE_CATEGORIES,
+  ARCHIVE_DEFAULT_GRANULARITY,
+  ARCHIVE_DEFAULT_MIN_AGE_DAYS,
+  ARCHIVE_DEFAULT_RETENTION_YEARS,
+  ARCHIVE_DEFAULT_VOLUME_MAX_MB,
+  ARCHIVE_FALLBACK_REFERENCE,
+  ARCHIVE_GRANULARITIES,
+  ARCHIVE_MANIFEST_COLUMNS,
+  ARCHIVE_MAX_FILES_PER_PLAN,
+  ARCHIVE_MAX_FILES_PER_VOLUME,
+  ARCHIVE_MAX_MIN_AGE_DAYS,
+  ARCHIVE_MAX_SECONDARY_REFERENCES,
+  ARCHIVE_MIN_AGE_FLOOR_DAYS,
+  ARCHIVE_VOLUME_MB_MAX,
+  ARCHIVE_VOLUME_MB_MIN,
+  archiveCutoff,
+  archiveDisplayTimestamp,
+  archiveEntryPath,
+  archiveExtensionOf,
+  archiveFileTimestamp,
+  archiveReferenceTokens,
+  archiveMonthOf,
+  archiveMonthStart,
+  archivePeriodFromStart,
+  archivePeriodOf,
+  archivePeriodsOfMonths,
+  archivePeriodWindow,
+  archiveRetentionUntil,
+  archiveShortId,
+  archiveVolumeFileName,
+  buildArchiveManifest,
+  buildArchiveReadme,
+  csvCell,
+  effectiveGranularity,
+  effectiveMinAgeDays,
+  effectiveRetentionYears,
+  effectiveVolumeMaxBytes,
+  isArchiveCategory,
+  isArchiveGranularity,
+  isSafeArchivePath,
+  planArchiveVolumes,
+  sanitizeFileToken,
+  uniqueEntryPaths,
+} from './attachment-archive.js';
+export type {
+  ArchiveCategory,
+  ArchiveEntryInput,
+  ArchiveOwnerFacts,
+  ArchiveGranularity,
+  ArchiveManifestRow,
+  ArchivePeriod,
+  ArchiveReadmeInput,
+  ArchiveVolumeCandidate,
+  ArchiveVolumeNameInput,
+  PlannedArchiveVolume,
+} from './attachment-archive.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';
 

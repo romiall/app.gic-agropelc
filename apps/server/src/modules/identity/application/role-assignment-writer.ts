@@ -5,12 +5,18 @@
  * brute que le pipeline traiterait à tort comme transitoire (`RETRY_LATER`) au lieu d'un rejet
  * définitif.
  *
- * Partagé par la commande `identity.role_assignment.grant` et par la création d'un compte
- * (`POST /users`, MP-13, AV-325), qui pose l'affectation initiale dans la même transaction. Le module
- * `identity` est le seul propriétaire de la table (règle 5 de `CLAUDE.md`).
+ * Partagé par la commande `identity.role_assignment.grant`, par la création d'un compte
+ * (`POST /users`, MP-13, AV-325), qui pose l'affectation initiale dans la même transaction, et par les
+ * scripts d'exploitation du kit de déploiement. Le module `identity` est le seul propriétaire de la table
+ * (règle 5 de `CLAUDE.md`).
+ *
+ * L'écriture publie aussitôt l'affectation à son utilisateur (ADR-071, `emitRoleAssignmentChange` : ligne `USER`
+ * du jeu `role_assignment`) : tout appelant, commande ou script, la publie ainsi sans rien écrire d'autre dans
+ * le flux de changements.
  */
 import type { UnitOfWork } from '../../../platform/unit-of-work.js';
 import { toBin } from '../../../platform/kysely/uuid-columns.js';
+import { emitRoleAssignmentChange } from './sync-changes.js';
 
 export type AssignmentScopeType = 'GLOBAL' | 'SITE' | 'ZONE' | 'TEAM';
 
@@ -108,5 +114,6 @@ export async function insertRoleAssignment(
       created_by: toBin(input.createdBy),
     })
     .execute();
+  await emitRoleAssignmentChange(uow, input.assignmentId);
   return null;
 }

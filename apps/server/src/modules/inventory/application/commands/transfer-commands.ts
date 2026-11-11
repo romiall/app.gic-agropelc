@@ -106,6 +106,7 @@ import {
   allocationWarnings,
   loadCommandOrigin,
   loadLocationSite,
+  stockScopeAllowed,
   virtualLocationId,
   tryRecordMove,
   transferLocations,
@@ -215,6 +216,26 @@ function badStatus(expected: string): CommandHandlerOutcome {
 function rejected(errorCode: string, messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode, messageFr };
 }
+/**
+ * S-36 (b) : le produit et l'unité de chaque ligne existent. Sans ce contrôle, une référence inconnue lèverait une violation
+ * de clé étrangère à l'écriture de la ligne : exception technique, commande rejouée sans fin (`RETRY_LATER`) au lieu
+ * d'un refus clair. Même contrôle que la réception sans document.
+ */
+async function unknownLineReference(
+  uow: UnitOfWork,
+  lines: readonly { readonly productId: string; readonly unitCode: string }[],
+): Promise<CommandHandlerOutcome | undefined> {
+  for (const line of lines) {
+    if ((await findProductLotTracking(uow, line.productId)) === undefined) {
+      return rejected('PRODUCT_INVALID', 'Produit introuvable.');
+    }
+    if ((await findUnit(uow, line.unitCode)) === undefined) {
+      return rejected('UNIT_INVALID', `Unité inconnue : ${line.unitCode}.`);
+    }
+  }
+  return undefined;
+}
+
 const LOCATION_INVALID = rejected('LOCATION_INVALID', 'Source et destination doivent différer.');
 const INTERNAL_MOVE_OTHER_SITE = rejected(
   'LOCATION_INVALID',
@@ -281,6 +302,15 @@ async function recordTransferChanges(
     uow,
     transferChanges(fromBin(row.id), fromBin(row.from_location_id), fromBin(row.to_location_id)),
   );
+}
+
+async function docNumberOfTransfer(uow: UnitOfWork, transferId: string): Promise<string | null> {
+  const row = await uow
+    .selectFrom('inventory_stock_transfers')
+    .select('doc_number')
+    .where('id', '=', toBin(transferId))
+    .executeTakeFirst();
+  return row?.doc_number ?? null;
 }
 
 async function transferExists(uow: UnitOfWork, transferId: string): Promise<boolean> {
@@ -432,6 +462,21 @@ function buildTransferCommands(
   const request: CommandHandler<RequestPayload> = async (uow, envelope) => {
     const { fromLocationId, toLocationId, lines } = envelope.payload;
     if (fromLocationId === toLocationId) return LOCATION_INVALID;
+    // S-36 (a) : emplacements physiques existants, produits et unités connus — sinon la clé étrangère lèverait une
+    // exception technique, la demande serait rejouée sans fin au lieu d'être refusée.
+    const fromFacts = await locationFacts(uow, fromLocationId);
+    const toFacts = await locationFacts(uow, toLocationId);
+    if (
+      !fromFacts ||
+      !toFacts ||
+      fromFacts.isVirtual ||
+      toFacts.isVirtual ||
+      fromFacts.siteId === null
+    ) {
+      return rejected('LOCATION_INVALID', 'Emplacements physiques existants attendus.');
+    }
+    const unknownReference = await unknownLineReference(uow, lines);
+    if (unknownReference) return unknownReference;
     const occurredAt = new Date(envelope.occurred_at);
     const { siteId, codeSite } = await loadLocationSite(uow, fromLocationId);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
@@ -488,7 +533,8 @@ function buildTransferCommands(
       commandId: envelope.command_id,
     });
     await recordChanges(uow, transferChanges(transferId, fromLocationId, toLocationId));
-    return { status: 'APPLIED' };
+    // S-50 : le numéro du transfert (TRF) est rendu à l'appareil, comme celui d'une déclaration de perte.
+    return { status: 'APPLIED', serverRefs: { docNumber } };
   };
 
   const decline: CommandHandler<DeclinePayload> = async (uow, envelope) => {
@@ -502,7 +548,7 @@ function buildTransferCommands(
 
     // La note du demandeur est gardée ; le motif du refus la suit (aucune colonne dédiée).
     const refusal = `Refus : ${envelope.payload.comment}`;
-    await uow
+    const declined = await uow
       .updateTable('inventory_stock_transfers')
       .set({
         status: 'DECLINED',
@@ -514,7 +560,12 @@ ${refusal}`
         version: sql`version + 1`,
       })
       .where('id', '=', row.id)
-      .execute();
+      // L'expédition verrouille la demande puis la passe à DISPATCHED : lue avant elle, la demande ne doit pas être
+      // refusée après coup (marchandise en transit sur un transfert soldé, INV-STK-08). La condition porte sur l'état
+      // courant de la ligne, pas sur la lecture ci-dessus.
+      .where('status', '=', 'REQUESTED')
+      .executeTakeFirst();
+    if (Number(declined.numUpdatedRows) === 0) return badStatus('REQUESTED');
     await recordTransferChanges(uow, row);
     return { status: 'APPLIED' };
   };
@@ -527,11 +578,24 @@ ${refusal}`
       .executeTakeFirst();
     if (!row) return notFound();
     if (row.status !== 'REQUESTED') return badStatus('REQUESTED');
-    if (fromBinOrNull(row.requested_by) !== envelope.author_user_id) {
-      return rejected('FORBIDDEN', 'Seul le demandeur peut annuler.');
+    // UC-STK-07 (S-36 (c)) : le demandeur, ou qui peut expédier depuis le site source (le magasinier) ; un autre
+    // utilisateur du site qui n'a que le droit de demande n'annule pas la demande d'autrui.
+    if (
+      fromBinOrNull(row.requested_by) !== envelope.author_user_id &&
+      !(await stockScopeAllowed(uow, {
+        userId: envelope.author_user_id,
+        permissionCode: 'inventory.transfer.dispatch',
+        occurredAt: new Date(envelope.occurred_at),
+        locationIds: [fromBin(row.from_location_id)],
+      }))
+    ) {
+      return rejected(
+        'FORBIDDEN',
+        'Seuls le demandeur et un expéditeur du site source peuvent annuler.',
+      );
     }
 
-    await uow
+    const cancelled = await uow
       .updateTable('inventory_stock_transfers')
       .set({
         status: 'CANCELLED',
@@ -539,7 +603,10 @@ ${refusal}`
         version: sql`version + 1`,
       })
       .where('id', '=', row.id)
-      .execute();
+      // Même garde que le refus : une expédition concurrente a pu passer la demande à DISPATCHED entre la lecture et ici.
+      .where('status', '=', 'REQUESTED')
+      .executeTakeFirst();
+    if (Number(cancelled.numUpdatedRows) === 0) return badStatus('REQUESTED');
     await recordTransferChanges(uow, row);
     return { status: 'APPLIED' };
   };
@@ -588,8 +655,11 @@ ${refusal}`
         requestRow = row;
       }
     }
+    // S-34 : le numéro du transfert (celui de la demande, ou le TRF tiré par une expédition directe).
+    let transferDocNumber: string | null = null;
     if (requestRow !== undefined) {
       const row = requestRow;
+      transferDocNumber = row.docNumber;
       receipts = await pendingBlindReceipts(uow, pair);
       transfer = {
         id: toBin(row.id),
@@ -607,22 +677,36 @@ ${refusal}`
           dispatched_at: occurredAt,
           carrier_user_id: toBinOrNull(carrierUserId ?? null),
           carrier_name: carrierName ?? null,
+          // S-21 : la note de l'expéditeur suit celle du demandeur (aucune colonne dédiée), comme le motif d'un refus.
+          ...(envelope.payload.notes !== undefined
+            ? { notes: sql<string>`CONCAT_WS(${'\n'}, notes, ${envelope.payload.notes})` }
+            : {}),
           updated_by: toBin(envelope.author_user_id),
           version: sql`version + 1`,
         })
         .where('id', '=', transfer.id)
         .execute();
     } else {
+      // S-36 (b) : produit et unité de chaque ligne existent (l'expédition d'une demande reprend ceux de la demande).
+      const unknownReference = await unknownLineReference(uow, lines);
+      if (unknownReference) return unknownReference;
       if (closedRequest === undefined && (await transferExists(uow, envelope.aggregate_id))) {
-        return (await isDispatchReplay(
-          uow,
-          envelope.aggregate_id,
-          pair,
-          envelope.author_user_id,
-          lines,
-        ))
+        if (
+          !(await isDispatchReplay(
+            uow,
+            envelope.aggregate_id,
+            pair,
+            envelope.author_user_id,
+            lines,
+          ))
+        ) {
+          return TRANSFER_ID_TAKEN;
+        }
+        // S-34 : l'appareil qui rejoue l'expédition sous un autre identifiant de commande reçoit le même numéro.
+        const replayed = await docNumberOfTransfer(uow, envelope.aggregate_id);
+        return replayed === null
           ? { status: 'APPLIED' }
-          : TRANSFER_ID_TAKEN;
+          : { status: 'APPLIED', serverRefs: { docNumber: replayed } };
       }
       receipts = await pendingBlindReceipts(uow, pair);
       // L'agrégat d'une expédition de demande est la demande : l'expédition directe qui la remplace a son
@@ -637,6 +721,7 @@ ${refusal}`
         codeSite,
         year: Number(businessDayOf(occurredAt).slice(0, 4)),
       });
+      transferDocNumber = docNumber;
       await uow
         .insertInto('inventory_stock_transfers')
         .values({
@@ -758,6 +843,7 @@ ${refusal}`
     });
 
     const serverRefs: Record<string, string> = {};
+    if (transferDocNumber !== null) serverRefs['docNumber'] = transferDocNumber;
     if (closedRequest !== undefined) {
       serverRefs['transferId'] = fromBin(transfer.id);
       dispatchWarnings.add('TRANSFER_REQUEST_CLOSED');
@@ -1301,6 +1387,8 @@ ${refusal}`
   const moveInternal: CommandHandler<MoveInternalPayload> = async (uow, envelope) => {
     const { fromLocationId, toLocationId, lines } = envelope.payload;
     if (fromLocationId === toLocationId) return LOCATION_INVALID;
+    const unknownReference = await unknownLineReference(uow, lines);
+    if (unknownReference) return unknownReference;
     const occurredAt = new Date(envelope.occurred_at);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     const { siteId, codeSite } = await loadLocationSite(uow, fromLocationId);

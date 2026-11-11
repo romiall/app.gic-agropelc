@@ -32,7 +32,16 @@ import { readScopeOf, scopeIssueOf } from '../src/analytics-api/dashboards/scope
 import { ALL_SCOPE } from '../src/platform/read-scope.js';
 import { newActor, type Actor } from './cash-transfer-fixtures.js';
 import { actorWith, type CommandActor } from './analytics-command-fixtures.js';
-import { closeTestDb, db, freshUuid, insertTestUser, signTestAccessToken } from './helpers.js';
+import {
+  assignTestRole,
+  closeTestDb,
+  db,
+  freshUuid,
+  insertTestDevice,
+  insertTestRole,
+  insertTestUser,
+  signTestAccessToken,
+} from './helpers.js';
 
 const BLOCK_ORDER = {
   direction: [
@@ -50,6 +59,14 @@ const BLOCK_ORDER = {
   production: ['PRODUCTION', 'ALERTES'],
   finance: ['FINANCES', 'VENTES', 'ALERTES', 'COORDINATION'],
 } as const;
+
+/** Tableaux du rôle DIRECTION dont le bloc DISTRIBUTION de la tour de contrôle n'a pas besoin. */
+const OTHER_DASHBOARD_PERMISSIONS: readonly string[] = [
+  'analytics.dashboard.commercial',
+  'analytics.dashboard.stock',
+  'analytics.dashboard.production',
+  'analytics.dashboard.finance',
+];
 
 /** Compteurs des tableaux qui ne sont pas des indicateurs du registre (D11 §7.1). */
 const NON_REGISTRY_COUNTERS: ReadonlySet<string> = new Set([
@@ -72,6 +89,7 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
   let productionPlain: CommandActor & { roleCode: string };
   let productionValued: CommandActor & { roleCode: string };
   let nobody: CommandActor & { roleCode: string };
+  let towerAndDistribution: { id: string; deviceId: string };
   const tokens = new Map<string, string>();
 
   const get = (actor: { id?: string; userId?: string }, url: string) =>
@@ -117,6 +135,36 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       'inventory.valuation.read',
     ]);
     nobody = await actorWith(root, ['sales.sale.read']);
+    // La Direction réduite à la tour de contrôle et à la distribution : tous les droits du rôle DIRECTION (valorisation,
+    // conflits, validations : son bloc DISTRIBUTION porte les mêmes indicateurs), sans ses quatre autres tableaux. Le
+    // rafraîchissement de ses instantanés calcule alors deux tableaux sur toute la base, et non six (10/11/2026 : 149 s
+    // sur 180 s avec le rôle DIRECTION entier, sur la base jetable lourde).
+    towerAndDistribution = await db.transaction().execute(async (trx) => {
+      const id = await insertTestUser(trx);
+      const deviceId = await insertTestDevice(trx, id, { status: 'ACTIVE' });
+      const roleId = await insertTestRole(trx, root);
+      const grants = await trx
+        .selectFrom('identity_role_permissions as rp')
+        .innerJoin('identity_roles as r', 'r.id', 'rp.role_id')
+        .select(['rp.permission_code', 'rp.max_scope', 'rp.limits'])
+        .where('r.code', '=', 'DIRECTION')
+        .execute();
+      for (const grant of grants) {
+        if (OTHER_DASHBOARD_PERMISSIONS.includes(grant.permission_code)) continue;
+        await trx
+          .insertInto('identity_role_permissions')
+          .values({
+            role_id: toBin(roleId),
+            permission_code: grant.permission_code,
+            max_scope: grant.max_scope,
+            limits: grant.limits === null ? null : JSON.stringify(grant.limits),
+            granted_by: toBin(root),
+          })
+          .execute();
+      }
+      await assignTestRole(trx, id, roleId, root);
+      return { id, deviceId };
+    });
     const everyone: { id: string; deviceId: string }[] = [
       { id: direction.userId, deviceId: direction.deviceId },
       { id: finance.userId, deviceId: finance.deviceId },
@@ -127,6 +175,7 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       productionPlain,
       productionValued,
       nobody,
+      towerAndDistribution,
     ];
     for (const actor of everyone) {
       tokens.set(
@@ -385,14 +434,15 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
     });
 
     it('le bloc DISTRIBUTION de la tour de contrôle égale l’instantané distribution (TB-4, AV-467)', async () => {
+      // Lecteur : la Direction réduite à la tour de contrôle et à la distribution (beforeAll), même bloc DISTRIBUTION.
       await db
         .transaction()
-        .execute((trx) => refreshSnapshotsOf(trx, direction.userId, clock.now()));
-      const month = (await listSnapshotsOf(db, direction.userId)).find(
+        .execute((trx) => refreshSnapshotsOf(trx, towerAndDistribution.id, clock.now()));
+      const month = (await listSnapshotsOf(db, towerAndDistribution.id)).find(
         (snapshot) => snapshot.scopeKey === 'distribution' && snapshot.periodKey === 'MONTH',
       );
       expect(month).toBeDefined();
-      const live = await dashboard(direction, 'direction', 'period=MONTH');
+      const live = await dashboard(towerAndDistribution, 'direction', 'period=MONTH');
       const block = live.blocks.find((candidate) => candidate.code === 'DISTRIBUTION');
       expect(block).toBeDefined();
       // Sans lien d'exploration ; liste vide des deux côtés quand la base n'a aucun point de vente.

@@ -33,6 +33,13 @@ const envSchema = z.object({
   // d'un appareil est celle de la connexion TCP (comptage des échecs de connexion par adresse,
   // 02-securite §2). Derrière un proxy non déclaré, tous les appareils auraient son adresse.
   TRUST_PROXY: z.string().trim().optional(),
+  // Web Push (AV-365, AV-536) : paire VAPID du porteur (`pnpm --filter @gic/server run vapid:generate`) et contact du
+  // serveur d'application (`mailto:` ou `https:`). Les trois ensemble, valides, ou le canal reste désactivé et les
+  // notifications restent dans l'application (modules/communication/communication-jobs.module.ts). Jamais de
+  // valeur par défaut ni de clé dans le dépôt.
+  VAPID_PUBLIC_KEY: z.string().trim().optional(),
+  VAPID_PRIVATE_KEY: z.string().trim().optional(),
+  VAPID_SUBJECT: z.string().trim().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

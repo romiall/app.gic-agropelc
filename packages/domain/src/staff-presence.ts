@@ -52,11 +52,13 @@ export function mondayOf(day: string): string {
 }
 
 /**
- * Clé de comparaison du nom d'une personne sur une feuille : sans espaces aux bords, sans distinction de casse. Une
- * seule définition pour l'écran, le chargement par fichier et le serveur : une personne figure une fois par feuille.
+ * Clé de comparaison du nom d'une personne sur une feuille : sans espaces aux bords, sans distinction de casse ni
+ * d'accents (« Élise Ngô » et « elise ngo » sont la même personne : la fiche papier et le compte ne s'écrivent pas toujours
+ * pareil). Une seule définition pour l'écran, le chargement par fichier et le serveur : une personne figure une fois par
+ * feuille, et se rattache à un compte du même nom.
  */
 export function personNameKey(name: string): string {
-  return name.trim().toLocaleLowerCase('fr');
+  return name.trim().normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('fr');
 }
 
 /**

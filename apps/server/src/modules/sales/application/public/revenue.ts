@@ -179,21 +179,28 @@ export interface PeriodRevenue {
   readonly saleCount: number;
 }
 
-/** BR-FIN-042, BR-FIN-043 : CA, coût des ventes et marge brute d'une période. */
-export async function periodRevenue(
+export interface PeriodNetRevenue {
+  readonly grossRevenueXaf: number;
+  readonly cancelledXaf: number;
+  readonly netRevenueXaf: number;
+  readonly saleCount: number;
+}
+
+/** Un périmètre vide ne lit rien (comme lossValueSummary) : `IN ()` n'est pas du SQL valide (TB-9). */
+const isEmptyScope = (filter: RevenueFilter): boolean =>
+  filter.siteIds?.length === 0 || filter.customerIds?.length === 0;
+
+/**
+ * CA brut, annulations et CA net d'une période, **sans** le coût des ventes (BR-FIN-042). Plus léger que `periodRevenue` : il
+ * ne lit ni les lignes de vente ni les mouvements de stock (le bilan hebdomadaire d'un commercial n'a pas besoin du coût,
+ * AV-514).
+ */
+export async function periodNetRevenue(
   executor: Executor,
   filter: RevenueFilter,
-): Promise<PeriodRevenue> {
-  // Un périmètre vide ne lit rien (comme lossValueSummary) : `IN ()` n'est pas du SQL valide (TB-9).
-  if (filter.siteIds?.length === 0 || filter.customerIds?.length === 0) {
-    return {
-      grossRevenueXaf: 0,
-      cancelledXaf: 0,
-      netRevenueXaf: 0,
-      costOfSalesXaf: 0,
-      grossMarginXaf: 0,
-      saleCount: 0,
-    };
+): Promise<PeriodNetRevenue> {
+  if (isEmptyScope(filter)) {
+    return { grossRevenueXaf: 0, cancelledXaf: 0, netRevenueXaf: 0, saleCount: 0 };
   }
   const sales = await executor
     .selectFrom('sales_sales')
@@ -246,6 +253,23 @@ export async function periodRevenue(
       ),
     )
     .executeTakeFirst();
+  const gross = Number(sales?.gross ?? 0);
+  const cancelledXaf = Number(cancelled?.cancelled ?? 0);
+  return {
+    grossRevenueXaf: gross,
+    cancelledXaf,
+    netRevenueXaf: gross - cancelledXaf,
+    saleCount: Number(sales?.count ?? 0),
+  };
+}
+
+/** BR-FIN-042, BR-FIN-043 : CA, coût des ventes et marge brute d'une période. */
+export async function periodRevenue(
+  executor: Executor,
+  filter: RevenueFilter,
+): Promise<PeriodRevenue> {
+  const net = await periodNetRevenue(executor, filter);
+  if (isEmptyScope(filter)) return { ...net, costOfSalesXaf: 0, grossMarginXaf: 0 };
   // Coût des ventes : valeurs figées d'inventory (API publique), ventes du périmètre seulement.
   const costs = await saleCostsInPeriod(executor, filter);
   let costXaf = 0;
@@ -282,15 +306,10 @@ export async function periodRevenue(
       costXaf += cost.soldXaf - cost.returnedXaf;
     }
   }
-  const gross = Number(sales?.gross ?? 0);
-  const cancelledXaf = Number(cancelled?.cancelled ?? 0);
   return {
-    grossRevenueXaf: gross,
-    cancelledXaf,
-    netRevenueXaf: gross - cancelledXaf,
+    ...net,
     costOfSalesXaf: costXaf,
-    grossMarginXaf: gross - cancelledXaf - costXaf,
-    saleCount: Number(sales?.count ?? 0),
+    grossMarginXaf: net.netRevenueXaf - costXaf,
   };
 }
 

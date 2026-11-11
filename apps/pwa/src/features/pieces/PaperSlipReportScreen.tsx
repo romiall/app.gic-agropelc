@@ -3,7 +3,7 @@
  *
  * Permet aux opérateurs de terrain de reporter une opération accomplie sur un carnet à souche papier
  * (panne de batterie, zone blanche, habitude de terrain) :
- * - Type de pièce (BV, RE, BD, RF, CC, BL, BR, BT, FP) et champs exigés par la commande du serveur
+ * - Type de pièce (BV, RE, BD, RF, CC, BL, BR, BT, FP, DA, BC, VC, FI, FL) et champs exigés par la commande du serveur
  *   correspondante (`report-commands.ts`) : emplacements, comptes, produits, clients… choisis dans les
  *   référentiels de l'appareil ;
  * - Numéro de la pièce papier (souche) avec contrôle dynamique de continuité (AV-312) ;
@@ -55,8 +55,11 @@ import {
 } from './report-commands.js';
 import {
   SLIP_ISSUE_MESSAGES,
+  backdatingBasis,
+  backdatingWindowOf,
   emptySlipForm,
   resolveSlip,
+  toLocalInput,
   type SlipContext,
   type SlipForm,
 } from './report-form.js';
@@ -66,7 +69,7 @@ import {
   type PayloadLabels,
   type ReportedSlipRecord,
 } from './report-submit.js';
-import { blankLine } from './report-lines.js';
+import { blankLine, blankLotDay } from './report-lines.js';
 import { SlipFields } from './ReportSections.js';
 import type { DemandePiece } from './demande.js';
 import './pieces-report.css';
@@ -81,6 +84,11 @@ const SLIP_TYPE_LABELS: Readonly<Record<ReportableSlipType, string>> = {
   BR: 'BR — Bon de réception',
   BT: 'BT — Bon de transfert',
   FP: 'FP — Fiche de perte',
+  DA: 'DA — Demande d’achat',
+  BC: 'BC — Bon de commande fournisseur',
+  VC: 'VC — Fiche de visite client',
+  FI: 'FI — Fiche d’inventaire',
+  FL: 'FL — Suivi de lot de production',
 };
 
 /** Ton du badge d'une pièce reportée selon l'état de son envoi (les autres états restent neutres). */
@@ -91,13 +99,30 @@ const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
   REJECTED: 'bad',
 };
 
-/** Types dont le formulaire part d'une ligne vide (produit à choisir). */
-const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set(['BV', 'CC', 'BR', 'BT', 'FP']);
+/** Types dont le registre sait préparer l'aperçu de la pièce (`preparePieceForRecord`) ; les autres n'ont pas le bouton. */
+const PREVIEWABLE_SLIP_TYPES: ReadonlySet<ReportableSlipType> = new Set(['BV', 'RE', 'BD']);
 
-const initialForm = (type: ReportableSlipType): SlipForm => ({
-  ...emptySlipForm(clock.now(), type),
-  lines: LINE_TYPES.has(type) ? [blankLine()] : [],
-});
+/** Types dont le formulaire part d'une ligne vide (produit à choisir). */
+const LINE_TYPES: ReadonlySet<ReportableSlipType> = new Set([
+  'BV',
+  'CC',
+  'BR',
+  'BT',
+  'FP',
+  'DA',
+  'BC',
+  'FI',
+]);
+
+const initialForm = (type: ReportableSlipType): SlipForm => {
+  const now = clock.now();
+  return {
+    ...emptySlipForm(now, type),
+    lines: LINE_TYPES.has(type) ? [blankLine()] : [],
+    // Une fiche de lot commence par la ligne du jour.
+    lotDays: type === 'FL' ? [blankLotDay(toLocalInput(now).slice(0, 10))] : [],
+  };
+};
 
 type TabMode = 'entry' | 'register';
 
@@ -145,10 +170,14 @@ export function PaperSlipReportScreen() {
   const continuityCheck = checkInputContinuity(form.paperRef, existingRefsForType);
 
   // Évaluation de l'antidatage en direct
-  const occurredDate = new Date(form.occurredAt);
+  // Une fiche de suivi de lot est jugée sur sa ligne la plus ancienne : chaque mesure part avec l'heure de son jour.
+  const occurredDate = new Date(backdatingBasis(form, clock.now()));
+  // Fenêtre des paramètres `sync.justification_after_hours` et `sync.backdate_max_hours` (AV-078), comme le serveur.
+  const backdatingWindow = backdatingWindowOf(refs?.settings ?? [], clock.now());
   const backdatingEval = evaluateBackdating(
     Number.isNaN(occurredDate.getTime()) ? clock.now().toISOString() : occurredDate.toISOString(),
     clock.now(),
+    backdatingWindow,
   );
 
   // Analyse globale pour le registre des carnets
@@ -191,6 +220,8 @@ export function PaperSlipReportScreen() {
       siteId: current.siteId,
       accountId: current.accountId,
       toAccountId: current.toAccountId,
+      lotId: current.lotId,
+      feedLocationId: current.feedLocationId,
     }));
     setPhoto(null);
     setShowIssues(false);
@@ -201,12 +232,15 @@ export function PaperSlipReportScreen() {
     if (submitting || isPhotoBusy || !userId) return;
     setShowIssues(true);
     setSubmitError(null);
-    if (!resolution || !resolution.ok) return;
+    // L'écart d'antidatage se juge à l'heure de la mise en file (le serveur mesure `client_created_at` − `occurred_at`) :
+    // le formulaire a pu rester ouvert depuis le dernier affichage, la résolution est refaite avec l'heure de l'envoi.
+    const fresh = context ? resolveSlip(form, { ...context, now: clock.now() }) : null;
+    if (!fresh || !fresh.ok) return;
 
     setSubmitting(true);
     try {
-      await submitPaperSlipReport(resolution.slip, resolution.meta, userId, photo);
-      setLastSubmittedRef(resolution.meta.paperRef);
+      await submitPaperSlipReport(fresh.slip, fresh.meta, userId, photo);
+      setLastSubmittedRef(fresh.meta.paperRef);
       resetForm();
     } catch (err) {
       setSubmitError(t(saveErrorKey(err)));
@@ -396,26 +430,26 @@ export function PaperSlipReportScreen() {
                 </div>
               ) : null}
 
-              <Field label={t('piece.occurred_at', 'Date et heure manuscrite de la pièce')}>
-                {(ctrl) => (
-                  <Input
-                    {...ctrl}
-                    type="datetime-local"
-                    value={form.occurredAt}
-                    onChange={(e) => patch({ occurredAt: e.target.value })}
-                    required
-                  />
-                )}
-              </Field>
+              {/* Une fiche de lot n'a pas d'heure propre : chaque ligne porte son jour. */}
+              {form.slipType !== 'FL' ? (
+                <Field label={t('piece.occurred_at', 'Date et heure manuscrite de la pièce')}>
+                  {(ctrl) => (
+                    <Input
+                      {...ctrl}
+                      type="datetime-local"
+                      value={form.occurredAt}
+                      onChange={(e) => patch({ occurredAt: e.target.value })}
+                      required
+                    />
+                  )}
+                </Field>
+              ) : null}
 
               {/* Évaluation de la fenêtre d'antidatage (AV-078) */}
               {backdatingEval.isCriticalDelay ? (
                 <div className="report-continuity-alert">
                   <Banner tone="warn">
-                    {t(
-                      'piece.critical_delay_warning',
-                      'Attention : le délai de report dépasse 72 h. Cette pièce fera l’objet d’une vérification comptable a posteriori.',
-                    )}
+                    {t('piece.critical_delay_warning', { hours: backdatingWindow.maxHours })}
                   </Banner>
                 </div>
               ) : null}
@@ -423,10 +457,9 @@ export function PaperSlipReportScreen() {
               {backdatingEval.requiresReason ? (
                 <Field
                   label={t('piece.backdated_reason', 'Motif de report / antidatage')}
-                  hint={t(
-                    'piece.backdated_reason_hint',
-                    'Requis car la pièce a été signée il y a plus de 24 h.',
-                  )}
+                  hint={t('piece.backdated_reason_hint', {
+                    hours: backdatingWindow.justificationAfterHours,
+                  })}
                 >
                   {(ctrl) => (
                     <Input
@@ -593,6 +626,17 @@ export function PaperSlipReportScreen() {
                     </Badge>
                   </div>
 
+                  {/* Une pièce en plusieurs saisies (fiche de suivi de lot, bon de commande, inventaire) peut être refusée en partie. */}
+                  {slip.partCount > 1 && slip.refusedCount > 0 ? (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
+                      {t('piece.parts_refused', {
+                        refused: slip.refusedCount,
+                        total: slip.partCount,
+                        defaultValue: `${slip.refusedCount} saisie(s) refusée(s) sur ${slip.partCount} : les autres sont enregistrées, ne ressaisissez que les refusées.`,
+                      })}
+                    </div>
+                  ) : null}
+
                   <div className="report-slip-meta">
                     <span>
                       {t('piece.slip_date', 'Date sur pièce')} : {formatDateTime(slip.occurredAt)}
@@ -612,14 +656,16 @@ export function PaperSlipReportScreen() {
                     </div>
                   ) : null}
 
-                  {/* Possibilité de voir/imprimer la pièce remplie */}
-                  <div style={{ marginTop: 'var(--space-2)' }}>
-                    <PieceAction
-                      demande={() => preparePieceForRecord(slip)}
-                      cle={`slip-${slip.commandId}`}
-                      libelle={t('piece.show_slip', 'Aperçu de la pièce')}
-                    />
-                  </div>
+                  {/* Possibilité de voir/imprimer la pièce remplie, pour les types dont l'aperçu est préparé */}
+                  {PREVIEWABLE_SLIP_TYPES.has(slip.slipType) ? (
+                    <div style={{ marginTop: 'var(--space-2)' }}>
+                      <PieceAction
+                        demande={() => preparePieceForRecord(slip)}
+                        cle={`slip-${slip.commandId}`}
+                        libelle={t('piece.show_slip', 'Aperçu de la pièce')}
+                      />
+                    </div>
+                  ) : null}
                 </Card>
               ))}
             </div>

@@ -118,7 +118,7 @@ Consomme les événements de tous les modules ; utilise ADM (rôles, périmètre
 
 Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `StockNegativeDetected`, `StockLossDeclared`, `HighMortalityDetected`, `CashVarianceDetected`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived`, `CommandRejected`, `SyncConflictDetected`, `CheckInSuspicious`, `PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `GoodsReceiptQuarantined`, `ApprovalRequested`, `PriceRuleActivated` pour une note automatique).
 
-**Notifications directes** (consommateur `communication.direct`, P9-11, AV-389, AV-430) : `ApprovalRequested` (aux approbateurs de la politique, la Direction à défaut), `ApprovalGranted` et `ApprovalRejected` (au demandeur, motif du refus compris — ils notifient aussi la décision d'une demande d'achat), `StockTransferRequested` (aux expéditeurs du site source) et `StockTransferDispatched` (aux réceptionnaires du site destinataire), en `IN_APP` seulement, sans valeur ni résumé de l'objet (RC-05) ; activation par type : `communication.direct_notification_disabled_types` (AV-431).
+**Notifications directes** (consommateur `communication.direct`, P9-11, AV-389, AV-430) : `ApprovalRequested` (aux approbateurs de la politique, la Direction à défaut), `ApprovalGranted` et `ApprovalRejected` (au demandeur, motif du refus compris — ils notifient aussi la décision d'une demande d'achat), `StockTransferRequested` (aux expéditeurs du site source), `StockTransferDispatched` (aux réceptionnaires du site destinataire) et `DeviceEnrollmentRequested` (aux titulaires de `identity.device.approve`, la Direction à défaut, l'enrôleur exclu ; AV-432), en `IN_APP` seulement, sans valeur ni résumé de l'objet (RC-05) ; activation par type : `communication.direct_notification_disabled_types` (AV-431).
 
 ## 12. Fonctionnement hors ligne
 
@@ -144,7 +144,7 @@ Les alertes et notes de l'utilisateur sont téléchargées (jeu `comms`, P9-12, 
 | Déduplication | Colonne générée `open_dedup_key` sous index unique (INV-NOT-01) ; événement marqué consommé à la première instruction |
 | Résolution | Alerte d'état : marqueur de fin de passe ou événement de résolution ; alerte d'événement : manuelle avec commentaire |
 | Destinataires | Explicites, écrits à la levée ; supervision par la portée de `comm.alert.read` ; repli sur la Direction ([ADR-062](../../decisions/ADR-062-destinataires-notifications-push-et-escalade.md)) |
-| Push | Port `WebPushSender`, adaptateur journal tant que le porteur n'a pas fourni bibliothèque ni clés (AV-365) |
+| Push | Port `WebPushSender` ; adaptateur désactivé par défaut, adaptateur réel (RFC 8291 et 8292, `node:crypto`) activé par les clés VAPID du porteur ; abonnement de la PWA à faire avec lui (AV-365, AV-536) |
 | Notes | Immuables après publication, audience évaluée à la lecture, accusés hors ligne ([ADR-063](../../decisions/ADR-063-notes-de-direction.md)) |
 | Placement des détecteurs | Dans le module qui porte la donnée, selon le graphe : `INACTIVE_COMMERCIAL`, `HIGH_LOSS` (part « % des ventes ») et `OVERDUE_RECEIVABLE` dans `sales` ; les passes d'état portent une identité (ADR-061 §2 et §3) |
 | Valeurs au coût | Jamais dans le message d'une alerte : champ protégé, rendu selon le droit `inventory.valuation.read` du lecteur (AV-390) |

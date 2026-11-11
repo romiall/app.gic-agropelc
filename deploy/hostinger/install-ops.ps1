@@ -52,7 +52,7 @@ if ($DryRun) {
 }
 
 Write-Host ''
-Write-Host 'A creer dans hPanel > Avance > Taches Cron (heure du serveur ; la sauvegarde de nuit, la purge le dimanche) :'
+Write-Host 'A creer dans hPanel > Avance > Taches Cron (heure du serveur ; le cron passe chaque nuit, mais le script ne sauvegarde qu''une nuit sur deux et garde cinq copies ; la purge le dimanche) :'
 Write-Host "  0 2 * * *   /bin/bash $remote/backup-db.sh >> /home/$User/backups_db/cron-backup.log 2>&1"
 Write-Host "  30 3 * * 0  /bin/bash $remote/purge-alerts-cron.sh >> /home/$User/backups_db/cron-purge.log 2>&1"
 Write-Host ''

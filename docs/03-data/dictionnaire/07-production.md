@@ -44,11 +44,11 @@
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | `production_lot_id` | uuid → production_lots | Non | — | Lot de destination |
-| `entry_type` | enum(`PLACEMENT`,`BIRTH`,`TRANSFER_IN`) | Non | — | |
+| `entry_type` | enum(`PLACEMENT`,`BIRTH`,`TRANSFER_IN`,`OPENING`) | Non | — | `OPENING` : entrée de reprise d'un lot en cours (ADR-069, créée à l'approbation d'une déclaration `lot_openings`) |
 | `product_id` | uuid → catalog.products | Non | — | Produit entrant (produit du lot) |
 | `quantity_base` | qty | Non | — | > 0 (nés vivants pour une naissance) |
 | `to_location_id` | uuid → organization.locations | Non | — | Bâtiment ou case |
-| `source_kind` | enum(`PURCHASE`,`INTERNAL_STOCK`,`BIRTH`,`TRANSFER`,`WEANING`) | Non | — | `WEANING` : sevrage depuis un lot de porcelets (AV-111) |
+| `source_kind` | enum(`PURCHASE`,`INTERNAL_STOCK`,`BIRTH`,`TRANSFER`,`WEANING`,`OPENING`) | Non | — | `WEANING` : sevrage depuis un lot de porcelets (AV-111) ; `OPENING` : reprise d'un lot en cours, sans source (ADR-069) |
 | `source_location_id` | uuid → organization.locations | Oui | — | Emplacement source (reclassement) |
 | `source_product_id` | uuid → catalog.products | Oui | — | Produit d'origine (ex. poussin d'un jour) |
 | `source_stock_lot_id` | uuid | Oui | — | Lot de stock d'origine (réf. sans FK) |
@@ -65,6 +65,36 @@
 
 - **PK** `id`. **UQ** `command_id`. **IX** `(production_lot_id, occurred_at)`, `(source_production_lot_id)`.
 - **Suppr.** `ANNULATION` (inverses). **Offline** DL (30 j), CR.
+
+## production.lot_openings
+
+**Responsabilité** : déclaration de reprise d'un lot déjà en élevage à la date d'arrêt, en attente de validation (ADR-069, BR-PRD-016 ; AV-541 à AV-544). **Rien n'existe avant la décision** : le lot, son lot de stock, l'entrée de reprise, le mouvement `OPENING_BALANCE` et l'écriture de coût `ANIMAUX` sont créés par la décision d'approbation (opération `LOT_OPENING`, gestionnaire de `production`).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | Identifiant du lot qui naîtra (= `aggregate_id` de la commande = `production_lots.id` après approbation) |
+| `site_id` | uuid → organization.sites | Non | — | Ferme |
+| `main_location_id` | uuid → organization.locations | Non | — | Bâtiment ou case principal |
+| `lot_type` | enum(`POULET_CHAIR`,`PONDEUSE`,`PORC_ENGRAISSEMENT`,`REPRODUCTEUR_VOLAILLE`,`PORC_NAISSAGE`) | Non | — | |
+| `product_id` | uuid → catalog.products | Non | — | Produit biologique, de l'espèce du type (BR-PRD-001) |
+| `supplier_id` | uuid → procurement.suppliers | Oui | — | |
+| `strain` | label | Oui | — | Souche |
+| `placed_on` | date | Non | — | Jour de mise en place **réel** (âge du lot) ; jamais postérieur à `occurred_at`, pas antérieur de plus de 1 100 jours |
+| `quantity_base` | qty | Non | — | Effectif repris à la date d'arrêt, entier > 0 ; devient `initial_quantity` du lot et l'unique entrée (INV-PRD-01) |
+| `value_xaf` | money_xaf | Non | — | Valeur totale déclarée du lot (≥ 0, au plus 10 000 000 F par tête) ; inscrite en coût `ANIMAUX` à l'approbation (AV-542) |
+| `avg_weight_g` | DECIMAL(10,1) | Oui | — | Poids moyen constaté à la reprise |
+| `notes` | text | Oui | — | |
+| `status` | enum(`PENDING_APPROVAL`,`POSTED`,`REJECTED`) | Non | `PENDING_APPROVAL` | |
+| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Demande de validation `LOT_OPENING` |
+| `entry_id` | uuid | Oui | — | Entrée de reprise créée à l'approbation (réf. sans FK : `production.lot_entries`) ; non nul si et seulement si `POSTED` |
+| `decided_by`, `decided_at` | uuid → identity.users, ts | Oui | — | Décision ; non nuls si et seulement si `status <> PENDING_APPROVAL` |
+| [STD-ORIGIN] | | | | |
+| [STD-AUDIT] | | | | |
+
+- **PK** `id`. **UQ** `command_id`. **IX** `(site_id, status)`, `(main_location_id, product_id, placed_on)` (recherche d'un doublon : même lot réel).
+- **CK** `quantity_base > 0`, `value_xaf >= 0` ; statut ⇔ décision (`PENDING_APPROVAL` sans décision ni entrée, `POSTED` avec décision et entrée, `REJECTED` avec décision sans entrée).
+- **Déclencheurs** : la déclaration est immuable (seuls le statut, la demande et la décision changent) ; une reprise décidée ne change plus de statut ; aucune suppression.
+- **Suppr.** `IMMUABLE` (statut seulement). **Audit** Déclaration (commande) et décision (approbation). **Offline** Non servie aux appareils : l'auteur suit sa demande dans la file des validations, le lot arrive par le jeu `production` à l'approbation.
 
 ## production.lot_weighings
 
