@@ -571,10 +571,12 @@ describe('projections /sync/pull des jeux orders, sales_recent, cash (P4-11)', (
 
   it('customers : l’encours du compte suit ses ventes et encaissements', async () => {
     const changes = await pull(comA, 'customers');
-    // 3 + 2 pièces à crédit, 1 000 encaissés ; la vente comptant d'il y a 10 jours est soldée.
+    // 3 pièces livrées et 2 non livrées, à crédit, 1 000 encaissés sur la vente livrée ; la vente comptant d'il y a
+    // 10 jours est soldée. Q47 A (AV-513 (b)) : l'encours servi à l'appareil est le livré non payé, comme le contrôle
+    // du serveur : la commande de 2 pièces, non livrée, n'en est pas.
     expect(latest(changes, 'CUSTOMER', custA)?.data).toMatchObject({
       id: custA,
-      outstanding_xaf: 5 * PRICE - 1000,
+      outstanding_xaf: 3 * PRICE - 1000,
     });
   });
 

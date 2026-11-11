@@ -656,6 +656,11 @@ describe('créances, CA et marges (P4-09)', () => {
       await stock(product.id, 5, 600);
       const first = await orderSale(customer, product, 2, '09:00:00');
       const second = await orderSale(customer, product, 3, '10:00:00');
+      // Livrées le jour même : depuis Q47 A (AV-513 (b)), seul le livré non payé d'une commande est une créance ;
+      // livrées le jour de la commande, leurs soldes et leurs échéances sont les mêmes dans les deux modes du réglage
+      // (les deux modes sont éprouvés côte à côte plus bas, section 4).
+      await deliver(first, 2, at('09:30:00'));
+      await deliver(second, 3, at('10:30:00'));
       expect(
         (await pay({ customerId: customer, amountXaf: 500 }, at('11:00:00'))).result.status,
       ).toBe('APPLIED');

@@ -18,10 +18,12 @@ import type { ListScope } from './sales-query.js';
 export const RECEIVABLES_DELIVERED_ONLY_SETTING = 'sales.receivables_delivered_only';
 
 /**
- * AV-513 (en attente du porteur) : vrai seulement si le réglage global vaut exactement `true`. Alors les créances
- * par ancienneté, l'encours qui sert au contrôle du crédit d'une vente directe et la liste des créances ne comptent
- * que le **livré non payé** d'une commande, avec une échéance comptée depuis la première livraison ; faux (défaut),
- * le reste à encaisser compte dès la confirmation, comme avant.
+ * AV-513 (b), tranché par le porteur le 08/11/2026 (questionnaire de clôture, Q47 A) : vrai seulement si le réglage
+ * global vaut exactement `true` (son défaut depuis la décision). Alors les créances par ancienneté, l'encours qui sert
+ * au contrôle du crédit d'une vente directe, la liste des créances, le résumé des tableaux de bord et de l'accueil
+ * (KPI-FIN-02, KPI-FIN-03) et l'encours servi aux appareils ne comptent que le **livré non payé** d'une commande, avec
+ * une échéance comptée depuis la première livraison (`deliveredOnlyReceivables`) ; faux, le reste à encaisser compte
+ * dès la confirmation, comme avant la décision.
  */
 export async function receivablesDeliveredOnly(
   executor: Kysely<DB> | Transaction<DB>,
@@ -103,12 +105,15 @@ export function saleCreditExposureXaf(input: {
  * diffère de `customerOutstandingXaf` (le **reste à encaisser**) par le non livré des commandes : une commande
  * qu'on n'a pas livrée n'est pas un crédit. Sert au contrôle du crédit **à la livraison** d'une commande.
  * Lectures verrouillantes, comme `customerOutstandingXaf`, sous le verrou du compte pris par l'appelant : seules
- * les ventes à solde dû peuvent porter un encours, elles sont lues seules.
+ * les ventes à solde dû peuvent porter un encours, elles sont lues seules. `lock: false` : lecture simple, pour un
+ * appelant qui ne décide rien (l'encours servi aux appareils, AV-513).
  */
 export async function customerCreditExposureXaf(
   executor: Kysely<DB> | Transaction<DB>,
   keptCustomerId: string,
+  options: { readonly lock?: boolean } = {},
 ): Promise<number> {
+  const lock = options.lock !== false;
   const accounts = [keptCustomerId, ...(await absorbedCustomerIds(executor, keptCustomerId))];
   const sales = await executor
     .selectFrom('sales_sales')
@@ -120,7 +125,7 @@ export async function customerCreditExposureXaf(
     )
     .where('status', '<>', 'CANCELLED')
     .where('balance_due_xaf', '>', 0)
-    .forShare()
+    .$if(lock, (qb) => qb.forShare())
     .execute();
   const orderSaleIds = sales.filter((sale) => sale.sale_type === 'ORDER').map((sale) => sale.id);
   const delivered = new Map<string, number>();
@@ -129,7 +134,7 @@ export async function customerCreditExposureXaf(
       .selectFrom('sales_sale_lines')
       .select(['sale_id', 'line_total_xaf', 'quantity_base', 'delivered_quantity_base'])
       .where('sale_id', 'in', orderSaleIds)
-      .forShare()
+      .$if(lock, (qb) => qb.forShare())
       .execute();
     for (const line of lines) {
       const saleId = fromBin(line.sale_id);
@@ -189,6 +194,95 @@ function daysBetween(from: string, to: string): number {
     (new Date(`${to}T00:00:00.000Z`).getTime() - new Date(`${from}T00:00:00.000Z`).getTime()) /
       86_400_000,
   );
+}
+
+/** Vente à solde dû telle que la lisent les créances : colonnes de `sales_sales`, jours `AAAA-MM-JJ`. */
+export interface OpenSaleRow {
+  readonly id: Buffer;
+  readonly sale_type: string;
+  readonly amount_paid_xaf: number | string;
+  readonly balance_due_xaf: number | string | null;
+  readonly occurred_at: Date;
+  /** Échéance `AAAA-MM-JJ` ; `null` : vente sans échéance. */
+  readonly due: string | null;
+  readonly business_day: string | null;
+}
+
+/** Solde et échéance d'une créance « livré seulement » (AV-513 (b)). */
+export interface DeliveredOnlyReceivable {
+  readonly balanceDueXaf: number;
+  readonly dueDate: string | null;
+}
+
+/**
+ * AV-513 (b), Q47 A : créance « livré seulement » de chaque vente à solde dû — le livré non payé d'une vente sur
+ * commande (le payé s'impute d'abord sur le livré, `saleCreditExposureXaf`), son échéance gardant le délai accordé à
+ * la confirmation mais comptée depuis la première livraison de **cette** vente ; une vente directe garde son solde et
+ * son échéance. Une vente qui n'est pas une créance (commande non livrée, ou payée à hauteur de son livré) est absente
+ * du résultat, indexé par identifiant de vente. Seule définition du mode, partagée par la liste des créances et par le
+ * résumé des tableaux de bord et de l'accueil (`receivablesSummary`) : les deux ne peuvent pas diverger.
+ */
+export async function deliveredOnlyReceivables(
+  executor: Kysely<DB> | Transaction<DB>,
+  rows: readonly OpenSaleRow[],
+): Promise<Map<string, DeliveredOnlyReceivable>> {
+  const orderSaleIds = rows.filter((row) => row.sale_type === 'ORDER').map((row) => row.id);
+  const deliveredValue = new Map<string, number>();
+  const firstDelivery = new Map<string, string>();
+  if (orderSaleIds.length > 0) {
+    const lines = await executor
+      .selectFrom('sales_sale_lines')
+      .select(['sale_id', 'line_total_xaf', 'quantity_base', 'delivered_quantity_base'])
+      .where('sale_id', 'in', orderSaleIds)
+      .execute();
+    for (const line of lines) {
+      const saleId = fromBin(line.sale_id);
+      deliveredValue.set(
+        saleId,
+        (deliveredValue.get(saleId) ?? 0) +
+          deliveredShareXaf(
+            Number(line.line_total_xaf),
+            milliOf(line.quantity_base),
+            milliOf(line.delivered_quantity_base),
+          ),
+      );
+    }
+    // Première livraison de CHAQUE vente, par les lignes de bon de livraison, et non celle de la commande : une
+    // commande porte plusieurs ventes quand son reste est confirmé plus tard (ADR-028 §4), et l'échéance d'une vente
+    // tardive ne se compte pas depuis la livraison d'une vente plus ancienne.
+    const deliveries = await executor
+      .selectFrom('sales_delivery_note_lines as dl')
+      .innerJoin('sales_delivery_notes as dn', 'dn.id', 'dl.delivery_note_id')
+      .innerJoin('sales_sale_lines as sl', 'sl.id', 'dl.sale_line_id')
+      .select(['sl.sale_id as sale_id', sql<Date | string>`MIN(dn.occurred_at)`.as('first_at')])
+      .where('sl.sale_id', 'in', orderSaleIds)
+      .groupBy('sl.sale_id')
+      .execute();
+    for (const delivery of deliveries) {
+      firstDelivery.set(fromBin(delivery.sale_id), businessDayOf(new Date(delivery.first_at)));
+    }
+  }
+  const receivables = new Map<string, DeliveredOnlyReceivable>();
+  for (const row of rows) {
+    const saleId = fromBin(row.id);
+    const balanceDueXaf = saleCreditExposureXaf({
+      saleType: row.sale_type,
+      balanceDueXaf: Number(row.balance_due_xaf ?? 0),
+      amountPaidXaf: Number(row.amount_paid_xaf),
+      deliveredValueXaf: deliveredValue.get(saleId) ?? 0,
+    });
+    // Une commande qu'on n'a pas livrée n'est pas une créance.
+    if (balanceDueXaf <= 0) continue;
+    let dueDate = row.due;
+    const delivered = firstDelivery.get(saleId);
+    if (row.sale_type === 'ORDER' && delivered !== undefined && dueDate !== null) {
+      // L'échéance garde le délai accordé à la confirmation, compté depuis la première livraison.
+      const soldOn = row.business_day ?? businessDayOf(row.occurred_at);
+      dueDate = addDays(delivered, Math.max(0, daysBetween(soldOn, dueDate)));
+    }
+    receivables.set(saleId, { balanceDueXaf, dueDate });
+  }
+  return receivables;
 }
 
 export interface ReceivableFilter {
@@ -294,65 +388,19 @@ export async function listReceivables(
     .$if(filter.limit !== undefined && !deliveredOnly, (qb) => qb.limit(filter.limit!))
     .execute();
 
-  // AV-513 : valeur livrée de chaque vente sur commande et jour de sa première livraison.
-  const orderSaleIds = deliveredOnly
-    ? rows.filter((row) => row.sale_type === 'ORDER').map((row) => row.id)
-    : [];
-  const deliveredValue = new Map<string, number>();
-  const firstDelivery = new Map<string, string>();
-  if (orderSaleIds.length > 0) {
-    const lines = await executor
-      .selectFrom('sales_sale_lines')
-      .select(['sale_id', 'line_total_xaf', 'quantity_base', 'delivered_quantity_base'])
-      .where('sale_id', 'in', orderSaleIds)
-      .execute();
-    for (const line of lines) {
-      const saleId = fromBin(line.sale_id);
-      deliveredValue.set(
-        saleId,
-        (deliveredValue.get(saleId) ?? 0) +
-          deliveredShareXaf(
-            Number(line.line_total_xaf),
-            milliOf(line.quantity_base),
-            milliOf(line.delivered_quantity_base),
-          ),
-      );
-    }
-    // Première livraison de CHAQUE vente, par les lignes de bon de livraison, et non celle de la commande : une
-    // commande porte plusieurs ventes quand son reste est confirmé plus tard (ADR-028 §4), et l'échéance d'une vente
-    // tardive ne se compte pas depuis la livraison d'une vente plus ancienne.
-    const deliveries = await executor
-      .selectFrom('sales_delivery_note_lines as dl')
-      .innerJoin('sales_delivery_notes as dn', 'dn.id', 'dl.delivery_note_id')
-      .innerJoin('sales_sale_lines as sl', 'sl.id', 'dl.sale_line_id')
-      .select(['sl.sale_id as sale_id', sql<Date | string>`MIN(dn.occurred_at)`.as('first_at')])
-      .where('sl.sale_id', 'in', orderSaleIds)
-      .groupBy('sl.sale_id')
-      .execute();
-    for (const delivery of deliveries) {
-      firstDelivery.set(fromBin(delivery.sale_id), businessDayOf(new Date(delivery.first_at)));
-    }
-  }
+  // AV-513 (b), Q47 A : solde et échéance « livré seulement » de chaque vente (définition partagée).
+  const adjusted = deliveredOnly ? await deliveredOnlyReceivables(executor, rows) : undefined;
 
   const lines: ReceivableLine[] = [];
   for (const row of rows) {
     let balanceDueXaf = Number(row.balance_due_xaf);
     let dueDate = row.due!;
-    if (deliveredOnly) {
-      balanceDueXaf = saleCreditExposureXaf({
-        saleType: row.sale_type,
-        balanceDueXaf,
-        amountPaidXaf: Number(row.amount_paid_xaf),
-        deliveredValueXaf: deliveredValue.get(fromBin(row.id)) ?? 0,
-      });
+    if (adjusted !== undefined) {
+      const receivable = adjusted.get(fromBin(row.id));
       // Une commande qu'on n'a pas livrée n'est pas une créance.
-      if (balanceDueXaf <= 0) continue;
-      const delivered = firstDelivery.get(fromBin(row.id));
-      if (row.sale_type === 'ORDER' && delivered !== undefined) {
-        // L'échéance garde le délai accordé à la confirmation, compté depuis la première livraison.
-        const soldOn = row.business_day ?? businessDayOf(row.occurred_at);
-        dueDate = addDays(delivered, Math.max(0, daysBetween(soldOn, dueDate)));
-      }
+      if (receivable === undefined) continue;
+      balanceDueXaf = receivable.balanceDueXaf;
+      dueDate = receivable.dueDate ?? dueDate;
     }
     const aging = receivableAging(dueDate, filter.today);
     if (deliveredOnly && filter.overdueOnly === true && !aging.overdue) continue;

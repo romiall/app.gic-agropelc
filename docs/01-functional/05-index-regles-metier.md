@@ -287,7 +287,7 @@ Fichier : [`domaines/D09-FIN-finance.md`](domaines/D09-FIN-finance.md)
 | BR-FIN-004 | Un règlement saisi sans vente précise s'affecte automatiquement aux ventes impayées du client, de la plus ancienne échéance à la plus récen… | D |
 | BR-FIN-005 | Le couple (moyen de paiement, référence externe) est unique. Un doublon reçu est mis en `SUSPECT_DUPLICATE`, sans mouvement de trésorerie n… | D (PM §30 « paiement en double ») / AV-056 |
 | BR-FIN-006 | Un encaissement n'est jamais supprimé. Son annulation (validation requise) crée le mouvement de trésorerie inverse et désactive ses affecta… | C (CM §41) |
-| BR-FIN-007 | Créance d'une vente = total − Σ affectations actives. Échéance = `due_date` de la vente. Une créance est en retard si la date du jour dépas… | C (CM §13, §54) / AV-028 |
+| BR-FIN-007 | Créance d'une vente = total − Σ affectations actives. Échéance = `due_date` de la vente. Une créance est en retard si la date du jour dépas… | C (CM §13, §54) / AV-028 / AV-513 |
 | BR-FIN-008 | Un acompte est un encaissement affecté à une commande. À la confirmation de la commande (la vente naît à la confirmation, ADR-025, ADR-028… | AV-033 (défaut) |
 | BR-FIN-010 | Types de compte de trésorerie : `CAISSE_PDV`, `CAISSE_UTILISATEUR`, `CAISSE_CENTRALE`, `MOBILE_MONEY`, `BANQUE`. Chaque compte a un respons… | C (CM §12, §31) / D |
 | BR-FIN-011 | Tout flux d'argent est un mouvement de trésorerie en ajout seul : compte, sens (`IN` / `OUT`), montant > 0, type (`CUSTOMER_PAYMENT`, `REFU… | D (CM §31, §41) |

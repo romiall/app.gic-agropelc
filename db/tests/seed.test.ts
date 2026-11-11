@@ -351,10 +351,11 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       value: true,
       isClientVisible: true,
     });
-    // AV-513 : l'interrupteur des créances « livré seulement » part à `false` (le comportement d'avant) tant que le
-    // porteur n'a pas tranché.
+    // AV-513 (b), Q47 A (08/11/2026) : seul le livré non payé d'une commande est une créance ; un retour accidentel
+    // à `false` ferait de nouveau d'une commande non livrée une créance échue au bout de 30 jours, relancée et
+    // déduite du crédit du client.
     expect(seeded.get('sales.receivables_delivered_only')).toMatchObject({
-      value: false,
+      value: true,
       isClientVisible: false,
     });
     expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({

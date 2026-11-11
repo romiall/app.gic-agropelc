@@ -632,15 +632,17 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     const own = await get(comA, `/api/v1/receivables?as_of=${DAY}`);
     expect(own.statusCode, own.body).toBe(200);
     expect(own.json()).toMatchObject({ as_of: DAY });
+    // Q47 A (AV-513 (b)) : seul le livré non payé d'une commande est une créance — 2 pièces livrées sur 3
+    // (2 000 XAF), dont 1 000 payés : 1 000 XAF ; la pièce non livrée n'en est pas une.
     expect(own.json().receivables).toEqual([
       expect.objectContaining({
         saleId: saleA,
         customerId: custA,
-        balanceDueXaf: 2000,
+        balanceDueXaf: 1000,
         overdue: false,
       }),
     ]);
-    expect(own.json().summary.totalXaf).toBe(2000);
+    expect(own.json().summary.totalXaf).toBe(1000);
 
     // Échéance à 30 jours (conditions du client) : 45 jours plus tard, la créance a 15 jours de
     // retard (tranche 0-30) ; `overdue_only` et `aging` ne retiennent que les échues.
@@ -737,8 +739,9 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     const response = await get(comA, `/api/v1/customers/${custA}`);
     expect(response.statusCode, response.body).toBe(200);
     const sales = response.json().sales;
-    expect(sales.outstandingXaf).toBe(2000);
-    expect(sales.receivables.totalXaf).toBe(2000);
+    // Q47 A (AV-513 (b)) : le livré non payé seulement (2 pièces livrées, 1 000 XAF payés).
+    expect(sales.outstandingXaf).toBe(1000);
+    expect(sales.receivables.totalXaf).toBe(1000);
     expect(idsOf(sales.recent_orders)).toEqual([orderA]);
     expect(idsOf(sales.recent_sales)).toEqual([saleA]);
   });

@@ -913,6 +913,31 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     });
     const [olderSale] = await salesOf(older);
     const [newerSale] = await salesOf(newer);
+    // Livrées le jour même (client autorisé au crédit, AV-512) : depuis Q47 A (AV-513 (b)), seul le livré non payé
+    // d'une commande est une créance, l'échéance courant depuis la livraison ; livrées le jour de la commande, elles
+    // gardent leurs échéances du 01/10 et du 15/10 dans les deux modes du réglage.
+    await ok(
+      keeper,
+      'sales.order.fulfil',
+      'DELIVERY_NOTE',
+      freshUuid(),
+      '2026-09-01T10:00:00.000Z',
+      {
+        orderId: older,
+        lines: [{ orderLineId: await orderLineOf(older), quantityBase: 1 }],
+      },
+    );
+    await ok(
+      keeper,
+      'sales.order.fulfil',
+      'DELIVERY_NOTE',
+      freshUuid(),
+      '2026-09-15T10:00:00.000Z',
+      {
+        orderId: newer,
+        lines: [{ orderLineId: await orderLineOf(newer), quantityBase: 2 }],
+      },
+    );
 
     // La tâche du 10/10 : seule la vente échue le 01/10 est signalée.
     const jobs = new JobHandlerRegistry();
@@ -1007,6 +1032,19 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
       fulfilmentLocationId: storeId,
       lines: [line(product, 1)],
     });
+    // Livrée le jour même : une commande non livrée n'est pas une créance (Q47 A, AV-513 (b)) ; l'échéance reste au
+    // 01/10 dans les deux modes du réglage.
+    await ok(
+      keeper,
+      'sales.order.fulfil',
+      'DELIVERY_NOTE',
+      freshUuid(),
+      '2026-09-01T10:00:00.000Z',
+      {
+        orderId,
+        lines: [{ orderLineId: await orderLineOf(orderId), quantityBase: 1 }],
+      },
+    );
     const [sale] = await salesOf(orderId);
     const saleId = fromBin(sale!.id);
     const runAt = (clockAt: string, scheduledFor: string) =>

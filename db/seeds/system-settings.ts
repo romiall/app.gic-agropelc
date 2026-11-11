@@ -164,13 +164,15 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-512',
   },
-  // AV-513 (05/11/2026, en attente du porteur) : `true` ne compte, dans les créances par ancienneté, l'encours de
-  // crédit et le contrôle de crédit d'une vente directe, que le **livré non payé** d'une commande, avec une échéance
-  // comptée depuis la première livraison ; `false` (défaut, comportement d'avant) compte le reste à encaisser dès
-  // la confirmation. Lu par le serveur seulement (réglage global).
+  // AV-513 (b), tranché le 08/11/2026 (questionnaire de clôture, Q47 A) : `true` (défaut depuis la décision) ne
+  // compte, dans les créances par ancienneté, la liste des créances, l'encours de crédit et le contrôle de crédit
+  // d'une vente directe, le résumé des tableaux de bord et de l'accueil et l'encours servi aux appareils, que le
+  // **livré non payé** d'une commande, avec une échéance comptée depuis la première livraison ; `false` (le
+  // comportement d'avant) compte le reste à encaisser dès la confirmation. Lu par le serveur seulement (réglage
+  // global). Une base semée avant la décision reçoit la révision `AV-513 (08/11/2026)` ci-dessous.
   {
     key: 'sales.receivables_delivered_only',
-    value: false,
+    value: true,
     isClientVisible: false,
     ref: 'AV-513',
   },
@@ -724,6 +726,14 @@ export const SYSTEM_SETTING_REVISIONS: readonly SystemSettingRevision[] = [
     revision: 'AV-461 (29/10/2026)',
     key: 'analytics.query_max_concurrent_global',
     value: 0,
+    isClientVisible: false,
+  },
+  {
+    // AV-513 (b) tranché le 08/11/2026 (questionnaire de clôture, Q47 A) : seul le livré non payé d'une commande est
+    // une créance ; une base semée avec le défaut `false` d'AV-518 reçoit une version datée à `true`.
+    revision: 'AV-513 (08/11/2026)',
+    key: 'sales.receivables_delivered_only',
+    value: true,
     isClientVisible: false,
   },
 ];

@@ -21,6 +21,10 @@ import { COMMUNICATION_PROJECTIONS } from './communication-projections.js';
 import { KPI_PROJECTIONS } from './kpi-projections.js';
 import { listWeeklyReports } from '../modules/crm/application/public/index.js';
 import { listPresenceSheets } from '../modules/fieldwork/application/public/index.js';
+import {
+  customerCreditExposureXaf,
+  receivablesDeliveredOnly,
+} from '../modules/sales/application/public/index.js';
 
 /** Périmètre de la ligne `change_feed` projetée (P2-06) : nécessaire quand la clé réelle de
  * l'entité est composite (`STOCK_BALANCE` : produit × emplacement) ou quand seule une ligne
@@ -1179,22 +1183,33 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
           : await anyTeamMemberNow(executor, scope.id, [row.owner_user_id]);
     if (!inScope) return undefined;
     // P4-11 : encours (BR-VEN-025) — soldes dus des ventes non annulées du compte et des comptes
-    // qu'il a absorbés (BR-CRM-007), pour le contrôle de crédit hors ligne.
-    const outstanding = await executor
-      .selectFrom('sales_sales')
-      .select(sql<string>`COALESCE(SUM(balance_due_xaf), 0)`.as('xaf'))
-      .where('status', '<>', 'CANCELLED')
-      .where((eb) =>
-        eb.or([
-          eb('customer_id', '=', row.id),
-          eb(
-            'customer_id',
-            'in',
-            eb.selectFrom('crm_customers').select('id').where('merged_into_id', '=', row.id),
-          ),
-        ]),
-      )
-      .executeTakeFirst();
+    // qu'il a absorbés (BR-CRM-007), pour le contrôle de crédit hors ligne. AV-513 (b), Q47 A : en mode
+    // « livré seulement », l'encours de crédit (le livré non payé d'une commande), comme le contrôle du
+    // serveur ; lecture simple, sans verrou (la projection ne décide rien).
+    const outstandingXaf = (await receivablesDeliveredOnly(executor, new Date()))
+      ? await customerCreditExposureXaf(executor, entityId, { lock: false })
+      : Number(
+          (
+            await executor
+              .selectFrom('sales_sales')
+              .select(sql<string>`COALESCE(SUM(balance_due_xaf), 0)`.as('xaf'))
+              .where('status', '<>', 'CANCELLED')
+              .where((eb) =>
+                eb.or([
+                  eb('customer_id', '=', row.id),
+                  eb(
+                    'customer_id',
+                    'in',
+                    eb
+                      .selectFrom('crm_customers')
+                      .select('id')
+                      .where('merged_into_id', '=', row.id),
+                  ),
+                ]),
+              )
+              .executeTakeFirst()
+          )?.xaf ?? 0,
+        );
     return {
       id: fromBin(row.id),
       stage: row.stage,
@@ -1232,7 +1247,7 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       usual_payment_method_code: row.usual_payment_method_code,
       credit_requested: Boolean(row.credit_requested),
       last_sale_at: row.last_sale_at,
-      outstanding_xaf: Number(outstanding?.xaf ?? 0),
+      outstanding_xaf: outstandingXaf,
       version: row.version,
     };
   },

@@ -10,6 +10,7 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { scopeSql, type ReadScope } from '../../../../platform/read-scope.js';
 import { cashedActivity } from './period-activity.js';
+import { deliveredOnlyReceivables, receivablesDeliveredOnly } from './receivables.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -17,7 +18,7 @@ const SALE_SCOPE = { site: 'sales_sales.site_id', users: ['seller_user_id', 'com
 const PAYMENT_SCOPE = { site: 'sales_customer_payments.site_id', users: ['received_by_user_id'] };
 
 export interface ReceivablesSummary {
-  /** Σ soldes dus des ventes non annulées (KPI-FIN-02). */
+  /** Σ soldes dus des ventes non annulées (KPI-FIN-02) ; le livré non payé seulement en mode AV-513 (b). */
   readonly outstandingXaf: number;
   readonly openCount: number;
   /** Part dont l'échéance est dépassée à `today` (KPI-FIN-03). */
@@ -25,11 +26,46 @@ export interface ReceivablesSummary {
   readonly overdueCount: number;
 }
 
+/**
+ * Créances des tableaux de bord et de l'accueil (KPI-FIN-02, KPI-FIN-03). Avec le réglage
+ * `sales.receivables_delivered_only` (AV-513 (b), Q47 A, vrai par défaut depuis la décision), elles se comptent
+ * comme la liste des créances (`deliveredOnlyReceivables`) : seul le livré non payé d'une commande, échéance depuis
+ * la première livraison ; sinon par une seule agrégation sur les soldes dus.
+ */
 export async function receivablesSummary(
   executor: Executor,
   scope: ReadScope,
   today: string,
 ): Promise<ReceivablesSummary> {
+  if (await receivablesDeliveredOnly(executor, new Date())) {
+    const rows = await executor
+      .selectFrom('sales_sales')
+      .select([
+        'id',
+        'sale_type',
+        'amount_paid_xaf',
+        'balance_due_xaf',
+        'occurred_at',
+        sql<string | null>`DATE_FORMAT(due_date, '%Y-%m-%d')`.as('due'),
+        sql<string | null>`DATE_FORMAT(business_date, '%Y-%m-%d')`.as('business_day'),
+      ])
+      .where('status', '<>', 'CANCELLED')
+      .where(sql`balance_due_xaf`, '>', 0)
+      .where(scopeSql(scope, SALE_SCOPE))
+      .execute();
+    let outstandingXaf = 0;
+    let overdueXaf = 0;
+    let overdueCount = 0;
+    const receivables = await deliveredOnlyReceivables(executor, rows);
+    for (const { balanceDueXaf, dueDate } of receivables.values()) {
+      outstandingXaf += balanceDueXaf;
+      if (dueDate !== null && dueDate < today) {
+        overdueXaf += balanceDueXaf;
+        overdueCount += 1;
+      }
+    }
+    return { outstandingXaf, openCount: receivables.size, overdueXaf, overdueCount };
+  }
   const row = await executor
     .selectFrom('sales_sales')
     .select([
