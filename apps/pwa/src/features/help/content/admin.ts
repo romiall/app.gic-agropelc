@@ -125,7 +125,7 @@ export const ADMIN_HELP: readonly ScreenHelp[] = [
     path: ROUTES.settings,
     title: 'Paramètres et politiques',
     purpose:
-      'Deux onglets : les paramètres système (seuils, délais, interrupteurs, par domaine, globaux ou par site) et les politiques de contrôle (photo, commentaire, validation, approbateur, portée). Toute modification crée une nouvelle version et garde l’historique. En ligne.',
+      'Trois onglets : les paramètres système (seuils, délais, interrupteurs, par domaine, globaux ou par site), les politiques de contrôle (photo, commentaire, validation, approbateur, portée) et l’archive des photos jointes (Administrateur seul : téléchargement par période puis vidage du serveur, plancher de 30 jours). Toute modification crée une nouvelle version et garde l’historique. En ligne.',
     actions: [
       act(
         'update',

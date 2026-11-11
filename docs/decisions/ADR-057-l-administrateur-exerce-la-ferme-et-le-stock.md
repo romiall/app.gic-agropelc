@@ -37,7 +37,7 @@ incubations, réceptions, transferts, pertes, inventaires, consommations, seuils
 
 ## Conséquences
 
-- `db/seeds/rbac-data.ts` : 53 octrois pour l'Administrateur (542 au total) ; la matrice de `01-rbac.md` §5 et sa vue condensée
+- `db/seeds/rbac-data.ts` : 57 octrois pour l'Administrateur (590 au total, avec la Supervision, la reprise d'un lot et l'archive des photos de `main`) ; la matrice de `01-rbac.md` §5 et sa vue condensée
   (§6) sont alignées. Une base déjà semée reçoit les 22 octrois en rejouant `pnpm run db:seed` (le kit de livraison rejoue les semis).
 - Les sites de ferme et leurs emplacements doivent exister (Administration → Organisation) : sans eux, les écrans de la ferme
   s'ouvrent mais n'ont rien à montrer, ce que l'aide contextuelle de chaque page explique désormais (ADR-058).

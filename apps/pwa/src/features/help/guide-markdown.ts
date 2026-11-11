@@ -33,6 +33,7 @@ const ROLE_ABBREVIATIONS: Readonly<Record<string, string>> = {
   MAGASINIER: 'MAG',
   RESP_ACHATS: 'ACH',
   FINANCE: 'FIN',
+  SUPERVISION: 'SUP',
 };
 
 const ROLE_CODES = Object.keys(ROLE_ABBREVIATIONS);

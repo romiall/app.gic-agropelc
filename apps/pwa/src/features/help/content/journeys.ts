@@ -41,7 +41,7 @@ export const JOURNEYS: readonly Journey[] = [
       {
         to: ROUTES.dataImport,
         label: 'Chargement de données',
-        what: 'Chargez par fichier CSV les produits, fournisseurs, clients et le stock d’ouverture.',
+        what: 'Chargez par fichier CSV les produits, fournisseurs, clients et le stock d’ouverture. Un lot déjà en élevage se reprend par la rubrique « Reprise d’un lot » de Production → Nouveau lot (ou par le chargement « Lots en cours ») ; la Direction valide la reprise.',
       },
     ],
   },
@@ -316,7 +316,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Pourquoi les coûts et les marges ne s’affichent-ils pas ?',
     answer:
-      'Les montants (coûts, valeurs, marges) sont réservés aux rôles qui voient les valorisations : Direction, Finance, Responsable production. Un compte Administrateur seul n’y a pas accès.',
+      'Les montants (coûts, valeurs, marges) sont réservés aux rôles qui voient les valorisations : Direction, Finance, Responsable production et Supervision. Un compte Administrateur seul n’y a pas accès.',
   },
   {
     question: 'Qui valide une mortalité ou une perte ?',

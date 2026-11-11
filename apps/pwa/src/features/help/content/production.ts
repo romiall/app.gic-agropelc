@@ -74,7 +74,7 @@ export const PRODUCTION_HELP: readonly ScreenHelp[] = [
     path: ROUTES.lotSetup,
     title: 'Nouveau lot et entrée d’animaux',
     purpose:
-      'Deux rubriques : « Nouveau lot » crée le lot, « Entrée dans un lot » y fait entrer les animaux. Un lot est planifié tant qu’aucun animal n’y est entré ; la première entrée le rend actif et ouvre sa saisie du jour.',
+      'Trois rubriques : « Nouveau lot » crée le lot, « Entrée dans un lot » y fait entrer les animaux, « Reprise d’un lot » déclare un lot déjà en élevage au moment de la mise en service. Un lot est planifié tant qu’aucun animal n’y est entré ; la première entrée le rend actif et ouvre sa saisie du jour.',
     before: [
       'Une ferme avec au moins un bâtiment ou une case, et le produit biologique du lot (par exemple « poussin d’un jour ») au catalogue.',
       'Pour une entrée depuis le stock ou un achat : les animaux doivent avoir été réceptionnés sur la ferme (Achats → Réceptions, ou la réception sans bon de commande).',
@@ -95,6 +95,11 @@ export const PRODUCTION_HELP: readonly ScreenHelp[] = [
         'Enregistrer l’achat des animaux',
         'Quand le stock de la ferme est vide : réception sans bon de commande (animaux et aliment, prix unitaire obligatoire).',
         { roles: ROLE_SETS.purchaseReceipt, to: ROUTES.purchaseReceiptFree },
+      ),
+      act(
+        'create',
+        'Reprendre un lot déjà en élevage',
+        'Rubrique « Reprise d’un lot » : date de mise en place réelle, effectif repris à la date d’arrêt et valeur totale du lot (animaux, aliments, soins déjà engagés). La Direction valide la déclaration : le lot n’apparaît qu’après sa validation, et une reprise comptabilisée ne s’annule pas.',
       ),
       act(
         'cancel',
@@ -267,7 +272,7 @@ export const PRODUCTION_HELP: readonly ScreenHelp[] = [
       'Tout ce qu’il faut savoir d’un lot : effectif, mortalité, indicateurs (mortalité, gain moyen quotidien, indice de consommation, ponte), coûts, ventes et marge, entrées et pesées. Elle sert aussi à corriger et à clore : clôture, annulation du lot, d’une entrée ou d’une pesée.',
     before: [
       'En ligne pour les indicateurs, les coûts et les corrections ; hors ligne, seul l’effectif calculé par le téléphone s’affiche.',
-      'Les montants (coûts, ventes, marges) ne se voient qu’avec le droit de valorisation (Direction, Finance, Responsable production) ; l’Administrateur seul n’en voit pas.',
+      'Les montants (coûts, ventes, marges) ne se voient qu’avec le droit de valorisation (Direction, Finance, Responsable production, Supervision) ; l’Administrateur seul n’en voit pas.',
     ],
     actions: [
       act(

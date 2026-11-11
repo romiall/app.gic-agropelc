@@ -24,6 +24,7 @@
 | MAG | Magasinier |
 | ACH | Responsable achats |
 | FIN | Finance |
+| SUP | Supervision consultative |
 
 ## 2. Les parcours de bout en bout
 
@@ -40,7 +41,7 @@ Déclarer l’entreprise, ses sites, ses produits et ses comptes avant que le te
 | 3 | Comptes et rôles | `/administration/utilisateurs` | Administrateur | Créez les comptes (responsable de production, responsable de ferme, magasinier, vendeurs) et affectez chaque rôle de terrain à son site. |
 | 4 | Appareils | `/administration/appareils` | Direction, Administrateur, Responsable commercial, Responsable production, Responsable de ferme, Magasinier | À sa première connexion, chaque personne enrôle son téléphone ; vous le reconnaissez à son code court et vous l’approuvez. |
 | 5 | Paramètres et politiques | `/administration/parametres` | Direction, Administrateur | Réglez les seuils et les contrôles : validation des mortalités, caisse exigée ou non, délais d’annulation… |
-| 6 | Chargement de données | `/chargement` | Administrateur, Responsable commercial, Finance, Direction | Chargez par fichier CSV les produits, fournisseurs, clients et le stock d’ouverture. |
+| 6 | Chargement de données | `/chargement` | Administrateur, Responsable commercial, Finance, Direction | Chargez par fichier CSV les produits, fournisseurs, clients et le stock d’ouverture. Un lot déjà en élevage se reprend par la rubrique « Reprise d’un lot » de Production → Nouveau lot (ou par le chargement « Lots en cours ») ; la Direction valide la reprise. |
 
 ### Démarrer et conduire un lot d’élevage
 
@@ -56,7 +57,7 @@ Du premier achat d’animaux à la clôture du lot : poulets de chair, pondeuses
 | 4 | Saisir la journée | `/production/lots` | Responsable production, Responsable de ferme, Administrateur | Chaque jour, touchez le lot : mortalité, aliment, pesée, observation. Possible sans réseau. |
 | 5 | Valider les mortalités | `/validations` | Direction, Responsable production, Responsable de ferme | Les mortalités que la politique de contrôle soumet à validation attendent la décision d’un responsable, dans Validations. L’Administrateur seul dépose les mortalités mais ne les valide pas. |
 | 6 | Envoyer à la vente | `/production/sortie` | Responsable de ferme, Responsable production, Administrateur | Déclarez le lot prêt à la vente puis envoyez les animaux vers un magasin ou un point de vente. |
-| 7 | Clôturer le lot | `/production/fiche` | Responsable production, Direction, Administrateur | Quand tous les animaux sont partis et que les mortalités sont traitées, clôturez : le coût est figé et la marge se lit sur la fiche. |
+| 7 | Clôturer le lot | `/production/fiche` | Responsable production, Direction, Supervision consultative, Administrateur | Quand tous les animaux sont partis et que les mortalités sont traitées, clôturez : le coût est figé et la marge se lit sur la fiche. |
 
 ### Collecter les œufs et faire éclore
 
@@ -84,9 +85,9 @@ De la demande d’achat au paiement du fournisseur.
 | 1 | Demande d’achat | `/achats/demandes` | Direction, Responsable production, Responsable de ferme, Magasinier, Responsable achats, Finance, Administrateur | Le demandeur exprime son besoin (produits, quantités, justification). |
 | 2 | Bon de commande | `/achats/bons-de-commande` | Responsable achats | Le responsable des achats commande auprès d’un fournisseur ; la Direction valide au-dessus du seuil. |
 | 3 | Réception | `/achats/receptions` | Magasinier, Responsable de ferme, Responsable production, Administrateur | À la livraison, le magasinier compte : livré, rejeté, accepté ; l’accepté entre en stock. |
-| 4 | Facture fournisseur | `/finance/factures` | Direction, Responsable achats, Finance | La Finance saisit la facture ; elle est rapprochée du bon de commande et de la réception. |
-| 5 | Paiement | `/finance/paiements` | Direction, Responsable achats, Finance | La Finance paie ; au-delà du seuil, la Direction décide. |
-| 6 | Rapprochement | `/achats/rapprochement` | Responsable achats, Finance, Direction | Commandé, livré, accepté, facturé, payé : repérez les écarts. |
+| 4 | Facture fournisseur | `/finance/factures` | Direction, Supervision consultative, Responsable achats, Finance | La Finance saisit la facture ; elle est rapprochée du bon de commande et de la réception. |
+| 5 | Paiement | `/finance/paiements` | Direction, Supervision consultative, Responsable achats, Finance | La Finance paie ; au-delà du seuil, la Direction décide. |
+| 6 | Rapprochement | `/achats/rapprochement` | Responsable achats, Finance, Direction, Supervision consultative | Commandé, livré, accepté, facturé, payé : repérez les écarts. |
 
 ### Approvisionner un point de vente et vendre
 
@@ -115,8 +116,8 @@ Du client identifié à l’encaissement.
 |---|---|---|---|---|
 | 1 | Ajouter le client | `/clients/nouveau` | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme | Prospect créé, puis proposé à la vente. |
 | 2 | Passer la commande | `/commandes/nouvelle` | Responsable commercial, Commercial terrain, Commercial sédentaire | Articles, date de livraison, acompte facultatif. Aucun contrôle d’argent à la commande. |
-| 3 | Suivre la commande | `/commandes` | Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | Vendue, livrée, en attente de stock. |
-| 4 | Livrer | `/commandes` | Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | Depuis la commande : quantités remises. Le client paie avant la livraison, sauf client autorisé au crédit. |
+| 3 | Suivre la commande | `/commandes` | Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | Vendue, livrée, en attente de stock. |
+| 4 | Livrer | `/commandes` | Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | Depuis la commande : quantités remises. Le client paie avant la livraison, sauf client autorisé au crédit. |
 | 5 | Encaisser | `/encaisser` | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Finance | Règlement reçu, affecté à la créance la plus ancienne. |
 
 ### Corriger une erreur
@@ -129,8 +130,8 @@ Rien ne se supprime : on corrige par annulation motivée, et l’historique rest
 |---|---|---|---|---|
 | 1 | Collecte d’œufs saisie par erreur | `/production/collecte` | Responsable production, Responsable de ferme, Administrateur | Liste « Collectes récentes » → Annuler (motif obligatoire). |
 | 2 | Pesée, entrée d’animaux, lot | `/production/fiche` | Responsable production, Administrateur | Fiche du lot → Entrées ou Pesées → Annuler ; un lot planifié et vide s’annule ; un lot actif se clôture. En ligne. |
-| 3 | Vente | `/ventes` | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Finance | Détail de la vente → Annuler : immédiat dans le délai prévu, sinon soumis à validation. |
-| 4 | Commande | `/commandes` | Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | Détail de la commande → Annuler, ou clôturer le reste après une livraison partielle. |
+| 3 | Vente | `/ventes` | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Supervision consultative, Finance | Détail de la vente → Annuler : immédiat dans le délai prévu, sinon soumis à validation. |
+| 4 | Commande | `/commandes` | Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | Détail de la commande → Annuler, ou clôturer le reste après une livraison partielle. |
 | 5 | Remise de fonds | `/caisse/remises` | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Finance | Annuler une remise envoyée et pas encore reçue. |
 | 6 | Inventaire | `/stock/inventaire` | Magasinier, Vendeur de point de vente, Responsable de ferme, Responsable production, Administrateur | Annuler un comptage avant sa soumission. |
 | 7 | Opération refusée | `/synchronisation` | tous | L’écran Synchronisation donne la raison du refus en langage métier ; refaites l’opération corrigée. |
@@ -156,13 +157,13 @@ Les règles de prix d’un produit : en vigueur, brouillons, historique. On réd
 
 #### Simulateur de prix
 
-`/prix/simulateur` · ECR-PRX-03 · Responsable commercial, Direction · utilisable hors ligne
+`/prix/simulateur` · ECR-PRX-03 · Responsable commercial, Direction, Supervision consultative · utilisable hors ligne
 
 Pour un produit, une quantité, une date, un site, une zone, une catégorie de client et un canal : le prix que la vente appliquerait, la règle retenue et les autres règles applicables. Aucune écriture.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Simuler un prix | Renseignez le contexte ; le résultat reste à droite sur ordinateur. | Responsable commercial, Direction | — |
+| Simuler un prix | Renseignez le contexte ; le résultat reste à droite sur ordinateur. | Responsable commercial, Direction, Supervision consultative | — |
 
 #### Nouvelle vente
 
@@ -188,13 +189,13 @@ Vendre vite et encaisser sur le même écran : emplacement de départ, client (�
 
 #### Ventes récentes
 
-`/ventes` · ECR-VEN-05 · Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Finance · utilisable hors ligne
+`/ventes` · ECR-VEN-05 · Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Supervision consultative, Finance · utilisable hors ligne
 
 Les ventes des 7 derniers jours connues du téléphone, y compris celles pas encore acceptées par le serveur. Le signal « ventes signalées » de l’accueil ouvre cette liste filtrée sur les anomalies.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Retrouver une vente | La plus récente d’abord ; touchez-la pour son reçu. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Finance | — |
+| Retrouver une vente | La plus récente d’abord ; touchez-la pour son reçu. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Supervision consultative, Finance | — |
 | Faire une nouvelle vente | Ouvre l’écran de vente. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme | — |
 
 #### Nouvelle commande
@@ -213,13 +214,13 @@ Prendre la commande d’un client identifié : emplacement de préparation, arti
 
 #### Commandes
 
-`/commandes` · ECR-VEN-03 · Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance · utilisable hors ligne
+`/commandes` · ECR-VEN-03 · Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance · utilisable hors ligne
 
 Les commandes à confirmer, à livrer et livrées. Les commandes ouvertes viennent du téléphone ; les commandes livrées ou closes se lisent en ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Suivre une commande | Touchez-la pour la progression de chaque ligne. | Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | — |
+| Suivre une commande | Touchez-la pour la progression de chaque ligne. | Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance | — |
 | Prendre une nouvelle commande | Ouvre l’écran de commande. | Responsable commercial, Commercial terrain, Commercial sédentaire | — |
 
 #### Encaisser une créance
@@ -281,19 +282,19 @@ La journée du point de vente en un coup d’œil : caisse du jour, stock de l�
 
 #### Distribution par point de vente
 
-`/pdv/distribution` · ECR-DIS-04 · Direction, Responsable commercial, Vendeur de point de vente, Magasinier, Finance · en ligne
+`/pdv/distribution` · ECR-DIS-04 · Direction, Supervision consultative, Responsable commercial, Vendeur de point de vente, Magasinier, Finance · en ligne
 
 Pour chaque point de vente et la période choisie : envoyé, reçu, vendu, perdu, restant, encaissé et à réapprovisionner, avec la caisse et les appareils. Lecture en ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Comparer les points de vente | Choisissez la période ; les mesures masquées par vos droits ne s’affichent pas. | Direction, Responsable commercial, Vendeur de point de vente, Magasinier, Finance | en ligne |
+| Comparer les points de vente | Choisissez la période ; les mesures masquées par vos droits ne s’affichent pas. | Direction, Supervision consultative, Responsable commercial, Vendeur de point de vente, Magasinier, Finance | en ligne |
 
 ### Stock
 
 #### Stock par emplacement
 
-`/stock` · ECR-STK-01 · Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable production, Responsable de ferme, Magasinier, Responsable achats, Finance, Administrateur · utilisable hors ligne
+`/stock` · ECR-STK-01 · Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable production, Responsable de ferme, Magasinier, Responsable achats, Finance, Administrateur · utilisable hors ligne
 
 Les soldes de ce que vous détenez : produits, quantités et valeur par emplacement (magasin, bâtiment, point de vente, stock mobile), avec le disponible net des quotas des autres appareils. Une pastille signale les produits sous leur seuil.
 
@@ -304,14 +305,14 @@ Les soldes de ce que vous détenez : produits, quantités et valeur par emplacem
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Consulter les soldes | Recherche par produit ; filtre « sous le seuil » (alertes de stock). | Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable production, Responsable de ferme, Magasinier, Responsable achats, Finance, Administrateur | — |
+| Consulter les soldes | Recherche par produit ; filtre « sous le seuil » (alertes de stock). | Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable production, Responsable de ferme, Magasinier, Responsable achats, Finance, Administrateur | — |
 | Transférer | Envoyer du stock vers un autre emplacement. | Magasinier, Responsable de ferme, Responsable production, Administrateur | — |
 | Recevoir un transfert | Accepter ce qui vous est envoyé. | Commercial terrain, Vendeur de point de vente, Responsable production, Responsable de ferme, Magasinier, Administrateur | — |
 | Déclarer une perte | Casse, péremption, vol, mortalité hors lot… | Commercial terrain, Vendeur de point de vente, Responsable production, Responsable de ferme, Magasinier, Administrateur | — |
 | Faire un inventaire | Compter physiquement et laisser le système calculer l’écart. | Magasinier, Vendeur de point de vente, Responsable de ferme, Responsable production, Administrateur | — |
 | Régler les seuils d’alerte | Le minimum sous lequel un produit est signalé, et la cible du réapprovisionnement. | Direction, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Administrateur | — |
 | Enregistrer une consommation | Intrants et emballages utilisés hors lot. | Magasinier, Responsable de ferme, Vendeur de point de vente, Responsable production, Administrateur | — |
-| Voir le registre des mouvements | Chaque entrée et sortie, pour expliquer un écart. | Direction, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur | en ligne |
+| Voir le registre des mouvements | Chaque entrée et sortie, pour expliquer un écart. | Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur | en ligne |
 
 **Ensuite**
 
@@ -397,14 +398,14 @@ Enregistrer ce qui a été consommé hors lot de production (aliment, médicamen
 
 #### Registre des mouvements
 
-`/stock/registre` · ECR-STK-07 · Direction, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur · en ligne
+`/stock/registre` · ECR-STK-07 · Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur · en ligne
 
 Chaque entrée et chaque sortie de stock, datée et rattachée à son document : l’outil pour expliquer un écart. Lecture en ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Chercher des mouvements | Par période, emplacement, produit ou type d’opération. | Direction, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur | en ligne |
-| Exporter en CSV | La période affichée, pour la traiter dans un tableur. | Direction, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur | en ligne |
+| Chercher des mouvements | Par période, emplacement, produit ou type d’opération. | Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur | en ligne |
+| Exporter en CSV | La période affichée, pour la traiter dans un tableur. | Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable de ferme, Magasinier, Finance, Administrateur | en ligne |
 
 #### Seuils d’alerte
 
@@ -450,14 +451,14 @@ Demander du stock à la source du point de vente. Les produits sous leur seuil s
 
 #### Tableau du stock
 
-`/pilotage/stock` · ECR-ANA-03 · Magasinier, Direction, Responsable production, Responsable de ferme, Responsable achats, Finance, Administrateur · utilisable hors ligne
+`/pilotage/stock` · ECR-ANA-03 · Magasinier, Direction, Supervision consultative, Responsable production, Responsable de ferme, Responsable achats, Finance, Administrateur · utilisable hors ligne
 
 Les soldes, les alertes de seuil, les pertes et les mouvements du stock de votre périmètre.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Magasinier, Direction, Responsable production, Responsable de ferme, Responsable achats, Finance, Administrateur | — |
-| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Magasinier, Direction, Responsable production, Responsable de ferme, Responsable achats, Finance, Administrateur | — |
+| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Magasinier, Direction, Supervision consultative, Responsable production, Responsable de ferme, Responsable achats, Finance, Administrateur | — |
+| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Magasinier, Direction, Supervision consultative, Responsable production, Responsable de ferme, Responsable achats, Finance, Administrateur | — |
 
 **Ensuite**
 
@@ -544,13 +545,13 @@ Pointer votre arrivée sur le terrain (position relevée, zone reconnue) puis vo
 
 #### Présences et activité de l’équipe
 
-`/equipe/activite` · ECR-TER-02 · Responsable commercial, Direction · en ligne
+`/equipe/activite` · ECR-TER-02 · Responsable commercial, Direction, Supervision consultative · en ligne
 
 Pour une équipe et un jour : prises et fins de service, tentatives refusées, demandes de dérogation en attente, visites et échanges. Lecture en ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Suivre l’équipe | Choisissez l’équipe et le jour. | Responsable commercial, Direction | en ligne |
+| Suivre l’équipe | Choisissez l’équipe et le jour. | Responsable commercial, Direction, Supervision consultative | en ligne |
 
 #### Bilan de la semaine
 
@@ -565,14 +566,14 @@ Le commercial rédige son bilan de la semaine (cinq rubriques) avec des chiffres
 
 #### Tableau commercial
 
-`/pilotage/commercial` · ECR-ANA-02 · Responsable commercial, Direction, Finance, Commercial terrain, Commercial sédentaire · utilisable hors ligne
+`/pilotage/commercial` · ECR-ANA-02 · Responsable commercial, Direction, Supervision consultative, Finance, Commercial terrain, Commercial sédentaire · utilisable hors ligne
 
 Les ventes, les visites, les objectifs et le portefeuille de votre périmètre commercial.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Responsable commercial, Direction, Finance, Commercial terrain, Commercial sédentaire | — |
-| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Responsable commercial, Direction, Finance, Commercial terrain, Commercial sédentaire | — |
+| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Responsable commercial, Direction, Supervision consultative, Finance, Commercial terrain, Commercial sédentaire | — |
+| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Responsable commercial, Direction, Supervision consultative, Finance, Commercial terrain, Commercial sédentaire | — |
 
 ### Achats
 
@@ -645,13 +646,13 @@ Faire entrer en stock ce qu’un fournisseur a livré : les bons de commande att
 
 #### Rapprochement commande, réception, facture
 
-`/achats/rapprochement` · ECR-APP-05 · Responsable achats, Finance, Direction · en ligne
+`/achats/rapprochement` · ECR-APP-05 · Responsable achats, Finance, Direction, Supervision consultative · en ligne
 
 Pour chaque bon de commande : commandé, livré, accepté, facturé, payé. L’outil pour repérer ce qui manque ou ce qui est facturé en trop.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Suivre un bon de commande de bout en bout | Les écarts entre quantités et montants sont signalés. | Responsable achats, Finance, Direction | en ligne |
+| Suivre un bon de commande de bout en bout | Les écarts entre quantités et montants sont signalés. | Responsable achats, Finance, Direction, Supervision consultative | en ligne |
 
 **Ensuite**
 
@@ -679,7 +680,7 @@ Vos lots d’élevage actifs ou en vente, avec l’âge, l’effectif et les sai
 | Collecter les œufs | Pour les lots de pondeuses et de reproducteurs : œufs collectés, cassés, commercialisables par calibre et à couver. | Responsable production, Responsable de ferme, Administrateur | — |
 | Gérer les incubations | Mise en incubateur, mirage, transfert vers l’éclosoir, éclosion. | Responsable de ferme, Responsable production, Administrateur | — |
 | Envoyer un lot à la vente | Déclarer un lot prêt à la vente et envoyer les animaux vers un magasin ou un point de vente. | Responsable de ferme, Responsable production, Administrateur | — |
-| Consulter la fiche d’un lot | Effectif, mortalité, indicateurs, coûts, ventes et marge, y compris pour un lot clôturé. C’est aussi là que l’on clôture ou annule un lot, et que l’on annule une entrée ou une pesée. | Responsable production, Direction, Administrateur | — |
+| Consulter la fiche d’un lot | Effectif, mortalité, indicateurs, coûts, ventes et marge, y compris pour un lot clôturé. C’est aussi là que l’on clôture ou annule un lot, et que l’on annule une entrée ou une pesée. | Responsable production, Direction, Supervision consultative, Administrateur | — |
 
 **Ensuite**
 
@@ -690,7 +691,7 @@ Vos lots d’élevage actifs ou en vente, avec l’âge, l’effectif et les sai
 
 `/production/nouveau-lot` · ECR-PRD-04 · Responsable production, Administrateur · utilisable hors ligne
 
-Deux rubriques : « Nouveau lot » crée le lot, « Entrée dans un lot » y fait entrer les animaux. Un lot est planifié tant qu’aucun animal n’y est entré ; la première entrée le rend actif et ouvre sa saisie du jour.
+Trois rubriques : « Nouveau lot » crée le lot, « Entrée dans un lot » y fait entrer les animaux, « Reprise d’un lot » déclare un lot déjà en élevage au moment de la mise en service. Un lot est planifié tant qu’aucun animal n’y est entré ; la première entrée le rend actif et ouvre sa saisie du jour.
 
 **Avant de commencer**
 
@@ -702,7 +703,8 @@ Deux rubriques : « Nouveau lot » crée le lot, « Entrée dans un lot » y fai
 | Créer un lot | Ferme, type de lot, animaux du lot et bâtiment principal ; le fournisseur, la souche, les dates prévues et une note sont facultatifs. Possible sans réseau, le numéro du lot est donné par le serveur. | Responsable production, Administrateur | — |
 | Faire entrer des animaux | Origine : stock de la ferme, réception d’achat, autre lot (transfert), sevrage ou naissance. Le nombre de têtes est obligatoire ; le poids moyen et les mort-nés sont facultatifs. | Responsable production, Administrateur | — |
 | Enregistrer l’achat des animaux | Quand le stock de la ferme est vide : réception sans bon de commande (animaux et aliment, prix unitaire obligatoire). | Magasinier, Responsable de ferme, Responsable production, Administrateur | — |
-| Annuler une entrée ou un lot | Depuis la fiche du lot, en ligne : une entrée s’annule (les animaux retournent à leur origine) ; un lot planifié et vide s’annule ; un lot actif se clôture. | Responsable production, Direction, Administrateur | en ligne |
+| Reprendre un lot déjà en élevage | Rubrique « Reprise d’un lot » : date de mise en place réelle, effectif repris à la date d’arrêt et valeur totale du lot (animaux, aliments, soins déjà engagés). La Direction valide la déclaration : le lot n’apparaît qu’après sa validation, et une reprise comptabilisée ne s’annule pas. | Responsable production, Administrateur | — |
+| Annuler une entrée ou un lot | Depuis la fiche du lot, en ligne : une entrée s’annule (les animaux retournent à leur origine) ; un lot planifié et vide s’annule ; un lot actif se clôture. | Responsable production, Direction, Supervision consultative, Administrateur | en ligne |
 
 **Ensuite**
 
@@ -774,18 +776,18 @@ Deux choses : déclarer qu’un lot est prêt à la vente (le lot passe « en ve
 
 #### Fiche d’un lot
 
-`/production/fiche` · ECR-PRD-03 · Responsable production, Direction, Administrateur · en ligne
+`/production/fiche` · ECR-PRD-03 · Responsable production, Direction, Supervision consultative, Administrateur · en ligne
 
 Tout ce qu’il faut savoir d’un lot : effectif, mortalité, indicateurs (mortalité, gain moyen quotidien, indice de consommation, ponte), coûts, ventes et marge, entrées et pesées. Elle sert aussi à corriger et à clore : clôture, annulation du lot, d’une entrée ou d’une pesée.
 
 **Avant de commencer**
 
 - En ligne pour les indicateurs, les coûts et les corrections ; hors ligne, seul l’effectif calculé par le téléphone s’affiche.
-- Les montants (coûts, ventes, marges) ne se voient qu’avec le droit de valorisation (Direction, Finance, Responsable production) ; l’Administrateur seul n’en voit pas.
+- Les montants (coûts, ventes, marges) ne se voient qu’avec le droit de valorisation (Direction, Finance, Responsable production, Supervision) ; l’Administrateur seul n’en voit pas.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Consulter un lot, même clôturé | Le sélecteur propose les lots ouverts puis les lots clôturés (lus en ligne par pages). | Responsable production, Direction, Administrateur | — |
+| Consulter un lot, même clôturé | Le sélecteur propose les lots ouverts puis les lots clôturés (lus en ligne par pages). | Responsable production, Direction, Supervision consultative, Administrateur | — |
 | Faire entrer des animaux, saisir la journée, collecter les œufs, envoyer à la vente | Les boutons de « Actions sur le lot » ouvrent l’écran voisin avec le lot déjà choisi. | Responsable production, Administrateur | — |
 | Clôturer le lot | Fige le coût et ferme le lot. Il ne doit plus contenir d’animaux non vendus, de mortalité en attente ni de vente à livrer. | Responsable production, Administrateur | en ligne |
 | Annuler un lot planifié | Seul un lot sans aucune entrée s’annule ; il faut un motif. | Responsable production, Administrateur | en ligne |
@@ -797,14 +799,14 @@ Tout ce qu’il faut savoir d’un lot : effectif, mortalité, indicateurs (mort
 
 #### Tableau de la production
 
-`/pilotage/production` · ECR-ANA-04 · Responsable production, Responsable de ferme, Direction, Finance, Administrateur · utilisable hors ligne
+`/pilotage/production` · ECR-ANA-04 · Responsable production, Responsable de ferme, Direction, Supervision consultative, Finance, Administrateur · utilisable hors ligne
 
 Les effectifs, la mortalité, les performances des lots et la ponte de votre périmètre.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Responsable production, Responsable de ferme, Direction, Finance, Administrateur | — |
-| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Responsable production, Responsable de ferme, Direction, Finance, Administrateur | — |
+| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Responsable production, Responsable de ferme, Direction, Supervision consultative, Finance, Administrateur | — |
+| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Responsable production, Responsable de ferme, Direction, Supervision consultative, Finance, Administrateur | — |
 
 **Ensuite**
 
@@ -814,13 +816,13 @@ Les effectifs, la mortalité, les performances des lots et la ponte de votre pé
 
 #### Créances
 
-`/finance/creances` · ECR-FIN-01 · Finance, Direction, Responsable commercial · en ligne
+`/finance/creances` · ECR-FIN-01 · Finance, Direction, Supervision consultative, Responsable commercial · en ligne
 
 Ce que les clients doivent : encours du jour (total, échu, à échoir, échu par tranche de retard), par client ou par titulaire, le plus en retard d’abord. Lecture en ligne ; hors ligne, la dernière lecture reste affichée.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Repérer les retards | Filtrez par échéance, tranche ou site ; les ventes d’un groupe se déplient à la demande. | Finance, Direction, Responsable commercial | en ligne |
+| Repérer les retards | Filtrez par échéance, tranche ou site ; les ventes d’un groupe se déplient à la demande. | Finance, Direction, Supervision consultative, Responsable commercial | en ligne |
 | Encaisser | « Encaisser » et « Encaisser le reste dû » mènent à l’encaissement du client. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Finance | — |
 
 #### Dépenses
@@ -838,7 +840,7 @@ Saisir une dépense (transport, carburant, frais de la ferme) payée maintenant 
 
 #### Factures fournisseurs
 
-`/finance/factures` · ECR-FIN-03 · Direction, Responsable achats, Finance · en ligne
+`/finance/factures` · ECR-FIN-03 · Direction, Supervision consultative, Responsable achats, Finance · en ligne
 
 Les dettes fournisseurs (dette, échu, avances, retards) et les factures par statut, avec les écarts de rapprochement en clair. Saisir une facture, la contester, l’approuver ou l’annuler.
 
@@ -846,11 +848,11 @@ Les dettes fournisseurs (dette, échu, avances, retards) et les factures par sta
 |---|---|---|---|
 | Saisir une facture | Fournisseur, lignes, photo de la facture ; rapprochée du bon de commande et de la réception. | Finance | en ligne |
 | Contester, approuver ou annuler | Jamais sa propre facture. | Direction, Finance | en ligne |
-| Suivre les dettes | Lecture seule pour le responsable des achats. | Direction, Responsable achats, Finance | en ligne |
+| Suivre les dettes | Lecture seule pour le responsable des achats. | Direction, Supervision consultative, Responsable achats, Finance | en ligne |
 
 #### Paiements fournisseurs
 
-`/finance/paiements` · ECR-FIN-04 · Direction, Responsable achats, Finance · en ligne
+`/finance/paiements` · ECR-FIN-04 · Direction, Supervision consultative, Responsable achats, Finance · en ligne
 
 Payer les fournisseurs, enregistrer et affecter les avances. Un paiement au-delà du seuil attend la décision de la Direction.
 
@@ -875,25 +877,25 @@ Sessions de caisse à valider, écarts de remise à clore, remises en transit, d
 
 #### Coûts et marges
 
-`/finance/couts-et-marges` · ECR-FIN-06 · Finance, Direction · en ligne
+`/finance/couts-et-marges` · ECR-FIN-06 · Finance, Direction, Supervision consultative · en ligne
 
 Lecture seule : vue d’ensemble de la période (ventes et marge brute, encaissé, dépenses, créances, dettes, trésorerie), valeur des pertes, coûts et marges des lots. En ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Analyser une période | Mois, semaine, jour, année ou dates libres. | Finance, Direction | en ligne |
-| Ouvrir la fiche d’un lot | Détail des coûts et de la marge d’un lot. | Responsable production, Direction, Administrateur | — |
+| Analyser une période | Mois, semaine, jour, année ou dates libres. | Finance, Direction, Supervision consultative | en ligne |
+| Ouvrir la fiche d’un lot | Détail des coûts et de la marge d’un lot. | Responsable production, Direction, Supervision consultative, Administrateur | — |
 
 #### Tableau finance et trésorerie
 
-`/pilotage/finance` · ECR-ANA-05 · Finance, Direction · en ligne
+`/pilotage/finance` · ECR-ANA-05 · Finance, Direction, Supervision consultative · en ligne
 
 Le chiffre d’affaires, l’encaissé, les créances, les dettes et la trésorerie.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. En ligne seulement. | Finance, Direction | en ligne |
-| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Finance, Direction | — |
+| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. En ligne seulement. | Finance, Direction, Supervision consultative | en ligne |
+| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Finance, Direction, Supervision consultative | — |
 
 ### Général
 
@@ -1108,7 +1110,7 @@ La file des demandes que vous pouvez décider : mortalités, pertes, écarts d�
 
 `/administration/parametres` · ECR-ADM-07 · Direction, Administrateur · en ligne
 
-Deux onglets : les paramètres système (seuils, délais, interrupteurs, par domaine, globaux ou par site) et les politiques de contrôle (photo, commentaire, validation, approbateur, portée). Toute modification crée une nouvelle version et garde l’historique. En ligne.
+Trois onglets : les paramètres système (seuils, délais, interrupteurs, par domaine, globaux ou par site), les politiques de contrôle (photo, commentaire, validation, approbateur, portée) et l’archive des photos jointes (Administrateur seul : téléchargement par période puis vidage du serveur, plancher de 30 jours). Toute modification crée une nouvelle version et garde l’historique. En ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
@@ -1117,23 +1119,23 @@ Deux onglets : les paramètres système (seuils, délais, interrupteurs, par dom
 
 #### Journal d’audit
 
-`/administration/audit` · ECR-AUD-01 · Direction, Administrateur, Finance · en ligne
+`/administration/audit` · ECR-AUD-01 · Direction, Supervision consultative, Administrateur, Finance · en ligne
 
 La trace de tout ce qui a été fait : qui, quand, quoi, avant et après. Recherche par période, type d’objet, acteur et action. Chaque recherche est elle-même inscrite au journal. La Finance ne voit que les objets financiers.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Rechercher dans le journal | Filtrez, puis ouvrez une ligne pour le détail avant/après, le motif, l’appareil et la commande. | Direction, Administrateur, Finance | en ligne |
+| Rechercher dans le journal | Filtrez, puis ouvrez une ligne pour le détail avant/après, le motif, l’appareil et la commande. | Direction, Supervision consultative, Administrateur, Finance | en ligne |
 
 #### Supervision de la synchronisation
 
-`/synchronisation/supervision` · ECR-SYN-02 · Administrateur, Direction · en ligne
+`/synchronisation/supervision` · ECR-SYN-02 · Administrateur, Direction, Supervision consultative · en ligne
 
 La fraîcheur de chaque appareil (dernier envoi, dernier téléchargement, dernier contact) et les files d’opérations en attente qu’il a signalées. En ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Repérer un appareil en retard | Filtre « en retard » ; mène à la file des conflits. | Administrateur, Direction | en ligne |
+| Repérer un appareil en retard | Filtre « en retard » ; mène à la file des conflits. | Administrateur, Direction, Supervision consultative | en ligne |
 
 **Ensuite**
 
@@ -1151,14 +1153,14 @@ Les opérations faites hors ligne que le serveur a appliquées avec un signaleme
 
 #### Tour de contrôle
 
-`/pilotage/direction` · ECR-ANA-01 · Direction · utilisable hors ligne
+`/pilotage/direction` · ECR-ANA-01 · Direction, Supervision consultative · utilisable hors ligne
 
 La vue d’ensemble de la Direction : production, stock, distribution, ventes, finances, équipes et alertes, lisible en moins de 30 secondes.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Direction | — |
-| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Direction | — |
+| Lire les indicateurs | Choisissez la période ; chaque indicateur peut mener aux opérations qui l’expliquent. Hors ligne, le dernier instantané reste affiché. | Direction, Supervision consultative | — |
+| Ouvrir l’explorateur | Pour descendre d’un indicateur jusqu’aux opérations sources (selon vos droits). | Direction, Supervision consultative | — |
 
 **Ensuite**
 
@@ -1166,15 +1168,15 @@ La vue d’ensemble de la Direction : production, stock, distribution, ventes, f
 
 #### Explorateur
 
-`/pilotage/explorateur` · ECR-ANA-06 · Direction, Responsable commercial, Responsable production, Responsable achats, Finance · en ligne
+`/pilotage/explorateur` · ECR-ANA-06 · Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable achats, Finance · en ligne
 
 Interroger les jeux de données du catalogue analytique : filtrer, trier, grouper, agréger, descendre jusqu’au document source, enregistrer et partager des vues, demander des exports. En ligne.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Explorer un jeu de données | Choisissez le jeu, les colonnes, les filtres et le regroupement. | Direction, Responsable commercial, Responsable production, Responsable achats, Finance | en ligne |
-| Enregistrer une vue | Garde vos réglages ; partageable à une équipe selon vos droits. | Direction, Responsable commercial, Responsable production, Responsable achats, Finance | en ligne |
-| Exporter en CSV ou XLSX | Chaque export est inscrit au journal d’audit. | Direction, Responsable commercial, Responsable production, Responsable achats, Finance | en ligne |
+| Explorer un jeu de données | Choisissez le jeu, les colonnes, les filtres et le regroupement. | Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable achats, Finance | en ligne |
+| Enregistrer une vue | Garde vos réglages ; partageable à une équipe selon vos droits. | Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable achats, Finance | en ligne |
+| Exporter en CSV ou XLSX | Chaque export est inscrit au journal d’audit. | Direction, Supervision consultative, Responsable commercial, Responsable production, Responsable achats, Finance | en ligne |
 
 ### Pages de détail
 
@@ -1207,7 +1209,7 @@ Les quatre saisies de la journée d’un lot : mortalité, aliment et intrants, 
 | Enregistrer une pesée | Nombre de sujets pesés et poids moyen : alimente le gain moyen quotidien de la fiche. | Responsable production, Responsable de ferme, Administrateur | — |
 | Noter une observation | Un constat daté (sanitaire, comportement, environnement, incident) avec sa gravité. | Responsable production, Responsable de ferme, Administrateur | — |
 | Collecte d’œufs, sortie vers la vente, fiche du lot | Les trois liens en haut de page mènent aux écrans voisins du même lot. | Responsable production, Responsable de ferme, Administrateur | — |
-| Corriger une erreur | Une pesée se corrige depuis la fiche du lot (annulation, en ligne) ; une collecte d’œufs depuis l’écran de collecte ; une mortalité refusée par le validateur revient au lot. | Responsable production, Direction, Administrateur | — |
+| Corriger une erreur | Une pesée se corrige depuis la fiche du lot (annulation, en ligne) ; une collecte d’œufs depuis l’écran de collecte ; une mortalité refusée par le validateur revient au lot. | Responsable production, Direction, Supervision consultative, Administrateur | — |
 
 **Ensuite**
 
@@ -1284,18 +1286,18 @@ Enregistrer un achat comptant livré sans bon de commande : poussins, porcelets,
 
 #### Détail d’une vente
 
-`/ventes/:saleId` · Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Finance
+`/ventes/:saleId` · Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Supervision consultative, Finance
 
 Le reçu de la vente, imprimable, et son annulation.
 
 | Action | Ce qu’elle fait | Qui | Réseau |
 |---|---|---|---|
-| Imprimer ou montrer le reçu | Le reçu se compose sur le téléphone ; le numéro officiel arrive avec la synchronisation. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Finance | — |
+| Imprimer ou montrer le reçu | Le reçu se compose sur le téléphone ; le numéro officiel arrive avec la synchronisation. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Direction, Supervision consultative, Finance | — |
 | Annuler la vente | Immédiat pour le vendeur dans le délai prévu (15 minutes par défaut) ; sinon la demande part en validation. Un motif est obligatoire. | Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme | — |
 
 #### Détail d’une commande
 
-`/commandes/:orderId` · Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance
+`/commandes/:orderId` · Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Magasinier, Finance
 
 La progression de chaque ligne (commandé, vendu, livré, en attente de stock) et ce qu’on peut en faire.
 
@@ -1319,7 +1321,7 @@ Saisir les quantités remises au client, ligne par ligne, avec le nom de la pers
 
 #### Fiche client
 
-`/clients/:customerId` · Direction, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Finance
+`/clients/:customerId` · Direction, Supervision consultative, Responsable commercial, Commercial terrain, Commercial sédentaire, Vendeur de point de vente, Responsable de ferme, Finance
 
 Un compte client : coordonnées, stade, crédit et encours, ventes des 7 derniers jours, commandes ouvertes, visites et échanges des 90 derniers jours. Raccourcis vers la vente, la commande, la visite et l’encaissement.
 
@@ -1360,7 +1362,7 @@ Rien ne se supprime : on annule, avec un motif, et l’opération reste à l’h
 
 **Pourquoi les coûts et les marges ne s’affichent-ils pas ?**
 
-Les montants (coûts, valeurs, marges) sont réservés aux rôles qui voient les valorisations : Direction, Finance, Responsable production. Un compte Administrateur seul n’y a pas accès.
+Les montants (coûts, valeurs, marges) sont réservés aux rôles qui voient les valorisations : Direction, Finance, Responsable production et Supervision. Un compte Administrateur seul n’y a pas accès.
 
 **Qui valide une mortalité ou une perte ?**
 
@@ -1372,78 +1374,78 @@ Sur l’écran de l’opération juste après l’envoi, et dans Synchronisation
 
 ## Annexe A — Quelles pages pour quel rôle
 
-Une croix indique que le menu propose la page au rôle. Le serveur revérifie chaque permission. Abréviations : DIR = Direction, ADM = Administrateur, RCO = Responsable commercial, CTE = Commercial terrain, CSE = Commercial sédentaire, VEN = Vendeur de point de vente, RPR = Responsable production, RFE = Responsable de ferme, MAG = Magasinier, ACH = Responsable achats, FIN = Finance.
+Une croix indique que le menu propose la page au rôle. Le serveur revérifie chaque permission. Abréviations : DIR = Direction, ADM = Administrateur, RCO = Responsable commercial, CTE = Commercial terrain, CSE = Commercial sédentaire, VEN = Vendeur de point de vente, RPR = Responsable production, RFE = Responsable de ferme, MAG = Magasinier, ACH = Responsable achats, FIN = Finance, SUP = Supervision consultative.
 
-| Page | DIR | ADM | RCO | CTE | CSE | VEN | RPR | RFE | MAG | ACH | FIN |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Nouvelle vente (`/ventes/nouvelle`) |  |  | × | × | × | × |  | × |  |  |  |
-| Nouvelle commande (`/commandes/nouvelle`) |  |  | × | × | × |  |  |  |  |  |  |
-| Commandes (`/commandes`) | × |  | × | × | × | × |  |  | × |  | × |
-| Encaisser une créance (`/encaisser`) |  |  | × | × | × | × |  | × |  |  | × |
-| Règles tarifaires (`/prix/regles`) | × |  | × |  |  |  |  |  |  |  |  |
-| Simulateur de prix (`/prix/simulateur`) | × |  | × |  |  |  |  |  |  |  |  |
-| Accueil du point de vente (`/pdv`) |  |  |  |  |  | × |  |  |  |  |  |
-| Caisse du point de vente (`/caisse`) |  |  |  |  |  | × |  |  |  |  | × |
-| Remises de fonds (`/caisse/remises`) |  |  | × | × | × | × |  | × |  |  | × |
-| Distribution par point de vente (`/pdv/distribution`) | × |  | × |  |  | × |  |  | × |  | × |
-| Ventes récentes (`/ventes`) | × |  | × | × | × | × |  | × |  |  | × |
-| Stock par emplacement (`/stock`) | × | × | × | × | × | × | × | × | × | × | × |
-| Transferts (`/stock/transferts`) |  | × |  |  |  |  | × | × | × |  |  |
-| Réceptions de transfert (`/stock/receptions`) |  | × |  | × |  | × | × | × | × |  |  |
-| Déclarer une perte (`/stock/perte`) |  | × |  | × |  | × | × | × | × |  |  |
-| Inventaire (`/stock/inventaire`) |  | × |  |  |  | × | × | × | × |  |  |
-| Registre des mouvements (`/stock/registre`) | × | × | × |  |  |  | × | × | × |  | × |
-| Consommation d’intrants (`/stock/consommation`) |  | × |  |  |  | × | × | × | × |  |  |
-| Seuils d’alerte (`/stock/seuils`) | × | × | × |  |  |  | × | × | × |  |  |
-| Quotas (`/stock/quotas`) | × | × | × |  |  |  |  | × | × |  |  |
-| Demande de réapprovisionnement (`/pdv/reapprovisionnement`) |  |  |  |  |  | × |  |  |  |  |  |
-| Tableau du stock (`/pilotage/stock`) | × | × |  |  |  |  | × | × | × | × | × |
-| Mon portefeuille (`/clients`) |  |  | × | × | × |  |  |  |  |  |  |
-| Mes objectifs (`/objectifs`) |  |  | × | × | × |  |  |  |  |  |  |
-| Nouveau prospect (`/clients/nouveau`) |  |  | × | × | × | × |  | × |  |  |  |
-| Gestion des objectifs (`/objectifs/gestion`) | × |  | × |  |  |  |  |  |  |  |  |
-| Réaffectation de clients (`/clients/reaffecter`) | × |  | × |  |  |  |  |  |  |  |  |
-| Présences et activité de l’équipe (`/equipe/activite`) | × |  | × |  |  |  |  |  |  |  |  |
-| Prendre service (`/service`) |  |  | × | × |  |  |  |  |  |  |  |
-| Nouvelle visite (`/clients/visite`) |  |  | × | × |  |  |  |  |  |  |  |
-| Tableau commercial (`/pilotage/commercial`) | × |  | × | × | × |  |  |  |  |  | × |
-| Bilan de la semaine (`/bilan-hebdomadaire`) | × |  | × | × | × |  |  |  |  |  |  |
-| Demandes d’achat (`/achats/demandes`) | × | × |  |  |  |  | × | × | × | × | × |
-| Fournisseurs (`/achats/fournisseurs`) |  |  |  |  |  |  |  |  |  | × |  |
-| Bons de commande (`/achats/bons-de-commande`) |  |  |  |  |  |  |  |  |  | × |  |
-| Réceptions d’achat (`/achats/receptions`) |  | × |  |  |  |  | × | × | × |  |  |
-| Rapprochement commande, réception, facture (`/achats/rapprochement`) | × |  |  |  |  |  |  |  |  | × | × |
-| Lots de production (`/production/lots`) |  | × |  |  |  |  | × | × |  |  |  |
-| Collecte d’œufs (`/production/collecte`) |  | × |  |  |  |  | × | × |  |  |  |
-| Fiche d’un lot (`/production/fiche`) | × | × |  |  |  |  | × |  |  |  |  |
-| Nouveau lot et entrée d’animaux (`/production/nouveau-lot`) |  | × |  |  |  |  | × |  |  |  |  |
-| Incubations (`/production/incubation`) |  | × |  |  |  |  | × | × |  |  |  |
-| Sortie vers la vente (`/production/sortie`) |  | × |  |  |  |  | × | × |  |  |  |
-| Tableau de la production (`/pilotage/production`) | × | × |  |  |  |  | × | × |  |  | × |
-| Trésorerie (`/finance/tresorerie`) | × |  |  |  |  |  |  |  |  |  | × |
-| Dépenses (`/finance/depenses`) | × |  | × | × | × | × | × | × | × | × | × |
-| Factures fournisseurs (`/finance/factures`) | × |  |  |  |  |  |  |  |  | × | × |
-| Paiements fournisseurs (`/finance/paiements`) | × |  |  |  |  |  |  |  |  | × | × |
-| Créances (`/finance/creances`) | × |  | × |  |  |  |  |  |  |  | × |
-| Coûts et marges (`/finance/couts-et-marges`) | × |  |  |  |  |  |  |  |  |  | × |
-| Tableau finance et trésorerie (`/pilotage/finance`) | × |  |  |  |  |  |  |  |  |  | × |
-| Accueil (`/`) | × | × | × | × | × | × | × | × | × | × | × |
-| Synchronisation (`/synchronisation`) | × | × | × | × | × | × | × | × | × | × | × |
-| Supervision de la synchronisation (`/synchronisation/supervision`) | × | × |  |  |  |  |  |  |  |  |  |
-| Conflits de synchronisation (`/synchronisation/conflits`) | × | × | × |  |  |  | × | × | × | × | × |
-| Catalogue (`/catalogue`) |  | × |  |  |  |  |  |  |  |  |  |
-| Appareils (`/administration/appareils`) | × | × | × |  |  |  | × | × | × |  |  |
-| Validations (`/validations`) | × |  | × |  |  |  | × | × | × | × | × |
-| Comptes et rôles (`/administration/utilisateurs`) |  | × |  |  |  |  |  |  |  |  |  |
-| Organisation (`/administration/organisation`) |  | × |  |  |  |  |  |  |  |  |  |
-| Paramètres et politiques (`/administration/parametres`) | × | × |  |  |  |  |  |  |  |  |  |
-| Journal d’audit (`/administration/audit`) | × | × |  |  |  |  |  |  |  |  | × |
-| Alertes et notifications (`/alertes`) | × | × | × | × | × | × | × | × | × | × | × |
-| Notes de direction (`/notes`) | × | × | × | × | × | × | × | × | × | × | × |
-| Publier une note (`/notes/publication`) | × |  |  |  |  |  |  |  |  |  |  |
-| Tour de contrôle (`/pilotage/direction`) | × |  |  |  |  |  |  |  |  |  |  |
-| Explorateur (`/pilotage/explorateur`) | × |  | × |  |  |  | × |  |  | × | × |
-| Reporter une pièce papier (`/pieces/report`) | × | × | × | × | × | × | × | × | × | × | × |
-| Chargement de données (`/chargement`) | × | × | × |  |  |  |  |  |  |  | × |
-| Présence du personnel (`/presence`) | × | × |  |  |  |  | × | × |  |  |  |
-| Guide et aide (`/aide`) | × | × | × | × | × | × | × | × | × | × | × |
+| Page | DIR | ADM | RCO | CTE | CSE | VEN | RPR | RFE | MAG | ACH | FIN | SUP |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Nouvelle vente (`/ventes/nouvelle`) |  |  | × | × | × | × |  | × |  |  |  |  |
+| Nouvelle commande (`/commandes/nouvelle`) |  |  | × | × | × |  |  |  |  |  |  |  |
+| Commandes (`/commandes`) | × |  | × | × | × | × |  |  | × |  | × | × |
+| Encaisser une créance (`/encaisser`) |  |  | × | × | × | × |  | × |  |  | × |  |
+| Règles tarifaires (`/prix/regles`) | × |  | × |  |  |  |  |  |  |  |  |  |
+| Simulateur de prix (`/prix/simulateur`) | × |  | × |  |  |  |  |  |  |  |  | × |
+| Accueil du point de vente (`/pdv`) |  |  |  |  |  | × |  |  |  |  |  |  |
+| Caisse du point de vente (`/caisse`) |  |  |  |  |  | × |  |  |  |  | × |  |
+| Remises de fonds (`/caisse/remises`) |  |  | × | × | × | × |  | × |  |  | × |  |
+| Distribution par point de vente (`/pdv/distribution`) | × |  | × |  |  | × |  |  | × |  | × | × |
+| Ventes récentes (`/ventes`) | × |  | × | × | × | × |  | × |  |  | × | × |
+| Stock par emplacement (`/stock`) | × | × | × | × | × | × | × | × | × | × | × | × |
+| Transferts (`/stock/transferts`) |  | × |  |  |  |  | × | × | × |  |  |  |
+| Réceptions de transfert (`/stock/receptions`) |  | × |  | × |  | × | × | × | × |  |  |  |
+| Déclarer une perte (`/stock/perte`) |  | × |  | × |  | × | × | × | × |  |  |  |
+| Inventaire (`/stock/inventaire`) |  | × |  |  |  | × | × | × | × |  |  |  |
+| Registre des mouvements (`/stock/registre`) | × | × | × |  |  |  | × | × | × |  | × | × |
+| Consommation d’intrants (`/stock/consommation`) |  | × |  |  |  | × | × | × | × |  |  |  |
+| Seuils d’alerte (`/stock/seuils`) | × | × | × |  |  |  | × | × | × |  |  |  |
+| Quotas (`/stock/quotas`) | × | × | × |  |  |  |  | × | × |  |  |  |
+| Demande de réapprovisionnement (`/pdv/reapprovisionnement`) |  |  |  |  |  | × |  |  |  |  |  |  |
+| Tableau du stock (`/pilotage/stock`) | × | × |  |  |  |  | × | × | × | × | × | × |
+| Mon portefeuille (`/clients`) |  |  | × | × | × |  |  |  |  |  |  |  |
+| Mes objectifs (`/objectifs`) |  |  | × | × | × |  |  |  |  |  |  |  |
+| Nouveau prospect (`/clients/nouveau`) |  |  | × | × | × | × |  | × |  |  |  |  |
+| Gestion des objectifs (`/objectifs/gestion`) | × |  | × |  |  |  |  |  |  |  |  |  |
+| Réaffectation de clients (`/clients/reaffecter`) | × |  | × |  |  |  |  |  |  |  |  |  |
+| Présences et activité de l’équipe (`/equipe/activite`) | × |  | × |  |  |  |  |  |  |  |  | × |
+| Prendre service (`/service`) |  |  | × | × |  |  |  |  |  |  |  |  |
+| Nouvelle visite (`/clients/visite`) |  |  | × | × |  |  |  |  |  |  |  |  |
+| Tableau commercial (`/pilotage/commercial`) | × |  | × | × | × |  |  |  |  |  | × | × |
+| Bilan de la semaine (`/bilan-hebdomadaire`) | × |  | × | × | × |  |  |  |  |  |  |  |
+| Demandes d’achat (`/achats/demandes`) | × | × |  |  |  |  | × | × | × | × | × |  |
+| Fournisseurs (`/achats/fournisseurs`) |  |  |  |  |  |  |  |  |  | × |  |  |
+| Bons de commande (`/achats/bons-de-commande`) |  |  |  |  |  |  |  |  |  | × |  |  |
+| Réceptions d’achat (`/achats/receptions`) |  | × |  |  |  |  | × | × | × |  |  |  |
+| Rapprochement commande, réception, facture (`/achats/rapprochement`) | × |  |  |  |  |  |  |  |  | × | × | × |
+| Lots de production (`/production/lots`) |  | × |  |  |  |  | × | × |  |  |  |  |
+| Collecte d’œufs (`/production/collecte`) |  | × |  |  |  |  | × | × |  |  |  |  |
+| Fiche d’un lot (`/production/fiche`) | × | × |  |  |  |  | × |  |  |  |  | × |
+| Nouveau lot et entrée d’animaux (`/production/nouveau-lot`) |  | × |  |  |  |  | × |  |  |  |  |  |
+| Incubations (`/production/incubation`) |  | × |  |  |  |  | × | × |  |  |  |  |
+| Sortie vers la vente (`/production/sortie`) |  | × |  |  |  |  | × | × |  |  |  |  |
+| Tableau de la production (`/pilotage/production`) | × | × |  |  |  |  | × | × |  |  | × | × |
+| Trésorerie (`/finance/tresorerie`) | × |  |  |  |  |  |  |  |  |  | × |  |
+| Dépenses (`/finance/depenses`) | × |  | × | × | × | × | × | × | × | × | × |  |
+| Factures fournisseurs (`/finance/factures`) | × |  |  |  |  |  |  |  |  | × | × | × |
+| Paiements fournisseurs (`/finance/paiements`) | × |  |  |  |  |  |  |  |  | × | × | × |
+| Créances (`/finance/creances`) | × |  | × |  |  |  |  |  |  |  | × | × |
+| Coûts et marges (`/finance/couts-et-marges`) | × |  |  |  |  |  |  |  |  |  | × | × |
+| Tableau finance et trésorerie (`/pilotage/finance`) | × |  |  |  |  |  |  |  |  |  | × | × |
+| Accueil (`/`) | × | × | × | × | × | × | × | × | × | × | × | × |
+| Synchronisation (`/synchronisation`) | × | × | × | × | × | × | × | × | × | × | × | × |
+| Supervision de la synchronisation (`/synchronisation/supervision`) | × | × |  |  |  |  |  |  |  |  |  | × |
+| Conflits de synchronisation (`/synchronisation/conflits`) | × | × | × |  |  |  | × | × | × | × | × |  |
+| Catalogue (`/catalogue`) |  | × |  |  |  |  |  |  |  |  |  |  |
+| Appareils (`/administration/appareils`) | × | × | × |  |  |  | × | × | × |  |  |  |
+| Validations (`/validations`) | × |  | × |  |  |  | × | × | × | × | × |  |
+| Comptes et rôles (`/administration/utilisateurs`) |  | × |  |  |  |  |  |  |  |  |  |  |
+| Organisation (`/administration/organisation`) |  | × |  |  |  |  |  |  |  |  |  |  |
+| Paramètres et politiques (`/administration/parametres`) | × | × |  |  |  |  |  |  |  |  |  |  |
+| Journal d’audit (`/administration/audit`) | × | × |  |  |  |  |  |  |  |  | × | × |
+| Alertes et notifications (`/alertes`) | × | × | × | × | × | × | × | × | × | × | × | × |
+| Notes de direction (`/notes`) | × | × | × | × | × | × | × | × | × | × | × | × |
+| Publier une note (`/notes/publication`) | × |  |  |  |  |  |  |  |  |  |  |  |
+| Tour de contrôle (`/pilotage/direction`) | × |  |  |  |  |  |  |  |  |  |  | × |
+| Explorateur (`/pilotage/explorateur`) | × |  | × |  |  |  | × |  |  | × | × | × |
+| Reporter une pièce papier (`/pieces/report`) | × | × | × | × | × | × | × | × | × | × | × |  |
+| Chargement de données (`/chargement`) | × | × | × |  |  |  |  |  |  |  | × |  |
+| Présence du personnel (`/presence`) | × | × |  |  |  |  | × | × |  |  |  |  |
+| Guide et aide (`/aide`) | × | × | × | × | × | × | × | × | × | × | × | × |

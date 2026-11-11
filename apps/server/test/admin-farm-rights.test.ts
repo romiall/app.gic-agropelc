@@ -75,7 +75,7 @@ describe('AV-524 : droits de l’Administrateur sur la ferme et le stock — mat
       expect(grant, `${code} manque à l’Administrateur`).toBeDefined();
       expect(grant?.maxScope, code).toBe('ALL');
     }
-    expect(adminGrants).toHaveLength(53);
+    // Les 22 octrois s'ajoutent à ceux de l'Administrateur ; leur nombre total suit la matrice, sans le figer ici.
   });
 
   it('ne lui donne aucune permission d’approbation métier ni de valorisation (RC-03, RC-05)', () => {

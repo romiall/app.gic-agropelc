@@ -545,7 +545,14 @@ export const ROLE_SETS = {
     'ADMIN',
   ],
   /** ECR-ANA-04 (RP-4) : `analytics.dashboard.production` (RPR, RFE, DIR, SUP, FIN, ADM depuis AV-524). */
-  analyticsProduction: ['RESP_PRODUCTION', 'RESP_FERME', 'DIRECTION', 'SUPERVISION', 'FINANCE', 'ADMIN'],
+  analyticsProduction: [
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'DIRECTION',
+    'SUPERVISION',
+    'FINANCE',
+    'ADMIN',
+  ],
   /** ECR-ANA-05 (RP-4) : `analytics.dashboard.finance` (FIN, DIR, SUP). */
   analyticsFinance: ['FINANCE', 'DIRECTION', 'SUPERVISION'],
   /** ECR-ANA-06 (RP-4) : `analytics.explore` (DIR, SUP, RCO, RPR, RAC, FIN). */

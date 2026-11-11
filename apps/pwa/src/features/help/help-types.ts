@@ -85,6 +85,7 @@ export const ROLE_LABELS: Readonly<Record<string, string>> = {
   MAGASINIER: 'Magasinier',
   RESP_ACHATS: 'Responsable achats',
   FINANCE: 'Finance',
+  SUPERVISION: 'Supervision consultative',
 };
 
 export const roleLabel = (code: string): string => ROLE_LABELS[code] ?? code;
