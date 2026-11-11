@@ -262,7 +262,7 @@ export function encaissementsDuJournal<T extends { readonly status: string }>(
   return paiements.filter((p) => p.status === 'RECORDED' || p.status === 'CANCELLATION_REQUESTED');
 }
 
-/** Journal des encaissements d'une période : une ligne par encaissement, au montant de son mode. */
+/** Registre des encaissements d'une période (ancien journal) : une ligne par encaissement, au montant de son mode. */
 export function demandeJournalEncaissements(input: {
   readonly paiements: readonly CustomerPaymentData[];
   readonly site: string | null;
@@ -289,6 +289,7 @@ export function demandeJournalEncaissements(input: {
         date: datePiece(p.occurred_at)?.slice(0, 5) ?? null,
         piece: p.doc_number,
         objet: c?.display_name ?? null,
+        reference: p.external_reference ?? null,
         parMode,
       };
     });

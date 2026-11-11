@@ -66,28 +66,45 @@ const FJC = {
 }
 
 // ------------------------------------------------------------------ JE
-const JE = {
-  code: 'JE', nom: 'Journal des encaissements', fmt: 'a4p',
-  pages: [standard({
-    fmt: 'a4p', code: 'JE', titre: 'Journal des encaissements', sous: 'Registre — une ligne par encaissement', numLib: 'Page N°', marges: { mh: 12, mg: 14 }, annule: false,
-    mention: 'Reconstitué chaque jour à partir des reçus d’encaissement et des bons de vente — ne jamais laisser de ligne vide entre deux écritures',
+// Registre des encaissements (décision du porteur, 11/11/2026) : l'ancien « journal des encaissements » tient lieu de reçu d'encaissement,
+// que l'administration retient sous forme de registre et non de carnet. Une ligne = un encaissement ; son numéro d'ordre est continu d'une
+// page à l'autre (30 lignes par page, 100 pages : 000001 à 003000). Notes et références se prennent dans la dernière colonne ; les totaux
+// de la page, le report, le visa du caissier et celui du contrôleur ferment chaque page ; les lignes reportées dans l'application se notent.
+export const JE_LIGNES = 30
+export const JE_PAGES = 100
+// page : numéro de la page (1 à JE_PAGES) d'un registre complet ; null pour la page modèle (numéros de ligne en jetons {{Lk}}).
+// debut : numéro de la première ligne de cette page (continu d'une page et d'un registre à l'autre).
+export function pageRegistre({ page = null, debut = 1 } = {}) {
+  const miroir = page !== null && page % 2 === 0 // impression recto verso : la reliure passe à droite sur les pages paires
+  return standard({
+    fmt: 'a4p', code: 'JE', titre: 'Registre des encaissements', sous: 'Reçus d’encaissement — une ligne par encaissement', numLib: 'Page N°',
+    marges: miroir ? { mh: 12, md: 14, mg: 8 } : { mh: 12, mg: 14 }, annule: false,
+    mention: 'Registre numéroté — une ligne par encaissement, sans ligne vide ; une erreur se barre, se date et se commente, elle ne s’efface jamais',
     corps: [
       rang(champ('Site / point de vente', 10), champ('Période du', 6, { aide: '…/…/20…' }), champ('au', 4, { aide: '…/…/20…' }), champ('Tenu par', 4)),
       lignes({
-        cols: [{ t: 'Date', w: '15mm' }, { t: 'N° pièce (RE / BV)', w: '23mm' }, { t: 'Client / objet (vente ou commande n°)', w: '*' }, { t: 'Espèces', w: '20mm' }, { t: 'Orange Money', w: '20mm' }, { t: 'MTN MoMo', w: '20mm' }, { t: 'Virement', w: '20mm' }, { t: 'Chèque', w: '18mm' }, { t: 'Total (XAF)', w: '22mm' }],
-        n: 30, h: 6.3,
-        total: [{ lib: 'Total de la page', span: 4 }, { lib: 'Report des pages précédentes', span: 4 }, { lib: 'Total à reporter', span: 4 }],
+        cols: [
+          { t: 'Date', w: '13mm' }, { t: 'Reçu de (client) — objet : vente ou commande n°', w: '*' },
+          { t: 'Espèces', w: '15mm' }, { t: 'Orange Money', w: '15mm' }, { t: 'MTN MoMo', w: '15mm' }, { t: 'Virement', w: '15mm' }, { t: 'Chèque', w: '14mm' },
+          { t: 'Total (XAF)', w: '17mm' }, { t: 'Réf. transaction ou chèque — notes', w: '30mm' },
+        ],
+        n: JE_LIGNES, h: 5.9, numT: 'N° d’ordre', numW: '11mm', pad: 6, jetons: page === null, premier: debut,
+        total: [{ lib: 'Total de la page', span: 3 }, { lib: 'Report des pages précédentes', span: 3 }, { lib: 'Total à reporter', span: 3 }],
       }),
+      signatures([{ t: 'Le caissier', s: 'a tenu la page — visa' }, { t: 'Le contrôleur', s: 'a vérifié — visa et date' }, { t: 'Cachet', cachet: true, nom: false }], { h: 11 }),
+      report({ numOp: false, extra: '<span class="f">lignes reportées : du n° <i class="l"></i> au n° <i class="l"></i></span>' }),
     ].join(''),
-  })],
+  })
 }
+const JE = { code: 'JE', nom: 'Registre des encaissements', fmt: 'a4p', numApercu: '001', pages: [pageRegistre()] }
 
 // ------------------------------------------------------------------ FA
 const blanc = (c = '') => `<span class="blanc ${c}"></span>`
 const FA = {
-  code: 'FA', nom: 'Facture (modèle provisoire)', fmt: 'a4p', legal: true,
+  code: 'FA', nom: 'Facture', fmt: 'a4p', legal: true,
   pages: [standard({
-    fmt: 'a4p', code: 'FA', titre: 'Facture', sous: 'Modèle provisoire — conformité à valider (comptable, DGI)', numLib: 'Facture N°', marges: { mh: 12 },
+    // Modèle validé par le comptable (porteur, 11/11/2026) : la mention « modèle provisoire » n'est plus imprimée, comme sur la facture de l'application.
+    fmt: 'a4p', code: 'FA', titre: 'Facture', sous: '', numLib: 'Facture N°', marges: { mh: 12 },
     corps: [
       rang(champ('Date d’émission', 8, { aide: 'jj / mm / aaaa' }), champ('Échéance', 7, { aide: 'jj / mm / aaaa' }), champ('Bon de vente / commande n°', 9)),
       bloc('Client', [
@@ -107,7 +124,7 @@ const FA = {
       lettres('Arrêtée la présente facture à la somme de (en lettres)', 24, 2),
       signatures([{ t: 'Le vendeur', s: 'nom, signature et cachet' }, { t: 'Le client', s: 'bon pour accord — nom et signature' }], { h: 16 }),
     ].join(''),
-    ex: EX3, mention: 'Facture numérotée en continu — les mentions légales et le taux de TVA sont à valider avec le comptable avant impression',
+    ex: EX3, mention: 'Facture numérotée en continu — ne pas détacher sans l’annuler — conserver tous les exemplaires',
   })],
 }
 

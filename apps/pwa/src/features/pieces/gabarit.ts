@@ -140,6 +140,9 @@ export function lignes({
   prefill = null,
   rows = [],
   premierNumero = 1,
+  numT = 'N°',
+  numW = '7mm',
+  pad = 0,
 }: {
   cols: readonly Colonne[];
   n?: number;
@@ -150,9 +153,13 @@ export function lignes({
   prefill?: readonly string[] | null;
   rows?: readonly (readonly Valeur[])[];
   premierNumero?: number;
+  /** Titre et largeur de la colonne des numéros ; `pad` : zéros à gauche (6 pour les lignes d'un registre). */
+  numT?: string;
+  numW?: string;
+  pad?: number;
 }): string {
   const all: (Colonne & { n?: boolean })[] = numerote
-    ? [{ t: 'N°', w: '7mm', n: true }, ...cols]
+    ? [{ t: numT, w: numW, n: true }, ...cols]
     : [...cols];
   const colgroup = all
     .map((c) => `<col style="${c.w && c.w !== '*' ? `width:${c.w}` : ''}">`)
@@ -166,7 +173,8 @@ export function lignes({
     const row = rows[i];
     return `<tr>${all
       .map((c, k) => {
-        if (c.n) return `<td class="n">${premierNumero + i}</td>`;
+        if (c.n)
+          return `<td class="n${pad ? ' long' : ''}">${String(premierNumero + i).padStart(pad, '0')}</td>`;
         if (prefill && k === decal) return `<td class="pre">${prefill[i] ?? ''}</td>`;
         const v = row?.[k - decal];
         if (present(v)) {
@@ -248,18 +256,21 @@ export function report({
   saisiLe,
   par,
   numero,
+  numOp = true,
 }: {
   saisiPar?: boolean;
   extra?: string;
   saisiLe?: Valeur;
   par?: Valeur;
   numero?: Valeur;
+  /** Faux : pas de rubrique « N° opération » (registre : plusieurs opérations par page, voir `extra`). */
+  numOp?: boolean;
 } = {}): string {
   const f = (v: Valeur, vide: string) => (present(v) ? `<span class="v">${esc(v)}</span>` : vide);
   return `<div class="report"><span class="t">Report dans<br>l’application</span>
   <span class="f">Saisi le ${f(saisiLe, '<i class="s"></i>/<i class="s"></i>/20<i class="s"></i> à <i class="s"></i>h<i class="s"></i>')}</span>
   ${saisiPar ? `<span class="f">par ${f(par, '<i class="l"></i>')}</span>` : ''}
-  <span class="f">N° opération ${f(numero, '<i class="l"></i>')}</span>${extra}
+  ${numOp ? `<span class="f">N° opération ${f(numero, '<i class="l"></i>')}</span>` : ''}${extra}
   <span class="f o">photo jointe</span></div>`;
 }
 

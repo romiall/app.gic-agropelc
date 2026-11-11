@@ -93,6 +93,7 @@ table.lignes { width: 100%; border-collapse: collapse; table-layout: fixed; }
 table.lignes th { background: var(--vert-15); color: var(--vert-fonce); font: 600 6.2pt/1.1 var(--f-texte); text-align: center; padding: 1mm .8mm; border: var(--trait) solid var(--vert); height: 6mm; }
 table.lignes td { border: var(--trait) solid var(--vert); height: var(--hl, 7mm); padding: 0 1mm; }
 table.lignes td.n { text-align: center; color: var(--gris); font-size: 6pt; background: transparent; }
+table.lignes td.n.long { color: var(--orange); font-weight: 600; font-size: 5.8pt; letter-spacing: .02em; padding: 0; }
 table.lignes td.u { text-align: right; font: 600 6pt var(--f-texte); color: var(--vert); vertical-align: bottom; padding-bottom: .5mm; }
 table.lignes tr.total td { height: 7.5mm; background: var(--vert-8); font-weight: 600; }
 table.lignes tr.total td.lib { text-align: right; color: var(--vert-fonce); font-size: 6.6pt; letter-spacing: .04em; text-transform: uppercase; border-color: var(--vert); }
@@ -188,6 +189,7 @@ table.lignes td.pre { font: 600 6.8pt var(--f-texte); color: var(--vert-fonce); 
 .cv .serie span { white-space: nowrap; }
 .cv .serie { display: flex; align-items: center; justify-content: center; gap: 5mm; font: 600 9pt var(--f-texte); color: var(--vert); }
 .cv .serie .zone { min-width: 48mm; height: 12mm; border: .6pt solid var(--orange); border-radius: 1mm; }
+.cv .serie .zone.rempli { display: flex; align-items: center; justify-content: center; font: 700 14pt var(--f-titre); color: var(--orange); letter-spacing: .1em; }
 .cv .regles { font-size: 10.4pt; line-height: 1.4; padding: 0 3mm; }
 .cv .regles ol { margin: 0; padding-left: 6mm; } .cv .regles li { margin: 0 0 3.2mm; }
 .cv .regles li b { color: var(--vert-fonce); }

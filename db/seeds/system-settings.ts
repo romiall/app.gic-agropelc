@@ -655,7 +655,12 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   // « RCCM / autorisation » est à confirmer par le porteur. Modifiable dans l'écran des paramètres (groupe « Société »).
   { key: 'company.legal_name', value: 'GIC AGROPELC', isClientVisible: true, ref: 'AV-324' },
   { key: 'company.legal_form', value: '', isClientVisible: true, ref: 'AV-324' },
-  { key: 'company.head_office', value: '', isClientVisible: true, ref: 'AV-324' },
+  {
+    key: 'company.head_office',
+    value: 'Douala Bonabéri, en face Stade Dikolo',
+    isClientVisible: true,
+    ref: 'AV-324',
+  },
   { key: 'company.po_box', value: '7633 Douala', isClientVisible: true, ref: 'AV-324' },
   { key: 'company.city', value: 'Douala', isClientVisible: true, ref: 'AV-324' },
   { key: 'company.phones', value: '+237 699 348 371', isClientVisible: true, ref: 'AV-324' },

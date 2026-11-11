@@ -169,7 +169,7 @@ export function bonLivraison(d: DonneesBL, ctx: Contexte): PieceRendue {
     standard({
       fmt: 'a5l',
       code: 'BL',
-      titre: 'Bon de livraison',
+      titre: 'Bordereau de livraison',
       sous: 'Remise des produits au client',
       marges: SOUCHE,
       n: d.numero,
@@ -212,10 +212,10 @@ export function bonLivraison(d: DonneesBL, ctx: Contexte): PieceRendue {
         ),
       ].join(''),
       ex: EX3_DEST,
-      mention: 'Une livraison partielle = un bon de livraison — le reste à livrer reste dû',
+      mention: 'Une livraison partielle = un bordereau de livraison — le reste à livrer reste dû',
     }),
   );
-  return { code: 'BL', titre: 'Bon de livraison', fmt: 'a5l', pages };
+  return { code: 'BL', titre: 'Bordereau de livraison', fmt: 'a5l', pages };
 }
 
 // ------------------------------------------------------------------ DA

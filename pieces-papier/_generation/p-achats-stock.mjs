@@ -69,9 +69,9 @@ const BR = {
 
 // ------------------------------------------------------------------ BL
 const BL = {
-  code: 'BL', nom: 'Bon de livraison (client)', fmt: 'a5l',
+  code: 'BL', nom: 'Bordereau de livraison (client)', fmt: 'a5l',
   pages: [avecSouche({
-    code: 'BL', titre: 'Bon de livraison', sous: 'Remise des produits au client',
+    code: 'BL', titre: 'Bordereau de livraison', sous: 'Remise des produits au client',
     souchePart: souche({ champs: [['Date'], ['Client'], ['Commande n°'], ['Livré par'], ['Reçu par']], blocs: reportSouche({ numLib: 'N° livraison', extra: 'signature photographiée' }) }),
     corps: [
       rang(champ('Client', 14), champ('Téléphone', 10)),
@@ -81,7 +81,7 @@ const BL = {
       rang(cases('Livraison', ['complète', 'partielle (le reste sera livré)'], { span: 13 }), champ('Observations', 11)),
       signatures([{ t: 'Le client / réceptionnaire', s: 'a reçu les produits en bon état' }, { t: 'Le livreur' }, { t: 'Cachet', cachet: true, nom: false }], { h: 13 }),
     ].join(''),
-    ex: EX3, mention: 'Une livraison partielle = un bon de livraison — le reste à livrer reste dû',
+    ex: EX3, mention: 'Une livraison partielle = un bordereau de livraison — le reste à livrer reste dû',
   })],
 }
 

@@ -44,13 +44,16 @@ export function cases(lib, options, o = {}) {
 }
 
 // lignes({ cols:[{t:'Désignation', w:'*', al:'l'|'c'|'r', u:'XAF'}], n:6, h:7, total:{lib:'TOTAL', cols:[idx...]} })
-export function lignes({ cols, n = 6, h = 7, numerote = true, total = null, entete2 = null, prefill = null }) {
-  const all = numerote ? [{ t: 'N°', w: '7mm', n: true }, ...cols] : cols
+// Numéro de ligne : premier (1 par défaut), pad (zéros à gauche, 6 pour un registre), jetons (écrit {{L1}}… à remplacer au rendu :
+// vide sur le fichier d'impression d'une page modèle, numéro continu sur le fichier d'un registre complet), numT et numW (titre et largeur de la colonne).
+export function lignes({ cols, n = 6, h = 7, numerote = true, total = null, entete2 = null, prefill = null, premier = 1, pad = 0, jetons = false, numT = 'N°', numW = '7mm' }) {
+  const all = numerote ? [{ t: numT, w: numW, n: true }, ...cols] : cols
+  const numLigne = (i) => (jetons ? `{{L${i + 1}}}` : String(premier + i).padStart(pad, '0'))
   const colgroup = all.map((c) => `<col style="${c.w && c.w !== '*' ? `width:${c.w}` : ''}">`).join('')
   const th = all.map((c) => `<th>${esc(c.t)}</th>`).join('')
   const th2 = entete2 ? `<tr>${all.map((c, i) => `<th class="s2">${esc(entete2[i] ?? '')}</th>`).join('')}</tr>` : ''
   const rows = Array.from({ length: n }, (_, i) =>
-    `<tr>${all.map((c, k) => (c.n ? `<td class="n">${i + 1}</td>` : (prefill && k === (numerote ? 1 : 0)) ? `<td class="pre">${prefill[i] ?? ''}</td>` : `<td class="${c.u ? 'u' : ''} ${c.g ? 'grise' : ''}">${c.u ? esc(c.u) : ''}</td>`)).join('')}</tr>`
+    `<tr>${all.map((c, k) => (c.n ? `<td class="n${pad || jetons ? ' long' : ''}">${numLigne(i)}</td>` : (prefill && k === (numerote ? 1 : 0)) ? `<td class="pre">${prefill[i] ?? ''}</td>` : `<td class="${c.u ? 'u' : ''} ${c.g ? 'grise' : ''}">${c.u ? esc(c.u) : ''}</td>`)).join('')}</tr>`
   ).join('')
   let tot = ''
   const totaux = total ? (Array.isArray(total) ? total : [total]) : []
@@ -83,11 +86,11 @@ export const note = (t) => `<div class="note">${t}</div>`
 export const notes = (n, cls = 'ligne-note') => Array.from({ length: n }, () => `<div class="${cls}"></div>`).join('')
 export const espace = (mm) => `<div style="height:${mm}mm"></div>`
 
-export function report({ saisiPar = true, extra = '' } = {}) {
+export function report({ saisiPar = true, extra = '', numOp = true } = {}) {
   return `<div class="report"><span class="t">Report dans<br>l’application</span>
   <span class="f">Saisi le <i class="s"></i>/<i class="s"></i>/20<i class="s"></i> à <i class="s"></i>h<i class="s"></i></span>
   ${saisiPar ? `<span class="f">par <i class="l"></i></span>` : ''}
-  <span class="f">N° opération <i class="l"></i></span>${extra}
+  ${numOp ? `<span class="f">N° opération <i class="l"></i></span>` : ''}${extra}
   <span class="f o">photo jointe</span></div>`
 }
 
@@ -110,6 +113,17 @@ export function souche({ champs = [], blocs = '' }) {
   <div class="n"><small>N°</small>{{N}}</div>
   ${rows}${blocs}
   <div class="petit">Reste dans le carnet · détacher le corps le long du pointillé</div></aside>`
+}
+
+// ---- planche d'impression ----------------------------------------------------
+// Une feuille entourée de 8 mm de marge technique, avec ses traits de coupe aux quatre coins et une légende en pied.
+export const SLUG = 8
+export const DIM = { a4p: [210, 297], a4l: [297, 210], a5p: [148, 210], a5l: [210, 148], a6l: [148, 105], t3a4: [210, 99] }
+export function planche(page, w, h, legende) {
+  const W = w + 2 * SLUG, H = h + 2 * SLUG
+  const marks = [[0, SLUG, 'h'], [0, SLUG + h, 'h'], [W - 5, SLUG, 'h'], [W - 5, SLUG + h, 'h'], [SLUG, 0, 'v'], [SLUG + w, 0, 'v'], [SLUG, H - 5, 'v'], [SLUG + w, H - 5, 'v']]
+    .map(([x, y, t]) => `<i class="coupe ${t}" style="left:${x}mm;top:${y}mm"></i>`).join('')
+  return `<div class="planche" style="width:${W}mm;height:${H}mm;--slug:${SLUG}mm">${marks}${page}<div class="legende-planche">${legende}</div></div>`
 }
 
 // ---- feuille ------------------------------------------------------------

@@ -71,27 +71,30 @@ const BNT = {
 }
 
 // ------------------------------------------------------------------ couvertures de carnet
-const COUV = {
+export const COUV = {
   BV: ['Carnet de bons de vente', 'Vente de secours — application indisponible', 'a5l', '50 jeux de 3 feuillets autocopiants'],
   RE: ['Carnet de reçus d’encaissement', 'Pièces de caisse numérotées', 'a5l', '50 jeux de 3 feuillets autocopiants'],
   BD: ['Carnet de bons de décaissement', 'Pièces de caisse — sorties d’argent', 'a5l', '50 jeux de 3 feuillets autocopiants'],
   RF: ['Carnet de remises de fonds', 'Bordereaux d’envoi et de réception', 'a5l', '50 jeux de 3 feuillets autocopiants'],
-  BL: ['Carnet de bons de livraison', 'Remise des produits aux clients', 'a5l', '50 jeux de 3 feuillets autocopiants'],
+  BL: ['Carnet de bordereaux de livraison', 'Remise des produits aux clients', 'a5l', '50 jeux de 3 feuillets autocopiants'],
   CC: ['Carnet de bons de commande client', 'Prise de commande sur le terrain', 'a5l', '50 jeux de 3 feuillets autocopiants'],
   BC: ['Carnet de bons de commande fournisseur', 'Engagement d’achat', 'a4p', '50 jeux de 3 feuillets autocopiants'],
   BR: ['Carnet de bons de réception', 'Marchandises, intrants, animaux', 'a4p', '50 jeux de 3 feuillets autocopiants'],
   BT: ['Carnet de bons de transfert de stock', 'Expédition et réception entre emplacements', 'a4p', '50 jeux de 3 feuillets autocopiants'],
-  FA: ['Carnet de factures', 'Modèle provisoire — à valider avant impression', 'a4p', '50 jeux de 3 feuillets autocopiants'],
+  FA: ['Carnet de factures manuelles', 'Facture numérotée en continu', 'a4p', '50 jeux de 3 feuillets autocopiants'],
 }
-const couvFace = (code, [titre, sous, fmt, jeux]) => feuille({ fmt, couleur: true, reperes: false, marges: { mh: 0, md: 0, mb: 0, mg: 0 },
+// Zone de la couverture : à remplir à la main (vide) ou numéro déjà imprimé (fichier d'un carnet ou d'un registre complet).
+const zone = (v, min = '') => `<span class="zone${v ? ' rempli' : ''}"${min ? ` style="min-width:${min}"` : ''}>${v ? esc(v) : ''}</span>`
+// vals : { carnet, de, a } pour un carnet dont les numéros sont imprimés ; null : zones à remplir à la main.
+export const couvFace = (code, [titre, sous, fmt, jeux], vals = null) => feuille({ fmt, couleur: true, reperes: false, marges: { mh: 0, md: 0, mb: 0, mg: 0 },
   interieur: `<div class="cv"><div class="haut"><img src="{{LOGO}}" alt="GIC AGROPELC"></div>
   <div class="titre"><h1>${esc(titre)}</h1><p>${esc(sous)}</p></div>
   <div class="bas">
-    <div class="serie"><span>Carnet n°</span><span class="zone" style="min-width:28mm"></span><span>Pièces n°</span><span class="zone"></span><span>à n°</span><span class="zone"></span></div>
+    <div class="serie"><span>Carnet n°</span>${zone(vals?.carnet, '28mm')}<span>Pièces n°</span>${zone(vals?.de)}<span>à n°</span>${zone(vals?.a)}</div>
     <div class="serie" style="font-weight:400;color:var(--encre)"><span>Site : ${blanc('l')}</span><span>Remis à : ${blanc('l')}</span><span>Le : ${blanc()}</span></div>
     <div class="note" style="text-align:center;font-size:7.5pt">${esc(jeux)} · ① blanc ② rose ③ jaune (reste dans le carnet) · modèle GIC-${code}</div>
   </div></div>` })
-const couvDos = (fmt) => feuille({ fmt, couleur: true, reperes: false, marges: { mh: 12, md: 14, mb: 12, mg: 14 },
+export const couvDos = (fmt) => feuille({ fmt, couleur: true, reperes: false, marges: { mh: 12, md: 14, mb: 12, mg: 14 },
   interieur: `<div class="titre-section" style="font-size:9pt;margin-bottom:4mm">Règles d’usage de ce carnet</div><div class="regles"><ol>
   <li><b>Écrire au stylo à bille, en appuyant fort, en majuscules lisibles :</b> l’écriture se copie sur tous les feuillets.</li>
   <li><b>Utiliser les pièces dans l’ordre des numéros</b>, sans en sauter aucune. Les numéros ne se réutilisent jamais.</li>
@@ -103,7 +106,31 @@ const couvDos = (fmt) => feuille({ fmt, couleur: true, reperes: false, marges: {
   <li><b>Un carnet perdu ou volé est signalé le jour même</b> au responsable des carnets.</li></ol></div>
   <div style="flex:1"></div><div class="note" style="text-align:center">${esc(ID.raison_sociale)} — pièce justificative des opérations enregistrées dans l’application</div>` })
 
+// ------------------------------------------------------------------ couverture du registre des encaissements (JE)
+// vals : { registre, pageDe, pageA, ligneDe, ligneA } pour un registre dont les numéros sont imprimés ; null : zones à remplir à la main.
+export const couvRegistre = (vals = null) => feuille({ fmt: 'a4p', couleur: true, reperes: false, marges: { mh: 0, md: 0, mb: 0, mg: 0 },
+  interieur: `<div class="cv"><div class="haut"><img src="{{LOGO}}" alt="GIC AGROPELC"></div>
+  <div class="titre"><h1>Registre des encaissements</h1><p>Reçus d’encaissement numérotés — une ligne par encaissement</p></div>
+  <div class="bas">
+    <div class="serie"><span>Registre n°</span>${zone(vals?.registre, '28mm')}<span>Pages n°</span>${zone(vals?.pageDe)}<span>à n°</span>${zone(vals?.pageA)}</div>
+    <div class="serie"><span>Lignes (reçus) n°</span>${zone(vals?.ligneDe)}<span>à n°</span>${zone(vals?.ligneA)}</div>
+    <div class="serie" style="font-weight:400;color:var(--encre)"><span>Site : ${blanc('l')}</span><span>Ouvert le : ${blanc()}</span><span>Clos le : ${blanc()}</span></div>
+    <div class="note" style="text-align:center;font-size:7.5pt">Registre relié, 100 pages numérotées · 30 lignes par page · modèle GIC-JE</div>
+  </div></div>` })
+export const couvRegistreDos = () => feuille({ fmt: 'a4p', couleur: true, reperes: false, marges: { mh: 12, md: 14, mb: 12, mg: 14 },
+  interieur: `<div class="titre-section" style="font-size:9pt;margin-bottom:4mm">Règles d’usage de ce registre</div><div class="regles"><ol>
+  <li><b>Écrire au stylo à bille, en majuscules lisibles :</b> jamais au crayon, jamais au correcteur.</li>
+  <li><b>Une ligne par encaissement, dans l’ordre des numéros</b>, sans sauter ni ligne ni page. Les numéros ne se réutilisent jamais.</li>
+  <li><b>Écrire le montant dans la colonne du mode de paiement reçu</b> (deux colonnes pour un paiement mixte, avec le total). Hors espèces, noter la référence de la transaction ou le numéro du chèque.</li>
+  <li><b>Une ligne erronée ne s’efface jamais :</b> la barrer d’un trait, écrire « ANNULÉ », la date et le motif, puis reprendre l’encaissement sur la ligne suivante en rappelant le numéro annulé.</li>
+  <li><b>Utiliser la dernière colonne pour les notes :</b> acompte, reste dû, promesse de paiement, nom de la personne qui a remis l’argent, toute précision utile.</li>
+  <li><b>Totaliser chaque page</b> (total de la page, report des pages précédentes, total à reporter), puis la faire viser par le caissier et par le contrôleur.</li>
+  <li><b>Reporter chaque ligne dans l’application dès son rétablissement</b>, de préférence sous 24 heures (une saisie tardive demande une justification), noter au pied de la page les numéros de lignes reportés, puis photographier la page et la joindre.</li>
+  <li><b>Un registre terminé est rendu au responsable</b> et conservé pendant la durée légale. <b>Un registre perdu ou volé est signalé le jour même.</b></li></ol></div>
+  <div style="flex:1"></div><div class="note" style="text-align:center">${esc(ID.raison_sociale)} — pièce justificative des encaissements enregistrés dans l’application</div>` })
+const CVREG = { code: 'CV-REG', nom: 'Couverture de registre A4 portrait', fmt: 'a4p', couleur: true, pages: [couvRegistre(), couvRegistreDos()] }
+
 const CVA5 = { code: 'CV-A5L', nom: 'Couvertures de carnet A5 paysage', fmt: 'a5l', couleur: true, pages: [...['BV', 'RE', 'BD', 'RF', 'BL', 'CC'].map((c) => couvFace(c, COUV[c])), couvDos('a5l')] }
 const CVA4 = { code: 'CV-A4P', nom: 'Couvertures de carnet A4 portrait', fmt: 'a4p', couleur: true, pages: [...['BC', 'BR', 'BT', 'FA'].map((c) => couvFace(c, COUV[c])), couvDos('a4p')] }
 
-export const PIECES_PAPETERIE = [EL, BNG, BNR, BNT, CVA5, CVA4]
+export const PIECES_PAPETERIE = [EL, BNG, BNR, BNT, CVA5, CVA4, CVREG]

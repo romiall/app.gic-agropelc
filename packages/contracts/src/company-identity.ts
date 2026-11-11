@@ -39,7 +39,7 @@ export type CompanyIdentityField = keyof typeof COMPANY_IDENTITY_SETTINGS;
 export const COMPANY_IDENTITY_MAX_LENGTH: Readonly<Record<CompanyIdentityField, number>> = {
   raison_sociale: 40,
   forme_juridique: 30,
-  siege: 32,
+  siege: 40,
   bp: 20,
   ville: 30,
   telephones: 28,

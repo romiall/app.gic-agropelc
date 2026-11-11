@@ -1,6 +1,7 @@
 # Lot « Pièces papier » (PP) — cadrage
 
 > **Statut : planifié le 22/10/2026 ; PP-A livré pour seize pièces le 26/10/2026** ([ADR-048](../decisions/ADR-048-impression-des-pieces-papier.md), suivi au §7). PP-B est livré (écran de report ; soumission rendue exploitable le 04/11/2026, AV-501 à AV-504) ; PP-C et PP-D sont livrés le 04/11/2026 et PP-E (présence du personnel, bilan hebdomadaire, fiches PT, BH et VC) le 05/11/2026 ([ADR-056](../decisions/ADR-056-presence-du-personnel-et-bilan-hebdomadaire.md), AV-514), tout en local. Le porteur a demandé que ce besoin entre dans le plan sans en faire la priorité du moment. Ce document garde la substance des douze choix du porteur ; le dossier d'origine (`pieces-papier/`, produit par une autre session le 20/10/2026) est versionné depuis le 26/10/2026.
+> **11/11/2026 — pièces retenues par l'administration** (AV-553 à AV-555) : bordereau de livraison (BL), bon de commande fournisseur (BC) et facture manuelle (FA) en carnets de 50 jeux, et un **registre des encaissements** de 100 pages (l'ancien journal JE, renommé et reformaté) ; adresse « Douala Bonabéri, en face Stade Dikolo » sur toutes les pièces ; fichiers numérotés prêts à imprimer dans `pieces-papier/pdf/carnets/` (voir le § 5 du [cahier des charges de l'imprimeur](../../pieces-papier/CAHIER-DES-CHARGES-IMPRIMEUR.md)). L'impression du registre par l'application suit la même mise en page.
 > Classement des informations : **CONFIRMÉ** (dit par le porteur ou vérifié dans le dépôt), **DÉDUIT** (conséquence argumentée), **À VALIDER** (point `AV-nnn`, défaut paramétrable, aucun bloquant).
 
 ---
@@ -55,7 +56,7 @@ Les pièces sont des carnets à souches autocopiants (série « Argent » en A5 
 | FI | Fiche d'inventaire | inventaire | `inventory_inventory_counts` | oui | PP-A |
 | FL | Suivi de lot de production | saisie du jour d'un lot (mortalité, aliment, pesée, collecte d'œufs) | `inventory_loss_declarations` (mortalité), `inventory_consumptions` (aliment), tables de pesée et de collecte | mortalité oui ; aliment, pesée et collecte non | PP-A |
 | FJC | Feuille journalière de caisse | journal d'un compte de trésorerie pour un jour (28 lignes) | `finance_cash_movements` (lecture à étendre : AV-311) | — | PP-A |
-| JE | Journal des encaissements | état des encaissements par mode de paiement (30 lignes) | `sales_customer_payments` (lecture des encaissements, hors transferts et remboursements) | — | PP-A |
+| JE | Registre des encaissements (ancien journal, 11/11/2026) | une ligne par encaissement, 30 lignes, références et notes | `sales_customer_payments` (lecture des encaissements, hors transferts et remboursements) | — | PP-A |
 | VC | Fiche de visite commerciale | visite, profil du client, veille marché (une ligne de veille sur la fiche, le premier relevé) | `crm_visits`, `crm_visit_market_watch`, `crm_customers` | non | PP-D (données), PP-E (fiche imprimée) |
 | PT | Présence et pointage | présence hebdomadaire (secours du pointage numérique) ; du lundi au samedi sur la fiche | `fieldwork_presence_sheets`, `fieldwork_staff_presence` (05/11/2026) | oui (report par `ECR-TER-03`) | PP-E |
 | BH | Bilan hebdomadaire du commercial | bilan hebdomadaire, chiffres calculés | `crm_weekly_reports` (05/11/2026) | oui (rédaction par `ECR-CRM-08`) | PP-E |
