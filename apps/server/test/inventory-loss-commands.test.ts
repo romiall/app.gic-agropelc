@@ -247,7 +247,10 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
   const withoutActiveLossPolicy = <T>(fn: () => Promise<T>): Promise<T> =>
     withoutActivePolicies('LOSS_DECLARATION', new Date(OCCURRED_AT), fn);
 
-  async function setLossPolicy(requiresApproval: boolean): Promise<void> {
+  async function setLossPolicy(
+    requiresApproval: boolean,
+    condition?: Record<string, unknown>,
+  ): Promise<void> {
     const policyId = freshUuid();
     const result = await pipeline.handle(
       buildEnvelope(admin, {
@@ -258,6 +261,7 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
           code: `LOSS_${policyId.slice(-8)}`,
           operationType: 'LOSS_DECLARATION',
           requiresApproval,
+          ...(condition !== undefined ? { condition } : {}),
           ...(requiresApproval
             ? { approverPermission: 'inventory.loss.approve', approverScope: 'SITE' }
             : {}),
@@ -267,6 +271,54 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
     );
     expect(result.status).toBe('APPLIED');
   }
+
+  it('AV-037, Q50 A : validation par catégorie et par valeur — casse sous 25 000 XAF enregistrée, au seuil en attente, destruction toujours', async () => {
+    const productId = await insertProduct(admin);
+    await openingBalance(productId, storeA, 200); // coût unitaire 500 XAF
+
+    await withoutActiveLossPolicy(async () => {
+      // La condition de la politique par défaut semée (LOSS_DECLARATION_DEFAULT).
+      await setLossPolicy(true, {
+        alwaysCategories: ['DESTRUCTION', 'INEXPLIQUEE', 'VOL_SUSPECTE'],
+        thresholdCategories: ['CASSE', 'DETERIORATION', 'IMPROPRE'],
+        thresholdXaf: 25_000,
+      });
+      const declare = async (category: string, quantity: number): Promise<string> => {
+        const lossId = freshUuid();
+        const result = await pipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'inventory.loss.declare',
+            aggregate_type: 'STOCK_LOSS',
+            aggregate_id: lossId,
+            payload: declarePayload(productId, {
+              category,
+              quantityBase: quantity,
+              quantity,
+              comment: `Perte ${category}.`,
+            }),
+          }),
+          adminCtx(),
+        );
+        expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+        const row = await db
+          .selectFrom('inventory_loss_declarations')
+          .select(['status', 'requires_approval', 'value_xaf'])
+          .where('id', '=', toBin(lossId))
+          .executeTakeFirstOrThrow();
+        expect(Boolean(row.requires_approval)).toBe(row.status === 'PENDING_APPROVAL');
+        expect(Number(row.value_xaf)).toBe(quantity * 500);
+        return row.status;
+      };
+      expect(await declare('CASSE', 49)).toBe('RECORDED'); // 24 500 XAF : sous le seuil
+      expect(await declare('CASSE', 50)).toBe('PENDING_APPROVAL'); // 25 000 XAF : seuil inclus
+      expect(await declare('DETERIORATION', 60)).toBe('PENDING_APPROVAL'); // 30 000 XAF
+      expect(await declare('IMPROPRE', 2)).toBe('RECORDED'); // 1 000 XAF
+      expect(await declare('DESTRUCTION', 1)).toBe('PENDING_APPROVAL'); // toujours, même à 500 XAF
+      // En attente : les 50 + 60 + 1 pièces restent dans V_PENDING_LOSS jusqu'à la décision (INV-STK-14).
+      expect(await pendingLossOf(productId)).toBe(111);
+      expect(await balanceOf(productId, storeA)).toBe(200 - 49 - 50 - 60 - 2 - 1);
+    });
+  });
 
   it('sans politique active -> RECORDED direct, mouvement LOSS emplacement -> V_LOSS', async () => {
     const productId = await insertProduct(admin);

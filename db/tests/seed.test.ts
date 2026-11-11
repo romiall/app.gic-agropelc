@@ -277,12 +277,28 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       ...STOCK_FIELDWORK_CONTROL_POLICIES,
     ];
     // MP-12 : sans elles, l'écart d'un transfert reçu, un inventaire au-dessus du seuil et une
-    // dérogation de pointage étaient refusés `CONTROL_POLICY_MISSING` sur une base neuve.
+    // dérogation de pointage étaient refusés `CONTROL_POLICY_MISSING` sur une base neuve. Q50 A
+    // (08/11/2026, AV-037) : la validation des pertes hors mortalité, par catégorie et par valeur.
     expect(STOCK_FIELDWORK_CONTROL_POLICIES.map((policy) => policy.operationType).sort()).toEqual([
       'CHECKIN_OVERRIDE',
       'INVENTORY_ADJUSTMENT',
+      'LOSS_DECLARATION',
       'TRANSFER_DISCREPANCY',
     ]);
+    const lossPolicy = STOCK_FIELDWORK_CONTROL_POLICIES.find(
+      (policy) => policy.operationType === 'LOSS_DECLARATION',
+    );
+    expect(lossPolicy).toMatchObject({
+      code: 'LOSS_DECLARATION_DEFAULT',
+      requiresApproval: true,
+      requiresPhoto: false,
+      approverPermission: 'inventory.loss.approve',
+      condition: {
+        alwaysCategories: ['DESTRUCTION', 'INEXPLIQUEE', 'VOL_SUSPECTE'],
+        thresholdCategories: ['CASSE', 'DETERIORATION', 'IMPROPRE'],
+        thresholdXaf: 25_000,
+      },
+    });
     expect(PROCUREMENT_CONTROL_POLICIES.map((policy) => policy.operationType).sort()).toEqual([
       'PURCHASE_ORDER',
       'PURCHASE_REQUEST',

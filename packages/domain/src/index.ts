@@ -289,6 +289,13 @@ export {
   lotOpeningSummary,
 } from './lot-opening.js';
 export type { LotOpeningDeclaration, LotOpeningIssue } from './lot-opening.js';
+// Q50 A (08/11/2026), AV-037 : validation d'une perte hors mortalité par catégorie et par valeur.
+export {
+  lossApprovalNeedsValue,
+  lossApprovalRuleOf,
+  lossRequiresApproval,
+} from './stock-losses.js';
+export type { LossApprovalRule } from './stock-losses.js';
 
 export type {
   PricingMode,

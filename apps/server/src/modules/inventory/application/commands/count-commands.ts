@@ -46,7 +46,6 @@ import {
   quantityFromDecimal,
   reconciliationDelta,
   resolveCountLineScope,
-  roundCmupToXaf,
   xaf,
 } from '@gic/domain';
 import type {
@@ -92,6 +91,7 @@ import {
   publishInventoryVarianceEvent,
 } from '../inventory-alert-events.js';
 import {
+  currentUnitCostXaf,
   loadCommandOrigin,
   loadLocationSite,
   virtualLocationId,
@@ -219,24 +219,6 @@ async function theoreticalOfLine(
     lotBalances: allLots ? await lotBalancesOf(uow, buckets) : [],
     lotLessBalance: lotLessBalanceOf(buckets),
   };
-}
-
-async function currentUnitCostXaf(
-  uow: Transaction<DB>,
-  productId: Buffer,
-  lotId: Buffer | null = null,
-): Promise<number> {
-  // P7-03 : un lot d'animaux se valorise au coût par tête (ADR-027), jamais au CMUP.
-  if (lotId !== null) {
-    const perHead = await biologicalLotUnitCostXaf(uow, fromBin(lotId));
-    if (perHead !== null) return perHead;
-  }
-  const valuation = await uow
-    .selectFrom('inventory_product_valuations')
-    .select('avg_unit_cost_xaf')
-    .where('product_id', '=', productId)
-    .executeTakeFirst();
-  return valuation ? roundCmupToXaf(Number(valuation.avg_unit_cost_xaf)) : 0;
 }
 
 /** Applique le mouvement d'ajustement d'une ligne en écart (INVENTORY_GAIN/LOSS, daté de

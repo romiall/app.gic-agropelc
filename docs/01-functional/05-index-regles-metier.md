@@ -181,7 +181,7 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-025 | Un transfert ne peut être annulé qu'avant expédition. Après expédition, seul un transfert retour le neutralise : `inventory.transfer.return… | C (CM §41) / AV-180 |
 | BR-STK-026 | Une demande de réapprovisionnement (`REQUESTED`) est satisfaite par l'expédition de l'emplacement fournisseur, qui peut expédier une quanti… | AV-081 |
 | BR-STK-030 | Une déclaration de perte porte : catégorie (`MORTALITE`, `CASSE`, `DETERIORATION`, `IMPROPRE`, `DESTRUCTION`, `INEXPLIQUEE`, `VOL_SUSPECTE`… | C (CM §24) / D (un produit) |
-| BR-STK-031 | La politique de contrôle en vigueur (catégorie, quantité, valeur) détermine si une photo, un commentaire ou une validation sont requis. | C (CM §24, §42) / AV-037, AV-048 |
+| BR-STK-031 | La politique de contrôle en vigueur (catégorie, quantité, valeur) détermine si une photo, un commentaire ou une validation sont requis. Per… | C (CM §24, §42) / AV-037, AV-048 |
 | BR-STK-032 | Perte sans validation requise : mouvement emplacement → `V_LOSS`, statut `RECORDED`. Perte avec validation requise : mouvement emplacement… | D (ADR-003) |
 | BR-STK-033 | Approbation : `V_PENDING_LOSS` → `V_LOSS`, statut `APPROVED`. Rejet, selon la décision : `ERREUR_DECLARATION` → retour `V_PENDING_LOSS` → e… | AV-038 |
 | BR-STK-034 | Une perte `RECORDED` ne peut être annulée que par une annulation soumise à validation (`inventory.loss.approve`), qui crée le mouvement inv… | C (CM §41) |

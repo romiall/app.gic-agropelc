@@ -15,6 +15,12 @@
  *   ferme sur son site, Resp. commercial sur sa zone) ;
  * - `CHECKIN_OVERRIDE` : `fieldwork.checkin_override.approve` (Direction, Resp. commercial pour son
  *   équipe ; BR-TER-005).
+ * - `LOSS_DECLARATION` (questionnaire de clôture, Q50 A du 08/11/2026 ; AV-037) : une perte hors mortalité
+ *   est validée **toujours** pour la destruction, la perte inexpliquée et le vol suspecté, **à partir de
+ *   25 000 XAF** (valeur au coût courant) pour la casse, la détérioration et le produit impropre ; condition
+ *   lue par `lossRequiresApproval` (packages/domain). `inventory.loss.approve` : Direction et Resp.
+ *   production partout, Resp. ferme sur son site, Resp. commercial sur sa zone (01-rbac). Aucune photo
+ *   exigée (AV-288 : photo jamais exigée hors mortalité).
  */
 import type { ControlPolicySeed } from './production-references.js';
 
@@ -48,5 +54,19 @@ export const STOCK_FIELDWORK_CONTROL_POLICIES: readonly ControlPolicySeed[] = [
     approverPermission: 'fieldwork.checkin_override.approve',
     approverScope: 'ALL',
     ref: 'AV-318',
+  },
+  {
+    code: 'LOSS_DECLARATION_DEFAULT',
+    operationType: 'LOSS_DECLARATION',
+    condition: {
+      alwaysCategories: ['DESTRUCTION', 'INEXPLIQUEE', 'VOL_SUSPECTE'],
+      thresholdCategories: ['CASSE', 'DETERIORATION', 'IMPROPRE'],
+      thresholdXaf: 25_000,
+    },
+    requiresPhoto: false,
+    requiresApproval: true,
+    approverPermission: 'inventory.loss.approve',
+    approverScope: 'ALL',
+    ref: 'AV-037',
   },
 ];

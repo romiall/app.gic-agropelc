@@ -12,10 +12,11 @@
  * Contrairement à `TRANSFER_DISCREPANCY` (transfer-commands.ts), l'absence de politique
  * active pour `LOSS_DECLARATION` n'est **jamais** un rejet : c'est la valeur par défaut
  * documentée par BR-STK-032 (« pas de validation requise » ⇒ `RECORDED` direct). AV-037
- * (seuils de preuve/validation par catégorie et montant) reste `OUVERT` — ce fichier ne lit
- * que `requiresApproval`/`requiresPhoto` de la politique trouvée (comme `currentPolicies`
- * le permet déjà), jamais `condition` : la granularité par catégorie/montant est un point
- * non couvert par cette session, pas un oubli silencieux (CLAUDE.md règle 2).
+ * (validation par catégorie et montant) est tranché depuis le 08/11/2026 (questionnaire de
+ * clôture, Q50 A) : la `condition` de la politique est lue par `declareLoss`
+ * (`public/loss-declaration.ts`, règle `lossRequiresApproval` de packages/domain) et la
+ * politique par défaut `LOSS_DECLARATION_DEFAULT` est semée ; les seuils de photo d'AV-037
+ * restent sans effet (AV-288 : photo jamais exigée hors mortalité).
  */
 import { z } from 'zod';
 import { positiveQuantitySchema } from '@gic/contracts';

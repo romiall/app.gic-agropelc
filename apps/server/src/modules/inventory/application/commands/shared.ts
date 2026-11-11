@@ -12,8 +12,36 @@ import type {
   CommandHandler,
   CommandHandlerOutcome,
 } from '../../../../platform/sync/command-handler-registry.js';
+import { roundCmupToXaf } from '@gic/domain';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
-import { InventoryMoveError, type RecordedMove } from '../public/record-move.js';
+import {
+  InventoryMoveError,
+  biologicalLotUnitCostXaf,
+  type RecordedMove,
+} from '../public/record-move.js';
+
+/**
+ * Coût unitaire courant d'un produit (XAF), pour valoriser une sortie **avant** de l'écrire : coût par tête d'un lot
+ * d'animaux (P7-03, ADR-027), sinon CMUP du produit arrondi au franc (0 sans valorisation). Sert au seuil de
+ * l'écart d'un inventaire (AV-039) et à celui d'une perte (AV-037, Q50 A).
+ */
+export async function currentUnitCostXaf(
+  uow: Transaction<DB>,
+  productId: Buffer,
+  lotId: Buffer | null = null,
+): Promise<number> {
+  // P7-03 : un lot d'animaux se valorise au coût par tête (ADR-027), jamais au CMUP.
+  if (lotId !== null) {
+    const perHead = await biologicalLotUnitCostXaf(uow, fromBin(lotId));
+    if (perHead !== null) return perHead;
+  }
+  const valuation = await uow
+    .selectFrom('inventory_product_valuations')
+    .select('avg_unit_cost_xaf')
+    .where('product_id', '=', productId)
+    .executeTakeFirst();
+  return valuation ? roundCmupToXaf(Number(valuation.avg_unit_cost_xaf)) : 0;
+}
 
 export interface LocationSite {
   readonly locationId: string;

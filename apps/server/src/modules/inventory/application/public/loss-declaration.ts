@@ -12,7 +12,11 @@
  *   `condition` de la politique (`relativePct`, `absoluteHeads` ; 0 par défaut = toute mortalité)
  *   et évalués par `mortalityRequiresApproval` (packages/domain, même règle que l'appareil,
  *   BR-PRD-006) sur l'effectif en élevage du lot à `occurred_at` ;
- * - autres catégories → `LOSS_DECLARATION` (P2-04, inchangé).
+ * - autres catégories → `LOSS_DECLARATION` (P2-04). Depuis Q50 A (08/11/2026, AV-037), la `condition` de la
+ *   politique décide par catégorie et par valeur (`lossRequiresApproval`, packages/domain) : politique par défaut
+ *   semée `LOSS_DECLARATION_DEFAULT` — destruction, perte inexpliquée et vol suspecté toujours validés, casse,
+ *   détérioration et produit impropre à partir de 25 000 XAF au coût courant ; une politique sans cette forme
+ *   valide toute perte ; sans politique active, aucune validation (BR-STK-032).
  *
  * Pièces : les pièces citées par la commande deviennent les pièces requises de la demande de
  * validation (BR-ADM-020). Une mortalité reçue sans photo est enregistrée ; son approbation est
@@ -26,6 +30,9 @@ import {
   highLossAlertXafOrDefault,
   isHighLossAbsolute,
   isValidHighLossAlertXaf,
+  lossApprovalNeedsValue,
+  lossApprovalRuleOf,
+  lossRequiresApproval,
   mortalityRequiresApproval,
   type IdGenerator,
 } from '@gic/domain';
@@ -57,6 +64,7 @@ import { siteThenGlobalSetting } from '../../../organization/application/public/
 import { locationAlertInfo, publishHighLossEvent } from '../inventory-alert-events.js';
 import {
   allocationWarnings,
+  currentUnitCostXaf,
   loadLocationSite,
   tryRecordMove,
   virtualLocationId,
@@ -178,9 +186,30 @@ export async function declareLoss(
           absoluteHeads: thresholdOf(policy.condition, 'absoluteHeads'),
         },
       });
-  } else {
+  } else if (policy === undefined || !policy.requiresApproval) {
     // BR-STK-031/032 : sans politique active, pas de validation (valeur par défaut documentée).
-    requiresApproval = policy?.requiresApproval ?? false;
+    requiresApproval = false;
+  } else {
+    // AV-037, Q50 A (08/11/2026) : validation par catégorie et par valeur (`condition` de la politique, règle de
+    // packages/domain). La valeur se juge **avant** la sortie, au coût courant (coût par tête d'un lot d'animaux,
+    // sinon CMUP), comme l'écart d'un inventaire (AV-039) : la destination de la sortie (en attente ou perdue) en
+    // dépend. La valeur enregistrée et celle de la demande restent celles des mouvements.
+    const rule = lossApprovalRuleOf(policy.condition);
+    const estimatedValueXaf = lossApprovalNeedsValue(input.category, rule)
+      ? Math.round(
+          input.quantityBase *
+            (await currentUnitCostXaf(
+              uow,
+              toBin(input.productId),
+              input.lotId !== undefined ? toBin(input.lotId) : null,
+            )),
+        )
+      : 0;
+    requiresApproval = lossRequiresApproval({
+      category: input.category,
+      valueXaf: estimatedValueXaf,
+      rule,
+    });
   }
 
   const origin = await loadCommandOrigin(uow, input.commandId);
