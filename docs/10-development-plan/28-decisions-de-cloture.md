@@ -24,9 +24,9 @@
 
 Aucun point du registre n'est bloquant au sens du registre (classe BLOQUANT : aucun). Les questions ci-dessous sont celles qui **conditionnent le pilote** ou qui **ferment un chantier**.
 
-## Réponses reçues (état du 08/11/2026, 15 h : 44 questions sur 50)
+## Réponses reçues (état du 11/11/2026 : 50 questions sur 50)
 
-Lues dans la page de réponses (collection `answers`). Elles seront consignées au journal d'[`A-VALIDER.md`](../A-VALIDER.md) § 3 quand le questionnaire sera fini (Q38, Q39, Q40, Q41, Q46 et Q50 restent sans réponse). « Suite » : ce qui a été fait ou reste à faire.
+Lues dans la page de réponses (collection `answers`), les 50 questions ont une réponse (dernières réponses reçues le 08/11/2026 à 15 h). Elles sont **consignées au journal d’[`A-VALIDER.md`](../A-VALIDER.md) § 3 le 11/11/2026** : chaque AV visé passe à « TRANCHÉ » (le défaut recommandé est confirmé, ou la solution choisie est appliquée), les neuf questions sans AV portent leur propre ligne (`Q02`, `Q03`, `Q12`, `Q13`, `Q38` à `Q41`, `Q46`). « Suite » : ce qui a été fait ou reste à faire.
 
 | Question | Réponse du porteur | Suite |
 |---|---|---|
@@ -39,7 +39,7 @@ Lues dans la page de réponses (collection `answers`). Elles seront consignées 
 | Q07 | A : le porteur avec des sessions Claude Code à la demande | Aucune |
 | Q08 | Autre : rester sur la MariaDB de Hostinger et y faire tout fonctionner, trouver une solution tout de suite en cas de blocage | Fait : tâche `sync.devices.seq_gap_check` corrigée (livraison `20261108-135742`) ; reste à lire les journaux du serveur et à essayer les essais sur MariaDB 11.8 (accord du porteur) |
 | Q09 | A : copie des sauvegardes sur son PC par une tâche Windows | Action du porteur (C02) |
-| Q10 | Autre (dictée) : archive des photos par période, un dossier par opération, vidage, au moins 30 jours gardés | AV-539, carte de session proposée, non codé |
+| Q10 | Autre (dictée) : archive des photos par période, un dossier par opération, vidage, au moins 30 jours gardés | Fait : archive des photos jointes (AV-539, ADR-070), en ligne depuis le 09/11/2026 (livraison `20261109-144526`) ; essai en fonctionnement sur un petit mois à faire (AV-549 : qui garde l’archive) |
 | Q11 | A : liaison appareil-compte laissée libre | Aucune |
 | Q12 | A : cinq lectures en ligne | Fait (journal du kit) |
 | Q13 | Cochés : essais sur téléphones réels, formation courte par rôle, sauvegardes périodiques et copie hors hébergement, comptes/rôles/appareils du pilote | Actions du porteur (C01 à C05) |
@@ -52,14 +52,14 @@ Lues dans la page de réponses (collection `answers`). Elles seront consignées 
 | Q20 | Aucune fonction ajoutée | Retours clients, commissions, frais de livraison, reçu imprimé : hors périmètre confirmé |
 | Q21 | B : Kommo reporté sans date | Aucune |
 | Q22 | A : français seulement | Aucune |
-| Q23 | B : le droit de dépasser la fenêtre d'antidatage aussi au responsable de ferme et de production | Fait (commit `289c92f4`, 563 octrois), pas encore en ligne |
-| Q24 | A : jeu `role_assignment` restreint aux affectations de l'utilisateur | Carte de session proposée, non codé |
+| Q23 | B : le droit de dépasser la fenêtre d'antidatage aussi au responsable de ferme et de production | Fait et en ligne (commit `289c92f4`, 563 octrois, livraison `20261108-223137`) |
+| Q24 | A : jeu `role_assignment` restreint aux affectations de l'utilisateur | Fait et en ligne ([ADR-071](../decisions/ADR-071-jeu-role-assignment-restreint-a-l-utilisateur.md), livraison `20261109-144526`) |
 | Q25 | A : auto-approbation de la Direction conservée | Aucune |
 | Q26 | A : connexion actuelle pour le pilote | Aucune |
 | Q27 | A : 7 jours sans synchronisation | Aucune |
-| Q28 | Autre : permissions modifiables par l'Admin et les profils de direction dans l'application | **Gros lot à concevoir** (éditeur de permissions : audit, garde-fous contre l'élévation de droits, séparation Admin/Direction) |
-| Q29 | Autre : « non je ne veux pas de ces complications » | À confirmer : les quatre cas restent à leur défaut, aucun code |
-| Q30 | A : toutes les recommandations | Trois petits lots d'affichage à faire |
+| Q28 | Autre : permissions modifiables par l'Admin et les profils de direction dans l'application | Fait le 11/11/2026, en local : droits des rôles modifiables par l’Admin et la Direction ([ADR-072](../decisions/ADR-072-droits-des-roles-modifiables-dans-l-application.md), commande `identity.role.permission.set`, écran ECR-ADM-09, journal en ajout seul ; défauts et limites dans AV-556) |
+| Q29 | Autre : « non je ne veux pas de ces complications » | Confirmé : les quatre cas restent à leur défaut, aucun code |
+| Q30 | A : toutes les recommandations | Fait le 11/11/2026, en local : les trois retouches d’écran (AV-486 erreurs de l’éditeur de prix, AV-487 total de trésorerie unique, AV-488 bouton des pièces) |
 | Q31 | A : attendre le comptable | Action du porteur (C08) |
 | Q32 | A : coût moyen pondéré | Aucune |
 | Q33 | A : pas de verrouillage des mois | Aucune |
@@ -67,13 +67,19 @@ Lues dans la page de réponses (collection `answers`). Elles seront consignées 
 | Q35 | A : seuils d'argent actuels | Aucune |
 | Q36 | A : durées de conservation 10 ans / 2 ans / 5 ans, à confirmer avec le comptable | Purge à programmer plus tard (petit lot) |
 | Q37 | A : présence du personnel pour la statistique et le suivi | Aucune |
-| Q42 | A : stock d'ouverture par lot | Carte de session proposée, non codé |
+| Q38 | C : dès que vos réponses sont appliquées | Le développement s’arrête avec ce chantier de clôture ; ensuite maintenance, correctifs et nouveautés sur demande ponctuelle |
+| Q39 | A : en un seul chantier, séquentiel | Appliqué : décisions codées lot par lot, une seule vérification complète par `scripts/verify-all.ps1`, puis récapitulatif |
+| Q40 | B : laisser les autres points à leur défaut, sauf les domaines cochés à la question 41 | Les 328 autres points ouverts restent à leur défaut |
+| Q41 | Aucun domaine coché | Aucun domaine n’est revu : tout reste à son défaut |
+| Q42 | A : stock d'ouverture par lot | Fait et en ligne ([ADR-069](../decisions/ADR-069-reprise-d-un-lot-en-cours.md), livraison `20261109-144526`) ; jamais essayé en fonctionnement |
 | Q43 | A : séparer les rôles (Admin technique sans rôle métier, Direction au seul PDG) | Action du porteur ; rôles de test à leur échéance du 29/11 |
 | Q44 | Autre : pointage désactivé pour l'instant, position relevée à l'enregistrement d'une opération | Fait et en ligne (AV-537, AV-538 ; livraison `20261108-144832`) |
 | Q45 | A : aucun coût de plus pendant le pilote | Aucune |
-| Q47 | A : seul le livré non payé est une créance | À faire : activer `sales.receivables_delivered_only` (révision du réglage) et faire suivre les vues d'analyse |
+| Q46 | C : à la clôture du développement | Un seul envoi final sur GitHub, à la clôture ; jamais sans demande explicite dans la séance |
+| Q47 | A : seul le livré non payé est une créance | Fait le 11/11/2026, en local : `sales.receivables_delivered_only` vrai par défaut (révision `AV-513 (08/11/2026)`), la liste des créances, les tableaux de bord, l’accueil et l’encours des appareils le suivent |
 | Q48 | A : pas de commande au poids pendant le pilote | Aucune |
 | Q49 | B : reprise de l'historique du mois en cours | Chargement par l'écran « Charger des données », compte du porteur |
+| Q50 | A : valider les pertes selon la règle recommandée | Fait le 11/11/2026, en local : politique `LOSS_DECLARATION_DEFAULT` (toujours pour destruction, perte inexpliquée et vol suspecté ; à partir de 25 000 XAF pour casse, détérioration et produit impropre), AV-037 |
 
 ## 1. Démarrer le pilote
 
@@ -94,7 +100,7 @@ Tout le code est livré : la question porte sur l’ordre des sites et des perso
 
 ★ **Pourquoi cette recommandation** : Le retour en arrière est facile et la formation s’étale ; chaque tranche ajoute des sites et des personnes sans refaire le travail de la précédente.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : C — Un point de vente et une ferme ensemble *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q02 — Quand voulez-vous démarrer le pilote ?
 
@@ -109,7 +115,7 @@ Aucune date n’est fixée. Elle dépend des préalables de la question 13 : don
 | **C** Dans 2 à 3 mois | Permet aussi d’obtenir l’avis du comptable et de traiter les points de la section « Finir le développement » avant. |
 | **D** Sans date fixée | Le jour où les préalables cochés à la question 13 sont faits, vous décidez. |
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : autre solution : dès demain *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q03 — Quand le pilote est-il réussi ?
 
@@ -125,7 +131,7 @@ Proposition à valider, qui ne vient pas d’une source du cadrage : un critère
 
 ★ **Pourquoi cette recommandation** : Un critère court et mesurable évite un pilote sans fin sans retarder R2 d’un mois ; la première clôture mensuelle se vérifiera pendant R2.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : C — À votre appréciation, sans critère chiffré *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q04 — Qui charge les données de départ ?
 
@@ -142,7 +148,7 @@ Proposition à valider, qui ne vient pas d’une source du cadrage : un critère
 
 ★ **Pourquoi cette recommandation** : C’est le chemin qui demande le moins de votre temps : je prépare les fichiers et l’essai à blanc, vous gardez la main sur l’envoi en ligne.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — GIC me donne ses fichiers, je les prépare *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q05 — Que faire des valeurs de départ de Bonabéri ?
 
@@ -158,7 +164,7 @@ Le script d’initialisation de Bonabéri, dans le kit de mise en ligne, pose : 
 
 ★ **Pourquoi cette recommandation** : Un stock inventé fausserait la valeur du stock et les marges dès le premier jour ; seul un comptage réel est fiable, et une correction se fait sans rien effacer.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : autre solution : je vais modifier les valeurs moi-même après concertation avec les autres parties prenantes ; maintiens d'abord les valeurs actuelles, sauf pour le poulet de chair dont le prix initial doit être mis à 3 500, en attendant les retours terrain *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q06 — Quels téléphones pour le pilote ?
 
@@ -175,7 +181,7 @@ L’application est une PWA compilée pour des navigateurs récents ; aucune vé
 
 ★ **Pourquoi cette recommandation** : Le seuil actuel est celui sur lequel l’application a été conçue ; la liste précise des appareils du pilote se relève de toute façon (liste « À faire de votre côté »).
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Seuil actuel, sans liste fermée *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q07 — Qui fait vivre l’outil après la fin du développement ?
 
@@ -192,7 +198,7 @@ L’architecture est dimensionnée pour une petite équipe (1 à 3 développeurs
 
 ★ **Pourquoi cette recommandation** : Le kit est scripté et revient seul en arrière en cas d’échec : une petite équipe suffit pour le pilote ; un soutien se décidera sur les premiers retours.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Vous, avec des sessions Claude Code à la demande *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q08 — Sur quelle base de données tourne la production ?
 
@@ -209,7 +215,7 @@ L’application est développée et essayée sur MySQL 8.4 (plus de 2 500 essais
 
 ★ **Pourquoi cette recommandation** : Elle supprime le risque à la source, sans coût récurrent ni changement d’hébergeur ; son effort se chiffre par un premier essai de la suite sur MariaDB.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : autre solution : faire en sorte que tout fonctionne bien sur le serveur SQL de Hostinger qui fait actuellement tourner l'application ; si quelque chose bloque, trouver une solution maintenant *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q09 — Où garder une copie des sauvegardes, hors de l’hébergement ?
 
@@ -226,7 +232,7 @@ Aujourd’hui : une sauvegarde est faite avant chaque livraison (cinq gardées).
 
 ★ **Pourquoi cette recommandation** : Gratuite, vérifiée à chaque copie et suffisante pour un pilote ; le cloud se décidera avec la taille réelle de la base.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Sur votre PC, planifiée dans Windows *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q10 — Que faire des photos jointes (réceptions, mortalité, justificatifs) ?
 
@@ -243,7 +249,7 @@ Les photos sont rangées sur le disque du serveur, hors base, et ne sont pas inc
 
 ★ **Pourquoi cette recommandation** : Les photos sont des preuves de réception et de mortalité : une copie sur votre PC évite de les perdre avec le disque, sans revenir sur votre décision de limiter l’espace en ligne.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☒ autre : **archive des photos téléchargée par période puis espace du serveur vidé** (dictée du 08/11/2026 : un bouton des paramètres, réservé à l’administrateur, télécharge les images d’un mois ou d’un trimestre, rangées par type d’opération et nommées d’après la référence de l’opération et la date et l’heure de leur soumission ; un second bouton vide l’espace du serveur ; les images de moins de 30 jours restent toujours dans le système ; l’archive est gardée dans le stockage interne de l’entreprise, 5 ans)
+**Réponse du porteur** : autre solution : archive des images téléchargeable par l'administrateur depuis les paramètres, tous les mois ou tous les trois mois, un dossier par catégorie d'opération, images nommées d'après la référence de l'opération et la date et l'heure de soumission, bouton pour vider l'espace après téléchargement, toujours garder au moins 30 jours *(lue dans la page de réponses, 08/11/2026)*
 
 **Suite donnée (08/11/2026)** : codée en local, ni poussée ni livrée en ligne ([ADR-070](../decisions/ADR-070-archive-des-photos-jointes.md), AV-539 ; défauts à confirmer : AV-545 à AV-549) — onglet « Archive des photos » des paramètres (Admin seul), fichiers ZIP rangés par mois et par type d’opération, empreinte SHA-256 affichée et vérifiable sur le fichier rangé, vidage refusé tant qu’un fichier n’est pas téléchargé en entier, plancher de 30 jours, photos d’opérations ouvertes gardées, trace en base et audit, `410` à la lecture d’une photo vidée. **À faire par vous** : relever la taille réelle du dossier des photos en ligne, désigner qui garde l’archive (deux exemplaires conseillés), essayer d’abord un petit mois.
 
@@ -261,7 +267,7 @@ Aujourd’hui, un compte peut se connecter sur un téléphone déjà connecté p
 
 ★ **Pourquoi cette recommandation** : Corrige un contournement connu de la règle d’approbation sans écrire de code : c’est un réglage à activer avant le pilote, comme le registre le recommande.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Laisser libre (actuel) *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q12 — Autorisez-vous des lectures en ligne, en lecture seule ?
 
@@ -278,7 +284,7 @@ Aujourd’hui, un compte peut se connecter sur un téléphone déjà connecté p
 
 ★ **Pourquoi cette recommandation** : Lecture seule, sorties masquées, et vous gardez la liste des lectures permises ; c’est le plus rapide pour comprendre les 24 tâches en échec et lever deux risques de la mise en ligne.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Oui, ces cinq lectures seulement *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q13 — Que faut-il avoir fait avant le premier jour du pilote ?
 
@@ -305,7 +311,7 @@ Cochez ce qui doit être fait avant le premier jour. Ma recommandation coche l�
 
 ★ **Pourquoi cette recommandation** : Ces onze préalables couvrent ce qui peut mettre en danger le premier jour ; les trois autres dépendent de personnes extérieures ou de phases suivantes.
 
-**Réponse du porteur** : cochez ci-dessus. Précision : ____________
+**Réponse du porteur** : cases cochées : a, b, c, h *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q42 — Comment reprendre les animaux vivants et les lots en cours ? *(ajoutée après relecture)*
 
@@ -322,7 +328,7 @@ La commande du stock d’ouverture refuse les animaux, les services et les produ
 
 ★ **Pourquoi cette recommandation** : Un lot d’ouverture au coût déclaré est la façon propre de reprendre un stock vivant : il garde la traçabilité du lot sans créer d’achat fictif ; C et D couvrent les cas où il n’y a rien à reprendre ou où l’on repart de la ferme.
 
-**Réponse du porteur** : ☒ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Un stock d’ouverture par lot *(lue dans la page de réponses, 08/11/2026)*
 
 > *Suite (08/11/2026) : la commande est codée localement — `production.lot_opening.post` (« reprise d'un lot en cours » : effectif repris, mise en place réelle, valeur totale, validée par la Direction ; [ADR-069](../decisions/ADR-069-reprise-d-un-lot-en-cours.md), AV-541 à AV-544), écran « Reprise d'un lot » et chargement par fichier « Lots en cours ». Elle couvre les lots d'élevage des fermes (R3). Le stock vif sans lot de production et les produits à lot obligatoire restent hors de cette commande (AV-544) ; le stock de Bonabéri est conservé tel quel (Q05).*
 
@@ -340,7 +346,7 @@ Le pointage exige une position GPS dans la zone du commercial. Une zone sans poi
 
 ★ **Pourquoi cette recommandation** : Sans géorepère, chaque prise de service passerait par une dérogation ; poser un point et un rayon par zone du pilote est rapide et garde la règle voulue.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : autre solution : pointage désactivé pour l'instant (effectif opérationnel nombreux, frictions internes) ; relever la position à l'enregistrement d'un prospect et des opérations cruciales ; géolocalisation de tous les employés gardée en réserve, à rendre obligatoire plus tard *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q45 — Quel budget mensuel pour faire vivre l’outil ? *(ajoutée après relecture)*
 
@@ -356,7 +362,7 @@ Plusieurs questions proposent une solution payante (base MySQL dédiée, copie d
 
 ★ **Pourquoi cette recommandation** : Cohérent avec l’abandon de Kommo faute de moyens ; l’hébergement actuel suffit au pilote, et un coût se décidera sur un besoin vu en pilote.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Aucun coût de plus pendant le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q49 — Quelle profondeur d’historique reprendre ? *(ajoutée après relecture)*
 
@@ -372,7 +378,7 @@ Le stock et les soldes de caisse partent d’une date d’arrêt. L’historique
 
 ★ **Pourquoi cette recommandation** : Un mois donne des rapports continus dès le départ sans le poids ni le risque d’un historique complet ; on pourra remonter plus loin plus tard avec le même outil.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : B — Le mois en cours *(lue dans la page de réponses, 08/11/2026)*
 
 ## 2. Finir le développement
 
@@ -392,7 +398,7 @@ Le serveur sait envoyer des notifications Web Push (le chiffrement est conforme 
 
 ★ **Pourquoi cette recommandation** : Le pilote montrera quelles alertes comptent avant de les pousser sur les téléphones ; l’abonnement exige un vrai téléphone et vos clés.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : B — Après le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q15 — Plusieurs vendeurs partagent-ils une même tablette ?
 
@@ -409,7 +415,7 @@ Aujourd’hui : un code PIN par utilisateur et les données locales sont effacé
 
 ★ **Pourquoi cette recommandation** : Évite le plus gros chantier de stockage local avant d’avoir vu si le partage de tablette existe vraiment chez GIC.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Non : un appareil par vendeur pendant le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q16 — La Direction et la Finance cherchent-elles les clients hors ligne ?
 
@@ -425,7 +431,7 @@ Aujourd’hui, un appareil ne reçoit que les clients de son titulaire, de ses �
 
 ★ **Pourquoi cette recommandation** : Exposer une base de 20 000 clients sur le téléphone de la Direction ou de la Finance n’est pas justifié tant que la recherche en ligne suffit.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Non : la recherche reste en ligne *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q17 — Qui fixe l’objectif d’un site ?
 
@@ -442,7 +448,7 @@ Les objectifs individuels, d’équipe et de site existent. La Direction peut d�
 
 ★ **Pourquoi cette recommandation** : Confirme ce qui existe déjà : la Direction fixe les objectifs de site, le responsable commercial ceux de ses équipes ; aucune autre solution n’est nécessaire pour démarrer.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — La Direction fixe les objectifs de site ; le responsable commercial ceux de ses équipes et de ses commerciaux *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q18 — Faut-il un registre des carnets de papier tenu par le serveur ?
 
@@ -459,7 +465,7 @@ Aujourd’hui, chaque appareil contrôle les numéros qu’il connaît : numéro
 
 ★ **Pourquoi cette recommandation** : Le pilote dira si le papier est un secours ou un usage courant, avant d’investir dans une dizaine de tables.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Garder le contrôle sur l’appareil pour le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q19 — Quand mesurer la performance et la charge ?
 
@@ -476,7 +482,7 @@ Jamais mesurés : le délai entre un événement et l’alerte qui en découle (
 
 ★ **Pourquoi cette recommandation** : Les volumes visés ne seront pas atteints en pilote ; mesurer sur de vraies données est plus fiable qu’un essai artificiel.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : B — Pendant et après les premiers retours du pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q20 — Quelles fonctions hors périmètre voulez-vous quand même ajouter ?
 
@@ -494,7 +500,7 @@ Quatre fonctions sont volontairement hors du premier périmètre. Cochez celles 
 
 ★ **Pourquoi cette recommandation** : Chaque ajout rouvre un chantier ; aucune de ces fonctions n’est nécessaire pour vendre, livrer, encaisser et suivre.
 
-**Réponse du porteur** : cochez ci-dessus. Précision : ____________
+**Réponse du porteur** : aucune case cochée (rien à ajouter ou à revoir) *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q21 — Que devient l’intégration Kommo ?
 
@@ -510,7 +516,7 @@ Décision du 26/10/2026 : pas d’abonnement Kommo faute de moyens ; le CRM est 
 
 ★ **Pourquoi cette recommandation** : Sans abonnement la phase ne peut pas avancer ; la retirer ferme les points Kommo ouverts et clarifie le périmètre.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : B — La laisser reportée, sans date *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q22 — L’application sera-t-elle bilingue ?
 
@@ -526,7 +532,7 @@ Aujourd’hui l’interface est en français ; la structure est prête pour l’
 
 ★ **Pourquoi cette recommandation** : Les pièces papier, la formation et les utilisateurs sont en français ; l’anglais demande de traduire plus de 4 000 lignes.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Français seulement *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q48 — Peut-on commander un produit vendu au poids ? *(ajoutée après relecture)*
 
@@ -543,7 +549,7 @@ Un restaurateur qui commande 12 kg de découpes ne peut pas passer commande : le
 
 ★ **Pourquoi cette recommandation** : Rien ne dit que ces commandes soient fréquentes ; le pilote le montrera, et chaque solution est un lot moyen au moins.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Non pendant le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ## 3. Droits et sécurité
 
@@ -564,7 +570,7 @@ Une pièce saisie avec une date de plus de 24 heures demande un motif ; au-delà
 
 ★ **Pourquoi cette recommandation** : Le cas courant est la fiche de la semaine : un droit limité aux deux responsables concernés le règle sans assouplir la garde pour les ventes et la caisse ; l’historique se règle à part, par un compte de reprise.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : B — Donner le droit aux responsables de ferme et de production *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q24 — Chaque téléphone doit-il connaître tous les rôles de l’entreprise ?
 
@@ -580,7 +586,7 @@ Aujourd’hui, chaque appareil reçoit la liste de toutes les affectations de r�
 
 ★ **Pourquoi cette recommandation** : L’appareil n’utilise déjà que les affectations de son propre utilisateur : le reste est exposé sans servir.
 
-**Réponse du porteur** : ☒ A  ☐ B  ☐ C  ☐ autre : ____________ *(08/11/2026)*
+**Réponse du porteur** : A — Restreindre aux affectations de l’utilisateur *(lue dans la page de réponses, 08/11/2026)*
 
 **Suite donnée** : mis en œuvre le 08/11/2026 par une session de développement — le jeu `role_assignment` ne va plus qu’à l’utilisateur de l’affectation ([ADR-071](../decisions/ADR-071-jeu-role-assignment-restreint-a-l-utilisateur.md), migration `20261207090000`, AV-533 point S-41 tranché, AV-550 à AV-552 pour les points restés ouverts). Rien à faire de votre côté ; à consigner au journal de `A-VALIDER.md` § 3 avec les autres réponses.
 
@@ -599,7 +605,7 @@ Règle actuelle : le déclarant ne peut pas approuver sa propre opération ; l�
 
 ★ **Pourquoi cette recommandation** : Convient à une petite structure : l’audit garde le marqueur et la supervision relit tout ; une alerte à la supervision pourra s’ajouter plus tard.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Garder la règle actuelle *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q26 — Faut-il une double authentification ?
 
@@ -616,7 +622,7 @@ Aujourd’hui : le numéro de téléphone ou l’adresse e-mail et un mot de pas
 
 ★ **Pourquoi cette recommandation** : Le pilote ouvre peu de comptes sensibles ; la double authentification se décidera avant la production, avec le coût d’un fournisseur de SMS.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Garder la connexion actuelle pour le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q27 — Combien de temps un téléphone peut-il travailler sans se synchroniser ?
 
@@ -633,7 +639,7 @@ Réglage actuel : 168 heures (7 jours). Un bandeau d’avertissement apparaît d
 
 ★ **Pourquoi cette recommandation** : Sept jours couvrent une semaine sans réseau avec un avertissement dès 48 heures ; c’est le réglage conçu avec le risque d’appareil perdu.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — 7 jours *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q28 — Les droits des rôles sont-ils modifiables dans l’application ?
 
@@ -649,7 +655,7 @@ Aujourd’hui, les douze rôles système et leurs droits sont fixés dans le cod
 
 ★ **Pourquoi cette recommandation** : Évite de figer une liste de permissions sensibles qu’aucune source ne demande ; le mécanisme de revue reste à spécifier.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : autre solution : permissions modifiables par l'Admin et les profils de direction dans l'application *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q29 — Quatre petits réglages de synchronisation : suivez-vous mes recommandations ?
 
@@ -665,7 +671,7 @@ Mes recommandations. (1) Une saisie envoyée deux fois avec une mention « saisi
 
 ★ **Pourquoi cette recommandation** : Ces quatre choix ne changent aucun comportement du pilote ; les alternatives touchent à la fiabilité de l’envoi des données et ne se justifient que par un cas réel.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : autre solution : non, je ne veux pas de ces complications *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q30 — Affichage, indicateurs et alertes : suivez-vous mes recommandations ?
 
@@ -681,7 +687,7 @@ Mes recommandations. Indicateurs de la Direction (atteinte d’objectif, poids m
 
 ★ **Pourquoi cette recommandation** : Ce sont des définitions d’indicateurs et de petits conforts d’écran, déjà mis en œuvre à la valeur recommandée.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Oui, toutes *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q43 — Un même compte peut-il cumuler Admin et Direction en production ? *(ajoutée après relecture)*
 
@@ -698,7 +704,7 @@ Votre compte cumule aujourd’hui ADMIN, DIRECTION et quatre rôles de test (com
 
 ★ **Pourquoi cette recommandation** : Le cumul vide la séparation des tâches voulue par le registre ; la rétablir coûte un compte de plus et aucun code, et le rôle de supervision relit l’audit.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Séparer les rôles *(lue dans la page de réponses, 08/11/2026)*
 
 ## 4. Règles financières et comptables
 
@@ -719,7 +725,7 @@ La facture est imprimée par l’application dans le modèle de votre comptable.
 
 ★ **Pourquoi cette recommandation** : Je ne donne pas d’avis fiscal ; le mécanisme est prêt et attend la réponse du comptable, sans bloquer le pilote.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Attendre le comptable *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q32 — Comment valoriser le stock ?
 
@@ -735,7 +741,7 @@ Méthode en place : coût moyen unitaire pondéré (CMUP) perpétuel par produit
 
 ★ **Pourquoi cette recommandation** : La méthode est en place et éprouvée ; en changer est un gros chantier qui ne se justifie que par une exigence comptable.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Coût moyen pondéré (CMUP) *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q33 — Faut-il verrouiller les mois clôturés ?
 
@@ -751,7 +757,7 @@ Aujourd’hui rien ne verrouille un mois. La fenêtre de saisie rétroactive, l�
 
 ★ **Pourquoi cette recommandation** : Sans intégration comptable, la fenêtre de saisie rétroactive et les contre-écritures suffisent ; le verrouillage viendra avec l’export comptable.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Pas de verrouillage au démarrage *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q34 — Que livrer à votre comptable ?
 
@@ -767,7 +773,7 @@ Hors du premier périmètre. L’explorateur permet déjà des exports CSV et XL
 
 ★ **Pourquoi cette recommandation** : Les exports de l’explorateur existent déjà ; un format précis dépend du logiciel du comptable, qu’on ne connaît pas.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Les exports de l’explorateur suffisent *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q35 — Les seuils d’argent par défaut vous conviennent-ils ?
 
@@ -784,7 +790,7 @@ Valeurs actuelles, toutes réglables dans l’écran des paramètres : une dépe
 
 ★ **Pourquoi cette recommandation** : Ce sont des valeurs de cadrage ; les premiers cas réels diront lesquelles sont trop strictes ou trop souples, et elles se règlent sans code.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Garder ces montants pour le pilote *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q36 — Combien de temps conserver les données ?
 
@@ -801,7 +807,7 @@ Durées recommandées (AV-074, provisoires) : journal d’audit et pièces finan
 
 ★ **Pourquoi cette recommandation** : Ce sont des durées de prudence qu’il faut faire confirmer par le comptable ; tant qu’aucune purge n’existe, rien n’est perdu en attendant.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Adopter ces durées comme règle *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q37 — À quoi sert la présence du personnel ?
 
@@ -817,7 +823,7 @@ La présence se reporte chaque semaine depuis la fiche papier. Usage en place : 
 
 ★ **Pourquoi cette recommandation** : Le choix le moins sensible : aucun lien avec la paie ni la discipline, donc pas d’avis juridique à demander.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Statistique et suivi seulement *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q47 — Une commande non livrée est-elle une créance ? *(ajoutée après relecture)*
 
@@ -833,7 +839,7 @@ Depuis votre décision du 04/11, une commande n’est pas une vente : elle ne se
 
 ★ **Pourquoi cette recommandation** : Une commande non payée n’est pas du crédit accordé (votre décision du 04/11) : ne compter que le livré non payé évite des relances et des blocages de crédit injustifiés.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — Seul le livré non payé est une créance *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q50 — Faut-il faire valider les pertes de stock ? *(ajoutée après relecture)*
 
@@ -850,7 +856,7 @@ Aujourd’hui, une perte déclarée (casse, détérioration, produit impropre, d
 
 ★ **Pourquoi cette recommandation** : C’est la règle recommandée par le registre : elle concentre la validation sur les pertes qui comptent, alors que sans règle la casse ou le vol n’est contrôlé qu’après coup.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ D  ☐ autre : ____________
+**Réponse du porteur** : A — Valider selon la règle recommandée *(lue dans la page de réponses, 08/11/2026)*
 
 ## 5. Clôture et suite
 
@@ -870,7 +876,7 @@ Le plan de reprise définit « terminé » ainsi : périmètre livré (hors Komm
 
 ★ **Pourquoi cette recommandation** : Donne un point d’arrivée daté et vérifiable, aligné sur la revue des défauts, les mesures de charge et le Web Push ; le plan complet se poursuit ensuite en maintenance.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : C — Dès que vos réponses sont appliquées *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q39 — Comment appliquer vos réponses ?
 
@@ -886,7 +892,7 @@ Vos réponses changeront des réglages, du code, des documents et le registre de
 
 ★ **Pourquoi cette recommandation** : C’est la méthode qui limite les erreurs : tout coder, une seule vérification complète, puis le récapitulatif.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : A — En un seul chantier, séquentiel *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q40 — Que faire des 328 autres points ouverts ?
 
@@ -902,7 +908,7 @@ Le registre compte 403 points ouverts. Aucun n’est bloquant : chacun a un déf
 
 ★ **Pourquoi cette recommandation** : Aucun point n’est bloquant et chacun a un défaut en place ; une revue sur de vrais faits sera plus utile qu’une revue sur des hypothèses.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : B — Les laisser à leur défaut, sauf les domaines que je coche à la question 41 *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q41 — Quels domaines voulez-vous revoir en détail ?
 
@@ -927,7 +933,7 @@ Ou : **Aucun : tout reste à son défaut** ★. Les domaines ne sont pas revus a
 
 ★ **Pourquoi cette recommandation** : Cochez seulement ce qui vous préoccupe ; laisser la liste vide est une réponse.
 
-**Réponse du porteur** : cochez ci-dessus. Précision : ____________
+**Réponse du porteur** : aucune case cochée (rien à ajouter ou à revoir) *(lue dans la page de réponses, 08/11/2026)*
 
 ### Q46 — Quand le code part-il sur GitHub ? *(ajoutée après relecture)*
 
@@ -943,7 +949,7 @@ Jusqu’ici, le travail local n’était poussé que sur votre demande dans la s
 
 ★ **Pourquoi cette recommandation** : Le code n’existe que sur votre PC tant qu’il n’est pas poussé : une panne du poste le perdrait ; un envoi après chaque chantier vérifié limite ce risque sans pousser de travail non vérifié.
 
-**Réponse du porteur** : ☐ A  ☐ B  ☐ C  ☐ autre : ____________
+**Réponse du porteur** : C — À la clôture du développement *(lue dans la page de réponses, 08/11/2026)*
 
 ## 6. À faire de votre côté
 
