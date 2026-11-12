@@ -209,6 +209,13 @@ describe('app/screens — registre et navigation par rôle', () => {
     for (const [id, path, labelKey, roles] of [
       ['ECR-ADM-06', '/administration/organisation', 'organization', ['ADMIN']],
       ['ECR-ADM-07', '/administration/parametres', 'settings', ['DIRECTION', 'ADMIN']],
+      // Q28 du questionnaire de clôture (ADR-072) : droits des rôles, Admin et Direction.
+      [
+        'ECR-ADM-09',
+        '/administration/droits-des-roles',
+        'role_permissions',
+        ['DIRECTION', 'ADMIN'],
+      ],
       [
         'ECR-AUD-01',
         '/administration/audit',
@@ -354,6 +361,7 @@ describe('app/screens — registre et navigation par rôle', () => {
       'ECR-ADM-08',
       'ECR-PRX-02',
       'ECR-ADM-07',
+      'ECR-ADM-09',
       'ECR-NOT-03',
       'ECR-SYN-03',
       'ECR-FIN-05',

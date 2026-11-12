@@ -220,6 +220,11 @@ const OrganizationScreen = lazy(() =>
 const SettingsScreen = lazy(() =>
   import('../features/settings/SettingsScreen.js').then((m) => ({ default: m.SettingsScreen })),
 );
+const RolePermissionsScreen = lazy(() =>
+  import('../features/role-permissions/RolePermissionsScreen.js').then((m) => ({
+    default: m.RolePermissionsScreen,
+  })),
+);
 const AuditScreen = lazy(() =>
   import('../features/audit/AuditScreen.js').then((m) => ({ default: m.AuditScreen })),
 );
@@ -382,6 +387,7 @@ function AppShell() {
             <Route path={ROUTES.users} element={<UsersScreen />} />
             <Route path={ROUTES.organization} element={<OrganizationScreen />} />
             <Route path={ROUTES.settings} element={<SettingsScreen />} />
+            <Route path={ROUTES.rolePermissions} element={<RolePermissionsScreen />} />
             <Route path={ROUTES.audit} element={<AuditScreen />} />
             <Route path={ROUTES.reassignCustomers} element={<ReassignCustomersScreen />} />
             <Route path={ROUTES.teamActivity} element={<TeamActivityScreen />} />

@@ -105,6 +105,8 @@ export const ROUTES = {
   organization: '/administration/organisation',
   /** ECR-ADM-07 (RP-1) : paramètres versionnés et politiques de contrôle. */
   settings: '/administration/parametres',
+  /** ECR-ADM-09 (Q28, ADR-072) : droits des rôles modifiables dans l'application. */
+  rolePermissions: '/administration/droits-des-roles',
   /** ECR-AUD-01 (RP-1) : recherche dans le journal d'audit. */
   audit: '/administration/audit',
   /** ECR-CRM-06 (RP-3) : réaffectation de clients (`crm.customer.reassign`). */
@@ -446,6 +448,8 @@ export const ROLE_SETS = {
   organizationManage: ['ADMIN'],
   /** ECR-ADM-07 (RP-1) : `org.settings.manage` et `approvals.policy.manage` (DIR et ADM, portée ALL). */
   settingsManage: ['DIRECTION', 'ADMIN'],
+  /** ECR-ADM-09 (Q28, ADR-072) : `identity.role.manage` (DIR et ADM, portée ALL). */
+  rolePermissionsManage: ['DIRECTION', 'ADMIN'],
   /**
    * ECR-AUD-01 (RP-1) : `audit.log.read` (DIR, SUP, ADM, FIN). La Finance n'y voit que les entités financières :
    * le serveur borne la lecture (AV-493).
@@ -872,6 +876,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'settings',
     group: 'general',
     roles: ROLE_SETS.settingsManage,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    // Q28 du questionnaire de clôture (ADR-072) : droits des rôles, commande `identity.role.permission.set`.
+    id: 'ECR-ADM-09',
+    path: ROUTES.rolePermissions,
+    labelKey: 'role_permissions',
+    group: 'general',
+    roles: ROLE_SETS.rolePermissionsManage,
     actionCodes: [],
     offline: false,
   },

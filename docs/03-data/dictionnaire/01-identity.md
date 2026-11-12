@@ -79,7 +79,30 @@
 
 - **PK** `(role_id, permission_code)`. **CK** `max_scope` ∈ `permissions.supported_scopes` (contrôle TX).
 - **Suppr.** Retrait autorisé (liaison de configuration). Chaque retrait est **audité** avec l'état avant, ce qui historise la configuration des droits.
+- **Écriture** : la graine (`db:seed`) et, depuis Q28 du 08/11/2026 (ADR-072), la commande `identity.role.permission.set` (octroi, changement de portée, retrait avec motif ; Admin et Direction) ; un octroi fait dans l'application ne porte aucune limite (`limits` nul).
 - **Offline** DL.
+
+## identity.role_permission_changes
+
+**Responsabilité** : journal en ajout seul des changements de droits des rôles faits dans l'application (ADR-072, Q28 du 08/11/2026) ; la graine ne revient jamais sur un couple (rôle, permission) qu'il nomme.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | — | Identifiant de la commande qui a fait le changement |
+| `role_id` | uuid → roles | Non | — | |
+| `permission_code` | varchar(80) → permissions | Non | — | |
+| `change_type` | enum(`GRANT`,`SCOPE`,`REVOKE`) | Non | — | Octroi, changement de portée, retrait |
+| `scope_before` | enum(`OWN`,`TEAM`,`SITE`,`ZONE`,`ALL`) | Oui | — | Nul pour un octroi |
+| `scope_after` | enum(`OWN`,`TEAM`,`SITE`,`ZONE`,`ALL`) | Oui | — | Nul pour un retrait |
+| `reason` | varchar(500) | Non | — | Motif, obligatoire (non vide) |
+| `changed_by` | uuid → users | Non | — | Auteur |
+| `changed_at` | ts | Non | — | `occurred_at` de la commande |
+| `command_id` | uuid | Non | — | **UQ** : un rejeu n'écrit pas deux fois |
+| `created_at` | ts | Non | `now()` | |
+
+- **PK** `id`. **UQ** `command_id`. **IX** `(role_id, permission_code, changed_at)`. **CK** cohérence des portées avec `change_type` (octroi sans portée avant, retrait sans portée après, changement de portée vers une autre portée) ; motif non vide.
+- **Suppr.** Jamais : déclencheurs contre la mise à jour et la suppression (journal en ajout seul).
+- **Offline** Non (lu par l'écran ECR-ADM-09, en ligne).
 
 ## identity.user_role_assignments
 
