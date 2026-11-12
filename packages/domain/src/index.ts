@@ -296,6 +296,24 @@ export {
   lossRequiresApproval,
 } from './stock-losses.js';
 export type { LossApprovalRule } from './stock-losses.js';
+// Q28 (08/11/2026), ADR-072 : droits des rôles modifiables dans l'application (gardes contre l'élévation).
+export {
+  PERMISSION_SCOPES,
+  PROTECTED_PERMISSION_CODES,
+  PROTECTED_ROLE_CODES,
+  grantableScopes,
+  heldScopesCover,
+  isPermissionScope,
+  judgeRolePermissionChange,
+  scopeCovers,
+} from './role-permissions.js';
+export type {
+  PermissionScope,
+  RolePermissionChangeInput,
+  RolePermissionChangeType,
+  RolePermissionJudgement,
+  RolePermissionRefusal,
+} from './role-permissions.js';
 
 export type {
   PricingMode,

@@ -78,7 +78,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 12 rôles, 133 permissions et 568 octrois attendus', async () => {
+  it('crée exactement les 12 rôles, 133 permissions et 569 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -115,7 +115,8 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // réponse du porteur du 08/11/2026 à la question 23, solution B).
     // + 3 octrois production.lot_opening.post (Administrateur, Resp. production : ALL ; Resp. ferme : SITE ; ADR-069, AV-541).
     // + 2 octrois attachments.archive.export et .purge ALL (Administrateur seul : archive des photos jointes, AV-539).
-    expect(ROLE_PERMISSIONS.length).toBe(568);
+    // + 1 octroi identity.role.manage ALL à la Direction (droits des rôles modifiables dans l'application, Q28, ADR-072).
+    expect(ROLE_PERMISSIONS.length).toBe(569);
     const approvalCodes = new Set(PERMISSIONS.filter((p) => p.isApproval).map((p) => p.code));
     expect(
       ROLE_PERMISSIONS.filter(

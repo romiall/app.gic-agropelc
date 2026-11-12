@@ -105,6 +105,25 @@ export function isGrantActiveAt(grant: CachedGrant, occurredAt: Date): boolean {
   return true;
 }
 
+/**
+ * ADR-072 (Q28) : portées auxquelles l'utilisateur détient chaque permission à `at`, par ses seules affectations
+ * **globales** — la mesure de « ce qu'on a » pour modifier les droits d'un rôle (`identity.role.permission.set`).
+ */
+export async function heldGlobalScopes(
+  executor: Kysely<DB> | Transaction<DB>,
+  userId: string,
+  at: Date,
+): Promise<ReadonlyMap<string, readonly MaxScope[]>> {
+  const held = new Map<string, MaxScope[]>();
+  for (const grant of await getUserGrants(executor, userId)) {
+    if (grant.scopeType !== 'GLOBAL' || !isGrantActiveAt(grant, at)) continue;
+    const scopes = held.get(grant.permissionCode) ?? [];
+    if (!scopes.includes(grant.maxScope)) scopes.push(grant.maxScope);
+    held.set(grant.permissionCode, scopes);
+  }
+  return held;
+}
+
 export function invalidateUser(userId: string): void {
   grantsByUser.delete(userId);
   generationByUser.set(userId, (generationByUser.get(userId) ?? 0) + 1);

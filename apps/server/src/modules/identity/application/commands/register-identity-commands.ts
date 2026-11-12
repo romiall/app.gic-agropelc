@@ -11,6 +11,7 @@ import {
 import { registerDeviceCommands } from './device-commands.js';
 import { registerUserCommands } from './user-commands.js';
 import { registerRoleAssignmentCommands } from './role-assignment-commands.js';
+import { registerRolePermissionCommands } from './role-permission-commands.js';
 
 @Injectable()
 export class IdentityCommandsRegistrar implements OnModuleInit {
@@ -22,5 +23,6 @@ export class IdentityCommandsRegistrar implements OnModuleInit {
     registerDeviceCommands(this.registry);
     registerUserCommands(this.registry);
     registerRoleAssignmentCommands(this.registry);
+    registerRolePermissionCommands(this.registry);
   }
 }

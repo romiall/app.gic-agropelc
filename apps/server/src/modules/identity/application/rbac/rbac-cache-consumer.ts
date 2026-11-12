@@ -15,8 +15,9 @@
 import type { EventConsumerRegistry } from '../../../../platform/events/event-consumer-registry.js';
 import type { DomainEvent } from '../../../../platform/events/domain-event.js';
 import { ROLE_ASSIGNMENT_EVENT_TYPES } from '../commands/role-assignment-commands.js';
+import { ROLE_PERMISSION_SET_COMMAND } from '../commands/role-permission-commands.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
-import { invalidateUser } from './rbac-cache.js';
+import { invalidateAll, invalidateUser } from './rbac-cache.js';
 
 export const RBAC_CACHE_CONSUMER_NAME = 'identity.rbac_cache';
 
@@ -24,6 +25,12 @@ const INVALIDATING_EVENT_TYPES: ReadonlySet<string> = new Set(ROLE_ASSIGNMENT_EV
 
 export function registerRbacCacheConsumer(registry: EventConsumerRegistry): void {
   registry.register(RBAC_CACHE_CONSUMER_NAME, async (uow, event: DomainEvent) => {
+    // ADR-072 (Q28) : un droit d'un rôle a changé — tous ses titulaires sont concernés ; un changement est rare,
+    // tout le cache est invalidé.
+    if (event.eventType === ROLE_PERMISSION_SET_COMMAND) {
+      invalidateAll();
+      return;
+    }
     if (!INVALIDATING_EVENT_TYPES.has(event.eventType)) return;
     const payload = event.payload as { userId?: unknown };
     if (typeof payload.userId === 'string') {

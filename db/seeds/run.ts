@@ -12,6 +12,7 @@
 import type mysql from 'mysql2/promise';
 import { connectUtc } from './connection.js';
 import { PERMISSIONS, ROLE_DISCOUNT_SETTINGS, ROLE_PERMISSIONS, ROLES } from './rbac-data.js';
+import { planRolePermissionSeed, rolePermissionKey } from './role-permission-plan.js';
 import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js';
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
 import {
@@ -129,11 +130,27 @@ async function seedRolePermissions(
   roleIds: Map<string, Buffer>,
   systemUserId: Buffer,
 ): Promise<void> {
+  // ADR-072 (Q28) : un couple (rôle, permission) changé dans l'application garde la décision prise dans l'application.
+  const [changed] = await conn.query<mysql.RowDataPacket[]>(
+    'SELECT DISTINCT HEX(role_id) AS role_hex, permission_code FROM identity_role_permission_changes',
+  );
+  const changedKeys = new Set(
+    changed.map((row) =>
+      rolePermissionKey(String(row['role_hex']), String(row['permission_code'])),
+    ),
+  );
+  const plan = planRolePermissionSeed(
+    ROLE_PERMISSIONS,
+    (roleCode) => {
+      const roleId = roleIds.get(roleCode);
+      if (!roleId) throw new Error(`ROLE_PERMISSIONS : rôle inconnu « ${roleCode} » (voir ROLES).`);
+      return roleId.toString('hex');
+    },
+    changedKeys,
+  );
   let count = 0;
-  for (const grant of ROLE_PERMISSIONS) {
-    const roleId = roleIds.get(grant.roleCode);
-    if (!roleId)
-      throw new Error(`ROLE_PERMISSIONS : rôle inconnu « ${grant.roleCode} » (voir ROLES).`);
+  for (const grant of plan.toWrite) {
+    const roleId = roleIds.get(grant.roleCode)!;
     await conn.query(
       `INSERT INTO identity_role_permissions (role_id, permission_code, max_scope, limits, granted_by)
        VALUES (?, ?, ?, ?, ?)
@@ -148,7 +165,12 @@ async function seedRolePermissions(
     );
     count++;
   }
-  console.log(`  + identity_role_permissions (${count} octrois)`);
+  console.log(
+    `  + identity_role_permissions (${count} octrois` +
+      (plan.kept.length > 0
+        ? `, ${plan.kept.length} laissé(s) à la décision prise dans l'application)`
+        : ')'),
+  );
 }
 
 async function seedVirtualLocations(conn: mysql.Connection, systemUserId: Buffer): Promise<void> {

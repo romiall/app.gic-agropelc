@@ -1429,6 +1429,20 @@ export interface IdentityPermissions {
   supported_scopes: Json;
 }
 
+export interface IdentityRolePermissionChanges {
+  change_type: string;
+  changed_at: Date;
+  changed_by: Buffer;
+  command_id: Buffer;
+  created_at: Generated<Date>;
+  id: Buffer;
+  permission_code: string;
+  reason: string;
+  role_id: Buffer;
+  scope_after: string | null;
+  scope_before: string | null;
+}
+
 export interface IdentityRolePermissions {
   granted_at: Generated<Date>;
   granted_by: Buffer;
@@ -3072,6 +3086,7 @@ export interface DB {
   identity_devices: IdentityDevices;
   identity_login_attempts: IdentityLoginAttempts;
   identity_permissions: IdentityPermissions;
+  identity_role_permission_changes: IdentityRolePermissionChanges;
   identity_role_permissions: IdentityRolePermissions;
   identity_roles: IdentityRoles;
   identity_user_role_assignments: IdentityUserRoleAssignments;

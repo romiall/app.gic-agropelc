@@ -1297,6 +1297,9 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
   // DIRECTION — 82, toujours ALL
   ...grants('DIRECTION', [
     ['sync.backdate.exceed', 'ALL'],
+    // Q28 du questionnaire de clôture (08/11/2026, ADR-072) : la Direction modifie aussi les droits des rôles dans
+    // l'application, avec l'Admin (`identity.role.permission.set`, gardes : on ne donne que ce qu'on a).
+    ['identity.role.manage', 'ALL'],
     ['identity.user.read', 'ALL'],
     ['identity.device.read', 'ALL'],
     ['identity.device.block', 'ALL'],
