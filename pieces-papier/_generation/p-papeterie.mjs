@@ -1,5 +1,5 @@
 // Papeterie de marque : papier à en-tête, blocs-notes, couvertures de carnet. Impression en couleur (numérique) : logo couleur.
-import { ID, esc, feuille, champ, rang, cases, lignes, section, note, signatures, bandeau } from './lib.mjs'
+import { ID, esc, feuille, champ, rang, cases, lignes, section, note, signatures, bandeau, MANUSCRIT } from './lib.mjs'
 
 const blanc = (c = '') => `<span class="blanc ${c}"></span>`
 const v = (x, c = '') => (x ? esc(x) : blanc(c))
@@ -27,7 +27,7 @@ const EL = {
 // ------------------------------------------------------------------ blocs-notes (A5 portrait)
 const enteteNote = (titre, sousTitre = '') => `<header class="entete" style="height:15mm;gap:3mm"><img class="logo" src="{{LOGO}}" alt="" style="height:13mm">
   <div class="identite"><div class="raison" style="font-size:9.5pt">${esc(ID.raison_sociale)}</div>${titre ? `<div class="forme" style="font-size:7.5pt;font-weight:600;letter-spacing:.06em;text-transform:uppercase">${esc(titre)}</div>` : ''}</div>
-  <div class="note" style="text-align:right;white-space:nowrap;font-size:7pt">Date : …… / …… / 20……<br>${sousTitre}</div></header><div style="height:.6mm;background:var(--orange);margin-bottom:1.6mm"></div>`
+  <div class="note" style="text-align:right;white-space:nowrap;font-size:7pt">Date : ${MANUSCRIT.date}<br>${sousTitre}</div></header><div style="height:.6mm;background:var(--orange);margin-bottom:1.6mm"></div>`
 const piedNote = (t) => `<footer class="pied" style="font-size:5.6pt;margin-top:1mm"><div>${esc(t)}</div><div class="ref">GIC AGROPELC · Bloc-notes · 10/2026</div></footer>`
 const A5 = { mh: 9, md: 10, mb: 8, mg: 12 }
 
@@ -43,7 +43,7 @@ const BNR = {
     interieur: `${enteteNote('Compte rendu de réunion')}
     <div class="corps" style="--h:6.6mm;gap:1mm;padding-top:0">
       ${rang(champ('Objet de la réunion', 24))}
-      ${rang(champ('Lieu', 9), champ('Début', 7, { aide: '…h…' }), champ('Fin', 8, { aide: '…h…' }))}
+      ${rang(champ('Lieu', 9), champ('Début', 7, { manuscrit: 'heure' }), champ('Fin', 8, { manuscrit: 'heure' }))}
       ${rang(champ('Animée par', 12), champ('Secrétaire de séance', 12))}
       ${section('Participants (nom, fonction)')}
       <div class="rang" style="--h:6.2mm">${[0, 1, 2, 3, 4, 5].map(() => champ('', 12)).join('')}</div>
@@ -52,7 +52,7 @@ const BNR = {
       ${section('Discussions et décisions')}
       <div class="lignes-fond souple" style="flex:1;min-height:20mm"></div>
       ${lignes({ cols: [{ t: 'Action à mener', w: '*' }, { t: 'Responsable', w: '30mm' }, { t: 'Échéance', w: '20mm' }], n: 3, h: 6 })}
-      ${rang(champ('Prochaine réunion le', 14, { aide: '…/…/20…' }), champ('à', 10, { aide: '…h…' }))}
+      ${rang(champ('Prochaine réunion le', 14, { manuscrit: 'date' }), champ('à', 10, { manuscrit: 'heure' }))}
     </div>${piedNote('Compte rendu — à diffuser aux participants')}` })],
 }
 

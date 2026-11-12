@@ -77,6 +77,14 @@ body {
 .champ { display: flex; align-items: flex-end; height: var(--h); border-bottom: var(--trait) solid var(--vert); padding-bottom: .4mm; min-width: 0; }
 .champ .lib { font: 600 6.3pt/1 var(--f-texte); color: var(--vert); white-space: nowrap; margin-right: 1.6mm; padding-bottom: .5mm; }
 .champ .aide { font: 5.8pt/1 var(--f-texte); color: var(--gris); margin-left: auto; padding-bottom: .6mm; white-space: nowrap; }
+/* espace d'écriture manuscrite d'une date ou d'une heure : seuls les séparateurs « / » et « h » s'impriment, jamais un texte
+   d'aide (jj / mm / aaaa, …/…/20…) qui salirait l'écriture ; les fentes entre les séparateurs restent vides */
+.manuscrit { display: inline-flex; align-items: flex-end; flex: 0 1 34mm; width: 34mm; max-width: 100%; min-width: 0; height: 4.4mm; vertical-align: bottom; font: 300 9pt/1 var(--f-texte); color: var(--gris); white-space: nowrap; }
+.manuscrit i { display: block; flex: 2 1 6mm; min-width: 3mm; }
+.manuscrit i.a { flex: 3 1 10mm; min-width: 6mm; }
+.manuscrit i.g { flex: 1 1 4mm; min-width: 2mm; }
+.manuscrit.jm, .manuscrit.heure { flex-basis: 14mm; width: 14mm; }
+.manuscrit.dateheure { flex-basis: 56mm; width: 56mm; }
 .champ.haut { height: calc(var(--h) * 1.5); } .champ.double { height: calc(var(--h) * 2); }
 .champ .u { font: 600 6.3pt/1 var(--f-texte); color: var(--vert); margin-left: auto; padding-bottom: .5mm; }
 

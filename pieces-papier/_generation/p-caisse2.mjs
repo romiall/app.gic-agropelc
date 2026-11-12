@@ -37,7 +37,7 @@ const FJC = {
   pages: [standard({
     fmt: 'a4p', code: 'FJC', titre: 'Feuille journalière de caisse', sous: 'Journal chronologique des entrées et des sorties', numLib: 'Feuille N°', marges: { mh: 12 },
     corps: [
-      rang(champ('Site / point de vente', 8), cases('Caisse', ['du PDV', 'du commercial', 'centrale'], { span: 11 }), champ('Jour', 5, { aide: '…/…/20…' })),
+      rang(champ('Site / point de vente', 8), cases('Caisse', ['du PDV', 'du commercial', 'centrale'], { span: 11 }), champ('Jour', 5, { manuscrit: 'date' })),
       rang(champ('Caissier(ère) ou commercial', 7), champ('Contrôleur(se)', 7), champ('Session n°', 4), champ('Fonds d’ouverture compté', 6, { u: 'XAF' })),
       lignes({
         cols: [{ t: 'Heure', w: '12mm' }, { t: 'N° de la pièce (RE, BV, BD, RF…)', w: '30mm' }, { t: 'Client, bénéficiaire ou objet', w: '*' }, { t: 'Mode E O M V C', w: '14mm' }, { t: 'ENTRÉE (XAF)', w: '27mm' }, { t: 'SORTIE (XAF)', w: '27mm' }],
@@ -81,7 +81,7 @@ export function pageRegistre({ page = null, debut = 1 } = {}) {
     marges: miroir ? { mh: 12, md: 14, mg: 8 } : { mh: 12, mg: 14 }, annule: false,
     mention: 'Registre numéroté — une ligne par encaissement, sans ligne vide ; une erreur se barre, se date et se commente, elle ne s’efface jamais',
     corps: [
-      rang(champ('Site / point de vente', 10), champ('Période du', 6, { aide: '…/…/20…' }), champ('au', 4, { aide: '…/…/20…' }), champ('Tenu par', 4)),
+      rang(champ('Site / point de vente', 10), champ('Période du', 6, { manuscrit: 'date' }), champ('au', 4, { manuscrit: 'date' }), champ('Tenu par', 4)),
       lignes({
         cols: [
           { t: 'Date', w: '13mm' }, { t: 'Reçu de (client) — objet : vente ou commande n°', w: '*' },
@@ -106,7 +106,7 @@ const FA = {
     // Modèle validé par le comptable (porteur, 11/11/2026) : la mention « modèle provisoire » n'est plus imprimée, comme sur la facture de l'application.
     fmt: 'a4p', code: 'FA', titre: 'Facture', sous: '', numLib: 'Facture N°', marges: { mh: 12 },
     corps: [
-      rang(champ('Date d’émission', 8, { aide: 'jj / mm / aaaa' }), champ('Échéance', 7, { aide: 'jj / mm / aaaa' }), champ('Bon de vente / commande n°', 9)),
+      rang(champ('Date d’émission', 8, { manuscrit: 'date' }), champ('Échéance', 7, { manuscrit: 'date' }), champ('Bon de vente / commande n°', 9)),
       bloc('Client', [
         rang(champ('Nom ou raison sociale', 15), champ('NIU du client', 9, { aide: 'si assujetti' })),
         rang(champ('Adresse', 15), champ('Téléphone', 9)),

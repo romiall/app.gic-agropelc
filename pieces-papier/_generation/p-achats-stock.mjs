@@ -1,12 +1,12 @@
 // Achats, réception, stock, livraison, production.
 // Champs alignés sur les commandes de l'application : procurement.* (DA, BC, réception), inventory.* (transfert, perte, inventaire),
 // sales.delivery (livraison), production.* (saisie du jour).
-import { avecSouche, standard, champ, rang, cases, lignes, montant, lettres, signatures, bloc, section, note, notes, souche, reportSouche, report, dateHeure } from './lib.mjs'
+import { avecSouche, standard, champ, rang, cases, lignes, montant, lettres, signatures, bloc, section, note, notes, souche, reportSouche, report, dateHeure, MANUSCRIT } from './lib.mjs'
 
 const EX_FOURN = '① blanc : fournisseur — ② rose : comptabilité — ③ jaune : reste dans le carnet (souche complète)'
 const EX3 = '① blanc : destinataire — ② rose : comptabilité / magasin — ③ jaune : reste dans le carnet (souche complète)'
 const EX2 = '① blanc : transmis — ② jaune : reste dans le bloc'
-const D = { aide: 'jj / mm / aaaa' }
+const D = { manuscrit: 'date' }
 
 // ------------------------------------------------------------------ DA
 const DA = {
@@ -54,7 +54,7 @@ const BR = {
     corps: [
       rang(champ('Fournisseur', 14), champ('Bon de commande n° (ou « sans BC »)', 10)),
       rang(champ('Bon de livraison du fournisseur n°', 12), champ('Transporteur / véhicule', 12)),
-      rang(champ('Site / emplacement de réception', 9), champ('Date et heure de réception', 9, { aide: '…/…/20… à …h…' }), champ('Réceptionnaire', 6)),
+      rang(champ('Site / emplacement de réception', 9), champ('Date et heure de réception', 9, { manuscrit: 'dateheure' }), champ('Réceptionnaire', 6)),
       lignes({ cols: [{ t: 'Produit', w: '*' }, { t: 'Unité', w: '14mm' }, { t: 'Commandé', w: '17mm' }, { t: 'Livré', w: '16mm' }, { t: 'Rejeté', w: '16mm' }, { t: 'Accepté (livré − rejeté)', w: '20mm', g: true }, { t: 'Motif du rejet', w: '30mm' }, { t: 'N° de lot fournisseur', w: '24mm' }, { t: 'Péremption', w: '20mm' }], n: 9, h: 7 }),
       cases('Constat', ['conforme', 'réserves (voir observations)', 'refus total']),
       cases('Photo du bon de livraison', ['jointe dans l’application', 'indisponible (expliquer)']),
@@ -93,10 +93,10 @@ const BT = {
     corps: [
       cases('Nature', ['transfert entre sites', 'réapprovisionnement d’un PDV', 'affectation de stock à un vendeur', 'retour vers la source', 'autre']),
       rang(champ('Expédié de (emplacement d’origine)', 12), champ('Vers (emplacement de destination)', 12)),
-      rang(champ('Expédié le', 7, { aide: '…/…/20… à …h…' }), champ('Expéditeur (nom)', 8), champ('Transporteur / véhicule', 9)),
+      rang(champ('Expédié le', 7, { manuscrit: 'dateheure' }), champ('Expéditeur (nom)', 8), champ('Transporteur / véhicule', 9)),
       lignes({ cols: [{ t: 'Produit', w: '*' }, { t: 'Lot / n° de lot', w: '24mm' }, { t: 'Unité', w: '14mm' }, { t: 'Quantité expédiée', w: '22mm' }, { t: 'Quantité reçue', w: '22mm', g: true }, { t: 'Écart', w: '16mm', g: true }, { t: 'Motif de l’écart', w: '34mm', g: true }], n: 9, h: 6.8 }),
       section('À remplir à la réception par le destinataire'),
-      rang(champ('Reçu le', 7, { aide: '…/…/20… à …h…' }), champ('Réceptionnaire (nom)', 9), cases('Constat', ['conforme', 'écart à justifier', 'refus'], { span: 8 })),
+      rang(champ('Reçu le', 7, { manuscrit: 'dateheure' }), champ('Réceptionnaire (nom)', 9), cases('Constat', ['conforme', 'écart à justifier', 'refus'], { span: 8 })),
       champ('Observations', 24, { double: true }),
       note('<b>Un écart de transfert est une perte en transit à justifier</b> (produit, quantité, cause). Animaux vivants, œufs ou viande : joindre le document sanitaire de transport s’il est exigé (à vérifier auprès du service vétérinaire).'),
       signatures([{ t: 'L’expéditeur', s: 'a remis' }, { t: 'Le transporteur', s: 'a convoyé' }, { t: 'Le destinataire', s: 'a reçu et compté' }], { h: 15 }),
@@ -114,7 +114,7 @@ const FP = {
     corps: [
       cases('Nature', ['perte (déclaration de perte)', 'consommation d’intrant']),
       rang(champ('Site / emplacement', 12), champ('Déclarant (nom)', 12)),
-      rang(champ('Date et heure du constat', 24, { aide: '…/…/20… à …h…' })),
+      rang(champ('Date et heure du constat', 24, { manuscrit: 'dateheure' })),
       cases('Catégorie', ['mortalité', 'casse', 'détérioration', 'impropre à la vente', 'destruction', 'inexpliquée', 'vol suspecté', 'écart de transfert']),
       lignes({ cols: [{ t: 'Produit', w: '*' }, { t: 'Unité', w: '14mm' }, { t: 'Quantité', w: '18mm' }, { t: 'Lot de production / lot de stock', w: '32mm' }], n: 7, h: 6.8 }),
       champ('Cause, circonstances (obligatoire si inexpliquée ou vol suspecté)', 24, { double: true }),
@@ -134,7 +134,7 @@ const FI = {
   pages: [standard({
     fmt: 'a4p', code: 'FI', titre: 'Fiche d’inventaire', sous: 'Comptage physique d’un emplacement', numLib: 'Fiche N°', marges: { mh: 12 }, annule: false,
     corps: [
-      rang(champ('Emplacement compté', 9), champ('Date et heure du comptage', 8, { aide: '…/…/20… à …h…' }), champ('Compteur 1', 7)),
+      rang(champ('Emplacement compté', 7), champ('Date et heure du comptage', 10, { manuscrit: 'dateheure' }), champ('Compteur 1', 7)),
       rang(cases('Type', ['périodique', 'd’ouverture', 'tournant / surprise'], { span: 16 }), champ('Compteur 2', 8)),
       lignes({ cols: [{ t: 'Produit', w: '*' }, { t: 'Lot', w: '22mm' }, { t: 'Unité', w: '14mm' }, { t: 'Stock théorique (reporté après comptage)', w: '28mm', g: true }, { t: 'Stock physique compté', w: '24mm' }, { t: 'Écart', w: '18mm', g: true }, { t: 'Motif de l’écart', w: '38mm' }], n: 21, h: 6.4 }),
       note('<b>Comptage à l’aveugle :</b> écrire le stock physique avant de connaître le stock théorique. L’écart est justifié, jamais effacé ; au-delà du seuil d’approbation, la validation du responsable est demandée.'),
@@ -146,17 +146,17 @@ const FI = {
 }
 
 // ------------------------------------------------------------------ FL
-const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map((j) => `${j} <span style="font-weight:400;color:var(--gris)">…/…</span>`)
+const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map((j) => `${j} ${MANUSCRIT.jm}`)
 const FL = {
   code: 'FL', nom: 'Fiche de suivi de lot (saisie du jour)', fmt: 'a4l',
   pages: [standard({
     fmt: 'a4l', code: 'FL', titre: 'Suivi de lot de production', sous: 'Saisie du jour — une ligne par jour', numLib: 'Fiche N°', annule: false, marges: { mh: 11 },
     corps: [
       rang(champ('Lot de production n°', 8), cases('Type de lot', ['poulet de chair', 'pondeuse', 'porc d’engraissement', 'autre'], { span: 16 })),
-      rang(champ('Bâtiment / case', 8), champ('Semaine du', 6, { aide: '…/…/20…' }), champ('au', 4, { aide: '…/…/20…' }), champ('Effectif en début de semaine', 6)),
+      rang(champ('Bâtiment / case', 8), champ('Semaine du', 6, { manuscrit: 'date' }), champ('au', 4, { manuscrit: 'date' }), champ('Effectif en début de semaine', 6)),
       lignes({
         numerote: false, prefill: JOURS, h: 10.6, n: 7,
-        cols: [{ t: 'Jour', w: '27mm' }, { t: 'Mortalité : nombre', w: '15mm' }, { t: 'Mortalité : cause', w: '23mm' }, { t: 'Aliment : produit', w: '28mm' }, { t: 'Aliment : quantité (kg)', w: '17mm' }, { t: 'Pesée : échantillon', w: '16mm' }, { t: 'Pesée : poids moyen (g)', w: '17mm' }, { t: 'Œufs collectés', w: '15mm' }, { t: 'Œufs cassés', w: '13mm' }, { t: 'Œufs non conformes', w: '16mm' }, { t: 'Œufs commerciali-sables', w: '19mm' }, { t: 'Œufs à couver', w: '13mm' }, { t: 'Observations (santé, vaccin, incident)', w: '*' }, { t: 'Visa', w: '12mm' }],
+        cols: [{ t: 'Jour', w: '31mm' }, { t: 'Mortalité : nombre', w: '15mm' }, { t: 'Mortalité : cause', w: '23mm' }, { t: 'Aliment : produit', w: '28mm' }, { t: 'Aliment : quantité (kg)', w: '17mm' }, { t: 'Pesée : échantillon', w: '16mm' }, { t: 'Pesée : poids moyen (g)', w: '17mm' }, { t: 'Œufs collectés', w: '15mm' }, { t: 'Œufs cassés', w: '13mm' }, { t: 'Œufs non conformes', w: '16mm' }, { t: 'Œufs commerciali-sables', w: '19mm' }, { t: 'Œufs à couver', w: '13mm' }, { t: 'Observations (santé, vaccin, incident)', w: '*' }, { t: 'Visa', w: '12mm' }],
         total: { lib: 'Total de la semaine', span: 1 },
       }),
       champ('Traitements, vaccins, événements marquants de la semaine', 24, { double: true }),

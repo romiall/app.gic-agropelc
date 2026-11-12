@@ -62,12 +62,28 @@ export const bandeau = (titre: string, sous = ''): string =>
   `<div class="bandeau"><h1>${esc(titre)}</h1>${sous ? `<span class="sous">${esc(sous)}</span>` : ''}</div>`;
 
 // ---- champs -------------------------------------------------------------
+/**
+ * Espaces d'écriture manuscrite d'une date ou d'une heure : seuls les séparateurs « / » et « h » s'impriment, jamais un
+ * texte d'aide (jj / mm / aaaa, …/…/20…) qui salirait l'écriture ; les fentes entre les séparateurs restent vides
+ * (charte : `.manuscrit`). Même balisage que `MANUSCRIT` de `pieces-papier/_generation/lib.mjs` (un essai le vérifie).
+ */
+export const MANUSCRIT = {
+  date: '<span class="manuscrit"><i></i>/<i></i>/<i class="a"></i></span>',
+  jm: '<span class="manuscrit jm"><i></i>/<i></i></span>',
+  heure: '<span class="manuscrit heure"><i></i>h<i></i></span>',
+  dateheure:
+    '<span class="manuscrit dateheure"><i></i>/<i></i>/<i class="a"></i><i class="g"></i><i></i>h<i></i></span>',
+} as const;
+export type Manuscrit = keyof typeof MANUSCRIT;
+
 export interface OptionsChamp {
   readonly aide?: string;
+  /** Date ou heure à écrire à la main : les séparateurs seuls, sans texte d'aide ; disparaît quand la valeur est connue. */
+  readonly manuscrit?: Manuscrit;
   readonly u?: string;
   readonly haut?: boolean;
   readonly double?: boolean;
-  /** Valeur écrite sur la ligne ; l'aide (« …/…/20… ») disparaît quand la valeur est connue. */
+  /** Valeur écrite sur la ligne ; l'espace d'écriture ou l'aide disparaît quand la valeur est connue. */
   readonly v?: Valeur;
   /** Valeur numérique : alignée à droite, contre l'unité. */
   readonly num?: boolean;
@@ -77,9 +93,11 @@ export function champ(lib: string, span = 12, o: OptionsChamp = {}): string {
   const cls = ['champ', o.haut && 'haut', o.double && 'double'].filter(Boolean).join(' ');
   const v = present(o.v)
     ? `<span class="v${o.num ? ' num' : ''}">${esc(o.v)}</span>`
-    : o.aide
-      ? `<span class="aide">${esc(o.aide)}</span>`
-      : '';
+    : o.manuscrit
+      ? MANUSCRIT[o.manuscrit]
+      : o.aide
+        ? `<span class="aide">${esc(o.aide)}</span>`
+        : '';
   return `<div class="${cls} c${span}"><span class="lib">${esc(lib)}</span>${v}${o.u ? `<span class="u">${esc(o.u)}</span>` : ''}</div>`;
 }
 
@@ -88,7 +106,7 @@ export const rang = (...x: string[]): string => `<div class="rang">${x.join('')}
 export const dateHeure = (lib = 'Date et heure de l’opération', span = 10, v?: Valeur): string =>
   present(v)
     ? champ(lib, span, { v })
-    : `<div class="champ c${span}"><span class="lib">${esc(lib)}</span><span class="aide">le …… / …… / 20…… à …… h ……</span></div>`;
+    : `<div class="champ c${span}"><span class="lib">${esc(lib)}</span>${MANUSCRIT.dateheure}</div>`;
 
 /**
  * Cases à cocher. `coche` : libellés cochés (comparés au libellé de l'option) ; `autre` : texte écrit

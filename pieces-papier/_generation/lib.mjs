@@ -32,14 +32,26 @@ export function entete({ numero = true, numLib = 'N°' } = {}) {
 export const bandeau = (titre, sous = '') => `<div class="bandeau"><h1>${esc(titre)}</h1>${sous ? `<span class="sous">${esc(sous)}</span>` : ''}</div>`
 
 // ---- champs -----------------------------------------------------------
-// champ('Client', 12) ; options : { aide:'jj/mm/aaaa', u:'XAF', haut:true, double:true }
+// Espaces d'écriture manuscrite d'une date ou d'une heure : seuls les séparateurs « / » et « h » s'impriment, jamais un texte
+// d'aide (jj / mm / aaaa, …/…/20…) qui salirait l'écriture ; les fentes entre les séparateurs restent vides (charte : .manuscrit).
+// Le même balisage est dans apps/pwa/src/features/pieces/gabarit.ts (MANUSCRIT).
+export const MANUSCRIT = {
+  date: '<span class="manuscrit"><i></i>/<i></i>/<i class="a"></i></span>',
+  jm: '<span class="manuscrit jm"><i></i>/<i></i></span>',
+  heure: '<span class="manuscrit heure"><i></i>h<i></i></span>',
+  dateheure: '<span class="manuscrit dateheure"><i></i>/<i></i>/<i class="a"></i><i class="g"></i><i></i>h<i></i></span>',
+}
+
+// champ('Client', 12) ; options : { manuscrit:'date' | 'jm' | 'heure' | 'dateheure', aide:'si assujetti', u:'XAF', haut:true, double:true }
 export function champ(lib, span = 12, o = {}) {
   const cls = ['champ', o.haut && 'haut', o.double && 'double'].filter(Boolean).join(' ')
-  return `<div class="${cls} c${span}"><span class="lib">${esc(lib)}</span>${o.aide ? `<span class="aide">${esc(o.aide)}</span>` : ''}${o.u ? `<span class="u">${esc(o.u)}</span>` : ''}</div>`
+  if (o.manuscrit && !MANUSCRIT[o.manuscrit]) throw new Error(`champ « ${lib} » : espace manuscrit inconnu « ${o.manuscrit} »`)
+  const aide = o.manuscrit ? MANUSCRIT[o.manuscrit] : o.aide ? `<span class="aide">${esc(o.aide)}</span>` : ''
+  return `<div class="${cls} c${span}"><span class="lib">${esc(lib)}</span>${aide}${o.u ? `<span class="u">${esc(o.u)}</span>` : ''}</div>`
 }
 export const rang = (...x) => `<div class="rang">${x.join('')}</div>`
 export const dateHeure = (lib = 'Date et heure de l’opération', span = 10) =>
-  `<div class="champ c${span}"><span class="lib">${esc(lib)}</span><span class="aide">le …… / …… / 20…… à …… h ……</span></div>`
+  `<div class="champ c${span}"><span class="lib">${esc(lib)}</span>${MANUSCRIT.dateheure}</div>`
 
 export function cases(lib, options, o = {}) {
   const opts = options.map((t) => (t === '…' ? `<span class="o autre">autre :</span>` : `<span class="o">${esc(t)}</span>`)).join('')

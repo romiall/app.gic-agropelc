@@ -453,7 +453,7 @@ export function feuilleJournaliereCaisse(d: DonneesFJC, ctx: Contexte): PieceRen
             span: 11,
             coche: d.caisse ? [d.caisse] : [],
           }),
-          champ('Jour', 5, d.jour ? { v: d.jour } : { aide: '…/…/20…' }),
+          champ('Jour', 5, d.jour ? { v: d.jour } : { manuscrit: 'date' as const }),
         ),
         rang(
           champ('Caissier(ère) ou commercial', 7, { v: d.caissier }),
@@ -577,8 +577,8 @@ export function journalEncaissements(d: DonneesJE, ctx: Contexte): PieceRendue {
       corps: [
         rang(
           champ('Site / point de vente', 10, { v: d.site }),
-          champ('Période du', 6, d.du ? { v: d.du } : { aide: '…/…/20…' }),
-          champ('au', 4, d.au ? { v: d.au } : { aide: '…/…/20…' }),
+          champ('Période du', 6, d.du ? { v: d.du } : { manuscrit: 'date' as const }),
+          champ('au', 4, d.au ? { v: d.au } : { manuscrit: 'date' as const }),
           champ('Tenu par', 4, { v: d.tenuPar }),
         ),
         lignes({
@@ -695,9 +695,9 @@ export function facture(d: DonneesFA, ctx: Contexte): PieceRendue {
           champ(
             'Date d’émission',
             8,
-            d.dateEmission ? { v: d.dateEmission } : { aide: 'jj / mm / aaaa' },
+            d.dateEmission ? { v: d.dateEmission } : { manuscrit: 'date' as const },
           ),
-          champ('Échéance', 7, d.echeance ? { v: d.echeance } : { aide: 'jj / mm / aaaa' }),
+          champ('Échéance', 7, d.echeance ? { v: d.echeance } : { manuscrit: 'date' as const }),
           champ('Bon de vente / commande n°', 9, { v: d.venteOuCommande }),
         ),
         bloc(
