@@ -142,6 +142,33 @@ export const ADMIN_HELP: readonly ScreenHelp[] = [
     ],
   },
   {
+    path: ROUTES.rolePermissions,
+    title: 'Droits des rôles',
+    purpose:
+      'Les droits de chaque rôle : choisissez un rôle, voyez ses droits groupés par module avec leur portée (soi-même, son équipe, son site, sa zone, toute l’entreprise), puis accordez un droit, changez sa portée ou retirez-le, toujours avec un motif. Chaque changement est inscrit à l’historique du rôle et au journal d’audit. On ne donne ou ne retire que ce qu’on détient soi-même ; les droits du rôle Administrateur et le droit de modifier les droits ne se changent pas ici. En ligne.',
+    before: [
+      'Un changement s’applique tout de suite côté serveur, mais l’affichage des écrans suit le rôle : un droit ajouté ne fait pas apparaître d’écran, un droit retiré ne cache pas l’écran (le serveur refuse alors l’opération).',
+    ],
+    actions: [
+      act(
+        'update',
+        'Accorder, changer ou retirer un droit',
+        'Bouton « Modifier » sur la ligne du droit : nouvelle portée ou retrait, puis le motif (obligatoire).',
+        { online: true },
+      ),
+      act(
+        'read',
+        'Retrouver un droit',
+        'Recherche sur le code ou la description ; « Droits accordés seulement » pour ne voir que ceux du rôle.',
+      ),
+      act(
+        'read',
+        'Consulter l’historique du rôle',
+        'Les derniers changements : qui, quand, avant, après et pourquoi.',
+      ),
+    ],
+  },
+  {
     path: ROUTES.audit,
     title: 'Journal d’audit',
     purpose:

@@ -1117,6 +1117,22 @@ Trois onglets : les paramètres système (seuils, délais, interrupteurs, par do
 | Modifier un paramètre | La valeur est contrôlée selon ses bornes ; l’historique de la clé reste consultable. | Direction, Administrateur | en ligne |
 | Modifier une politique de contrôle | Nouvelle version : photo, commentaire, validation exigés ou non, approbateur. | Direction, Administrateur | en ligne |
 
+#### Droits des rôles
+
+`/administration/droits-des-roles` · ECR-ADM-09 · Direction, Administrateur · en ligne
+
+Les droits de chaque rôle : choisissez un rôle, voyez ses droits groupés par module avec leur portée (soi-même, son équipe, son site, sa zone, toute l’entreprise), puis accordez un droit, changez sa portée ou retirez-le, toujours avec un motif. Chaque changement est inscrit à l’historique du rôle et au journal d’audit. On ne donne ou ne retire que ce qu’on détient soi-même ; les droits du rôle Administrateur et le droit de modifier les droits ne se changent pas ici. En ligne.
+
+**Avant de commencer**
+
+- Un changement s’applique tout de suite côté serveur, mais l’affichage des écrans suit le rôle : un droit ajouté ne fait pas apparaître d’écran, un droit retiré ne cache pas l’écran (le serveur refuse alors l’opération).
+
+| Action | Ce qu’elle fait | Qui | Réseau |
+|---|---|---|---|
+| Accorder, changer ou retirer un droit | Bouton « Modifier » sur la ligne du droit : nouvelle portée ou retrait, puis le motif (obligatoire). | Direction, Administrateur | en ligne |
+| Retrouver un droit | Recherche sur le code ou la description ; « Droits accordés seulement » pour ne voir que ceux du rôle. | Direction, Administrateur | — |
+| Consulter l’historique du rôle | Les derniers changements : qui, quand, avant, après et pourquoi. | Direction, Administrateur | — |
+
 #### Journal d’audit
 
 `/administration/audit` · ECR-AUD-01 · Direction, Supervision consultative, Administrateur, Finance · en ligne
@@ -1439,6 +1455,7 @@ Une croix indique que le menu propose la page au rôle. Le serveur revérifie ch
 | Comptes et rôles (`/administration/utilisateurs`) |  | × |  |  |  |  |  |  |  |  |  |  |
 | Organisation (`/administration/organisation`) |  | × |  |  |  |  |  |  |  |  |  |  |
 | Paramètres et politiques (`/administration/parametres`) | × | × |  |  |  |  |  |  |  |  |  |  |
+| Droits des rôles (`/administration/droits-des-roles`) | × | × |  |  |  |  |  |  |  |  |  |  |
 | Journal d’audit (`/administration/audit`) | × | × |  |  |  |  |  |  |  |  | × | × |
 | Alertes et notifications (`/alertes`) | × | × | × | × | × | × | × | × | × | × | × | × |
 | Notes de direction (`/notes`) | × | × | × | × | × | × | × | × | × | × | × | × |
