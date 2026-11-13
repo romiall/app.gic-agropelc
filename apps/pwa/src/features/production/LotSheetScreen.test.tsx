@@ -15,6 +15,17 @@ vi.mock('../../platform/composition.js', async () => {
   return { clock, idGenerator: new Uuidv7Generator(clock) };
 });
 
+vi.mock('../auth/AuthContext.js', () => ({
+  useAuth: () => ({
+    state: {
+      status: 'unlocked',
+      userId: '01900000-0000-7000-8000-000000000001',
+      deviceStatus: 'ACTIVE',
+    },
+  }),
+}));
+
+const USER = '01900000-0000-7000-8000-000000000001';
 const LOT = '01900000-0000-7000-8000-0000000009a1';
 const BUILDING = '01900000-0000-7000-8000-0000000009a2';
 const STOCK_LOT = '01900000-0000-7000-8000-0000000009a3';
@@ -163,7 +174,18 @@ describe('Fiche lot (ECR-PRD-03)', () => {
     vi.restoreAllMocks();
     vi.mocked(authorizedRequest).mockReset();
     await getDb().projections.clear();
+    await getDb().navigation.clear();
+    await getDb().outbox.clear();
   });
+
+  /** Rôles mémorisés de l'appareil (accueil ouvert en ligne). */
+  const rememberRoles = (roles: string[]) =>
+    getDb().navigation.put({
+      user_id: USER,
+      roles,
+      sections: [],
+      saved_at: '2026-10-10T09:00:00.000Z',
+    });
 
   it('en ligne : effectif, indicateurs, coûts, marges et pesées du serveur', async () => {
     serve({ [LOT]: SHEET });
@@ -358,5 +380,101 @@ describe('Fiche lot (ECR-PRD-03)', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('En élevage (estimation du téléphone)')).toBeInTheDocument();
     expect(authorizedRequest).not.toHaveBeenCalled();
+  });
+
+  it('AV-526 : la gestion des lots a les actions du lot, les autres rôles n’en ont aucune', async () => {
+    serve({ [LOT]: SHEET });
+    await rememberRoles(['RESP_FERME']);
+    renderScreen();
+    await screen.findByRole('region', { name: 'Effectif' });
+    expect(screen.queryByRole('region', { name: 'Actions sur le lot' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+    cleanup();
+
+    await rememberRoles(['ADMIN']);
+    renderScreen();
+    const actions = within(await screen.findByRole('region', { name: 'Actions sur le lot' }));
+    expect(actions.getByRole('link', { name: 'Saisie du jour' })).toHaveAttribute(
+      'href',
+      `/production/lots/${LOT}`,
+    );
+    expect(actions.getByRole('link', { name: 'Faire entrer des animaux' })).toHaveAttribute(
+      'href',
+      `/production/nouveau-lot?lot=${LOT}`,
+    );
+    expect(actions.getByRole('link', { name: 'Sortie vers la vente' })).toBeInTheDocument();
+    expect(actions.getByRole('button', { name: 'Clôturer le lot' })).toBeEnabled();
+    // Lot de poulets de chair : pas de collecte d'œufs.
+    expect(actions.queryByRole('link', { name: 'Collecte d’œufs' })).not.toBeInTheDocument();
+  });
+
+  it('AV-526 : clôturer le lot demande une confirmation, sans motif, et part dans l’outbox', async () => {
+    serve({ [LOT]: SHEET });
+    await rememberRoles(['RESP_PRODUCTION']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('button', { name: 'Clôturer le lot' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    expect(sheet.getByText('Clôturer le lot LOT-MFO-2026-004 ?')).toBeInTheDocument();
+    // Une clôture n'a pas de motif à saisir.
+    expect(sheet.queryByLabelText('Motif de l’annulation')).not.toBeInTheDocument();
+    await user.click(sheet.getByRole('button', { name: 'Clôturer le lot' }));
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'production.lot.close',
+      aggregate_type: 'PRODUCTION_LOT',
+      aggregate_id: LOT,
+      payload: {},
+    });
+  });
+
+  it('AV-526 : annuler une entrée exige un motif, puis envoie l’annulation de cette entrée', async () => {
+    serve({ [LOT]: SHEET });
+    await rememberRoles(['ADMIN']);
+    const user = userEvent.setup();
+    renderScreen();
+    const entries = within(await screen.findByRole('region', { name: 'Entrées' }));
+    await user.click(entries.getByRole('button', { name: 'Annuler' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await user.click(sheet.getByRole('button', { name: 'Annuler l’entrée' }));
+    expect(await sheet.findByText('Indiquez le motif de l’annulation.')).toBeInTheDocument();
+    expect(await getDb().outbox.count()).toBe(0);
+    await user.type(sheet.getByLabelText('Motif de l’annulation'), 'Saisie en double');
+    await user.click(sheet.getByRole('button', { name: 'Annuler l’entrée' }));
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'production.lot.cancel_entry',
+      aggregate_type: 'LOT_ENTRY',
+      aggregate_id: 'e1',
+      payload: { comment: 'Saisie en double' },
+    });
+  });
+
+  it('AV-526 : annuler une pesée envoie l’annulation de cette pesée', async () => {
+    serve({ [LOT]: SHEET });
+    await rememberRoles(['ADMIN']);
+    const user = userEvent.setup();
+    renderScreen();
+    const weighings = within(await screen.findByRole('region', { name: 'Pesées' }));
+    await user.click(weighings.getByRole('button', { name: 'Annuler' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await user.type(sheet.getByLabelText('Motif de l’annulation'), 'Mauvais lot');
+    await user.click(sheet.getByRole('button', { name: 'Annuler la pesée' }));
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'production.weighing.cancel',
+      aggregate_type: 'LOT_WEIGHING',
+      aggregate_id: 'w1',
+      payload: { comment: 'Mauvais lot' },
+    });
+  });
+
+  it('AV-526 : hors ligne, la clôture et les annulations sont désactivées et expliquées', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await rememberRoles(['ADMIN']);
+    renderScreen();
+    const actions = within(await screen.findByRole('region', { name: 'Actions sur le lot' }));
+    expect(actions.getByRole('button', { name: 'Clôturer le lot' })).toBeDisabled();
+    expect(actions.getByText(/la clôture et les annulations se font en ligne/)).toBeInTheDocument();
   });
 });

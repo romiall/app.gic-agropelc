@@ -1,0 +1,9 @@
+/* Corrections de la ferme (AV-526) : feuille de confirmation d'une annulation ou d'une clôture. Aucune
+   couleur en dur : tout passe par les jetons. */
+
+.corrections-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  line-height: var(--leading);
+}

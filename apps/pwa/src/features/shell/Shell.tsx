@@ -15,6 +15,7 @@ import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { AutonomyBanner } from '../sync/AutonomyBanner.js';
 import { PushRefusalBanner } from '../sync/PushRefusalBanner.js';
 import { UpdateBanner } from '../sync/UpdateBanner.js';
+import { HelpSheet } from '../help/HelpSheet.js';
 import { Sidebar, TabBar, TopBar } from './Bars.js';
 import {
   activeScreenPath,
@@ -40,8 +41,10 @@ export function Shell({ onLogout, children }: ShellProps) {
   // change (le chemin ne correspond plus), sans effet ni état à resynchroniser.
   const [quickAt, setQuickAt] = useState<string | null>(null);
   const [accountAt, setAccountAt] = useState<string | null>(null);
+  const [helpAt, setHelpAt] = useState<string | null>(null);
   const quickOpen = quickAt === pathname;
   const accountOpen = accountAt === pathname;
+  const helpOpen = helpAt === pathname;
 
   const roles = navigation?.roles;
   const tabs = useMemo(() => tabsForRoles(roles ?? []), [roles]);
@@ -65,7 +68,11 @@ export function Shell({ onLogout, children }: ShellProps) {
         onAccount={() => setAccountAt(pathname)}
       />
       <div className="shell-body">
-        <TopBar userName={userName} onAccount={() => setAccountAt(pathname)} />
+        <TopBar
+          userName={userName}
+          onAccount={() => setAccountAt(pathname)}
+          onHelp={() => setHelpAt(pathname)}
+        />
         <main
           id="main"
           tabIndex={-1}
@@ -85,6 +92,12 @@ export function Shell({ onLogout, children }: ShellProps) {
         onQuick={() => setQuickAt(pathname)}
       />
       <QuickActionsSheet open={quickOpen} onClose={() => setQuickAt(null)} groups={quick} />
+      <HelpSheet
+        open={helpOpen}
+        onClose={() => setHelpAt(null)}
+        pathname={pathname}
+        roles={roles ?? []}
+      />
       <AccountSheet
         open={accountOpen}
         onClose={() => setAccountAt(null)}

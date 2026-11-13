@@ -74,6 +74,14 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
       action('USERS', 'Utilisateurs et rôles'),
       action('ORGANIZATION', 'Organisation', { hint: 'Sites, emplacements, zones' }),
       action('SETTINGS', 'Paramètres et politiques'),
+      // AV-524 (06/11/2026) : l'Administrateur exerce la ferme et le stock ; ses raccourcis suivent ceux du
+      // responsable de production, sans validation de mortalité (RC-03).
+      action('LOTS', 'Lots de production', { hint: 'Créer, suivre, clôturer' }),
+      action('NEW_LOT', 'Nouveau lot'),
+      action('EGG_COLLECTION', 'Collecte d’œufs'),
+      action('INCUBATIONS', 'Incubations'),
+      action('RECEIPTS', 'Réceptions', { hint: 'Animaux et aliments achetés' }),
+      action('STOCK_ALERTS', 'Alertes de stock'),
       action('SYNC_STATUS', 'Synchronisation', { route: SYNC_ROUTE }),
     ],
   },
@@ -160,6 +168,7 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
     conflictRoles: ['RESP_PRODUCTION'],
     actions: [
       action('LOTS', 'Lots de production', { primary: true }),
+      action('NEW_LOT', 'Nouveau lot'),
       action('MORTALITY', 'Valider les mortalités'),
       action('INCUBATIONS', 'Incubations'),
       action('LOT_COSTS', 'Coûts et marges des lots'),

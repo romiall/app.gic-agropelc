@@ -8,11 +8,25 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ROUTES } from '../../app/screens.js';
-import { Sidebar, TabBar } from './Bars.js';
+import { Sidebar, TabBar, TopBar } from './Bars.js';
 import { ROLE_ORDER, sidebarGroups, tabsForRoles, type QuickActionGroup } from './nav-config.js';
 import { AccountSheet, QuickActionsSheet } from './Sheets.js';
 
+// L'indicateur de synchronisation lit l'état de l'appareil : hors sujet ici.
+vi.mock('../sync/SyncBadge.js', () => ({ SyncBadge: () => null }));
+
 const show = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
+
+describe('TopBar', () => {
+  it('le bouton « ? » ouvre l’aide de la page courante (AV-525)', async () => {
+    const onHelp = vi.fn();
+    const user = userEvent.setup();
+    show(<TopBar userName="Awa" onAccount={() => undefined} onHelp={onHelp} />);
+    await user.click(screen.getByRole('button', { name: 'Aide de cette page' }));
+    expect(onHelp).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Ouvrir le menu du compte' })).toBeInTheDocument();
+  });
+});
 
 describe('TabBar', () => {
   it('Accueil, deux destinations du rôle, « + » entre elles et « Plus » ; l’onglet actif est marqué', async () => {
@@ -50,7 +64,7 @@ describe('Sidebar', () => {
   it('liste courte : tous les domaines sont dépliés, l’écran courant est marqué', () => {
     const groups = sidebarGroups(['RESP_ACHATS']);
     const total = groups.reduce((sum, group) => sum + group.items.length, 0);
-    expect(total).toBeLessThanOrEqual(16);
+    expect(total).toBeLessThanOrEqual(17);
     show(
       <Sidebar
         groups={groups}

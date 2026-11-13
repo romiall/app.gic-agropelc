@@ -413,3 +413,12 @@ a.data-row.prd-link-row:hover {
     align-items: start;
   }
 }
+
+/* Actions du lot et raccourcis de la liste : toutes visibles, à la ligne, sans défilement sur téléphone (la clôture ne doit pas se cacher hors de l'écran). */
+.prd-actions .chip-row,
+.chip-row.prd-wrap {
+  flex-wrap: wrap;
+  margin-inline: 0;
+  padding-inline: 0;
+  overflow: visible;
+}

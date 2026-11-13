@@ -14,9 +14,11 @@ import type { SidebarGroup, TabSpec } from './nav-config.js';
 export interface TopBarProps {
   userName: string;
   onAccount: () => void;
+  /** Ouvre l'aide de la page courante (AV-525). */
+  onHelp: () => void;
 }
 
-export function TopBar({ userName, onAccount }: TopBarProps) {
+export function TopBar({ userName, onAccount, onHelp }: TopBarProps) {
   const { t } = useTranslation();
   return (
     <header className="topbar">
@@ -25,6 +27,9 @@ export function TopBar({ userName, onAccount }: TopBarProps) {
         <span className="topbar-name">{t('app.name')}</span>
       </Link>
       <SyncBadge />
+      <button type="button" className="topbar-help" aria-label={t('help.open')} onClick={onHelp}>
+        <Icon name="help" size={22} />
+      </button>
       <button
         type="button"
         className="topbar-account"
@@ -117,7 +122,7 @@ export interface SidebarProps {
 }
 
 /** Au-delà de ce nombre d'entrées, seuls les domaines utiles sont dépliés. */
-const EXPAND_ALL_UNTIL = 16;
+const EXPAND_ALL_UNTIL = 17;
 
 export function Sidebar({
   groups,

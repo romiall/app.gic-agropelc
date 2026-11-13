@@ -157,6 +157,8 @@ export const fr = {
       finance: 'Finance',
     },
     screens: {
+      thresholds: 'Seuils d’alerte',
+      help: 'Guide et aide',
       home: 'Accueil',
       sync: 'Synchronisation',
       new_sale: '+ Nouvelle vente',
@@ -980,6 +982,23 @@ export const fr = {
       status: 'Situation',
     },
     planned_title: 'Lots planifiés (pas encore de saisie)',
+    planned_hint:
+      'Ces lots sont créés mais vides : touchez-en un pour y faire entrer les animaux, il deviendra actif.',
+    planned_hint_readonly:
+      'Ces lots sont créés mais vides : ils deviennent actifs dès que des animaux y entrent (responsable de production).',
+    new_lot: 'Nouveau lot',
+    enter_animals: 'Faire entrer les animaux',
+    receive_animals: 'Les animaux viennent d’être achetés ? Enregistrer leur réception →',
+    no_lot_howto:
+      'Un lot devient actif dès que des animaux y entrent. Créez le lot, puis faites-y entrer les animaux (achetés, en stock ou nés sur la ferme) ; vous saisirez ensuite la journée : mortalité, aliment, pesée, observation.',
+    no_lot_ask:
+      'Aucun lot n’est ouvert sur vos fermes. Le responsable de production crée le lot ; il apparaît ici dès que des animaux y sont entrés.',
+    shortcut: {
+      eggs: 'Collecte d’œufs',
+      incubation: 'Incubations',
+      output: 'Sortie vers la vente',
+      sheet: 'Fiche d’un lot',
+    },
     back: 'Lots actifs',
     lot_not_daily: 'Ce lot n’accepte pas de saisie (planifié, clôturé, ou absent de ce téléphone).',
     offline_banner:
@@ -1088,6 +1107,13 @@ export const fr = {
   },
   eggs: {
     back: 'Saisie du jour {{code}}',
+    recent_title: 'Collectes récentes',
+    recent_empty: 'Aucune collecte enregistrée pour ce lot.',
+    recent_line: '{{date}} · {{collected}} collectés · {{marketable}} commercialisables',
+    cancel_title: 'Annuler la collecte {{doc}} ?',
+    cancel_hint:
+      'Les œufs de cette collecte sortent du stock et du coût du lot. Impossible si ces œufs ont déjà été vendus, transférés ou mis à couver : annulez d’abord cette opération.',
+    cancel_confirm: 'Annuler la collecte',
     offline_banner:
       'Hors ligne : la collecte sera enregistrée sur ce téléphone et envoyée au retour du réseau ; les œufs entrent aussitôt au disponible.',
     no_lot: 'Aucun lot de pondeuses ou de reproducteurs actif sur les fermes de ce téléphone.',
@@ -1593,6 +1619,137 @@ export const fr = {
     cancelled: 'annulée',
     weighings_title: 'Pesées',
     weighing: '{{weight}} g en moyenne ({{sample}} sujets)',
+    actions_title: 'Actions sur le lot',
+    actions_online_only:
+      'Hors ligne : la clôture et les annulations se font en ligne, le serveur contrôle leur effet sur le stock et les coûts.',
+    actions_planned_hint:
+      'Ce lot est planifié : il devient actif dès que des animaux y entrent. Tant qu’aucun animal n’est entré, vous pouvez l’annuler.',
+    actions_closed_hint: 'Lot clôturé : son coût est figé, plus aucune saisie ni annulation.',
+    actions_cancelled_hint: 'Lot annulé : il ne reçoit plus rien.',
+    action: {
+      daily: 'Saisie du jour',
+      eggs: 'Collecte d’œufs',
+      output: 'Sortie vers la vente',
+      entry: 'Faire entrer des animaux',
+      close: 'Clôturer le lot',
+      cancel: 'Annuler le lot',
+      cancel_entry: 'Annuler',
+      cancel_weighing: 'Annuler',
+    },
+    close_title: 'Clôturer le lot {{lot}} ?',
+    close_hint:
+      'Le lot ne reçoit plus aucune saisie et son coût est figé. Il ne doit plus contenir d’animaux non vendus : vendez, transférez ou déclarez d’abord les animaux restants, et traitez les mortalités en attente.',
+    close_confirm: 'Clôturer le lot',
+    cancel_lot_title: 'Annuler le lot {{lot}} ?',
+    cancel_lot_hint:
+      'Seul un lot planifié, sans aucune entrée, s’annule. L’annulation est définitive : créez un nouveau lot pour recommencer.',
+    cancel_lot_confirm: 'Annuler le lot',
+    cancel_entry_title: 'Annuler l’entrée de {{quantity}} ?',
+    cancel_entry_hint:
+      'Les animaux de cette entrée sont retirés du lot et rendus à leur origine ; les coûts qu’elle a portés sont repris. Impossible si le lot d’origine est clôturé.',
+    cancel_entry_confirm: 'Annuler l’entrée',
+    cancel_weighing_title: 'Annuler cette pesée ?',
+    cancel_weighing_hint:
+      'La pesée n’est plus comptée dans le gain moyen quotidien ; elle reste visible à l’historique.',
+    cancel_weighing_confirm: 'Annuler la pesée',
+  },
+  help: {
+    open: 'Aide de cette page',
+    title: 'Aide',
+    open_guide: 'Guide complet',
+    online: 'En ligne',
+    go: 'Y aller',
+    before: 'Avant de commencer',
+    can: 'Ce que vous pouvez faire ici',
+    can_none: 'Sur cette page, votre profil peut seulement consulter : rien ne s’y enregistre.',
+    reserved: 'Réservé à d’autres profils',
+    reserved_hint:
+      'Ces actions existent sur cette page mais demandent un autre rôle : demandez à l’administrateur de vous l’attribuer, ou à la personne qui l’a.',
+    roles: 'Profils : {{roles}}',
+    next: 'Ensuite',
+    screen_reserved:
+      'Cette page est réservée à d’autres profils : votre compte ne la propose pas dans le menu.',
+    none: 'Pas d’aide écrite pour cette page. Le guide complet décrit toutes les pages de l’application.',
+    guide: {
+      search_label: 'Chercher dans le guide',
+      search_placeholder: 'Un mot : lot, œufs, caisse…',
+      profile: 'Votre profil',
+      profile_unknown:
+        'Vos rôles ne sont pas encore connus de ce téléphone : ouvrez l’accueil une fois avec du réseau. Le guide montre alors tout, sans tenir compte de vos droits.',
+      profile_roles: 'Vous êtes connecté avec le profil : {{roles}}.',
+      profile_hint:
+        'Chaque page a son aide, le bouton « ? » en haut : à quoi elle sert, ce que votre profil y peut faire, ce qui demande un autre rôle, et l’étape suivante. Le guide ci-dessous rassemble tout.',
+      journeys: 'Parcours de bout en bout',
+      journeys_hint:
+        'Les parcours de votre profil viennent en premier. Chaque étape dit quel rôle la fait.',
+      pages: 'Les pages, par domaine',
+      pages_hint:
+        'Touchez une page pour voir à quoi elle sert et ce que l’on peut y faire. Une page réservée à un autre profil dit lequel.',
+      detail_pages: 'Pages de détail',
+      faq: 'Questions fréquentes',
+      everyone: 'Tous les profils',
+      reserved: 'Autre profil',
+      open_page: 'Ouvrir la page',
+      nothing: 'Rien ne correspond à cette recherche.',
+    },
+  },
+  thresholds: {
+    back: 'Stock',
+    intro:
+      'Pour chaque produit d’un emplacement : le minimum sous lequel il est signalé en alerte de stock, et la cible à laquelle le réapprovisionnement le ramène. Chaque réglage crée une nouvelle version ; l’ancienne reste à l’historique.',
+    result: {
+      WAITING_offline: 'Seuil enregistré sur ce téléphone ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Seuil en cours d’envoi…',
+      DONE: 'Seuil enregistré.',
+      WARNING: 'Seuil enregistré, avec un signalement.',
+      CONFLICT: 'Seuil mis en attente d’examen (conflit).',
+      REJECTED: 'Seuil refusé : {{reason}}',
+    },
+    no_location: 'Aucun emplacement avec du stock dans le périmètre de ce téléphone.',
+    location_label: 'Emplacement',
+    no_product: 'Aucun produit en stock ni avec un seuil sur cet emplacement.',
+    line: 'Minimum {{min}} · cible {{target}} {{unit}}',
+    none: 'Pas de seuil',
+    on_hand: 'En stock : {{quantity}} {{unit}}',
+    edit: 'Modifier',
+    set: 'Fixer',
+    sheet_title: 'Seuil de {{product}}',
+    sheet_hint:
+      'Quantités dans l’unité de base du produit. Sous le minimum, le produit est signalé ; la cible est ce que le réapprovisionnement vise.',
+    min_label: 'Minimum d’alerte',
+    target_label: 'Cible de réapprovisionnement',
+    issue: {
+      number: 'Nombre positif ou nul, trois décimales au plus.',
+      below_min: 'La cible doit être au moins égale au minimum.',
+    },
+    versioned: 'Le seuil actuel reste à l’historique',
+    save: 'Enregistrer le seuil',
+    cancel: 'Annuler',
+  },
+  corrections: {
+    comment_label: 'Motif de l’annulation',
+    comment_hint: 'Obligatoire : il reste dans l’historique de l’opération.',
+    comment_required: 'Indiquez le motif de l’annulation.',
+    keep: 'Ne pas annuler',
+    cancel: 'Annuler',
+    result: {
+      WAITING_offline:
+        'Annulation enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Annulation en cours d’envoi…',
+      DONE: 'Annulation enregistrée.',
+      WARNING: 'Annulation enregistrée, avec un signalement.',
+      CONFLICT: 'Annulation mise en attente d’examen (conflit).',
+      REJECTED: 'Annulation refusée : {{reason}}',
+    },
+    close_result: {
+      WAITING_offline:
+        'Clôture enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Clôture du lot en cours d’envoi…',
+      DONE: 'Lot clôturé.',
+      WARNING: 'Lot clôturé, avec un signalement.',
+      CONFLICT: 'Clôture mise en attente d’examen (conflit).',
+      REJECTED: 'Clôture refusée : {{reason}}',
+    },
   },
   incubation: {
     offline_banner:
@@ -1744,6 +1901,7 @@ export const fr = {
       'Ce stock contient aussi des animaux d’un lot de production : désignez le lot de stock d’origine.',
     no_receipt:
       'Aucune réception comptabilisée d’animaux de cette espèce encore à mettre en place sur la ferme.',
+    receive_animals: 'Enregistrer l’achat des animaux',
     receipt_label: 'Réception d’achat',
     receipt_product_label: 'Animaux reçus',
     source_lot_label: 'Lot d’origine',

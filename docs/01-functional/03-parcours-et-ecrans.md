@@ -125,6 +125,7 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-NOT-01 | Centre d'alertes et de notifications (onglets Alertes, Notifications, Règles d'alerte pour DIRECTION et ADMIN) | Tous | Oui (dernières) | P2, complété en P9, livré en RP-4 (03/11/2026) |
 | ECR-NOT-02 | Notes de direction (lecture, accusé) | Tous | Oui | P9, livré en RP-4 (03/11/2026) |
 | ECR-NOT-03 | Publication d'une note (brouillon, audience, archivage, suivi des accusés) | DIRECTION | Non | P9, livré en RP-4 (03/11/2026) |
+| ECR-HLP-01 | Guide et aide : profil, parcours de bout en bout, toutes les pages par domaine avec leurs rôles, questions fréquentes, recherche ; chaque page a de plus son aide (bouton « ? » de la barre du haut) | Tous | Oui | AV-525, ADR-058 (06/11/2026) |
 | ECR-AUD-01 | Journal d'audit (recherche) | DIRECTION, ADMIN, FINANCE | Non | P0, livré en RP-1 (01/11/2026, [ADR-051](../decisions/ADR-051-ecrans-d-administration-de-la-configuration-rp1.md) : filtres période, type d'entité, acteur, action et identifiant, détail avant et après ; la Finance ne lit que les entités financières, AV-493) |
 
 ### 3.2 Catalogue et tarification
@@ -171,24 +172,25 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ID | Écran | Rôles | Hors ligne | Phase |
 |---|---|---|---|---|
 | ECR-STK-01 | Stock par emplacement (soldes, disponible net des quotas des autres appareils, alloué ; plus de réservé : ADR-028 §4) | MAGASINIER, VENDEUR_PDV, responsables | Oui (périmètre) | P2 |
-| ECR-STK-02 | TRANSFÉRER (expédier), y compris affectation à un commercial | MAGASINIER, RESP_FERME | Oui | P2 |
+| ECR-STK-02 | TRANSFÉRER (expédier), y compris affectation à un commercial | MAGASINIER, RESP_FERME, RESP_PRODUCTION, ADMIN (AV-524) | Oui | P2 |
 | ECR-STK-03 | RECEVOIR un transfert | Destinataires | Oui | P2 |
 | ECR-STK-04 | DÉCLARER UNE PERTE | Tous les détenteurs de stock | Oui | P2 |
-| ECR-STK-05 | INVENTAIRE (comptage, validation des écarts) | MAGASINIER, VENDEUR_PDV, RESP_FERME | Comptage oui ; validation non | P2 |
+| ECR-STK-05 | INVENTAIRE (comptage, validation des écarts) | MAGASINIER, VENDEUR_PDV, RESP_FERME, RESP_PRODUCTION, ADMIN (AV-524) | Comptage oui ; validation non | P2 |
 | ECR-STK-06 | Allocations (accorder, libérer, révoquer) | MAGASINIER, responsable PDV | Non | P5 |
 | ECR-STK-07 | Registre des mouvements et explication d'écart | Responsables, DIRECTION | Non | P2 |
 | ECR-STK-08 | Consommation d'intrants hors lot | MAGASINIER, RESP_FERME | Oui | P2 |
+| ECR-STK-09 | Seuils d'alerte : minimum d'alerte et cible de réapprovisionnement par emplacement et produit (`inventory.threshold.set`, une version par réglage) | DIRECTION, ADMIN, RESP_PRODUCTION, RESP_FERME, MAGASINIER (RESP_COMMERCIAL en zone) | Oui | AV-526 (06/11/2026) |
 
 ### 3.6 Production
 
 | ID | Écran | Rôles | Hors ligne | Phase |
 |---|---|---|---|---|
-| ECR-PRD-01 | Lots actifs (effectif, âge, alertes) | RESP_PRODUCTION, RESP_FERME | Oui | P7 |
-| ECR-PRD-02 | SAISIE DU JOUR (mortalité, aliment, pesée, collecte d'œufs, observation) | RESP_FERME, (OPERATEUR_FERME) | Oui | P7 |
-| ECR-PRD-03 | Fiche lot (effectif, mortalité, consommations, coûts, ventes, marge) | RESP_PRODUCTION, DIRECTION | Partiel | P7/P8 |
-| ECR-PRD-04 | Nouveau lot / mise en place / entrée | RESP_PRODUCTION | Oui | P7 |
-| ECR-PRD-06 | Incubation (lots, étapes, taux d'éclosion) | RESP_FERME, RESP_PRODUCTION | Oui | P7 |
-| ECR-PRD-07 | SORTIE VERS COMMERCIALISATION | RESP_FERME | Oui | P7 |
+| ECR-PRD-01 | Lots actifs (effectif, âge, alertes) ; « Nouveau lot », lots planifiés qui ouvrent l'entrée des animaux, raccourcis (AV-526) | RESP_PRODUCTION, RESP_FERME, ADMIN (AV-524) | Oui | P7 |
+| ECR-PRD-02 | SAISIE DU JOUR (mortalité, aliment, pesée, collecte d'œufs avec annulation d'une collecte, observation) | RESP_FERME, RESP_PRODUCTION, ADMIN (AV-524), (OPERATEUR_FERME) | Oui | P7 |
+| ECR-PRD-03 | Fiche lot (effectif, mortalité, consommations, coûts, ventes, marge) ; clôture du lot, annulation d'un lot planifié, d'une entrée, d'une pesée (en ligne, AV-526) | RESP_PRODUCTION, DIRECTION, ADMIN (AV-524) | Partiel | P7/P8 |
+| ECR-PRD-04 | Nouveau lot / mise en place / entrée | RESP_PRODUCTION, ADMIN (AV-524) | Oui | P7 |
+| ECR-PRD-06 | Incubation (lots, étapes, taux d'éclosion) | RESP_FERME, RESP_PRODUCTION, ADMIN (AV-524) | Oui | P7 |
+| ECR-PRD-07 | SORTIE VERS COMMERCIALISATION | RESP_FERME, RESP_PRODUCTION, ADMIN (AV-524) | Oui | P7 |
 
 Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait partie de la saisie du jour (ECR-PRD-02).
 
@@ -199,7 +201,7 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 | ECR-APP-01 | Fournisseurs | RESP_ACHATS | Non | P6 |
 | ECR-APP-02 | Demande d'achat | Tous les demandeurs, RESP_ACHATS | Oui (création) | P6 |
 | ECR-APP-03 | Bons de commande | RESP_ACHATS | Non | P6 |
-| ECR-APP-04 | RÉCEPTIONNER | MAGASINIER, RESP_FERME | Oui | P6 |
+| ECR-APP-04 | RÉCEPTIONNER | MAGASINIER, RESP_FERME, RESP_PRODUCTION, ADMIN (AV-524) | Oui | P6 |
 | ECR-APP-05 | Rapprochement commande / réception / facture | RESP_ACHATS, FINANCE, DIRECTION (AV-302) | Non | P8 |
 | ECR-FIN-01 | Créances (âge, retards ; encaissement par ECR-VEN-06, AV-304) | FINANCE, DIRECTION, RESP_COMMERCIAL | Non | P4/P8 |
 | ECR-FIN-02 | + DÉPENSE | Tous les rôles autorisés | Oui | P8 |

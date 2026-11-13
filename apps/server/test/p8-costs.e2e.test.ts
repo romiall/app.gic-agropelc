@@ -280,8 +280,9 @@ describe('P8-11 : valeur des pertes et vue d’ensemble financière', { timeout:
       (await get(terrain, `/api/v1/losses/summary?from=${DAY}&to=${DAY}&site_id=${site}`))
         .statusCode,
     ).toBe(404);
+    // Le Resp. achats n'a pas `inventory.loss.read` (l'Admin l'a depuis AV-524).
     expect(
-      (await get(admin, `/api/v1/losses/summary?from=${DAY}&to=${DAY}&site_id=${site}`)).statusCode,
+      (await get(ach, `/api/v1/losses/summary?from=${DAY}&to=${DAY}&site_id=${site}`)).statusCode,
     ).toBe(403);
     expect((await get(fin, `/api/v1/losses/summary?from=${DAY}&to=2026-07-01`)).statusCode).toBe(
       400,

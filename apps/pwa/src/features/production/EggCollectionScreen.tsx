@@ -17,6 +17,8 @@ import {
   EmptyState,
   Field,
   Input,
+  List,
+  ListRow,
   PageHeader,
   Section,
   Select,
@@ -25,6 +27,8 @@ import {
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { useCorrectionFlow } from '../corrections/correction-flow.js';
+import { formatBusinessDate } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
@@ -33,6 +37,8 @@ import { checkEggs, EMPTY_EGGS, eggCollectionPayload, eggSetup, type EggDraft } 
 import './production.css';
 
 const COUNTERS = ['collected', 'broken', 'nonconforming', 'hatching'] as const;
+/** Collectes récentes proposées à l'annulation. */
+const RECENT_COLLECTIONS = 7;
 
 export function EggCollectionScreen() {
   const { t } = useTranslation();
@@ -48,6 +54,8 @@ export function EggCollectionScreen() {
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  // Annulation d'une collecte saisie par erreur (AV-526) : les œufs sortent du stock et du coût du lot.
+  const corrections = useCorrectionFlow(userId);
 
   if (!refs || !userId) {
     return (
@@ -65,6 +73,15 @@ export function EggCollectionScreen() {
     .sort((a, b) => a.lot_code.localeCompare(b.lot_code, 'fr'));
   const lot = lots.find((candidate) => candidate.id === lotChoice) ?? lots[0];
   const storages = lot ? eggStorageLocations(refs.locations, lot) : [];
+  const recent = lot
+    ? refs.eggCollections
+        .filter(
+          (collection) =>
+            collection.production_lot_id === lot.id && collection.status !== 'CANCELLED',
+        )
+        .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+        .slice(0, RECENT_COLLECTIONS)
+    : [];
   const storage = storages.find((candidate) => candidate.id === storageChoice) ?? storages[0];
   const setup = lot ? eggSetup(refs.products, refs.settings, now) : undefined;
   const check = setup ? checkEggs(draft, setup) : undefined;
@@ -245,6 +262,50 @@ export function EggCollectionScreen() {
               <p className="prd-note is-bad">{t('eggs.hatching_missing')}</p>
             ) : null}
             {saveError ? <Banner tone="bad">{t('sales.error_local_save')}</Banner> : null}
+            <Section title={t('eggs.recent_title')} className="prd-after">
+              {recent.length === 0 ? (
+                <p className="prd-note">{t('eggs.recent_empty')}</p>
+              ) : (
+                <List>
+                  {recent.map((collection) => (
+                    <ListRow
+                      key={collection.id}
+                      icon="leaf"
+                      title={collection.doc_number}
+                      subtitle={t('eggs.recent_line', {
+                        date: formatBusinessDate(
+                          collection.collection_date ??
+                            businessDayOf(new Date(collection.occurred_at)),
+                        ),
+                        collected: collection.collected_qty,
+                        marketable: collection.marketable_qty,
+                      })}
+                      badge={
+                        corrections.isPending(collection.id) ? undefined : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              corrections.ask({
+                                commandType: 'production.egg_collection.cancel',
+                                aggregateType: 'EGG_COLLECTION',
+                                aggregateId: collection.id,
+                                title: t('eggs.cancel_title', { doc: collection.doc_number }),
+                                hint: t('eggs.cancel_hint'),
+                                confirmLabel: t('eggs.cancel_confirm'),
+                              })
+                            }
+                          >
+                            {t('corrections.cancel')}
+                          </Button>
+                        )
+                      }
+                    />
+                  ))}
+                </List>
+              )}
+            </Section>
+            {corrections.node}
             <ActionBar summary={balance}>
               <Button
                 size="lg"

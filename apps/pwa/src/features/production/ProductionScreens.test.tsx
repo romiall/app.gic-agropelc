@@ -499,4 +499,100 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     );
     expect(check.issues).toContain('HATCHING_PRODUCT_MISSING');
   });
+
+  it('AV-526 : « Nouveau lot », les raccourcis et le lot planifié suivent les droits du profil', async () => {
+    const PLANNED = '01900000-0000-7000-8000-0000000005b1';
+    const planned = lot(
+      PLANNED,
+      'PC-2026-003',
+      'POULET_CHAIR',
+      '01900000-0000-7000-8000-0000000005b2',
+    );
+    planned.data.status = 'PLANNED';
+    await getDb().projections.put(planned);
+
+    await rememberRoles(['ADMIN']);
+    renderAt('/production/lots');
+    expect(await screen.findByRole('link', { name: 'Nouveau lot' })).toHaveAttribute(
+      'href',
+      '/production/nouveau-lot',
+    );
+    for (const name of [
+      'Collecte d’œufs',
+      'Incubations',
+      'Sortie vers la vente',
+      'Fiche d’un lot',
+    ]) {
+      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+    }
+    // Un lot planifié ouvre l'entrée des animaux, lot déjà choisi.
+    expect(screen.getByRole('link', { name: /PC-2026-003/ })).toHaveAttribute(
+      'href',
+      `/production/nouveau-lot?lot=${PLANNED}`,
+    );
+    cleanup();
+
+    // Responsable de ferme : saisit et collecte, ne crée pas de lot et n'a pas la fiche.
+    await rememberRoles(['RESP_FERME']);
+    renderAt('/production/lots');
+    await screen.findByText('PC-2026-003');
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'Nouveau lot' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('link', { name: 'Collecte d’œufs' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Fiche d’un lot' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /PC-2026-003/ })).not.toBeInTheDocument();
+  });
+
+  it('AV-526 : sans lot actif, l’écran explique la chaîne et propose l’étape suivante à qui crée les lots', async () => {
+    await getDb().projections.delete(`production:PRODUCTION_LOT:${BROILERS}`);
+    await getDb().projections.delete(`production:PRODUCTION_LOT:${LAYERS}`);
+    await rememberRoles(['RESP_PRODUCTION']);
+    renderAt('/production/lots');
+    expect(
+      await screen.findByText(/Un lot devient actif dès que des animaux y entrent/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Nouveau lot' }).length).toBeGreaterThan(0);
+    cleanup();
+
+    await rememberRoles(['RESP_FERME']);
+    renderAt('/production/lots');
+    expect(await screen.findByText(/Le responsable de production crée le lot/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Nouveau lot' })).not.toBeInTheDocument();
+  });
+
+  it('AV-526 : une collecte récente s’annule avec un motif, lot et document désignés', async () => {
+    const COLLECTION = '01900000-0000-7000-8000-0000000005c1';
+    await getDb().projections.put(
+      projection('production', 'EGG_COLLECTION', COLLECTION, {
+        doc_number: 'COL-2026-000001',
+        production_lot_id: LAYERS,
+        collection_date: '2026-10-09',
+        storage_location_id: STORE,
+        collected_qty: 120,
+        broken_qty: 2,
+        nonconforming_qty: 3,
+        marketable_qty: 115,
+        hatching_qty: 0,
+        status: 'RECORDED',
+        occurred_at: '2026-10-09T15:00:00.000Z',
+        grades: [],
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt(`/production/collecte?lot=${LAYERS}`);
+    const recent = within(await screen.findByRole('region', { name: 'Collectes récentes' }));
+    expect(recent.getByText(/120 collectés · 115 commercialisables/)).toBeInTheDocument();
+    await user.click(recent.getByRole('button', { name: 'Annuler' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await user.type(sheet.getByLabelText('Motif de l’annulation'), 'Saisie en double');
+    await user.click(sheet.getByRole('button', { name: 'Annuler la collecte' }));
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'production.egg_collection.cancel',
+      aggregate_type: 'EGG_COLLECTION',
+      aggregate_id: COLLECTION,
+      payload: { comment: 'Saisie en double' },
+    });
+  });
 });

@@ -40,6 +40,7 @@ const ACTION_ICONS: Readonly<Record<string, IconName>> = {
   stock_ledger: 'file',
   consumption: 'leaf',
   allocations: 'sliders',
+  thresholds: 'alert',
   replenish: 'store',
 };
 

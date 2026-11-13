@@ -7,3 +7,16 @@
   font-size: var(--text-sm);
   font-weight: 400;
 }
+
+/* Seuils d'alerte (ECR-STK-09) : une colonne étroite, comme les formulaires de la production. */
+.stk-narrow {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+}
+
+.stk-note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}

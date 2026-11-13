@@ -153,6 +153,7 @@ const ACTION_ICON: Readonly<Record<string, IconName>> = {
   DAILY_ENTRY: 'clipboard',
   EGG_COLLECTION: 'leaf',
   LOTS: 'leaf',
+  NEW_LOT: 'leaf',
   INCUBATIONS: 'leaf',
   LOT_COSTS: 'chart',
   MORTALITY: 'shield',

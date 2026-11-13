@@ -173,31 +173,31 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 
 | Permission | DIR | ADM | RCO | CTE | CSE | VEN | RPR | RFE | MAG | ACH | FIN |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `inventory.stock.read` | ALL | — | ALL | OWN | ALL | SITE | ALL | SITE | SITE | ALL | ALL |
+| `inventory.stock.read` | ALL | ALL | ALL | OWN | ALL | SITE | ALL | SITE | SITE | ALL | ALL |
 | `inventory.valuation.read` | ALL | — | — | — | — | — | ALL | — | — | ALL | ALL |
-| `inventory.ledger.read` | ALL | — | ZONE | OWN | — | SITE | ALL | SITE | SITE | — | ALL |
-| `inventory.transfer.request` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
-| `inventory.transfer.dispatch` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
-| `inventory.transfer.receive` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
-| `inventory.transfer.cancel` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
+| `inventory.ledger.read` | ALL | ALL | ZONE | OWN | — | SITE | ALL | SITE | SITE | — | ALL |
+| `inventory.transfer.request` | — | ALL | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
+| `inventory.transfer.dispatch` | — | ALL | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
+| `inventory.transfer.receive` | — | ALL | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
+| `inventory.transfer.cancel` | — | ALL | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
 | `inventory.transfer_discrepancy.approve` | A·ALL | — | — | — | — | — | A·ALL | A·SITE | A·SITE | — | — |
-| `inventory.allocation.manage` | ALL | — | ZONE | — | — | — | — | SITE | SITE | — | — |
+| `inventory.allocation.manage` | ALL | ALL | ZONE | — | — | — | — | SITE | SITE | — | — |
 | `inventory.allocation.release` (AV-162) | — | — | — | OWN | — | OWN | — | — | — | — | — |
-| `inventory.loss.declare` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
+| `inventory.loss.declare` | — | ALL | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
 | `inventory.loss.approve` | A·ALL | — | A·ZONE (PDV) | — | — | — | A·ALL (fermes) | A·SITE | — | — | — |
-| `inventory.loss.read` (AV-094) | ALL | — | ZONE | OWN | — | OWN | ALL | SITE | SITE | — | ALL |
-| `inventory.count.perform` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | ALL |
+| `inventory.loss.read` (AV-094) | ALL | ALL | ZONE | OWN | — | OWN | ALL | SITE | SITE | — | ALL |
+| `inventory.count.perform` | — | ALL | — | OWN | — | SITE | ALL | SITE | SITE | — | ALL |
 | `inventory.count.approve` | A·ALL | — | A·ZONE (PDV) | — | — | — | A·ALL (fermes) | A·SITE | — | — | A·ALL |
-| `inventory.consumption.record` | — | — | — | — | — | SITE | ALL | SITE | SITE | — | — |
-| `inventory.threshold.manage` | ALL | — | ZONE | — | — | — | ALL | SITE | SITE | — | — |
+| `inventory.consumption.record` | — | ALL | — | — | — | SITE | ALL | SITE | SITE | — | — |
+| `inventory.threshold.manage` | ALL | ALL | ZONE | — | — | — | ALL | SITE | SITE | — | — |
 | `inventory.opening.post` | — | ALL | — | — | — | — | — | — | SITE | — | ALL |
 | `inventory.cost_entry.record` (frais généraux d'une ferme, AV-103) | — | — | — | — | — | — | ALL | SITE | — | — | ALL |
-| `production.lot.read` | ALL | — | — | — | — | — | ALL | SITE | — | ALL | ALL |
-| `production.lot.manage` | — | — | — | — | — | — | ALL | — | — | — | — |
+| `production.lot.read` | ALL | ALL | — | — | — | — | ALL | SITE | — | ALL | ALL |
+| `production.lot.manage` | — | ALL | — | — | — | — | ALL | — | — | — | — |
 | `production.lot_opening.post` (ADR-069, AV-541 : reprise d'un lot en cours, validée comme le stock d'ouverture) | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
-| `production.daily.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |
+| `production.daily.record` | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
 | `production.mortality.approve` | A·ALL | — | — | — | — | — | A·ALL | — | — | — | — |
-| `production.incubation.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |
+| `production.incubation.record` | — | ALL | — | — | — | — | ALL | SITE | — | — | — |
 | `production.overhead.allocate` (répartition des frais généraux d'une ferme, AV-106) | — | — | — | — | — | — | ALL | — | — | — | ALL |
 
 **Portée des commandes de stock** (P5-23, AV-182) : la portée de la permission est contrôlée, pas seulement sa présence. La ressource est l'emplacement — son site, et son titulaire pour un stock sous garde exclusive (portée `OWN` : stock mobile). Une commande à deux extrémités (transfert) est permise dès qu'**une** d'elles est dans la portée ; les emplacements virtuels ne font pas ressource. Refus `FORBIDDEN_SCOPE`, en ligne comme hors ligne (RC-01).
@@ -206,14 +206,14 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 
 | Permission | DIR | ADM | RCO | CTE | CSE | VEN | RPR | RFE | MAG | ACH | FIN |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `procurement.supplier.read` | ALL | — | — | — | — | — | ALL | SITE | ALL | ALL | ALL |
+| `procurement.supplier.read` | ALL | ALL | — | — | — | — | ALL | SITE | ALL | ALL | ALL |
 | `procurement.supplier.manage` | — | — | — | — | — | — | — | — | — | ALL | — |
-| `procurement.request.create` | ALL | — | — | — | — | — | ALL | SITE | SITE | ALL | ALL |
+| `procurement.request.create` | ALL | ALL | — | — | — | — | ALL | SITE | SITE | ALL | ALL |
 | `procurement.request.approve` | A·ALL | — | — | — | — | — | — | — | — | A·ALL | — |
-| `procurement.order.read` | ALL | — | — | — | — | — | ALL | SITE | SITE | ALL | ALL |
+| `procurement.order.read` | ALL | ALL | — | — | — | — | ALL | SITE | SITE | ALL | ALL |
 | `procurement.order.manage` | — | — | — | — | — | — | — | — | — | ALL | — |
 | `procurement.order.approve` | A·ALL | — | — | — | — | — | — | — | — | — | — |
-| `procurement.receipt.record` | — | — | — | — | — | — | ALL | SITE | SITE | — | — |
+| `procurement.receipt.record` | — | ALL | — | — | — | — | ALL | SITE | SITE | — | — |
 | `procurement.receipt.cancel` | A·ALL | — | — | — | — | — | — | — | — | A·ALL | — |
 | `procurement.receipt_exception.approve` | A·ALL | — | — | — | — | — | — | — | — | A·ALL | — |
 | `finance.cash.read` | ALL | — | — | OWN | OWN | SITE | — | OWN | — | — | ALL |
@@ -234,8 +234,8 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `analytics.dashboard.direction` | ALL | — | — | — | — | — | — | — | — | — | — |
 | `analytics.dashboard.commercial` | ALL | — | TEAM | OWN | OWN | — | — | — | — | — | ALL |
 | `analytics.dashboard.distribution` | ALL | — | ZONE | — | — | SITE | — | — | SITE | — | ALL |
-| `analytics.dashboard.stock` | ALL | — | — | — | — | — | ALL | SITE | SITE | ALL | ALL |
-| `analytics.dashboard.production` | ALL | — | — | — | — | — | ALL | SITE | — | — | ALL |
+| `analytics.dashboard.stock` | ALL | ALL | — | — | — | — | ALL | SITE | SITE | ALL | ALL |
+| `analytics.dashboard.production` | ALL | ALL | — | — | — | — | ALL | SITE | — | — | ALL |
 | `analytics.dashboard.finance` | ALL | — | — | — | — | — | — | — | — | — | ALL |
 | `analytics.explore` | ALL | — | TEAM | — | — | — | ALL | — | — | ALL | ALL |
 | `analytics.view.share` | ALL | — | TEAM | — | — | — | ALL | — | — | ALL | ALL |
@@ -245,6 +245,7 @@ Remarques :
 
 - `DIRECTION` n'a pas, par défaut, les permissions d'**exécution** opérationnelle (vente, réception, saisie de production). Si un dirigeant vend, il reçoit en plus un rôle opérationnel (cumul).
 - `ADMIN` a `crm.customer.merge` pour le dédoublonnage technique, mais aucune permission `A·` (RC-03).
+- **L'Administrateur exerce la ferme et le stock (06/11/2026, décision du porteur, AV-524, ADR-057)** : 22 octrois `ALL` — production (`production.lot.read`, `.lot.manage`, `.daily.record`, `.incubation.record`), stock (`inventory.stock.read`, `.ledger.read`, `.transfer.request`, `.transfer.dispatch`, `.transfer.receive`, `.transfer.cancel`, `.loss.declare`, `.loss.read`, `.count.perform`, `.consumption.record`, `.threshold.manage`, `.allocation.manage`), achats (`procurement.supplier.read`, `.request.create`, `.order.read`, `.receipt.record`) et tableaux de bord de stock et de production. Il peut ainsi créer et suivre un lot, saisir la journée, collecter les œufs, incuber, réceptionner les animaux et l'aliment, transférer, déclarer une perte, inventorier, fixer un seuil, sans compte de terrain. **Inchangé** : aucune permission `A·` (RC-03 : mortalités, pertes, inventaires, écarts et demandes d'achat restent à la Direction et aux responsables ; le compte du porteur porte aussi `DIRECTION`, qui valide) et aucune valorisation (`inventory.valuation.read`, RC-05 : coûts, marges et valeurs restent masqués). **Écrans** : le Responsable de production, qui détenait déjà `procurement.receipt.record`, `inventory.transfer.dispatch` et `inventory.count.perform` en `ALL`, voit désormais les écrans de réception, de transfert et d'inventaire.
 - `FINANCE` a `sales.payment.record` `ALL` pour enregistrer les virements et encaissements reçus au siège.
 - `finance.cash_session.validate` porte aussi la clôture d'un écart de remise, `finance.cash_transfer.close_discrepancy` (P5-23, AV-183) : c'est le droit de l'approbateur de la politique semée `CASH_TRANSFER_DISCREPANCY_DEFAULT` ; portée évaluée sur le site de la remise, à défaut celui du compte destinataire.
 - `finance.cash_transfer.record` (P5-15) : la portée s'évalue sur le compte concerné (source pour l'envoi et l'annulation, destinataire pour la réception) ; le détenteur d'une caisse personnelle en est propriétaire (§3) quel que soit le périmètre de son affectation. Le seed est aligné sur cette matrice pour `RESP_COMMERCIAL` (`OWN`, omis jusqu'en P5-15) ; `finance.expense.record` `OWN` de `RESP_COMMERCIAL` est aligné en P8-03. `finance.expense_category.manage` (P8-03, AV-270) : administrer les catégories de dépense (`finance.expense_category.*`), Finance et Administrateur.
@@ -265,11 +266,11 @@ Remarques :
 | Pointage | RO·ALL + A | — | TEAM + A | OWN | — | — | — | — | — | — | — |
 | Tarification | A·ALL | — | brouillons ALL | RO·ZONE | RO·ALL | RO·SITE | — | RO·SITE | — | — | RO·ALL |
 | Ventes | RO·ALL + A | — | TEAM + A | OWN | OWN | SITE | — | SITE | RO·SITE (commandes) | — | RO·ALL + A |
-| Stock | RO·ALL + A | ouverture | RO + A PDV | OWN | RO·ALL | SITE | ALL + A | SITE + A | SITE + A écarts | RO·ALL | RO·ALL + A |
-| Production | RO·ALL + A | — | — | — | — | — | ALL + A | SITE | — | RO | RO·ALL |
-| Approvisionnement | RO·ALL + A | — | — | — | — | — | DA + réception | DA + réception | DA + réception | ALL + A | RO·ALL |
+| Stock | RO·ALL + A | ALL (sans A) | RO + A PDV | OWN | RO·ALL | SITE | ALL + A | SITE + A | SITE + A écarts | RO·ALL | RO·ALL + A |
+| Production | RO·ALL + A | ALL (sans A) | — | — | — | — | ALL + A | SITE | — | RO | RO·ALL |
+| Approvisionnement | RO·ALL + A | DA + réception | — | — | — | — | DA + réception | DA + réception | DA + réception | ALL + A | RO·ALL |
 | Finance | RO·ALL + A | — | RO·TEAM + remises OWN | OWN | OWN | SITE (caisse) | dépenses | OWN / SITE | — | RO dettes | ALL + A |
-| Analytics | ALL | — | TEAM | OWN | OWN | SITE | ALL | SITE | SITE | ALL | ALL |
+| Analytics | ALL | stock et production | TEAM | OWN | OWN | SITE | ALL | SITE | SITE | ALL | ALL |
 | Audit | RO·ALL | RO·ALL | — | — | — | — | — | — | — | — | RO·ALL |
 
 ## 7. Rôle proposé `OPERATEUR_FERME` (AV-004, non créé)

@@ -10,6 +10,77 @@ import {
 } from './screens.js';
 
 describe('app/screens — registre et navigation par rôle', () => {
+  it('AV-524 : l’Administrateur voit les écrans de la ferme et du stock, pas ceux des ventes ni de la finance', () => {
+    const ids = screensForRoles(['ADMIN']).map((screen) => screen.id);
+    for (const id of [
+      'ECR-PRD-01',
+      'ECR-PRD-02',
+      'ECR-PRD-03',
+      'ECR-PRD-04',
+      'ECR-PRD-06',
+      'ECR-PRD-07',
+      'ECR-STK-01',
+      'ECR-STK-02',
+      'ECR-STK-03',
+      'ECR-STK-04',
+      'ECR-STK-05',
+      'ECR-STK-06',
+      'ECR-STK-07',
+      'ECR-STK-08',
+      'ECR-STK-09',
+      'ECR-APP-02',
+      'ECR-APP-04',
+      'ECR-ANA-03',
+      'ECR-ANA-04',
+      'ECR-HLP-01',
+    ]) {
+      expect(ids, id).toContain(id);
+    }
+    for (const id of [
+      'ECR-VEN-01',
+      'ECR-VEN-06',
+      'ECR-FIN-01',
+      'ECR-FIN-02',
+      'ECR-ADM-08',
+      'ECR-CRM-01',
+    ]) {
+      expect(ids, id).not.toContain(id);
+    }
+  });
+
+  it('AV-524 : le responsable de production a les écrans dont il détient les droits en portée ALL', () => {
+    const ids = screensForRoles(['RESP_PRODUCTION']).map((screen) => screen.id);
+    // Réceptions d'achat, transferts et inventaires (procurement.receipt.record, inventory.transfer.dispatch,
+    // inventory.count.perform).
+    for (const id of [
+      'ECR-APP-04',
+      'ECR-STK-02',
+      'ECR-STK-05',
+      'ECR-STK-09',
+      'ECR-PRD-04',
+      'ECR-PRD-03',
+    ]) {
+      expect(ids, id).toContain(id);
+    }
+  });
+
+  it('AV-524 : les raccourcis « Nouveau lot », « Lots » et « Réceptions » mènent à leur écran pour l’Admin', () => {
+    expect(routeOfAction({ code: 'NEW_LOT', route: null }, 'ADMIN')).toBe(ROUTES.lotSetup);
+    expect(routeOfAction({ code: 'NEW_LOT', route: null }, 'RESP_PRODUCTION')).toBe(
+      ROUTES.lotSetup,
+    );
+    expect(routeOfAction({ code: 'NEW_LOT', route: null }, 'RESP_FERME')).toBeNull();
+    expect(routeOfAction({ code: 'LOTS', route: null }, 'ADMIN')).toBe(ROUTES.productionLots);
+    expect(routeOfAction({ code: 'EGG_COLLECTION', route: null }, 'ADMIN')).toBe(
+      ROUTES.eggCollection,
+    );
+    expect(routeOfAction({ code: 'INCUBATIONS', route: null }, 'ADMIN')).toBe(ROUTES.incubation);
+    expect(routeOfAction({ code: 'RECEIPTS', route: null }, 'ADMIN')).toBe(ROUTES.purchaseReceipts);
+    expect(routeOfAction({ code: 'STOCK_ALERTS', route: null }, 'ADMIN')).toBe(
+      `${ROUTES.stock}?alertes=1`,
+    );
+  });
+
   it('une route fournie par le serveur l’emporte ; à défaut, celle de l’écran livré', () => {
     expect(routeOfAction({ code: 'SYNC_STATUS', route: null })).toBe(ROUTES.sync);
     expect(routeOfAction({ code: 'SYNC_STATUS', route: '/autre' })).toBe('/autre');

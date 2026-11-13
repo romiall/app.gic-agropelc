@@ -8,6 +8,7 @@
  * repliées, origine des animaux en lignes à cocher, bouton principal dans la barre d'action collée.
  */
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LOT_OPENING_AGGREGATE_TYPE } from '@gic/contracts';
 import {
@@ -17,7 +18,7 @@ import {
   type LotEntrySourceKind,
   type ProductionLotType,
 } from '@gic/domain';
-import { ROUTES } from '../../app/screens.js';
+import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import {
   ActionBar,
   Banner,
@@ -25,6 +26,7 @@ import {
   Field,
   Icon,
   Input,
+  LinkButton,
   PageHeader,
   Radio,
   Segmented,
@@ -34,6 +36,7 @@ import {
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
@@ -84,6 +87,8 @@ interface SectionProps {
   readonly userId: string;
   readonly online: boolean;
   readonly blocked: boolean;
+  /** Peut enregistrer la réception d'un achat : l'écran propose alors d'y aller quand il manque des animaux. */
+  readonly mayReceive: boolean;
   readonly send: (
     kind: Section,
     input: Parameters<typeof submitCommand>[0],
@@ -483,6 +488,7 @@ function RecordEntry({
   userId,
   online,
   blocked,
+  mayReceive,
   send,
   lotChoice,
   setLotChoice,
@@ -560,6 +566,12 @@ function RecordEntry({
     check.quantity > designatedLot.cautious;
   const update = (patch: Partial<EntryDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const ready = check.issues.length === 0 && !(online && over) && !blocked;
+  // Pas d'animaux à faire entrer : l'étape qui manque est leur réception (AV-526).
+  const receiveAction = mayReceive ? (
+    <LinkButton to={ROUTES.purchaseReceiptFree} variant="tonal" size="sm">
+      {t('lot_setup.receive_animals')}
+    </LinkButton>
+  ) : undefined;
 
   const submit = () => {
     if (!ready) return;
@@ -628,7 +640,9 @@ function RecordEntry({
 
         {kind === 'INTERNAL_STOCK' ? (
           stock.length === 0 ? (
-            <Banner tone="bad">{t('lot_setup.no_stock_source')}</Banner>
+            <Banner tone="bad" action={receiveAction}>
+              {t('lot_setup.no_stock_source')}
+            </Banner>
           ) : (
             <>
               <SelectField
@@ -666,7 +680,9 @@ function RecordEntry({
 
         {kind === 'PURCHASE' ? (
           receipts.length === 0 ? (
-            <Banner tone="bad">{t('lot_setup.no_receipt')}</Banner>
+            <Banner tone="bad" action={receiveAction}>
+              {t('lot_setup.no_receipt')}
+            </Banner>
           ) : (
             <>
               <SelectField
@@ -816,8 +832,12 @@ export function LotSetupScreen() {
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
-  const [section, setSection] = useState<Section>('CREATE');
-  const [lotChoice, setLotChoice] = useState<string | null>(null);
+  const navigation = useRememberedNavigation(userId);
+  // Un lien « Faire entrer les animaux » (liste des lots, fiche) arrive avec le lot déjà choisi (AV-526).
+  const [searchParams] = useSearchParams();
+  const requestedLot = searchParams.get('lot');
+  const [section, setSection] = useState<Section>(requestedLot ? 'ENTRY' : 'CREATE');
+  const [lotChoice, setLotChoice] = useState<string | null>(requestedLot);
   const [last, setLast] = useState<{ commandId: string; section: Section }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -852,7 +872,10 @@ export function LotSetupScreen() {
     }
   };
 
-  const props: SectionProps = { refs, userId, online, blocked, send };
+  const mayReceive =
+    navigation !== undefined &&
+    holdsAnyRole(navigation ? navigation.roles : [], ROLE_SETS.purchaseReceipt);
+  const props: SectionProps = { refs, userId, online, blocked, mayReceive, send };
 
   return (
     <section className="sale">
