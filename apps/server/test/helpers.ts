@@ -274,7 +274,9 @@ export async function insertTestDevice(
  * Permission de test (préfixe `test.*`, jamais en collision avec le catalogue réel —
  * convention db/tests). Upsert (comme db/seeds/run.ts) : `identity_permissions` est une
  * vraie table (aucun DELETE accordé à gic_app, aucun rollback ici entre exécutions
- * successives des tests e2e/pipeline, qui réutilisent le même code littéral).
+ * successives des tests e2e/pipeline, qui réutilisent le même code littéral). Le droit est remis en service à
+ * chaque appel (`deprecated_at` à NULL, comme le semis) : le semis déprécie toute permission absente du catalogue,
+ * donc un droit d’essai créé par une exécution précédente serait refusé par toute commande qui en contrôle le cycle de vie.
  */
 export async function insertTestPermission(trx: UnitOfWork, code: string): Promise<void> {
   await trx
@@ -285,7 +287,7 @@ export async function insertTestPermission(trx: UnitOfWork, code: string): Promi
       description: 'Permission de test',
       supported_scopes: '["ALL"]',
     })
-    .onDuplicateKeyUpdate({ description: 'Permission de test' })
+    .onDuplicateKeyUpdate({ description: 'Permission de test', deprecated_at: null })
     .execute();
 }
 

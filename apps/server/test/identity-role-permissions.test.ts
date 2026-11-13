@@ -32,8 +32,15 @@ const OCCURRED_AT = '2026-09-24T09:00:00.000Z';
 const HELD_ALL = 'test.role_permission.held_all';
 const HELD_SITE = 'test.role_permission.held_site';
 const NOT_HELD = 'test.role_permission.not_held';
+const DEPRECATED = 'test.role_permission.deprecated';
 
-async function testPermission(code: string): Promise<void> {
+/**
+ * Droit d’essai, remis en service à chaque exécution (ou déclaré déprécié quand l’essai le demande). Le semis déprécie toute
+ * permission absente du catalogue (db/seeds/run.ts), et chaque passage de la vérification complète commence par le
+ * semis : un droit d’essai créé par une exécution précédente serait refusé par la commande (`PERMISSION_DEPRECATED`).
+ */
+async function testPermission(code: string, deprecated = false): Promise<void> {
+  const deprecatedAt = deprecated ? new Date() : null;
   await db
     .insertInto('identity_permissions')
     .values({
@@ -41,8 +48,12 @@ async function testPermission(code: string): Promise<void> {
       module: 'test',
       description: 'Permission de test (ADR-072)',
       supported_scopes: '["OWN","SITE","ZONE","ALL"]',
+      deprecated_at: deprecatedAt,
     })
-    .onDuplicateKeyUpdate({ supported_scopes: '["OWN","SITE","ZONE","ALL"]' })
+    .onDuplicateKeyUpdate({
+      supported_scopes: '["OWN","SITE","ZONE","ALL"]',
+      deprecated_at: deprecatedAt,
+    })
     .execute();
 }
 
@@ -113,6 +124,7 @@ describe('identity.role_permission.set (Q28, ADR-072)', () => {
     registerRolePermissionCommands(registry);
     pipeline = new CommandPipelineService(db, registry, clock, new Uuidv7Generator(clock));
     for (const code of [HELD_ALL, HELD_SITE, NOT_HELD]) await testPermission(code);
+    await testPermission(DEPRECATED, true);
     editor = await db.transaction().execute((trx) => insertTestUser(trx));
     editorDevice = await db
       .transaction()
@@ -238,6 +250,19 @@ describe('identity.role_permission.set (Q28, ADR-072)', () => {
     await run(editor, editorDevice, target, payload, commandId);
     expect(await journalOf(target)).toHaveLength(1);
     expect(await scopeOf(target, HELD_ALL)).toBe('OWN');
+  });
+
+  it('permission dépréciée : refusée sans écriture (PERMISSION_DEPRECATED)', async () => {
+    const target = await newTargetRole();
+    expect(
+      await run(editor, editorDevice, target, {
+        permissionCode: DEPRECATED,
+        maxScope: 'OWN',
+        reason: 'Essai.',
+      }),
+    ).toMatchObject({ status: 'REJECTED', error: { code: 'PERMISSION_DEPRECATED' } });
+    expect(await journalOf(target)).toEqual([]);
+    expect(await scopeOf(target, DEPRECATED)).toBeNull();
   });
 
   it('sans identity.role.manage : refusé avant toute écriture', async () => {
