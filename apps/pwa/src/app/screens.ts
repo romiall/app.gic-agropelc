@@ -932,7 +932,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: false,
   },
   {
-    // Q28 du questionnaire de clôture (ADR-072) : droits des rôles, commande `identity.role.permission.set`.
+    // Q28 du questionnaire de clôture (ADR-072) : droits des rôles, commande `identity.role_permission.set`.
     id: 'ECR-ADM-09',
     path: ROUTES.rolePermissions,
     labelKey: 'role_permissions',

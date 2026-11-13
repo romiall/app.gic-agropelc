@@ -20,7 +20,7 @@ changé quoi, quand et pourquoi).
 
 ## Décision
 
-1. **Commande** `identity.role.permission.set` (agrégat `ROLE`, l'identifiant est celui du rôle) : `{ permissionCode, maxScope,
+1. **Commande** `identity.role_permission.set` (agrégat `ROLE`, l'identifiant est celui du rôle) : `{ permissionCode, maxScope,
    reason }` — `maxScope` est la portée voulue (`OWN`, `TEAM`, `SITE`, `ZONE`, `ALL`) ou `null` pour retirer le droit ; le motif
    est obligatoire (500 caractères au plus). Droit requis : `identity.role.manage`, accordé à l'Admin et **désormais à la
    Direction** (portée `ALL` ; 569 octrois).

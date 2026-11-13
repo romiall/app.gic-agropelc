@@ -1,6 +1,6 @@
 /**
  * Plan de la graine des droits des rôles système (ADR-072 ; questionnaire de clôture, Q28 du 08/11/2026). Depuis que
- * l'Admin et la Direction modifient les droits d'un rôle dans l'application (`identity.role.permission.set`), un couple
+ * l'Admin et la Direction modifient les droits d'un rôle dans l'application (`identity.role_permission.set`), un couple
  * (rôle, permission) qui a au moins une ligne dans `identity_role_permission_changes` garde la décision prise dans
  * l'application : la graine ne le réinsère pas (un droit retiré reste retiré) et ne réécrit ni sa portée ni ses limites.
  * Les autres couples sont posés comme avant (insertion, ou mise à jour de la portée et des limites).

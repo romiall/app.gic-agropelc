@@ -107,7 +107,7 @@ export function isGrantActiveAt(grant: CachedGrant, occurredAt: Date): boolean {
 
 /**
  * ADR-072 (Q28) : portées auxquelles l'utilisateur détient chaque permission à `at`, par ses seules affectations
- * **globales** — la mesure de « ce qu'on a » pour modifier les droits d'un rôle (`identity.role.permission.set`).
+ * **globales** — la mesure de « ce qu'on a » pour modifier les droits d'un rôle (`identity.role_permission.set`).
  */
 export async function heldGlobalScopes(
   executor: Kysely<DB> | Transaction<DB>,

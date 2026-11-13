@@ -809,6 +809,18 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
       ],
     });
     const saleC = await saleOfOrder(orderC);
+    // Q47 A (AV-513 (b)) : seul le livré non payé d'une commande est une créance ; la pièce du doublon est donc
+    // livrée (à crédit, le compte y est autorisé) avant la fusion.
+    const orderLineC = await db
+      .selectFrom('sales_sales_order_lines')
+      .select('id')
+      .where('order_id', '=', toBin(orderC))
+      .executeTakeFirstOrThrow();
+    await command(comA, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('12:30:00'), {
+      orderId: orderC,
+      lines: [{ orderLineId: fromBin(orderLineC.id), quantityBase: 1 }],
+      recipientName: 'M. Essomba',
+    });
 
     // Fusion du doublon dans le compte A par la vraie commande (la Direction fusionne).
     const directionRole = await roleId('DIRECTION');
@@ -829,7 +841,8 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
       idsOf(kept.json().receivables.map((r: { saleId: string }) => ({ id: r.saleId }))),
     ).toEqual(expect.arrayContaining([saleA, saleC]));
     expect(kept.json().receivables).toHaveLength(2);
-    expect(kept.json().summary.totalXaf).toBe(2000 + PRICE);
+    // La vente A : 2 pièces livrées moins 1 000 XAF payés ; la vente du doublon : sa pièce livrée.
+    expect(kept.json().summary.totalXaf).toBe(1000 + PRICE);
     const absorbed = await get(fin, `/api/v1/receivables?customer_id=${custC}&as_of=${DAY}`);
     expect(absorbed.json().receivables).toEqual([
       expect.objectContaining({ saleId: saleC, customerId: custC, balanceDueXaf: PRICE }),

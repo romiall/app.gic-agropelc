@@ -598,7 +598,12 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     await user.click(newRule);
     expect(await screen.findByText(/Codes existants indisponibles/)).toBeInTheDocument();
     const code = screen.getByLabelText('Code de la règle');
-    expect(code.getAttribute('aria-describedby')?.split(' ').length).toBe(2);
+    // AV-486 (b) : un formulaire neuf ne s'ouvre pas en rouge ; seule la lecture des codes en échec est reliée au champ.
+    const describedBy = code.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(describedBy).toHaveLength(1);
+    expect(document.getElementById(describedBy[0] ?? '')).toHaveTextContent(
+      /Codes existants indisponibles/,
+    );
     await user.click(screen.getByRole('button', { name: 'Réessayer' }));
     await waitFor(() =>
       expect(screen.queryByText(/Codes existants indisponibles/)).not.toBeInTheDocument(),

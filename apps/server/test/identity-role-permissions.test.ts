@@ -1,5 +1,5 @@
 /**
- * `identity.role.permission.set` (questionnaire de clôture, Q28 du 08/11/2026 ; ADR-072) à travers le **vrai**
+ * `identity.role_permission.set` (questionnaire de clôture, Q28 du 08/11/2026 ; ADR-072) à travers le **vrai**
  * pipeline de commande : octroi, changement de portée et retrait d'une permission sur un rôle, journal en ajout seul,
  * audit, rejeu, et les gardes contre l'élévation de droits (on ne donne que ce qu'on a, rôle ADMIN figé, droit de
  * modifier les droits jamais modifiable). Seuls des rôles d'essai sont modifiés : un changement d'un rôle système sur
@@ -22,7 +22,7 @@ import {
   insertTestUser,
 } from './helpers.js';
 
-const COMMAND = 'identity.role.permission.set';
+const COMMAND = 'identity.role_permission.set';
 const OCCURRED_AT = '2026-09-24T09:00:00.000Z';
 // Permissions d'essai à plusieurs portées (codes stables d'une exécution à l'autre).
 const HELD_ALL = 'test.role_permission.held_all';
@@ -42,7 +42,7 @@ async function testPermission(code: string): Promise<void> {
     .execute();
 }
 
-describe('identity.role.permission.set (Q28, ADR-072)', () => {
+describe('identity.role_permission.set (Q28, ADR-072)', () => {
   let pipeline: CommandPipelineService;
   let editor: string;
   let editorDevice: string;

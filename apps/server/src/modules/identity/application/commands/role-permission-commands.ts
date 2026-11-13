@@ -1,5 +1,5 @@
 /**
- * `identity.role.permission.set` (questionnaire de clôture, Q28 du 08/11/2026 ; ADR-072, AV-553) : l'Admin et la
+ * `identity.role_permission.set` (questionnaire de clôture, Q28 du 08/11/2026 ; ADR-072, AV-553) : l'Admin et la
  * Direction (permission `identity.role.manage`, portée `ALL`) accordent une permission à un rôle, en changent la
  * portée ou la retirent, avec un motif. Agrégat `ROLE` (l'identifiant de la commande est celui du rôle).
  *
@@ -29,7 +29,7 @@ import type {
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { heldGlobalScopes } from '../rbac/rbac-cache.js';
 
-export const ROLE_PERMISSION_SET_COMMAND = 'identity.role.permission.set';
+export const ROLE_PERMISSION_SET_COMMAND = 'identity.role_permission.set';
 export const ROLE_MANAGE_PERMISSION = 'identity.role.manage';
 
 const payloadSchema = z.object({

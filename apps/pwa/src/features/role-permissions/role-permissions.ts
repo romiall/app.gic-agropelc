@@ -6,9 +6,9 @@
 import { PERMISSION_SCOPES, type PermissionScope } from '@gic/domain';
 import type { AdminCommand } from '../admin/admin-online.js';
 
-export const ROLE_PERMISSION_COMMAND = 'identity.role.permission.set';
+export const ROLE_PERMISSION_COMMAND = 'identity.role_permission.set';
 /** Préfixe des commandes suivies par l'écran (une à la fois). */
-export const ROLE_PERMISSION_PREFIX = 'identity.role.permission.';
+export const ROLE_PERMISSION_PREFIX = 'identity.role_permission.';
 /** Motif d'un changement : 500 caractères au plus, comme la commande. */
 export const REASON_MAX = 500;
 

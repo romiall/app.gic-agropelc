@@ -79,7 +79,7 @@
 
 - **PK** `(role_id, permission_code)`. **CK** `max_scope` ∈ `permissions.supported_scopes` (contrôle TX).
 - **Suppr.** Retrait autorisé (liaison de configuration). Chaque retrait est **audité** avec l'état avant, ce qui historise la configuration des droits.
-- **Écriture** : la graine (`db:seed`) et, depuis Q28 du 08/11/2026 (ADR-072), la commande `identity.role.permission.set` (octroi, changement de portée, retrait avec motif ; Admin et Direction) ; un octroi fait dans l'application ne porte aucune limite (`limits` nul).
+- **Écriture** : la graine (`db:seed`) et, depuis Q28 du 08/11/2026 (ADR-072), la commande `identity.role_permission.set` (octroi, changement de portée, retrait avec motif ; Admin et Direction) ; un octroi fait dans l'application ne porte aucune limite (`limits` nul).
 - **Offline** DL.
 
 ## identity.role_permission_changes

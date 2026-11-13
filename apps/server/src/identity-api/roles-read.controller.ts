@@ -151,6 +151,12 @@ export class RolesReadController {
         const maxScope = current.get(permission.code) ?? null;
         const editorScopes: readonly PermissionScope[] = held.get(permission.code) ?? [];
         const editable = roleEditable && !PROTECTED_PERMISSION_CODES.includes(permission.code);
+        // Même règle que la commande (`judgeRolePermissionChange`) : on ne donne que ce qu'on a, et on ne change ni
+        // ne retire que ce qu'on aurait pu donner, c'est-à-dire une portée actuelle que l'une des siennes couvre.
+        const currentCovered =
+          maxScope === null ||
+          !isPermissionScope(maxScope) ||
+          heldScopesCover(editorScopes, maxScope);
         return {
           code: permission.code,
           module: permission.module,
@@ -160,20 +166,9 @@ export class RolesReadController {
           isSensitive: Boolean(permission.is_sensitive),
           maxScope,
           editable,
-          // Même règle que la commande : on ne donne que ce qu'on a, on ne retire que ce qu'on aurait pu donner.
-          grantableScopes: editable
-            ? grantableScopes(supported, editorScopes).filter(
-                (scope) =>
-                  maxScope === null ||
-                  !isPermissionScope(maxScope) ||
-                  heldScopesCover(editorScopes, maxScope),
-              )
-            : [],
-          canRevoke:
-            editable &&
-            maxScope !== null &&
-            isPermissionScope(maxScope) &&
-            heldScopesCover(editorScopes, maxScope),
+          grantableScopes:
+            editable && currentCovered ? grantableScopes(supported, editorScopes) : [],
+          canRevoke: editable && maxScope !== null && isPermissionScope(maxScope) && currentCovered,
         };
       }),
       changes: changes.map((change) => ({

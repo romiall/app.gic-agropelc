@@ -57,7 +57,7 @@ Lues dans la page de réponses (collection `answers`), les 50 questions ont une 
 | Q25 | A : auto-approbation de la Direction conservée | Aucune |
 | Q26 | A : connexion actuelle pour le pilote | Aucune |
 | Q27 | A : 7 jours sans synchronisation | Aucune |
-| Q28 | Autre : permissions modifiables par l'Admin et les profils de direction dans l'application | Fait le 11/11/2026, en local : droits des rôles modifiables par l’Admin et la Direction ([ADR-072](../decisions/ADR-072-droits-des-roles-modifiables-dans-l-application.md), commande `identity.role.permission.set`, écran ECR-ADM-09, journal en ajout seul ; défauts et limites dans AV-556) |
+| Q28 | Autre : permissions modifiables par l'Admin et les profils de direction dans l'application | Fait le 11/11/2026, en local : droits des rôles modifiables par l’Admin et la Direction ([ADR-072](../decisions/ADR-072-droits-des-roles-modifiables-dans-l-application.md), commande `identity.role_permission.set`, écran ECR-ADM-09, journal en ajout seul ; défauts et limites dans AV-556) |
 | Q29 | Autre : « non je ne veux pas de ces complications » | Confirmé : les quatre cas restent à leur défaut, aucun code |
 | Q30 | A : toutes les recommandations | Fait le 11/11/2026, en local : les trois retouches d’écran (AV-486 erreurs de l’éditeur de prix, AV-487 total de trésorerie unique, AV-488 bouton des pièces) |
 | Q31 | A : attendre le comptable | Action du porteur (C08) |

@@ -152,7 +152,7 @@ describe('Droits des rôles (ECR-ADM-09, Q28, ADR-072)', () => {
     ).toBeInTheDocument();
   });
 
-  it('changement : motif obligatoire, puis une commande identity.role.permission.set en file', async () => {
+  it('changement : motif obligatoire, puis une commande identity.role_permission.set en file', async () => {
     serve();
     const user = userEvent.setup();
     render(
@@ -171,7 +171,7 @@ describe('Droits des rôles (ECR-ADM-09, Q28, ADR-072)', () => {
     await user.click(within(loss).getByRole('button', { name: 'Enregistrer le changement' }));
     await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
     expect(await lastCommand()).toMatchObject({
-      command_type: 'identity.role.permission.set',
+      command_type: 'identity.role_permission.set',
       aggregate_type: 'ROLE',
       aggregate_id: ROLE,
       payload: {
@@ -236,7 +236,7 @@ describe('Droits des rôles : logique pure', () => {
 
   it('commande : retrait en portée nulle, motif nettoyé ; motif vide refusé', () => {
     expect(permissionCommand(ROLE, 'x', 'REVOKE', '  motif  ')).toEqual({
-      commandType: 'identity.role.permission.set',
+      commandType: 'identity.role_permission.set',
       aggregateType: 'ROLE',
       aggregateId: ROLE,
       payload: { permissionCode: 'x', maxScope: null, reason: 'motif' },

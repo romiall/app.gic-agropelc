@@ -1,7 +1,7 @@
 /**
  * ECR-ADM-09 « Droits des rôles » (questionnaire de clôture, Q28 du 08/11/2026 ; ADR-072 ; ADMIN et DIRECTION, droit
  * `identity.role.manage` ; en ligne seulement) : choisir un rôle, voir ses droits groupés par module, accorder un droit,
- * en changer la portée ou le retirer avec un motif (`identity.role.permission.set`), et l'historique des changements du
+ * en changer la portée ou le retirer avec un motif (`identity.role_permission.set`), et l'historique des changements du
  * rôle. L'écran ne propose que ce que la commande acceptera (portées et retrait calculés par le serveur avec la règle
  * partagée) ; une commande à la fois, relue après la réponse du serveur.
  */

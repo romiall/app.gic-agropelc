@@ -1,7 +1,7 @@
 /**
  * Droits des rôles modifiables dans l'application (questionnaire de clôture, Q28 du 08/11/2026 : « permissions
  * modifiables par l'Admin et les profils de direction dans l'application » ; ADR-072, AV-553). Règle partagée par le
- * serveur (`identity.role.permission.set`) et l'écran de l'éditeur, qui ne propose que ce que le serveur acceptera.
+ * serveur (`identity.role_permission.set`) et l'écran de l'éditeur, qui ne propose que ce que le serveur acceptera.
  *
  * Gardes contre l'élévation de droits :
  * - **on ne donne que ce qu'on a** : accorder une permission ou en élargir la portée exige que l'auteur la détienne

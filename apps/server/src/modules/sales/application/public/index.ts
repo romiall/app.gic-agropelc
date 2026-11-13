@@ -7,6 +7,7 @@ export {
   customerOutstandingXaf,
   deliveredShareXaf,
   listReceivables,
+  receivablesDeliveredOnly,
   saleCreditExposureXaf,
   summarizeReceivables,
 } from './receivables.js';

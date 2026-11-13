@@ -35,7 +35,7 @@ describe('éditeur des droits des rôles : lectures (Q28, ADR-072)', { timeout: 
   let app: NestFastifyApplication;
   let clock: Clock;
   let direction: Actor;
-  let seller: Actor;
+  let outsider: Actor;
   let target: string;
 
   const get = async (actor: Actor, url: string) =>
@@ -60,7 +60,7 @@ describe('éditeur des droits des rôles : lectures (Q28, ADR-072)', { timeout: 
     clock = app.get(CLOCK);
     const root = await tx((trx) => insertTestUser(trx));
     direction = await newActor('DIRECTION', root);
-    seller = await newActor('VENDEUR_PDV', root);
+    outsider = await newActor('FINANCE', root);
     target = await tx(async (trx) => {
       const role = await insertTestRole(trx, root);
       // Une permission que la Direction ne détient pas (`identity.role_assignment.manage`, Admin seul), accordée au
@@ -83,7 +83,7 @@ describe('éditeur des droits des rôles : lectures (Q28, ADR-072)', { timeout: 
     const roles = response.json().roles as { id: string; code: string; editable: boolean }[];
     expect(roles.find((role) => role.code === 'ADMIN')).toMatchObject({ editable: false });
     expect(roles.find((role) => role.id === target)).toMatchObject({ editable: true });
-    expect((await get(seller, '/api/v1/roles/editable')).statusCode).toBe(403);
+    expect((await get(outsider, '/api/v1/roles/editable')).statusCode).toBe(403);
   });
 
   it('GET /roles/{id}/permissions : portées proposées selon ce que le lecteur détient, droit protégé non modifiable', async () => {
@@ -115,6 +115,6 @@ describe('éditeur des droits des rôles : lectures (Q28, ADR-072)', { timeout: 
       grantableScopes: [],
     });
     expect(body.changes).toEqual([]);
-    expect((await get(seller, `/api/v1/roles/${target}/permissions`)).statusCode).toBe(403);
+    expect((await get(outsider, `/api/v1/roles/${target}/permissions`)).statusCode).toBe(403);
   });
 });

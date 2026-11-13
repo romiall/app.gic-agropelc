@@ -2,7 +2,7 @@
 -- Q28 du 08/11/2026 : « permissions modifiables par l'Admin et les profils de direction dans l'application » ;
 -- ADR-072, AV-553). Source : docs/03-data/dictionnaire/01-identity.md (`identity_role_permission_changes`).
 --
--- Une ligne par changement appliqué par la commande `identity.role.permission.set` : octroi (`GRANT`), changement de
+-- Une ligne par changement appliqué par la commande `identity.role_permission.set` : octroi (`GRANT`), changement de
 -- portée (`SCOPE`) ou retrait (`REVOKE`) d'une permission sur un rôle, avec la portée avant et après, le motif,
 -- l'auteur et l'instant. `identity_role_permissions` garde l'état en vigueur ; ce journal garde l'historique, et les
 -- graines (`db/seeds/run.ts`) ne reviennent jamais sur un couple (rôle, permission) qu'il nomme : la décision prise dans
@@ -52,8 +52,14 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'identity_role_permission_changes : journal en ajout seul (ADR-072).';
 END;
 
+GRANT SELECT, INSERT ON identity_role_permission_changes TO 'gic_app'@'%';
+-- La commande change la portée d'un droit en place (UPDATE : la limite éventuelle du droit est conservée) ; le compte
+-- applicatif n'avait sur cette table que SELECT, INSERT et DELETE (20260924100100).
+GRANT UPDATE ON identity_role_permissions TO 'gic_app'@'%';
+
 -- migrate:down transaction:false
 
+REVOKE UPDATE ON identity_role_permissions FROM 'gic_app'@'%';
 DROP TRIGGER IF EXISTS trg_identity_rpc_no_delete;
 DROP TRIGGER IF EXISTS trg_identity_rpc_no_update;
 DROP TABLE IF EXISTS identity_role_permission_changes;
