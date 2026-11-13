@@ -11,7 +11,9 @@
  * - comptes et prospects visités : comptes distincts, et parmi eux ceux visités au stade
  *   `PROSPECT` (`customer_stage_at_visit`) ;
  * - nouveaux clients : conversions de la période attribuées au **titulaire à la date de
- *   conversion** (BR-CRM-010). Chiffre d'affaires et commandes : P4.
+ *   conversion** (BR-CRM-010), hors comptes absorbés par fusion : la fusion recopie la conversion sur
+ *   le compte conservé, qui la porte seul (AV-442) ; comme pour la création, un client converti puis
+ *   fusionné n'est compté qu'une fois. Chiffre d'affaires et commandes : P4.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -411,6 +413,7 @@ export async function commercialEffort(
     .innerJoin('crm_customer_assignments as a', 'a.customer_id', 'c.id')
     .select((eb) => eb.fn.countAll<number>().as('n'))
     .where('a.user_id', '=', user)
+    .where('c.stage', '<>', 'MERGED')
     .where('c.converted_at', '>=', input.fromUtc)
     .where('c.converted_at', '<', input.toUtc)
     .whereRef('a.valid_from', '<=', 'c.converted_at')

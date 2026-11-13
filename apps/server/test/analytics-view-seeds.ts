@@ -409,21 +409,39 @@ export async function cloneWorkSession(
 export interface MergedConversion {
   readonly keptId: string;
   readonly mergedId: string;
+  /** Titulaire du compte conservé à l'instant de la conversion : la copie absorbée lui est affectée aussi. */
+  readonly holderUserId: string;
 }
 
 /**
  * Une fusion de comptes dont les deux comptes portent la même conversion : le compte absorbé (`MERGED`) garde
  * son `converted_at` alors que le compte conservé le porte aussi (reprise de la conversion par la fusion).
- * Le compte conservé est un compte converti existant ; l'absorbé en est une copie fusionnée.
+ * Le compte conservé est un compte converti existant qui avait un titulaire à l'instant de la conversion ;
+ * l'absorbé en est une copie fusionnée, affectée à ce même titulaire jusqu'après la conversion : la fusion lui
+ * garde ses affectations, ce qui faisait compter deux fois sa conversion à `commercialEffort` (AV-442).
  */
 export async function cloneMergedConvertedCustomer(
   trx: Trx,
 ): Promise<MergedConversion | undefined> {
   const kept = await firstRow(
     trx,
-    sql`SELECT * FROM crm_customers WHERE stage = 'CUSTOMER' AND converted_at IS NOT NULL ORDER BY id LIMIT 1`,
+    sql`SELECT c.* FROM crm_customers c
+         WHERE c.stage = 'CUSTOMER' AND c.converted_at IS NOT NULL
+           AND EXISTS (SELECT 1 FROM crm_customer_assignments a
+                        WHERE a.customer_id = c.id AND a.valid_from <= c.converted_at
+                          AND (a.valid_to IS NULL OR a.valid_to > c.converted_at))
+         ORDER BY c.id LIMIT 1`,
   );
   if (!kept) return undefined;
+  const convertedAt = kept.converted_at as Date;
+  const holder = await firstRow(
+    trx,
+    sql`SELECT * FROM crm_customer_assignments
+         WHERE customer_id = ${kept.id} AND valid_from <= ${convertedAt}
+           AND (valid_to IS NULL OR valid_to > ${convertedAt})
+         ORDER BY valid_from DESC LIMIT 1`,
+  );
+  if (!holder) return undefined;
   const id = newId();
   await insertCopy(trx, 'crm_customers', kept, {
     id,
@@ -432,5 +450,15 @@ export async function cloneMergedConvertedCustomer(
     stage: 'MERGED',
     merged_into_id: kept.id,
   });
-  return { keptId: fromBin(kept.id as Buffer), mergedId: fromBin(id) };
+  await insertCopy(trx, 'crm_customer_assignments', holder, {
+    id: newId(),
+    customer_id: id,
+    command_id: null,
+    valid_to: holder.valid_to ?? new Date(convertedAt.getTime() + 60 * 60_000),
+  });
+  return {
+    keptId: fromBin(kept.id as Buffer),
+    mergedId: fromBin(id),
+    holderUserId: fromBin(holder.user_id as Buffer),
+  };
 }

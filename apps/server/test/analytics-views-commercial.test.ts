@@ -583,6 +583,22 @@ describe('analytics_f_prospecting', () => {
       const ids = counted.map((row) => fromBin(row.customer));
       expect(ids).toContain(merged!.keptId);
       expect(ids).not.toContain(merged!.mergedId);
+      // La fonction de référence de l'accueil, des objectifs et du bilan hebdomadaire suit la même règle : la
+      // copie absorbée, affectée au même titulaire, n'ajoute rien à ses nouveaux clients (AV-442).
+      const reference = await commercialEffort(trx, {
+        userId: merged!.holderUserId,
+        fromUtc: businessDayStartUtc(FROM_DAY),
+        toUtc: businessDayEndUtc(TO_DAY),
+      });
+      const [seen] = await rows<{ converted: string }>(
+        trx,
+        sql`SELECT COUNT(DISTINCT converted_customer_id) AS converted FROM analytics_f_prospecting
+             WHERE user_id = ${toBin(merged!.holderUserId)}
+               AND business_day BETWEEN ${FROM_DAY} AND ${TO_DAY}`,
+      );
+      expect(reference.newCustomers, `${merged!.holderUserId} nouveaux clients`).toBe(
+        Number(seen!.converted),
+      );
     });
   });
 
