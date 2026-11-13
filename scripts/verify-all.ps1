@@ -247,7 +247,8 @@ const mysql = req('mysql2/promise');
   try { return [string](& node $probe (Join-Path $repo 'apps\server\package.json') 2>$null) } catch { return 'inconnue' }
 }
 
-# -FreshDb : la base jetable est supprimee ici ; les etapes migrate et seed la recreent (dbmate up cree la base).
+# -FreshDb : la base jetable est supprimee puis recreee vide ici, avec les attributs de l'ancienne (utf8mb4 / utf8mb4_0900_as_cs,
+# jamais le defaut du serveur que dbmate utiliserait) ; les etapes migrate et seed la remplissent.
 function Invoke-FreshDatabase {
   $watch = [Diagnostics.Stopwatch]::StartNew()
   if (($selected -notcontains 'migrate') -or ($selected -notcontains 'seed')) {
@@ -265,8 +266,19 @@ const mysql = req('mysql2/promise');
   const c = await mysql.createConnection({ uri: process.env.DATABASE_URL, timezone: 'Z' });
   const [[o]] = await c.query("SELECT COUNT(*) AS n FROM information_schema.processlist WHERE db = 'gic_agropelc_rp' AND id <> CONNECTION_ID()");
   if (o.n > 0) { console.log('REFUSE ' + o.n); await c.end(); return; }
+  const [rows] = await c.query("SELECT default_character_set_name AS cs, default_collation_name AS co FROM information_schema.schemata WHERE schema_name = 'gic_agropelc_rp'");
+  let cs = 'utf8mb4';
+  let co = 'utf8mb4_0900_as_cs';
+  if (rows.length === 1 && /^[a-z0-9_]+$/.test(rows[0].cs) && /^[a-z0-9_]+$/.test(rows[0].co)) { cs = rows[0].cs; co = rows[0].co; }
   await c.query('DROP DATABASE `gic_agropelc_rp`');
-  console.log('SUPPRIMEE');
+  try {
+    await c.query('CREATE DATABASE `gic_agropelc_rp` CHARACTER SET ' + cs + ' COLLATE ' + co);
+  } catch (e) {
+    console.log('SUPPRIMEE_NON_RECREEE ' + String(e.message).slice(0, 100));
+    await c.end();
+    return;
+  }
+  console.log('RECREEE ' + cs + ' ' + co);
   await c.end();
 })().catch((e) => { console.log('ERREUR ' + String(e.message).slice(0, 120)); });
 '@ | Out-File -FilePath $probe -Encoding ascii
@@ -275,9 +287,16 @@ const mysql = req('mysql2/promise');
   $answer = ("$raw").Trim()
   if ($answer -eq '') { $answer = 'aucune reponse de la sonde node' }
   $watch.Stop()
-  if ($answer -eq 'SUPPRIMEE') {
-    $script:baseSize = 'neuve (supprimee puis recreee par -FreshDb ; avant : ' + $script:baseSize + ')'
-    Add-Result 'fresh' 'OK' $watch.Elapsed.TotalSeconds 'base jetable supprimee ; les migrations et les semis la reconstruisent'
+  if ($answer -like 'RECREEE *') {
+    $attributes = $answer.Substring(8)
+    $script:baseSize = 'neuve (' + $attributes + ', recreee par -FreshDb ; avant : ' + $script:baseSize + ')'
+    Add-Result 'fresh' 'OK' $watch.Elapsed.TotalSeconds ('base jetable supprimee puis recreee vide (' + $attributes + ') ; les migrations et les semis la reconstruisent')
+  } elseif ($answer -like 'SUPPRIMEE_NON_RECREEE*') {
+    # Ne jamais laisser dbmate creer la base avec le defaut du serveur (autre collation) : les etapes de la base echouent.
+    $script:dbReady = $false
+    $script:dbMessage = 'base jetable supprimee mais non recreee (' + $answer + ')'
+    Add-Result 'fresh' 'ECHEC' $watch.Elapsed.TotalSeconds $script:dbMessage
+    Add-Finding 'fresh' $script:dbMessage
   } elseif ($answer -like 'REFUSE*') {
     $text = 'base jetable conservee : ' + ($answer -replace '[^0-9]', '') + ' connexion(s) ouverte(s) par une autre session'
     Add-Result 'fresh' 'ATTENTION' $watch.Elapsed.TotalSeconds $text
