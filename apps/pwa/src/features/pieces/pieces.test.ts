@@ -2,7 +2,7 @@
  * Pièces papier (lot PP, ADR-048) : fidélité aux fichiers du porteur, rendu de chaque pièce,
  * marques (duplicata, annulée), pagination, et adaptateurs des données des écrans.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SalesReferences } from '../sales/references.js';
@@ -23,7 +23,7 @@ import type { DemandePiece } from './demande.js';
 import { documentPiece } from './document.js';
 import * as X from './exemples.js';
 import { dateHeurePiece, lettreMoyen, moyenPiece, xafPiece } from './format.js';
-import { esc } from './gabarit.js';
+import { champ, esc, MANUSCRIT } from './gabarit.js';
 import { IDENTITE } from './identite.js';
 import { rendrePiece } from './registre.js';
 
@@ -76,6 +76,57 @@ describe('fidélité aux fichiers du porteur (REQ-303)', () => {
   });
 });
 
+describe('espaces de date et d’heure à remplir à la main', () => {
+  const texteSeul = (html: string): string => html.replace(/<[^>]+>/g, '');
+
+  it('une date à écrire n’imprime que ses deux barres obliques : aucune lettre, aucun point', () => {
+    const html = champ('Date', 8, { manuscrit: 'date' });
+    expect(texteSeul(html)).toBe('Date//');
+    expect(html).toContain(MANUSCRIT.date);
+    expect(texteSeul(champ('Semaine du', 6, { manuscrit: 'jm' }))).toBe('Semaine du/');
+  });
+
+  it('une heure n’imprime que son « h » ; une date et une heure, leurs barres obliques et un « h »', () => {
+    expect(texteSeul(champ('Début', 7, { manuscrit: 'heure' }))).toBe('Débuth');
+    expect(texteSeul(champ('Date et heure', 9, { manuscrit: 'dateheure' }))).toBe(
+      'Date et heure//h',
+    );
+  });
+
+  it('une valeur connue remplace l’espace d’écriture', () => {
+    const html = champ('Date', 8, { v: '12/03/2026', manuscrit: 'date' });
+    expect(html).toContain('12/03/2026');
+    expect(html).not.toContain('manuscrit');
+  });
+
+  it('FL : sans date connue, chaque jour de la semaine porte ses fentes jour / mois, sans « …/… »', () => {
+    const page = rendrePiece({ code: 'FL', donnees: { ...X.EXEMPLE_FL, jours: [] } }, CTX)
+      .pages[0]!;
+    expect(page.split(MANUSCRIT.jm)).toHaveLength(8);
+    expect(page).not.toContain('…/…');
+  });
+
+  it('les gabarits du porteur n’impriment aucun texte d’aide de date ou d’heure, et le balisage de la PWA est le leur', () => {
+    const dossier = racine('pieces-papier/gabarits');
+    const fichiers = readdirSync(dossier).filter((f) => f.endsWith('.html'));
+    expect(fichiers.length).toBeGreaterThan(40);
+    for (const f of fichiers) {
+      const html = readFileSync(resolve(dossier, f), 'utf8');
+      expect(html, f).not.toMatch(/jj\s*\/\s*mm|aaaa|…\s*\/\s*…|…\s*h\s*…|\/20…/);
+    }
+    for (const [code, type] of [
+      ['DA', 'date'],
+      ['FP', 'dateheure'],
+      ['FL', 'jm'],
+      ['VC', 'heure'],
+    ] as const) {
+      expect(readFileSync(resolve(dossier, `${code}.html`), 'utf8'), code).toContain(
+        MANUSCRIT[type],
+      );
+    }
+  });
+});
+
 describe('rendu des pièces', () => {
   it.each(DEMANDES.map((d) => [d.code, d] as const))(
     '%s : une feuille au moins, numéro écrit',
@@ -90,6 +141,20 @@ describe('rendu des pièces', () => {
       expect(html).not.toContain('undefined');
     },
   );
+
+  it('l’en-tête imprime le téléphone sur sa propre ligne : deux numéros ne tiennent pas à côté du siège et de la boîte postale', () => {
+    const page = rendrePiece({ code: 'BV', donnees: X.EXEMPLE_BV }, CTX).pages[0]!;
+    const [siege, telephone] = page
+      .split('\n')
+      .map((ligne) => ligne.trim())
+      .filter((ligne) => ligne.startsWith('<div class="coord">'));
+    expect(siege).toContain('<b>Siège</b>');
+    expect(siege).toContain('<b>BP</b>');
+    expect(siege).not.toContain('<b>Tél</b>');
+    expect(telephone).toBe(
+      `<div class="coord"><b>Tél</b><span class="val">${esc(IDENTITE.telephones)}</span></div>`,
+    );
+  });
 
   it('marques : tampon « Annulée » et case cochée, « Duplicata » avec sa date', () => {
     const piece = rendrePiece(

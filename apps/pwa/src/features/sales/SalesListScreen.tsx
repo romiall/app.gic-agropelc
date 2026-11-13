@@ -116,7 +116,7 @@ export function SalesListScreen() {
           })}
         </ul>
       )}
-      {/* Journal des encaissements (lot PP, JE) : les encaissements servis à l'appareil (7 jours). */}
+      {/* Registre des encaissements (lot PP, JE, ancien journal) : les encaissements servis à l'appareil (7 jours). */}
       {refs.payments.length > 0 ? (
         <PieceAction
           cle={journalKey(refs.payments)}

@@ -1,6 +1,6 @@
 # Cahier des charges pour l'imprimeur — pièces papier GIC AGROPELC
 
-Commanditaire : GIC AGROPELC. Version 1.0 du 20 octobre 2026. À remettre avec les fichiers `pdf/CODE-impression.pdf` et le logo.
+Commanditaire : GIC AGROPELC. Version 1.1 du 11 novembre 2026. À remettre avec les fichiers `pdf/CODE-impression.pdf` et le logo ; pour les quatre pièces retenues le 11 novembre 2026, avec les fichiers numérotés du § 5 (`pdf/carnets/`).
 
 ## 1. Règles générales
 
@@ -25,7 +25,7 @@ Commanditaire : GIC AGROPELC. Version 1.0 du 20 octobre 2026. À remettre avec l
 | **RE** | Reçu d'encaissement | 210 × 148 | paysage | 3 | 50 | gauche ; 52 mm | souche |
 | **BD** | Bon de décaissement | 210 × 148 | paysage | 3 | 50 | gauche ; 52 mm | souche |
 | **RF** | Remise de fonds | 210 × 148 | paysage | 3 | 50 | gauche ; 52 mm | souche |
-| **BL** | Bon de livraison | 210 × 148 | paysage | 3 | 50 | gauche ; 52 mm | souche |
+| **BL** | Bordereau de livraison | 210 × 148 | paysage | 3 | 50 | gauche ; 52 mm | souche |
 | **CC** | Bon de commande client | 210 × 148 | paysage | 3 | 50 | gauche ; 52 mm | souche |
 | **BC** | Bon de commande fournisseur | 210 × 297 | portrait | 3 | 50 (ou 25) | en tête ; 10 mm | — |
 | **BR** | Bon de réception | 210 × 297 | portrait | 3 | 50 (ou 25) | en tête ; 10 mm | — |
@@ -39,7 +39,7 @@ Commanditaire : GIC AGROPELC. Version 1.0 du 20 octobre 2026. À remettre avec l
 | **BH** | Bilan hebdomadaire | 148 × 210 | portrait | 1 | 50 feuilles | en tête | papier 70 à 80 g |
 | **PT** | Présence et pointage | 297 × 210 | paysage | 1 | 50 feuilles | en tête, côté de 297 mm | papier 70 à 80 g |
 | **VC** | Fiche de visite | 148 × 210 | portrait | 1 | 100 feuilles | en tête | papier 70 à 80 g |
-| **JE** | Journal des encaissements | 210 × 297 | portrait | 1 | registre de 100 pages | cartonné, reliure à gauche | pages numérotées ; 30 lignes par page |
+| **JE** | Registre des encaissements (ancien journal ; tient lieu de reçu d'encaissement) | 210 × 297 | portrait | 1 | registre de 100 pages | cartonné, reliure à gauche | pages numérotées ; 30 lignes par page, numérotées en continu (000001 à 003000) |
 | **RC** | Registre des carnets | 297 × 210 | paysage | 1 | registre de 100 pages | cartonné, reliure à gauche | pages numérotées |
 | **EL** | Papier à en-tête | 210 × 297 | portrait | 1 | ramettes | — | **couleur**, papier 80 à 90 g ; fichier `EL-impression.pdf` |
 | **BN-G** | Bloc-notes général | 148 × 210 | portrait | 1 | 50 feuilles | collé en tête, dos carton | **couleur**, papier 80 g |
@@ -47,6 +47,7 @@ Commanditaire : GIC AGROPELC. Version 1.0 du 20 octobre 2026. À remettre avec l
 | **BN-T** | Bloc-notes terrain | 148 × 210 | portrait | 1 | 50 feuilles | collé en tête, dos carton | **couleur** |
 | **CV-A5L** | Couvertures de carnet A5 paysage | 210 × 148 | paysage | 1 | 6 faces avant (BV, RE, BD, RF, BL, CC) et 1 dos | carton 250 à 300 g | **couleur** ; les quatre numéros « Carnet / Pièces n° » se remplissent à la main ou au tampon |
 | **CV-A4P** | Couvertures de carnet A4 portrait | 210 × 297 | portrait | 1 | 4 faces avant (BC, BR, BT, FA) et 1 dos | carton 250 à 300 g | **couleur** |
+| **CV-REG** | Couverture de registre A4 portrait | 210 × 297 | portrait | 1 | 1 face avant (registre des encaissements) et 1 dos | carton 250 à 300 g | **couleur** |
 
 Les nombres de jeux, de feuilles et de pages sont des **usages courants** : l'imprimeur peut en proposer d'autres sans changer le dessin.
 
@@ -58,7 +59,21 @@ Les nombres de jeux, de feuilles et de pages sont des **usages courants** : l'im
 4. Le **vert et l'orange** correspondent à l'épreuve signée ; le logo est net.
 5. La **coupe** est droite (±1 mm) et chaque carnet est solidement collé.
 6. Chaque carnet porte sa **couverture** avec la bonne pièce.
+7. Pour les fichiers du § 5, le premier et le dernier numéro (ou la première et la dernière page) sont ceux du nom du fichier, et **aucune pièce n'est numérotée deux fois** : le numéro vient du fichier, pas d'une machine à numéroter.
 
 ## 4. Demande de devis (modèle)
 
 > Bonjour, GIC AGROPELC souhaite un devis pour des carnets autocopiants numérotés et des blocs, selon le cahier des charges joint et les fichiers PDF fournis. Merci d'indiquer pour chaque pièce : le prix par carnet à 3 quantités (10, 30 et 60 carnets), le papier autocopiant proposé (grammage), le délai, la possibilité de numérotation typographique double (pièce et souche) et de perforation à 52 mm, l'épreuve (BAT) incluse, la facture d'impression. Nous consultons au moins trois imprimeurs.
+
+## 5. Pièces retenues (11 novembre 2026) et fichiers prêts à imprimer
+
+L'administration de GIC AGROPELC a retenu **quatre pièces** pour commencer : trois carnets (BL, BC, FA) et un registre (les encaissements). Pour ces quatre pièces, les **numéros sont imprimés dans le fichier** : l'imprimeur ne numérote rien (la légende en pied de planche le rappelle). Les fichiers sont dans `pdf/carnets/` ; une planche par page : format fini + 8 mm de marge technique, traits de coupe, légende en pied.
+
+| Fichier | Pièce | Contenu | Papier et façonnage |
+|---|---|---|---|
+| `BL-carnet-01-000001-000050.pdf` | Bordereau de livraison, A5 paysage, **avec souche** | couverture (numéros du carnet imprimés), 50 jeux numérotés 000001 à 000050 (zone « N° » et souche, même numéro), dos (règles d'usage) : 52 pages | couverture en carton 250 à 300 g, couleur ; jeux en 3 feuillets autocopiants (même plaque sur chaque feuillet) ; reliure à gauche, perforation à 52 mm |
+| `BC-carnet-01-000001-000050.pdf` | Bon de commande fournisseur, A4 portrait | même composition : 52 pages | idem ; reliure en tête, perforation à 10 mm |
+| `FA-carnet-01-000001-000050.pdf` | Facture manuelle, A4 portrait (modèle validé par le comptable le 11/11/2026) | même composition : 52 pages | idem ; reliure en tête, perforation à 10 mm |
+| `JE-registre-01-pages-001-100.pdf` | Registre des encaissements, A4 portrait | couverture, 100 pages (30 lignes par page, lignes numérotées en continu de 000001 à 003000, pages 001 à 100), dos : 102 pages | couverture en carton, couleur ; pages en papier 70 à 80 g, registre cartonné relié ; **marges en miroir** (pages impaires reliées à gauche, paires à droite : impression recto verso) |
+
+Carnets suivants : `node pieces-papier/_generation/carnets.mjs BL --carnet=2` produit le carnet n° 2 (pièces 000051 à 000100), et ainsi de suite ; un registre n° 2 poursuit les lignes (003001 à 006000). Les autres pièces du jeu de 25 restent disponibles (`pdf/CODE-impression.pdf`, zone « N° » vide : numérotation typographique par l'imprimeur) pour une commande ultérieure.

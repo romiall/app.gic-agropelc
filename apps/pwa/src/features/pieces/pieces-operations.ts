@@ -12,6 +12,7 @@ import {
   type Contexte,
   dateHeure,
   lignes,
+  MANUSCRIT,
   note,
   numeroPage,
   paginer,
@@ -34,8 +35,8 @@ const EX_FOURN =
   '① blanc : fournisseur — ② rose : comptabilité — ③ jaune : reste dans le carnet (souche complète)';
 const EX2 = '① blanc : transmis — ② jaune : reste dans le bloc';
 const SOUCHE = { mg: 9 } as const;
-const D = (v: Valeur) => (v ? { v } : { aide: 'jj / mm / aaaa' });
-const DH = (v: Valeur) => (v ? { v } : { aide: '…/…/20… à …h…' });
+const D = (v: Valeur) => (v ? { v } : { manuscrit: 'date' as const });
+const DH = (v: Valeur) => (v ? { v } : { manuscrit: 'dateheure' as const });
 const rep = (s: Saisie | undefined) =>
   report({ extra: '', saisiLe: s?.le, par: s?.par, numero: s?.numero });
 
@@ -169,7 +170,7 @@ export function bonLivraison(d: DonneesBL, ctx: Contexte): PieceRendue {
     standard({
       fmt: 'a5l',
       code: 'BL',
-      titre: 'Bon de livraison',
+      titre: 'Bordereau de livraison',
       sous: 'Remise des produits au client',
       marges: SOUCHE,
       n: d.numero,
@@ -212,10 +213,10 @@ export function bonLivraison(d: DonneesBL, ctx: Contexte): PieceRendue {
         ),
       ].join(''),
       ex: EX3_DEST,
-      mention: 'Une livraison partielle = un bon de livraison — le reste à livrer reste dû',
+      mention: 'Une livraison partielle = un bordereau de livraison — le reste à livrer reste dû',
     }),
   );
-  return { code: 'BL', titre: 'Bon de livraison', fmt: 'a5l', pages };
+  return { code: 'BL', titre: 'Bordereau de livraison', fmt: 'a5l', pages };
 }
 
 // ------------------------------------------------------------------ DA
@@ -811,8 +812,8 @@ export function ficheInventaire(d: DonneesFI, ctx: Contexte): PieceRendue {
       ctx,
       corps: [
         rang(
-          champ('Emplacement compté', 9, { v: d.emplacement }),
-          champ('Date et heure du comptage', 8, DH(d.dateHeure)),
+          champ('Emplacement compté', 7, { v: d.emplacement }),
+          champ('Date et heure du comptage', 10, DH(d.dateHeure)),
           champ('Compteur 1', 7, { v: d.compteur1 }),
         ),
         rang(
@@ -920,7 +921,7 @@ export const JOURS_SEMAINE = [
 export function ficheSuiviLot(d: DonneesFL, ctx: Contexte): PieceRendue {
   const prefill = JOURS_SEMAINE.map((j, i) => {
     const date = d.jours[i]?.date;
-    return `${j} <span style="font-weight:400;color:var(--gris)">${date ? date.slice(0, 5).replace(/[<>&]/g, '') : '…/…'}</span>`;
+    return `${j} ${date ? `<span style="font-weight:400;color:var(--gris)">${date.slice(0, 5).replace(/[<>&]/g, '')}</span>` : MANUSCRIT.jm}`;
   });
   const page = standard({
     fmt: 'a4l',
@@ -939,8 +940,8 @@ export function ficheSuiviLot(d: DonneesFL, ctx: Contexte): PieceRendue {
       ),
       rang(
         champ('Bâtiment / case', 8, { v: d.batiment }),
-        champ('Semaine du', 6, d.semaineDu ? { v: d.semaineDu } : { aide: '…/…/20…' }),
-        champ('au', 4, d.au ? { v: d.au } : { aide: '…/…/20…' }),
+        champ('Semaine du', 6, d.semaineDu ? { v: d.semaineDu } : { manuscrit: 'date' as const }),
+        champ('au', 4, d.au ? { v: d.au } : { manuscrit: 'date' as const }),
         champ('Effectif en début de semaine', 6, { v: d.effectifDebut, num: true }),
       ),
       lignes({
@@ -949,7 +950,7 @@ export function ficheSuiviLot(d: DonneesFL, ctx: Contexte): PieceRendue {
         h: 10.6,
         n: 7,
         cols: [
-          { t: 'Jour', w: '27mm' },
+          { t: 'Jour', w: '31mm' },
           { t: 'Mortalité : nombre', w: '15mm', al: 'r' },
           { t: 'Mortalité : cause', w: '23mm' },
           { t: 'Aliment : produit', w: '28mm' },

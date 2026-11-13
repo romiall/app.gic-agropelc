@@ -24,9 +24,9 @@ import {
 import type { PieceRendue } from './piece.js';
 import type { Saisie } from './pieces-argent.js';
 
-const S = (v: Valeur) => (v ? { v } : { aide: '…/…/20…' });
-const D = (v: Valeur) => (v ? { v } : { aide: 'jj / mm / aaaa' });
-const H = (v: Valeur) => (v ? { v } : { aide: '…h…' });
+const D = (v: Valeur) => (v ? { v } : { manuscrit: 'date' as const });
+const S = D; // semaine du / au : la même date à écrire à la main
+const H = (v: Valeur) => (v ? { v } : { manuscrit: 'heure' as const });
 
 // ------------------------------------------------------------------ PT
 /** Jours de la fiche PT : lundi à samedi (le dimanche ne figure pas sur le papier). */
@@ -179,8 +179,8 @@ export function bilanHebdomadaire(d: DonneesBH, ctx: Contexte): PieceRendue {
     ctx,
     corps: [
       rang(
-        champ('Commercial', 12, { v: d.commercial }),
-        champ('Semaine du', 6, S(d.semaineDu)),
+        champ('Commercial', 10, { v: d.commercial }),
+        champ('Semaine du', 8, S(d.semaineDu)),
         champ('au', 6, S(d.semaineAu)),
       ),
       section('Chiffres de la semaine (relevés sur les fiches ou calculés par l’application)'),

@@ -5084,7 +5084,7 @@ export const fr = {
     invoice: 'Facture',
     receipt_of: 'Reçu {{doc}}',
     cash_sheet_today: 'Feuille de caisse du jour',
-    receipts_journal: 'Journal des encaissements (7 jours)',
+    receipts_journal: 'Registre des encaissements (7 jours)',
     lot_week: 'Fiche de suivi de la semaine',
     report_title: 'Reporter une pièce papier',
     report_subtitle: 'Saisie des pièces de carnets à souche et registre',

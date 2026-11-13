@@ -24,6 +24,8 @@ const val = (v: string, cls = '') =>
   v ? `<span class="val">${esc(v)}</span>` : `<span class="blanc ${cls}"></span>`;
 
 // ---- en-tête ------------------------------------------------------------
+// Siège et BP partagent la première ligne ; le téléphone a la sienne : deux numéros ne tiennent pas à côté d'eux sur
+// une pièce étroite (A5). Le même découpage est dans pieces-papier/_generation/lib.mjs.
 export function entete({
   numero = true,
   numLib = 'N°',
@@ -47,7 +49,8 @@ export function entete({
   <img class="logo" src="${esc(logo)}" alt="GIC AGROPELC">
   <div class="identite">
     <div class="raison">${id.raison_sociale ? esc(id.raison_sociale) : '<span class="blanc l"></span>'}</div>${forme}
-    <div class="coord"><b>Siège</b>${val(id.siege, 'l')}<b>BP</b>${val(id.bp, 's')}<b>Tél</b>${val(id.telephones)}</div>
+    <div class="coord"><b>Siège</b>${val(id.siege, 'l')}<b>BP</b>${val(id.bp, 's')}</div>
+    <div class="coord"><b>Tél</b>${val(id.telephones, 'l')}</div>
     <div class="coord"><b>RCCM / Autorisation</b>${val(id.rccm, 'l')}</div>
     <div class="coord"><b>NIU</b>${val(id.niu)}${id.regime_fiscal ? `<b>Régime</b>${esc(id.regime_fiscal)}` : ''}</div>
   </div>
@@ -59,12 +62,28 @@ export const bandeau = (titre: string, sous = ''): string =>
   `<div class="bandeau"><h1>${esc(titre)}</h1>${sous ? `<span class="sous">${esc(sous)}</span>` : ''}</div>`;
 
 // ---- champs -------------------------------------------------------------
+/**
+ * Espaces d'écriture manuscrite d'une date ou d'une heure : seuls les séparateurs « / » et « h » s'impriment, jamais un
+ * texte d'aide (jj / mm / aaaa, …/…/20…) qui salirait l'écriture ; les fentes entre les séparateurs restent vides
+ * (charte : `.manuscrit`). Même balisage que `MANUSCRIT` de `pieces-papier/_generation/lib.mjs` (un essai le vérifie).
+ */
+export const MANUSCRIT = {
+  date: '<span class="manuscrit"><i></i>/<i></i>/<i class="a"></i></span>',
+  jm: '<span class="manuscrit jm"><i></i>/<i></i></span>',
+  heure: '<span class="manuscrit heure"><i></i>h<i></i></span>',
+  dateheure:
+    '<span class="manuscrit dateheure"><i></i>/<i></i>/<i class="a"></i><i class="g"></i><i></i>h<i></i></span>',
+} as const;
+export type Manuscrit = keyof typeof MANUSCRIT;
+
 export interface OptionsChamp {
   readonly aide?: string;
+  /** Date ou heure à écrire à la main : les séparateurs seuls, sans texte d'aide ; disparaît quand la valeur est connue. */
+  readonly manuscrit?: Manuscrit;
   readonly u?: string;
   readonly haut?: boolean;
   readonly double?: boolean;
-  /** Valeur écrite sur la ligne ; l'aide (« …/…/20… ») disparaît quand la valeur est connue. */
+  /** Valeur écrite sur la ligne ; l'espace d'écriture ou l'aide disparaît quand la valeur est connue. */
   readonly v?: Valeur;
   /** Valeur numérique : alignée à droite, contre l'unité. */
   readonly num?: boolean;
@@ -74,9 +93,11 @@ export function champ(lib: string, span = 12, o: OptionsChamp = {}): string {
   const cls = ['champ', o.haut && 'haut', o.double && 'double'].filter(Boolean).join(' ');
   const v = present(o.v)
     ? `<span class="v${o.num ? ' num' : ''}">${esc(o.v)}</span>`
-    : o.aide
-      ? `<span class="aide">${esc(o.aide)}</span>`
-      : '';
+    : o.manuscrit
+      ? MANUSCRIT[o.manuscrit]
+      : o.aide
+        ? `<span class="aide">${esc(o.aide)}</span>`
+        : '';
   return `<div class="${cls} c${span}"><span class="lib">${esc(lib)}</span>${v}${o.u ? `<span class="u">${esc(o.u)}</span>` : ''}</div>`;
 }
 
@@ -85,7 +106,7 @@ export const rang = (...x: string[]): string => `<div class="rang">${x.join('')}
 export const dateHeure = (lib = 'Date et heure de l’opération', span = 10, v?: Valeur): string =>
   present(v)
     ? champ(lib, span, { v })
-    : `<div class="champ c${span}"><span class="lib">${esc(lib)}</span><span class="aide">le …… / …… / 20…… à …… h ……</span></div>`;
+    : `<div class="champ c${span}"><span class="lib">${esc(lib)}</span>${MANUSCRIT.dateheure}</div>`;
 
 /**
  * Cases à cocher. `coche` : libellés cochés (comparés au libellé de l'option) ; `autre` : texte écrit
@@ -140,6 +161,9 @@ export function lignes({
   prefill = null,
   rows = [],
   premierNumero = 1,
+  numT = 'N°',
+  numW = '7mm',
+  pad = 0,
 }: {
   cols: readonly Colonne[];
   n?: number;
@@ -150,9 +174,13 @@ export function lignes({
   prefill?: readonly string[] | null;
   rows?: readonly (readonly Valeur[])[];
   premierNumero?: number;
+  /** Titre et largeur de la colonne des numéros ; `pad` : zéros à gauche (6 pour les lignes d'un registre). */
+  numT?: string;
+  numW?: string;
+  pad?: number;
 }): string {
   const all: (Colonne & { n?: boolean })[] = numerote
-    ? [{ t: 'N°', w: '7mm', n: true }, ...cols]
+    ? [{ t: numT, w: numW, n: true }, ...cols]
     : [...cols];
   const colgroup = all
     .map((c) => `<col style="${c.w && c.w !== '*' ? `width:${c.w}` : ''}">`)
@@ -166,7 +194,8 @@ export function lignes({
     const row = rows[i];
     return `<tr>${all
       .map((c, k) => {
-        if (c.n) return `<td class="n">${premierNumero + i}</td>`;
+        if (c.n)
+          return `<td class="n${pad ? ' long' : ''}">${String(premierNumero + i).padStart(pad, '0')}</td>`;
         if (prefill && k === decal) return `<td class="pre">${prefill[i] ?? ''}</td>`;
         const v = row?.[k - decal];
         if (present(v)) {
@@ -248,18 +277,21 @@ export function report({
   saisiLe,
   par,
   numero,
+  numOp = true,
 }: {
   saisiPar?: boolean;
   extra?: string;
   saisiLe?: Valeur;
   par?: Valeur;
   numero?: Valeur;
+  /** Faux : pas de rubrique « N° opération » (registre : plusieurs opérations par page, voir `extra`). */
+  numOp?: boolean;
 } = {}): string {
   const f = (v: Valeur, vide: string) => (present(v) ? `<span class="v">${esc(v)}</span>` : vide);
   return `<div class="report"><span class="t">Report dans<br>l’application</span>
   <span class="f">Saisi le ${f(saisiLe, '<i class="s"></i>/<i class="s"></i>/20<i class="s"></i> à <i class="s"></i>h<i class="s"></i>')}</span>
   ${saisiPar ? `<span class="f">par ${f(par, '<i class="l"></i>')}</span>` : ''}
-  <span class="f">N° opération ${f(numero, '<i class="l"></i>')}</span>${extra}
+  ${numOp ? `<span class="f">N° opération ${f(numero, '<i class="l"></i>')}</span>` : ''}${extra}
   <span class="f o">photo jointe</span></div>`;
 }
 

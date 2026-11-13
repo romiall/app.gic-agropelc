@@ -27,10 +27,10 @@ export interface Identite {
 export const IDENTITE: Identite = {
   raison_sociale: 'GIC AGROPELC',
   forme_juridique: '',
-  siege: '',
+  siege: 'Douala Bonabéri, en face Stade Dikolo',
   bp: '7633 Douala',
   ville: 'Douala',
-  telephones: '+237 699 348 371',
+  telephones: '+237 6 81 12 16 44 / +237 6 94 41 82 47',
   email: '',
   site_web: '',
   rccm: '24/034CMR/LT/01/GIC/004000/004000002',

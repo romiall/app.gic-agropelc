@@ -453,7 +453,7 @@ export function feuilleJournaliereCaisse(d: DonneesFJC, ctx: Contexte): PieceRen
             span: 11,
             coche: d.caisse ? [d.caisse] : [],
           }),
-          champ('Jour', 5, d.jour ? { v: d.jour } : { aide: '…/…/20…' }),
+          champ('Jour', 5, d.jour ? { v: d.jour } : { manuscrit: 'date' as const }),
         ),
         rang(
           champ('Caissier(ère) ou commercial', 7, { v: d.caissier }),
@@ -524,6 +524,8 @@ export interface LigneJournalEncaissements {
   readonly date: string | null;
   readonly piece: string | null;
   readonly objet: string | null;
+  /** Référence de la transaction ou numéro du chèque (dernière colonne du registre). */
+  readonly reference?: string | null;
   /** Montant par colonne de mode, dans l'ordre : espèces, Orange, MTN, virement, chèque. */
   readonly parMode: readonly [
     number | null,
@@ -557,8 +559,8 @@ export function journalEncaissements(d: DonneesJE, ctx: Contexte): PieceRendue {
     const html = standard({
       fmt: 'a4p',
       code: 'JE',
-      titre: 'Journal des encaissements',
-      sous: 'Registre — une ligne par encaissement',
+      titre: 'Registre des encaissements',
+      sous: 'Reçus d’encaissement — une ligne par encaissement',
       numLib: 'Page N°',
       marges: { mh: 12, mg: 14 },
       annule: false,
@@ -571,51 +573,68 @@ export function journalEncaissements(d: DonneesJE, ctx: Contexte): PieceRendue {
           : null,
       ctx,
       mention:
-        'Reconstitué chaque jour à partir des reçus d’encaissement et des bons de vente — ne jamais laisser de ligne vide entre deux écritures',
+        'Registre numéroté — une ligne par encaissement, sans ligne vide ; une erreur se barre, se date et se commente, elle ne s’efface jamais',
       corps: [
         rang(
           champ('Site / point de vente', 10, { v: d.site }),
-          champ('Période du', 6, d.du ? { v: d.du } : { aide: '…/…/20…' }),
-          champ('au', 4, d.au ? { v: d.au } : { aide: '…/…/20…' }),
+          champ('Période du', 6, d.du ? { v: d.du } : { manuscrit: 'date' as const }),
+          champ('au', 4, d.au ? { v: d.au } : { manuscrit: 'date' as const }),
           champ('Tenu par', 4, { v: d.tenuPar }),
         ),
         lignes({
           cols: [
-            { t: 'Date', w: '15mm', al: 'c' },
-            { t: 'N° pièce (RE / BV)', w: '23mm' },
-            { t: 'Client / objet (vente ou commande n°)', w: '*' },
-            { t: 'Espèces', w: '20mm', al: 'r' },
-            { t: 'Orange Money', w: '20mm', al: 'r' },
-            { t: 'MTN MoMo', w: '20mm', al: 'r' },
-            { t: 'Virement', w: '20mm', al: 'r' },
-            { t: 'Chèque', w: '18mm', al: 'r' },
-            { t: 'Total (XAF)', w: '22mm', al: 'r' },
+            { t: 'Date', w: '13mm', al: 'c' },
+            { t: 'Reçu de (client) — objet : vente ou commande n°', w: '*' },
+            { t: 'Espèces', w: '15mm', al: 'r' },
+            { t: 'Orange Money', w: '15mm', al: 'r' },
+            { t: 'MTN MoMo', w: '15mm', al: 'r' },
+            { t: 'Virement', w: '15mm', al: 'r' },
+            { t: 'Chèque', w: '14mm', al: 'r' },
+            { t: 'Total (XAF)', w: '17mm', al: 'r' },
+            { t: 'Réf. transaction ou chèque — notes', w: '30mm' },
           ],
           n: N,
-          h: 6.3,
+          h: 5.9,
+          numT: 'N° d’ordre',
+          numW: '11mm',
+          pad: 6,
           premierNumero: i * N + 1,
           rows: lot.map((l) => {
             const total = l.parMode.reduce<number>((s, m) => s + (m ?? 0), 0);
+            const objet = [l.objet, l.piece].filter((x): x is string => Boolean(x)).join(' — ');
             return [
               l.date,
-              l.piece,
-              l.objet,
+              objet === '' ? null : objet,
               ...l.parMode.map((m) => (m ? xafPiece(m) : null)),
               xafPiece(total),
+              l.reference ?? null,
             ];
           }),
           total: [
-            { lib: 'Total de la page', span: 4, v: avecTotal(page) },
-            { lib: 'Report des pages précédentes', span: 4, v: avecTotal(reporte) },
-            { lib: 'Total à reporter', span: 4, v: avecTotal(cumul) },
+            { lib: 'Total de la page', span: 3, v: avecTotal(page) },
+            { lib: 'Report des pages précédentes', span: 3, v: avecTotal(reporte) },
+            { lib: 'Total à reporter', span: 3, v: avecTotal(cumul) },
           ],
+        }),
+        signatures(
+          [
+            { t: 'Le caissier', s: 'a tenu la page — visa' },
+            { t: 'Le contrôleur', s: 'a vérifié — visa et date' },
+            { t: 'Cachet', cachet: true, nom: false },
+          ],
+          { h: 11 },
+        ),
+        report({
+          numOp: false,
+          extra:
+            '<span class="f">lignes reportées : du n° <i class="l"></i> au n° <i class="l"></i></span>',
         }),
       ].join(''),
     });
     reporte = cumul;
     return html;
   });
-  return { code: 'JE', titre: 'Journal des encaissements', fmt: 'a4p', pages };
+  return { code: 'JE', titre: 'Registre des encaissements', fmt: 'a4p', pages };
 }
 
 // ------------------------------------------------------------------ FA
@@ -676,9 +695,9 @@ export function facture(d: DonneesFA, ctx: Contexte): PieceRendue {
           champ(
             'Date d’émission',
             8,
-            d.dateEmission ? { v: d.dateEmission } : { aide: 'jj / mm / aaaa' },
+            d.dateEmission ? { v: d.dateEmission } : { manuscrit: 'date' as const },
           ),
-          champ('Échéance', 7, d.echeance ? { v: d.echeance } : { aide: 'jj / mm / aaaa' }),
+          champ('Échéance', 7, d.echeance ? { v: d.echeance } : { manuscrit: 'date' as const }),
           champ('Bon de vente / commande n°', 9, { v: d.venteOuCommande }),
         ),
         bloc(

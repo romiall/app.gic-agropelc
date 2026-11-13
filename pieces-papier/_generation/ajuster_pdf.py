@@ -4,7 +4,7 @@ from pathlib import Path
 import pypdf
 from pypdf.generic import RectangleObject
 PT = 72 / 25.4
-for f in sorted((Path(__file__).resolve().parents[1] / 'pdf').glob('*.pdf')):
+for f in sorted((Path(__file__).resolve().parents[1] / 'pdf').rglob('*.pdf')):
     r = pypdf.PdfReader(str(f)); w = pypdf.PdfWriter()
     for page in r.pages:
         wm, hm = float(page.mediabox.width) / PT, float(page.mediabox.height) / PT

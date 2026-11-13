@@ -2,7 +2,7 @@
 // Alignement : sales.order.* (commande client), crm.visit.* (résultats de visite du référentiel), fieldwork.* (session de travail).
 import { avecSouche, standard, champ, rang, cases, lignes, montant, lettres, signatures, bloc, section, note, notes, souche, reportSouche, report, dateHeure } from './lib.mjs'
 
-const D = { aide: 'jj / mm / aaaa' }
+const D = { manuscrit: 'date' }
 const EX3 = '① blanc : client — ② rose : comptabilité — ③ jaune : reste dans le carnet (souche complète)'
 const EX2 = '① blanc : transmis — ② jaune : reste dans le bloc'
 
@@ -32,7 +32,7 @@ const VC = {
     fmt: 'a5p', code: 'VC', titre: 'Fiche de visite', sous: 'Visite et prospection', numLib: 'Fiche N°', marges: { mh: 12 }, annule: false, h: 6.6,
     corps: [
       rang(champ('Commercial', 12), champ('Zone / marché', 12)),
-      rang(champ('Date', 8, D), champ('Arrivée à', 8, { aide: '…h…' }), champ('Départ à', 8, { aide: '…h…' })),
+      rang(champ('Date', 8, D), champ('Arrivée à', 8, { manuscrit: 'heure' }), champ('Départ à', 8, { manuscrit: 'heure' })),
       cases('Compte client', ['client existant', 'nouveau prospect']),
       rang(champ('Nom du client / entreprise', 16), champ('Téléphone', 8)),
       rang(champ('Personne rencontrée (fonction)', 13), champ('Adresse / repère', 11)),
@@ -58,7 +58,7 @@ const BH = {
   pages: [standard({
     fmt: 'a5p', code: 'BH', titre: 'Bilan hebdomadaire', sous: 'Commercial — synthèse de la semaine', numLib: 'Fiche N°', marges: { mh: 12 }, annule: false, h: 6.4,
     corps: [
-      rang(champ('Commercial', 12), champ('Semaine du', 6, { aide: '…/…/20…' }), champ('au', 6, { aide: '…/…/20…' })),
+      rang(champ('Commercial', 10), champ('Semaine du', 8, { manuscrit: 'date' }), champ('au', 6, { manuscrit: 'date' })),
       section('Chiffres de la semaine (relevés sur les fiches ou calculés par l’application)'),
       rang(champ('Visites sur place', 8), champ('Nouveaux prospects', 8), champ('Nouveaux clients', 8)),
       rang(champ('CA réalisé', 8, { u: 'XAF' }), champ('Encaissé', 8, { u: 'XAF' }), champ('Casses et pertes', 8, { u: 'XAF' })),
@@ -80,7 +80,7 @@ const PT = {
   pages: [standard({
     fmt: 'a4l', code: 'PT', titre: 'Présence et pointage', sous: 'Solution de secours du pointage numérique', numLib: 'Feuille N°', annule: false, marges: { mh: 11 },
     corps: [
-      rang(champ('Site / zone déclarée', 10), champ('Semaine du', 6, { aide: '…/…/20…' }), champ('au', 4, { aide: '…/…/20…' }), champ('Responsable', 4)),
+      rang(champ('Site / zone déclarée', 10), champ('Semaine du', 6, { manuscrit: 'date' }), champ('au', 4, { manuscrit: 'date' }), champ('Responsable', 4)),
       lignes({
         n: 14, h: 7.6,
         cols: [{ t: 'Nom et prénom', w: '*' }, { t: 'Fonction', w: '24mm' }, { t: 'Zone / mission', w: '28mm' },

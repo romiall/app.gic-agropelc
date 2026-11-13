@@ -224,7 +224,7 @@ describe('régime de TVA et coordonnées de règlement de la facture (AV-451 (c)
         parametre(COMPANY_VAT_MENTION_SETTING, 'Vente exonérée'),
         parametre('company.bank', 'Afriland First Bank'),
         parametre('company.bank_account', '10005 00001 12345678901 23'),
-        parametre('company.mobile_money', '699 348 371'),
+        parametre('company.mobile_money', '681 121 644'),
       ]),
       NOW,
     );
@@ -234,7 +234,7 @@ describe('régime de TVA et coordonnées de règlement de la facture (AV-451 (c)
       mentionExoneration: 'Vente exonérée',
       banque: 'Afriland First Bank',
       compte: '10005 00001 12345678901 23',
-      mobileMoney: '699 348 371',
+      mobileMoney: '681 121 644',
     });
     const page = rendrePiece(d, LOGO).pages[0]!;
     expect(page).toContain('<span class="o coche">opération exonérée de TVA</span>');

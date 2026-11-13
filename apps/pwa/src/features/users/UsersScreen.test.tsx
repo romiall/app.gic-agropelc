@@ -417,8 +417,8 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
   });
 
   it('création d’un compte : téléphone normalisé, défauts de saisie dans l’ordre, corps de la requête', () => {
-    expect(phoneOf('699 34 83 71')).toBe('+237699348371');
-    expect(phoneOf('+237 699 34 83 71')).toBe('+237699348371');
+    expect(phoneOf('681 12 16 44')).toBe('+237681121644');
+    expect(phoneOf('+237 681 12 16 44')).toBe('+237681121644');
     expect(phoneOf('0033 6 12 34 56 78')).toBe('+33612345678');
     expect(phoneOf('')).toBeNull();
     expect(phoneOf('abc')).toBeNull();
@@ -427,7 +427,7 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
     const base = {
       ...EMPTY_NEW_USER,
       fullName: ' Paul Essomba ',
-      phone: '699 34 83 71',
+      phone: '681 12 16 44',
       password: 'provisoire-1',
       confirmation: 'provisoire-1',
     };
@@ -462,7 +462,7 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
 
     expect(createBody(base)).toEqual({
       full_name: 'Paul Essomba',
-      phone: '+237699348371',
+      phone: '+237681121644',
       password: 'provisoire-1',
     });
     expect(
@@ -475,7 +475,7 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
       }),
     ).toEqual({
       full_name: 'Paul Essomba',
-      phone: '+237699348371',
+      phone: '+237681121644',
       email: 'paul@gic.cm',
       password: 'provisoire-1',
       role: { role_id: SELLER_ROLE, scope_type: 'SITE', scope_site_id: IDS.site },
@@ -706,7 +706,7 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     const submit = within(form).getByRole('button', { name: 'Créer le compte' });
     expect(submit).toBeDisabled();
     await user.type(within(form).getByLabelText('Nom complet'), 'Paul Essomba');
-    await user.type(within(form).getByLabelText('Téléphone'), '699 34 83 71');
+    await user.type(within(form).getByLabelText('Téléphone'), '681 12 16 44');
     await user.selectOptions(within(form).getByLabelText('Rôle'), SELLER_ROLE);
     // Vendeur de PDV : seul le site est permis ; le site doit être choisi.
     expect(within(form).getByLabelText('Périmètre')).toHaveValue('SITE');
@@ -725,7 +725,7 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(post[1]).toBe('/api/v1/users');
     expect(JSON.parse((post[2] as RequestInit).body as string)).toEqual({
       full_name: 'Paul Essomba',
-      phone: '+237699348371',
+      phone: '+237681121644',
       password: 'provisoire-1',
       role: { role_id: SELLER_ROLE, scope_type: 'SITE', scope_site_id: IDS.site },
     });

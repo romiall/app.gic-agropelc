@@ -80,7 +80,7 @@ const SLIP_TYPE_LABELS: Readonly<Record<ReportableSlipType, string>> = {
   BD: 'BD — Bon de décaissement (dépense)',
   RF: 'RF — Remise de fonds',
   CC: 'CC — Bon de commande client',
-  BL: 'BL — Bon de livraison',
+  BL: 'BL — Bordereau de livraison',
   BR: 'BR — Bon de réception',
   BT: 'BT — Bon de transfert',
   FP: 'FP — Fiche de perte',

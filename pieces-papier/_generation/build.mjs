@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { PIECES } from './pieces.mjs'
-import { ID, RACINE } from './lib.mjs'
+import { ID, RACINE, SLUG, DIM, planche } from './lib.mjs'
 
 const require = createRequire('C:/xampp/htdocs/app.gic-agropelc/apps/pwa/package.json')
 let pw
@@ -24,9 +24,6 @@ const FORCE = flags.includes('--force')
 const SCALE = Number((flags.find((f) => f.startsWith('--scale=')) ?? '--scale=2').split('=')[1])
 const PNG = !flags.includes('--no-png')
 const MM = 96 / 25.4
-const SLUG = 8 // mm autour de la feuille en impression (traits de coupe, légende)
-
-const DIM = { a4p: [210, 297], a4l: [297, 210], a5p: [148, 210], a5l: [210, 148], a6l: [148, 105], t3a4: [210, 99] }
 const ENCRES = 'Vert #3A6351 + Orange #C8780A (+ noir texte)'
 
 for (const d of ['gabarits', 'pdf', 'apercu']) mkdirSync(join(RACINE, d), { recursive: true })
@@ -37,16 +34,15 @@ function document_(piece, mode) {
   const [w, h] = DIM[piece.fmt]
   const imp = mode === 'impression'
   const logo = imp && !piece.couleur ? '../charte/logo-2-encres.png' : '../charte/logo-couleur.png'
-  const num = imp ? '' : '000001'
-  const fil = !imp && piece.legal ? '<div class="filigrane"><span>MODÈLE PROVISOIRE</span></div>' : ''
-  let pages = piece.pages.map((p) => p.replaceAll('{{LOGO}}', logo).replaceAll('{{N}}', num))
+  const num = imp ? '' : (piece.numApercu ?? '000001')
+  // Le filigrane ne se pose que tant que le comptable n'a pas validé la pièce légale (identite.json : validation_comptable_facture).
+  const fil = !imp && piece.legal && ID.validation_comptable_facture !== true ? '<div class="filigrane"><span>MODÈLE PROVISOIRE</span></div>' : ''
+  // {{Lk}} : numéro de la ligne k d'un registre (vide sur le fichier d'impression, 000001… sur l'aperçu).
+  let pages = piece.pages.map((p) => p.replaceAll('{{LOGO}}', logo).replaceAll('{{N}}', num).replace(/\{\{L(\d+)\}\}/g, (_, k) => (imp ? '' : String(k).padStart(6, '0'))))
   if (fil) pages = pages.map((p) => p.replace(/<\/section>$/, `${fil}</section>`))
   if (imp) {
-    const W = w + 2 * SLUG, H = h + 2 * SLUG
-    const marks = [[0, SLUG, 'h'], [0, SLUG + h, 'h'], [W - 5, SLUG, 'h'], [W - 5, SLUG + h, 'h'], [SLUG, 0, 'v'], [SLUG + w, 0, 'v'], [SLUG, H - 5, 'v'], [SLUG + w, H - 5, 'v']]
-      .map(([x, y, t]) => `<i class="coupe ${t}" style="left:${x}mm;top:${y}mm"></i>`).join('')
-    const leg = `<div class="legende-planche">GIC AGROPELC · ${piece.code} · ${piece.nom} · ${w}×${h} mm · fonds perdus : aucun aplat ne touche le bord · encres : ${ENCRES} · numérotation typographique à poser sur la zone N°</div>`
-    pages = pages.map((p) => `<div class="planche" style="width:${W}mm;height:${H}mm;--slug:${SLUG}mm">${marks}${p}${leg}</div>`)
+    const leg = `GIC AGROPELC · ${piece.code} · ${piece.nom} · ${w}×${h} mm · fonds perdus : aucun aplat ne touche le bord · encres : ${ENCRES} · numérotation typographique à poser sur la zone N°`
+    pages = pages.map((p) => planche(p, w, h, leg))
   }
   const [pw_, ph_] = imp ? [w + 2 * SLUG, h + 2 * SLUG] : [w, h]
   return {

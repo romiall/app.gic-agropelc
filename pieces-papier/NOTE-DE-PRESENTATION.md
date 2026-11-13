@@ -1,6 +1,6 @@
 # GIC AGROPELC — Pièces papier : note de présentation et de validation
 
-**À l'attention de** la Direction, du responsable administratif et du promoteur de l'activité. Les annexes techniques sont à l'attention de l'imprimeur. Version 1.1 du 20 octobre 2026.
+**À l'attention de** la Direction, du responsable administratif et du promoteur de l'activité. Les annexes techniques sont à l'attention de l'imprimeur. Version 1.2 du 11 novembre 2026 (pièces retenues par l'administration : § 12).
 
 ## 1. Objet
 
@@ -9,7 +9,7 @@ GIC AGROPELC doit disposer de **pièces physiques** qui répondent à deux besoi
 1. **Laisser une trace papier de chaque opération** enregistrée dans l'application. Le référentiel comptable OHADA/SYSCOHADA veut que les opérations soient justifiées par des pièces datées, conservées, classées et reliées aux écritures. L'application rend l'information accessible et facilite le reporting et l'analyse des tendances ; la pièce papier en est le **support probant**.
 2. **Servir de relais quand l'application est indisponible** (absence d'électricité, appareil non chargé, pas de réseau, site isolé) : l'opération s'écrit sur la pièce, puis se reporte dans l'application au rétablissement.
 
-La présente note propose **25 pièces** : carnets à souches pré-numérotés, blocs, registres, papeterie. Elles portent le logo de la société, la même charte graphique et les mêmes termes que l'application, de sorte que la ressaisie se fait sans interprétation. Une **facture** est prévue comme **modèle provisoire** et un **journal des encaissements** comme registre récapitulatif.
+La présente note propose **25 pièces** : carnets à souches pré-numérotés, blocs, registres, papeterie. Elles portent le logo de la société, la même charte graphique et les mêmes termes que l'application, de sorte que la ressaisie se fait sans interprétation. Une **facture** (modèle validé par le comptable le 11 novembre 2026) et un **registre des encaissements** (l'ancien journal des encaissements, qui tient lieu de reçu d'encaissement) complètent le jeu.
 
 ## 2. Décisions demandées
 
@@ -54,19 +54,19 @@ Format retenu : peu de lignes à écrire, usage au comptoir, tient dans un tiroi
 
 | Code | Pièce | Format | Objet |
 |---|---|---|---|
-| **BL** | Bon de livraison (client) | A5 paysage, souche | prouver la remise des produits, livraison partielle et reste à livrer |
+| **BL** | Bordereau de livraison (client) | A5 paysage, souche | prouver la remise des produits, livraison partielle et reste à livrer |
 | **CC** | Bon de commande client | A5 paysage, souche | noter une commande prise sur le terrain, avec acompte |
 | **BC** | Bon de commande fournisseur | A4 portrait | formaliser un achat ; il ne prouve ni la livraison ni le paiement |
 | **BR** | Bon de réception | A4 portrait | contrôler commandé, livré, rejeté, accepté ; seul l'accepté entre en stock |
 | **BT** | Bon de transfert de stock | A4 portrait | tracer un envoi entre deux emplacements, avec la partie « réception » |
-| **FA** | Facture (**modèle provisoire**) | A4 portrait | à valider avec le comptable avant tout usage |
+| **FA** | Facture (carnet de factures manuelles) | A4 portrait | modèle **validé par le comptable le 11/11/2026** ; les points légaux du § 10 restent à confirmer |
 
 ### Blocs et registres
 
 | Code | Pièce | Format | Support | Objet |
 |---|---|---|---|---|
 | **FJC** | Feuille journalière de caisse | A4 portrait | bloc de 50 jeux, 2 feuillets | journal chronologique de la caisse : **28 lignes**, une opération par ligne, entrée ou sortie ; rapprochement des espèces, écart, signatures. Valable pour la caisse d'un point de vente, d'un commercial ou la caisse centrale. |
-| **JE** | Journal des encaissements | A4 portrait | registre relié, 100 pages numérotées | récapitulatif par mode de paiement, **30 lignes** par page |
+| **JE** | Registre des encaissements (ancien journal) | A4 portrait | registre relié, 100 pages numérotées | tient lieu de reçu d'encaissement : une ligne = un encaissement, **30 lignes** par page, numéros d'ordre continus, colonne de références et de notes, visas du caissier et du contrôleur |
 | **DA** | Demande d'achat | A4 portrait | bloc de 50 jeux, 2 feuillets | exprimer un besoin ; justification obligatoire |
 | **FP** | Fiche de perte ou de consommation | A5 portrait | bloc de 50 jeux, 2 feuillets | mortalité, casse, perte inexpliquée, consommation d'intrant |
 | **FI** | Fiche d'inventaire | A4 portrait | bloc de 100 feuilles | comptage physique d'un emplacement |
@@ -107,7 +107,7 @@ Les nombres de jeux, de feuilles et de pages sont des **usages courants** de l'i
 1. Constater l'indisponibilité de l'application et prendre le carnet du type d'opération.
 2. Prendre la pièce suivante dans l'ordre des numéros. Écrire au stylo à bille, en appuyant, en majuscules lisibles, avec la **date et l'heure réelles** de l'opération. Faire signer.
 3. Remettre le feuillet blanc ; le jaune reste dans le carnet.
-4. En fin de journée, compléter la feuille journalière de caisse (FJC) et le journal des encaissements (JE).
+4. En fin de journée, compléter la feuille journalière de caisse (FJC) ; le registre des encaissements (JE) s'écrit au fil de l'eau, une ligne par encaissement, et se totalise en fin de page.
 5. Dès le rétablissement, **reporter chaque pièce dans l'ordre des numéros** : l'heure de l'opération est celle écrite sur la pièce ; le numéro imprimé est recopié ; la photo de la pièce est jointe ; la souche reçoit la date de saisie, le nom du saisissant et le numéro d'opération.
 6. **Délai** : de préférence sous 24 heures. Valeurs actuelles de l'application (point AV-078, encore ouvert, paramétrables) : justification demandée au-delà de 24 heures, saisie refusée au-delà de 72 heures sauf validation.
 7. **Doublon** : un fait déjà saisi ne se ressaisit pas ; la souche porte « déjà saisi — n° … ».
@@ -119,10 +119,10 @@ Les nombres de jeux, de feuilles et de pages sont des **usages courants** de l'i
 |---|---|---|
 | Raison sociale | GIC AGROPELC | fournie |
 | Boîte postale | 7633 Douala | fournie |
-| Téléphone | +237 699 348 371 | fournie |
+| Téléphones | +237 6 81 12 16 44 / +237 6 94 41 82 47 | fournis ; deux numéros depuis le 11/11/2026, ils remplacent l'ancien numéro unique ; ligne « Tél » de l'en-tête |
 | NIU | M032416655486P | fournie |
 | N° RCCM / autorisation | 24/034CMR/LT/01/GIC/004000/004000002 | fournie ; **à confirmer** : s'agit-il du numéro de RCCM ou de l'autorisation d'exercer du GIC ? |
-| Siège (adresse) | — | **à fournir** |
+| Siège (adresse) | Douala Bonabéri, en face Stade Dikolo | fournie le 11/11/2026 par le porteur |
 | Forme juridique | — | à fournir (exemple : Groupe d'Initiative Commune) |
 | Adresse e-mail, site web | — | à fournir |
 | Banque, numéro de compte, mobile money | — | à fournir (facture et papier à en-tête) |
@@ -170,3 +170,11 @@ Détail et sources dans `REGLEMENTATION.md`.
 6. **BAT signé** avant tirage : numérotation continue, perforation de la souche à 52 mm du bord gauche, couleurs des feuillets, coupe.
 7. Quantités : nombre moyen d'opérations par jour et par type de pièce, multiplié par 90 jours, divisé par 50 jeux par carnet, plus un carnet de réserve par site (méthode indicative).
 8. Remise des carnets contre signature dans le registre RC ; formation courte des équipes à la procédure de secours.
+
+## 12. Pièces retenues par l'administration (11 novembre 2026)
+
+À la suite du retour du responsable administratif, **quatre pièces** sont retenues pour commencer : le **bordereau de livraison** (BL, carnet de 50 avec souche), le **bon de commande fournisseur** (BC, carnet de 50), la **facture manuelle** (FA, carnet de 50) et le **registre des encaissements** (le reçu d'encaissement se tient en registre et non en carnet). Le registre reprend le journal des encaissements (JE), renommé et reformaté : 30 lignes par page, numéro d'ordre imprimé sur chaque ligne (continu de 000001 à 003000 pour 100 pages), colonne de références et de notes, visas du caissier et du contrôleur, lignes reportées dans l'application.
+
+- **Adresse de la société** : « Douala Bonabéri, en face Stade Dikolo » est imprimée dans l'en-tête de toutes les pièces (rubrique « Siège »).
+- **Fichiers prêts à imprimer** : `pdf/carnets/` (cahier des charges § 5) ; chaque carnet = couverture, 50 jeux numérotés de 000001 à 000050, dos ; le registre = couverture, 100 pages, dos. Les numéros sont imprimés dans les fichiers.
+- Les 21 autres pièces ne sont pas écartées : elles restent disponibles pour une commande ultérieure.

@@ -74,8 +74,8 @@ const SUPPORT = {
   BD: ['Carnet à souche, 3 feuillets autocopiants, 50 jeux', 'Justifie toute sortie d’argent : nature, catégorie de dépense, objet, imputation, justificatifs, trois signatures.'],
   RF: ['Carnet à souche, 3 feuillets autocopiants, 50 jeux', 'Bordereau d’envoi puis de réception d’argent entre deux caisses ou vers la banque, avec écart.'],
   FJC: ['Bloc, 2 feuillets autocopiants (blanc, jaune), 50 jeux', 'Journal chronologique de la caisse (PDV, commercial ou centrale) : 28 lignes, une opération par ligne, entrée ou sortie ; rapprochement des espèces et écart.'],
-  JE: ['Registre relié, 100 pages numérotées', 'Récapitule les encaissements par mode de paiement, 30 lignes par page ; reconstitué depuis les reçus et bons de vente.'],
-  FA: ['Carnet, 3 feuillets autocopiants, 50 jeux — MODÈLE PROVISOIRE', 'À valider avec le comptable avant tout usage : mentions légales, TVA, mode d’émission.'],
+  JE: ['Registre relié, 100 pages numérotées', 'Registre des encaissements (ancien journal) : tient lieu de reçu d’encaissement ; 30 lignes par page, une ligne = un encaissement, numéros d’ordre continus, références et notes, visas du caissier et du contrôleur.'],
+  FA: ['Carnet, 3 feuillets autocopiants, 50 jeux — facture manuelle', 'Modèle validé par le comptable le 11/11/2026 ; coordonnées de règlement et régime de TVA à compléter à la main s’ils ne sont pas imprimés.'],
   DA: ['Bloc, 2 feuillets autocopiants, 50 jeux', 'Exprime un besoin d’achat ; la justification est obligatoire ; la décision se note sur la pièce.'],
   BC: ['Carnet, 3 feuillets autocopiants, 50 jeux', 'Engage l’achat auprès d’un fournisseur ; ne prouve ni la livraison ni le paiement.'],
   BR: ['Carnet, 3 feuillets autocopiants, 50 jeux', 'Constate livré, rejeté, accepté, lot fournisseur, péremption ; seul l’accepté entre en stock.'],
@@ -95,11 +95,12 @@ const SUPPORT = {
   'BN-T': ['Bloc-notes 50 feuilles, dos carton', 'Terrain : nature (visite, prospection, inspection…), notes, relances.'],
   'CV-A5L': ['Couvertures carton 250 à 300 g, couleur', 'Face avant (titre, plage de numéros, site, responsable) et dos (huit règles d’usage). Six faces avant pour les carnets A5.'],
   'CV-A4P': ['Couvertures carton 250 à 300 g, couleur', 'Quatre faces avant pour les carnets A4 (BC, BR, BT, FA) et un dos commun.'],
+  'CV-REG': ['Couverture carton 250 à 300 g, couleur', 'Face avant (titre, numéros du registre et de ses lignes, site, dates d’ouverture et de clôture) et dos (huit règles d’usage) du registre des encaissements.'],
 }
 const lire = (f) => readFileSync(join(RACINE, f), 'utf8')
 const img = (f) => `<img src="${pathToFileURL(join(RACINE, 'apercu', f)).href}">`
 
-const garde = `<div class="garde"><img src="${pathToFileURL(join(RACINE, 'charte', 'logo-couleur.png')).href}"><div class="filet"></div><h1>Pièces papier</h1><div class="sub">Dossier de validation — version 1.0 — 20 octobre 2026</div>
+const garde = `<div class="garde"><img src="${pathToFileURL(join(RACINE, 'charte', 'logo-couleur.png')).href}"><div class="filet"></div><h1>Pièces papier</h1><div class="sub">Dossier de validation — version 1.2 — 11 novembre 2026</div>
 <div class="note">25 pièces à imprimer : carnets à souches, blocs, registres, papeterie. Contenu : note de présentation (formats, procédure de secours, décisions demandées), cadre légal avec ses points à valider, cahier des charges pour l’imprimeur, puis une page par pièce.<br><br>À l’attention de la Direction, du responsable administratif, du promoteur et de l’imprimeur ; à soumettre au comptable avant impression.</div></div>`
 
 const cahierHtml = md(lire('CAHIER-DES-CHARGES-IMPRIMEUR.md'))
@@ -122,7 +123,7 @@ async function pdf(html, sortie, pied) {
     footerTemplate: `<div style="width:100%;font:7pt Segoe UI;color:#5f6d66;padding:0 13mm;display:flex;justify-content:space-between"><span>GIC AGROPELC — ${pied}</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>` })
   await p.close(); unlinkSync(f)
 }
-await pdf(dossier, 'DOSSIER-DE-VALIDATION.pdf', 'Pièces papier — dossier de validation v1.0')
-await pdf(page('Cahier des charges imprimeur', `<div>${cahierHtml}</div>`), 'CAHIER-DES-CHARGES-IMPRIMEUR.pdf', 'Cahier des charges imprimeur v1.0')
+await pdf(dossier, 'DOSSIER-DE-VALIDATION.pdf', 'Pièces papier — dossier de validation v1.2')
+await pdf(page('Cahier des charges imprimeur', `<div>${cahierHtml}</div>`), 'CAHIER-DES-CHARGES-IMPRIMEUR.pdf', 'Cahier des charges imprimeur v1.1')
 await browser.close()
 console.log('DOSSIER-DE-VALIDATION.pdf et CAHIER-DES-CHARGES-IMPRIMEUR.pdf produits')
