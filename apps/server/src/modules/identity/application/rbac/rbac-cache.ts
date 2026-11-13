@@ -48,6 +48,11 @@ export interface CachedGrant {
 const grantsByUser = new Map<string, readonly CachedGrant[]>();
 /** Nombre d'invalidations par utilisateur : une lecture commencée avant la dernière n'est pas gardée. */
 const generationByUser = new Map<string, number>();
+/**
+ * Nombre d'invalidations globales (`invalidateAll`, droit d'un rôle changé : ADR-072) : une lecture commencée avant la
+ * dernière n'est pas gardée, même celle d'un utilisateur qui n'était pas encore en cache.
+ */
+let globalGeneration = 0;
 
 /** Chargée à la demande (premier appel pour cet utilisateur dans ce processus), puis mise en cache. */
 export async function getUserGrants(
@@ -57,6 +62,7 @@ export async function getUserGrants(
   const cached = grantsByUser.get(userId);
   if (cached) return cached;
   const generation = generationByUser.get(userId) ?? 0;
+  const epoch = globalGeneration;
 
   const rows = await executor
     .selectFrom('identity_user_role_assignments as ura')
@@ -91,7 +97,11 @@ export async function getUserGrants(
     validTo: row.valid_to,
     revokedAt: row.revoked_at,
   }));
-  if (!executor.isTransaction && (generationByUser.get(userId) ?? 0) === generation) {
+  if (
+    !executor.isTransaction &&
+    (generationByUser.get(userId) ?? 0) === generation &&
+    globalGeneration === epoch
+  ) {
     grantsByUser.set(userId, grants);
   }
   return grants;
@@ -130,6 +140,7 @@ export function invalidateUser(userId: string): void {
 }
 
 export function invalidateAll(): void {
+  globalGeneration += 1;
   for (const userId of grantsByUser.keys()) {
     generationByUser.set(userId, (generationByUser.get(userId) ?? 0) + 1);
   }

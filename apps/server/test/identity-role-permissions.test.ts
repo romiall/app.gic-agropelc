@@ -10,6 +10,10 @@ import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { registerRolePermissionCommands } from '../src/modules/identity/application/commands/role-permission-commands.js';
+import { registerRbacCacheConsumer } from '../src/modules/identity/application/rbac/rbac-cache-consumer.js';
+import { hasPermissionAt } from '../src/modules/identity/application/public/index.js';
+import { EventConsumerRunner } from '../src/platform/events/event-consumer-runner.js';
+import { EventConsumerRegistry } from '../src/platform/events/event-consumer-registry.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -249,5 +253,62 @@ describe('identity.role_permission.set (Q28, ADR-072)', () => {
     });
     expect(result.status).toBe('REJECTED');
     expect(await journalOf(target)).toEqual([]);
+  });
+
+  it('le droit changé s’applique aux titulaires du rôle : cache RBAC invalidé par l’événement, tout entier (ADR-072)', async () => {
+    const target = await newTargetRole();
+    const holder = await db.transaction().execute((trx) => insertTestUser(trx));
+    await db.transaction().execute((trx) => assignTestRole(trx, holder, target, editor));
+    const now = new Date('2026-09-24T13:00:00.000Z');
+    const holds = () => hasPermissionAt(db, toBin(holder), HELD_ALL, now);
+
+    const consumers = new EventConsumerRegistry();
+    registerRbacCacheConsumer(consumers);
+    const runner = new EventConsumerRunner(db, consumers);
+    const drain = async () => {
+      let batch;
+      do {
+        batch = await runner.processOnce('identity.rbac_cache', {
+          batchSize: 500,
+          settleSeconds: 0,
+        });
+      } while (batch.processed + batch.failed === 500);
+    };
+
+    // La file d'événements est partagée par toute la suite et par ses lancements successifs : le consommateur repart
+    // de sa tête (le cache RBAC est propre au processus), comme dans role-assignment-commands.test.ts.
+    const head = await db
+      .selectFrom('platform_domain_events')
+      .select((eb) => eb.fn.max('seq').as('top'))
+      .executeTakeFirst();
+    const headSeq = Number(head?.top ?? 0);
+    await db
+      .insertInto('platform_event_consumer_offsets')
+      .values({ consumer_name: 'identity.rbac_cache', last_seq: headSeq, last_error: null })
+      .onDuplicateKeyUpdate({ last_seq: headSeq, last_error: null })
+      .execute();
+
+    // Amorce le cache du titulaire : son rôle n'a pas encore le droit.
+    expect(await holds()).toBe(false);
+    const grant = await run(editor, editorDevice, target, {
+      permissionCode: HELD_ALL,
+      maxScope: 'ALL',
+      reason: 'Octroi.',
+    });
+    expect(grant.status).toBe('APPLIED');
+    // Toujours périmé : le consommateur n'a pas encore traité l'événement.
+    expect(await holds()).toBe(false);
+    await drain();
+    expect(await holds()).toBe(true);
+
+    const withdrawal = await run(editor, editorDevice, target, {
+      permissionCode: HELD_ALL,
+      maxScope: null,
+      reason: 'Retrait.',
+    });
+    expect(withdrawal.status).toBe('APPLIED');
+    expect(await holds()).toBe(true);
+    await drain();
+    expect(await holds()).toBe(false);
   });
 });
