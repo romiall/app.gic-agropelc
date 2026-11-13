@@ -154,7 +154,7 @@ export interface AnalyticsFProspecting {
   contact_customer_id: Buffer | null;
   converted_customer_id: Buffer | null;
   created_customer_id: Buffer | null;
-  event_kind: Generated<string>;
+  event_kind: string | null;
   result: string | null;
   source: Generated<string>;
   stage: Generated<string>;

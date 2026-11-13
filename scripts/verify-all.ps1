@@ -81,6 +81,7 @@ $script:dbMessage = 'base non preparee'
 $script:unfinished = @{}   # par etape : fichiers dont un lot s'est arrete avant la fin de leurs essais (rejoues)
 $script:workerExits = @{}  # par etape : lots dont un worker de vitest s'est arrete en cours de route
 $script:unhandled = @{}    # par etape : erreurs non gerees des lots, autres qu'un arret de worker
+$script:expectedSkips = @{ pwa = 1 }  # essais ignores expres, par suite (apercu des pieces : controle visuel a la demande)
 
 function Write-Line([string]$text) {
   $stamped = '[' + (Get-Date -Format 'HH:mm:ss') + '] ' + $text
@@ -471,7 +472,8 @@ function Get-FirstLine([string]$text) {
   return ([string]$first).Trim()
 }
 
-function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [string[]]$extra, [bool]$needsDb, [string[]]$restrict) {
+# $lastRegex : fichiers joues en dernier ; $strictEnv : variable d'environnement mise a 1 pendant les essais de la suite.
+function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [string[]]$extra, [bool]$needsDb, [string[]]$restrict, [string]$lastRegex = '', [string]$strictEnv = '') {
   if ($selected -notcontains $name) { return }
   if ($needsDb -and -not $script:dbReady) { Add-Result $name 'ECHEC' 0 $script:dbMessage; Add-Finding $name $script:dbMessage; return }
   Write-Line ($name + ' ...')
@@ -493,6 +495,12 @@ function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [st
     return
   }
 
+  if ($lastRegex) {
+    # Les essais d'analyse rapprochent des vues de calculs de reference sur les lignes que les autres essais laissent en base
+    # (EP-4) : sur une base neuve ils passent en dernier, sur la base peuplee par la suite, et en mode strict (aucun saut).
+    $all = @($all | Where-Object { $_ -notmatch $lastRegex }) + @($all | Where-Object { $_ -match $lastRegex })
+  }
+  if ($strictEnv) { [Environment]::SetEnvironmentVariable($strictEnv, '1', 'Process') }
   $state = @{}
   $pending = @($all)
   $round = 0
@@ -522,6 +530,8 @@ function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [st
     }
   }
 
+  if ($strictEnv) { [Environment]::SetEnvironmentVariable($strictEnv, $null, 'Process') }
+
   $missing = @($all | Where-Object { -not $state.ContainsKey($_) })
   $bad = @($all | Where-Object { $state.ContainsKey($_) -and ($state[$_].Status -eq 'failed' -or $state[$_].Failed -gt 0) })
   $timeouts = @($bad | Where-Object { $state[$_].Message -match 'timed out' })
@@ -546,6 +556,12 @@ function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [st
     Add-Finding $name ('INSTABLE ' + $file + ' (echoue en lot, passe seul) > ' + $firstRuns[$file].Test + ' : ' + (Get-FirstLine $firstRuns[$file].Message) + ' -> ' + $firstRuns[$file].Log)
   }
   foreach ($file in $missing) { Add-Finding $name ('NON EXECUTE ' + $file + ' (inacheve ou sans rapport, meme seul)') }
+  $allowedSkips = 0
+  if ($script:expectedSkips.ContainsKey($name)) { $allowedSkips = [int]$script:expectedSkips[$name] }
+  if ($skippedSum -gt $allowedSkips) {
+    $skippedFiles = @($all | Where-Object { $state.ContainsKey($_) -and $state[$_].Skipped -gt 0 })
+    Add-Finding $name ('IGNORES ' + $skippedSum + ' essai(s) ignore(s) au lieu de ' + $allowedSkips + ' attendu(s) : ' + (Join-Names $skippedFiles 6))
+  }
   $errors = @()
   if ($script:unhandled.ContainsKey($name)) { $errors = @($script:unhandled[$name]) }
   foreach ($err in $errors) { Add-Finding $name ('ERREUR NON GEREE ' + $err) }
@@ -563,7 +579,7 @@ function Invoke-VitestSuite([string]$name, [string]$relDir, [int]$chunkSize, [st
   if ($rerun.Count -gt 0) { $detail += ' ; fichiers inacheves rejoues : ' + (Join-Names $rerun 4) }
   if ($errors.Count -gt 0) { $detail += ' ; erreurs non gerees : ' + $errors.Count }
   $status = 'OK'
-  if ($unstable.Count -gt 0 -or $errors.Count -gt 0) { $status = 'ATTENTION' }
+  if ($unstable.Count -gt 0 -or $errors.Count -gt 0 -or $skippedSum -gt $allowedSkips) { $status = 'ATTENTION' }
   if ($bad.Count -gt 0 -or $missing.Count -gt 0) { $status = 'ECHEC' }
   Add-Result $name $status $watch.Elapsed.TotalSeconds $detail
 }
@@ -673,7 +689,7 @@ try {
   Invoke-Guarded 'contracts' { Invoke-VitestSuite 'contracts' 'packages\contracts' 500 @('--maxWorkers=2', '--minWorkers=1') $false @() }
   Invoke-Guarded 'db' { Invoke-VitestSuite 'db' 'db' 500 @('--maxWorkers=1', '--minWorkers=1') $true @() }
   Invoke-Guarded 'pwa' { Invoke-VitestSuite 'pwa' 'apps\pwa' 60 $timeoutArgs $false @() }
-  Invoke-Guarded 'server' { Invoke-VitestSuite 'server' 'apps\server' $BatchSize $timeoutArgs $true $onlyFiles }
+  Invoke-Guarded 'server' { Invoke-VitestSuite 'server' 'apps\server' $BatchSize $timeoutArgs $true $onlyFiles '^test/analytics-' 'ANALYTICS_STRICT' }
   Invoke-Guarded 'online' { Invoke-OnlineStep }
 } finally {
   Set-Awake $false

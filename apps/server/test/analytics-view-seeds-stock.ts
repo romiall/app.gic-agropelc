@@ -150,10 +150,13 @@ export async function cloneLossDeclarations(
   day: string,
   specs: ReadonlyArray<{ status: string; category: string; quantity: number }>,
 ): Promise<string | undefined> {
+  // Le lot du modèle existe : `production_lot_id` n’a pas de clé étrangère (autre module) et d’autres essais y posent des
+  // identifiants de lot sans lot ; la vue joint les lots, elle ignorerait les copies d’un modèle orphelin.
   const source = await firstRow(
     trx,
-    sql`SELECT * FROM inventory_loss_declarations
-         WHERE category = 'MORTALITE' AND production_lot_id IS NOT NULL AND status = 'RECORDED' ORDER BY id LIMIT 1`,
+    sql`SELECT d.* FROM inventory_loss_declarations d
+          JOIN production_production_lots pl ON pl.id = d.production_lot_id
+         WHERE d.category = 'MORTALITE' AND d.status = 'RECORDED' ORDER BY d.id LIMIT 1`,
   );
   if (!source) return undefined;
   for (const spec of specs) {
@@ -180,10 +183,12 @@ export async function cloneConsumptions(
   day: string,
   specs: ReadonlyArray<{ status: string; costType: string; quantity: number }>,
 ): Promise<string | undefined> {
+  // Le lot du modèle existe (`cost_object_id` n’a pas de clé étrangère) : la vue joint les lots.
   const source = await firstRow(
     trx,
-    sql`SELECT * FROM inventory_consumptions
-         WHERE cost_object_type = 'PRODUCTION_LOT' AND cost_type = 'ALIMENT' AND status = 'RECORDED' ORDER BY id LIMIT 1`,
+    sql`SELECT c.* FROM inventory_consumptions c
+          JOIN production_production_lots pl ON pl.id = c.cost_object_id
+         WHERE c.cost_object_type = 'PRODUCTION_LOT' AND c.cost_type = 'ALIMENT' AND c.status = 'RECORDED' ORDER BY c.id LIMIT 1`,
   );
   if (!source) return undefined;
   for (const spec of specs) {
