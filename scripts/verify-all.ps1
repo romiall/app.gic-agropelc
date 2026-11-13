@@ -20,7 +20,10 @@
   code de sortie 0 (aucun echec) ou 1. Journaux dans %TEMP%\gic-verify-<horodatage> : resume.txt, progression.txt.
 
   Options : -Quick (statique et filet SQL seulement), -NoOnline, -Only <etapes separees par des virgules>,
-            -ServerFiles <fichiers>, -LogDir <dossier>, -MySqlExe / -MySqlIni (serveur MySQL 8.4 a demarrer).
+            -ServerFiles <fichiers>, -LogDir <dossier>, -MySqlExe / -MySqlIni (serveur MySQL 8.4 a demarrer),
+            -FreshDb (supprime la base jetable avant les migrations : repart d'une base neuve ; refuse tant qu'une
+            autre session s'y connecte ; la base jetable grossit a chaque passage et finit par faire expirer les
+            essais qui lisent tout le perimetre, comme le bloc DISTRIBUTION de la tour de controle).
   Etapes : types lint format boundaries refs kit compat migrate seed schema corpus domain contracts db pwa server online
   Aucun fichier du depot n'est modifie : migrations sans export du schema, types Kysely generes dans le dossier
   temporaire. Jamais gic_agropelc_dev : seules les bases jetables _rp sont acceptees.
@@ -28,6 +31,7 @@
 param(
   [switch]$Quick,
   [switch]$NoOnline,
+  [switch]$FreshDb,
   [string[]]$Only = @(),
   [string[]]$ServerFiles = @(),
   [int]$BatchSize = 25,
@@ -241,6 +245,47 @@ const mysql = req('mysql2/promise');
 })().catch((e) => { console.log('inconnue (' + String(e.message).slice(0, 80) + ')'); });
 '@ | Out-File -FilePath $probe -Encoding ascii
   try { return [string](& node $probe (Join-Path $repo 'apps\server\package.json') 2>$null) } catch { return 'inconnue' }
+}
+
+# -FreshDb : la base jetable est supprimee ici ; les etapes migrate et seed la recreent (dbmate up cree la base).
+function Invoke-FreshDatabase {
+  $watch = [Diagnostics.Stopwatch]::StartNew()
+  if (($selected -notcontains 'migrate') -or ($selected -notcontains 'seed')) {
+    $text = '-FreshDb exige les etapes migrate et seed : base jetable conservee'
+    Add-Result 'fresh' 'ATTENTION' 0 $text
+    Add-Finding 'fresh' $text
+    return
+  }
+  $probe = Join-Path $outDir 'base-neuve.cjs'
+  @'
+const { createRequire } = require('module');
+const req = createRequire(process.argv[2]);
+const mysql = req('mysql2/promise');
+(async () => {
+  const c = await mysql.createConnection({ uri: process.env.DATABASE_URL, timezone: 'Z' });
+  const [[o]] = await c.query("SELECT COUNT(*) AS n FROM information_schema.processlist WHERE db = 'gic_agropelc_rp' AND id <> CONNECTION_ID()");
+  if (o.n > 0) { console.log('REFUSE ' + o.n); await c.end(); return; }
+  await c.query('DROP DATABASE `gic_agropelc_rp`');
+  console.log('SUPPRIMEE');
+  await c.end();
+})().catch((e) => { console.log('ERREUR ' + String(e.message).slice(0, 120)); });
+'@ | Out-File -FilePath $probe -Encoding ascii
+  $raw = $null
+  try { $raw = & node $probe (Join-Path $repo 'apps/server/package.json') 2>$null } catch { $raw = 'ERREUR ' + $_.Exception.Message }
+  $answer = ("$raw").Trim()
+  if ($answer -eq '') { $answer = 'aucune reponse de la sonde node' }
+  $watch.Stop()
+  if ($answer -eq 'SUPPRIMEE') {
+    $script:baseSize = 'neuve (supprimee puis recreee par -FreshDb ; avant : ' + $script:baseSize + ')'
+    Add-Result 'fresh' 'OK' $watch.Elapsed.TotalSeconds 'base jetable supprimee ; les migrations et les semis la reconstruisent'
+  } elseif ($answer -like 'REFUSE*') {
+    $text = 'base jetable conservee : ' + ($answer -replace '[^0-9]', '') + ' connexion(s) ouverte(s) par une autre session'
+    Add-Result 'fresh' 'ATTENTION' $watch.Elapsed.TotalSeconds $text
+    Add-Finding 'fresh' $text
+  } else {
+    Add-Result 'fresh' 'ECHEC' $watch.Elapsed.TotalSeconds ('base jetable non supprimee : ' + $answer)
+    Add-Finding 'fresh' ('base jetable non supprimee : ' + $answer)
+  }
 }
 
 # --- etapes particulieres --------------------------------------------------------------------------------------------
@@ -585,6 +630,7 @@ try {
   if (@($baseSteps + @('db', 'server')) | Where-Object { $selected -contains $_ }) {
     Invoke-Guarded 'mysql' { Initialize-Database }
     if ($script:dbReady) { $baseSize = Get-BaseSize; Write-Line ('base jetable : ' + $baseSize) }
+    if ($script:dbReady -and $FreshDb) { Invoke-Guarded 'fresh' { Invoke-FreshDatabase } }
   }
   Invoke-Guarded 'migrate' {
     Invoke-DbStep 'migrate' 'npx' @('dbmate', '--no-dump-schema', '--migrations-dir', './migrations', 'up') { param($log, $code)
